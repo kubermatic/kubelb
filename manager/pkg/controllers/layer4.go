@@ -1,6 +1,7 @@
 package controllers
 
 import (
+	"github.com/imdario/mergo"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -27,12 +28,26 @@ func (r *GlobalLoadBalancerReconciler) reconcileService(desiredService *corev1.S
 		return r.Create(r.ctx, desiredService)
 	}
 
+	err = mergo.Merge(&desiredService.Spec, actualService.Spec)
+	if err != nil {
+		return err
+	}
+
+	maxIndex := Min(len(desiredService.Spec.Ports), len(actualService.Spec.Ports))
+
+	for i := 0; i < maxIndex; i++ {
+
+		err = mergo.Merge(&desiredService.Spec.Ports[i], actualService.Spec.Ports[i])
+		if err != nil {
+			return err
+		}
+	}
+
 	if !reflect.DeepEqual(desiredService.Spec.Ports, actualService.Spec.Ports) {
 		log.Info("Updating service", "namespace", desiredService.Namespace, "name", desiredService.Name)
 		actualService.Spec.Ports = desiredService.Spec.Ports
 
 		return r.Update(r.ctx, actualService)
-
 	}
 
 	return nil
@@ -56,12 +71,35 @@ func (r *GlobalLoadBalancerReconciler) reconcileEndpoints(desiredEndpoints *core
 		return r.Create(r.ctx, desiredEndpoints)
 	}
 
+	maxIndex := Min(len(desiredEndpoints.Subsets), len(actualEndpoints.Subsets))
+
+	for i := 0; i < maxIndex; i++ {
+
+		maxIndexPorts := Min(len(desiredEndpoints.Subsets[i].Ports), len(actualEndpoints.Subsets[i].Ports))
+
+		for p := 0; p < maxIndexPorts; p++ {
+			err = mergo.Merge(&desiredEndpoints.Subsets[i].Ports[p], actualEndpoints.Subsets[i].Ports[p])
+			if err != nil {
+				return err
+			}
+		}
+
+		maxIndexAddresses := Min(len(desiredEndpoints.Subsets[i].Addresses), len(actualEndpoints.Subsets[i].Addresses))
+
+		for a := 0; a < maxIndexAddresses; a++ {
+			err = mergo.Merge(&desiredEndpoints.Subsets[i].Addresses[a], actualEndpoints.Subsets[i].Addresses[a])
+			if err != nil {
+				return err
+			}
+		}
+
+	}
+
 	if !reflect.DeepEqual(desiredEndpoints.Subsets, actualEndpoints.Subsets) {
 		log.Info("Updating endpoints", "namespace", desiredEndpoints.Namespace, "name", desiredEndpoints.Name)
 		actualEndpoints.Subsets = desiredEndpoints.Subsets
 
 		return r.Update(r.ctx, actualEndpoints)
-
 	}
 
 	return nil
@@ -125,4 +163,11 @@ func (r *GlobalLoadBalancerReconciler) mapEndpoints(glb *kubelbiov1alpha1.Global
 		},
 		Subsets: glb.Spec.Subsets,
 	}
+}
+
+func Min(x, y int) int {
+	if x < y {
+		return x
+	}
+	return y
 }
