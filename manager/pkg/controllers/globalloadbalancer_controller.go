@@ -22,7 +22,6 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	glb "manager/pkg/api/v1alpha1"
 	kubelbiov1alpha1 "manager/pkg/api/v1alpha1"
-	"manager/pkg/lb"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
@@ -32,17 +31,18 @@ type GlobalLoadBalancerReconciler struct {
 	client.Client
 	Log    logr.Logger
 	Scheme *runtime.Scheme
+	ctx    context.Context
 }
 
 // +kubebuilder:rbac:groups=kubelb.k8c.io,resources=globalloadbalancers,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=kubelb.k8c.io,resources=globalloadbalancers/status,verbs=get;update;patch
 
 func (r *GlobalLoadBalancerReconciler) Reconcile(req ctrl.Request) (ctrl.Result, error) {
-	ctx := context.Background()
+	r.ctx = context.Background()
 	log := r.Log.WithValues("globalloadbalancer", req.NamespacedName)
 
 	var globalLoadBalancer kubelbiov1alpha1.GlobalLoadBalancer
-	if err := r.Get(ctx, req.NamespacedName, &globalLoadBalancer); err != nil {
+	if err := r.Get(r.ctx, req.NamespacedName, &globalLoadBalancer); err != nil {
 		log.Error(err, "unable to fetch GlobalLoadBalancer")
 		// we'll ignore not-found errors, since they can't be fixed by an immediate
 		// requeue (we'll need to wait for a new notification), and we can get them
@@ -52,19 +52,12 @@ func (r *GlobalLoadBalancerReconciler) Reconcile(req ctrl.Request) (ctrl.Result,
 
 	log.Info("reconciling LB", "name", globalLoadBalancer.Name, "namespace", globalLoadBalancer.Namespace)
 
-	l4Manager, err := lb.NewManager()
-
-	if err != nil {
-		log.Error(err, "Unable to create L4 Manager")
-		return ctrl.Result{}, err
-	}
-
 	if globalLoadBalancer.Spec.Type == glb.Layer4 {
-		log.Info("Creating layer 4 laod balancer")
-		err = l4Manager.CreateL4LbService(&globalLoadBalancer)
+		log.Info("handling layer 4 laod balancer")
+		err := r.handleL4(&globalLoadBalancer)
 
 		if err != nil {
-			log.Error(err, "Unable to create L4 Manager")
+			log.Error(err, "Unable to handle L4 load balancer!")
 			return ctrl.Result{}, err
 		}
 

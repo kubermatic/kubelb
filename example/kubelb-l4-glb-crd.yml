@@ -12,8 +12,6 @@ spec:
   subsets:
     - addresses:
         - ip: 135.181.43.211
-          nodeName: "unruffled-booth-5d85c6fbdf-8crdn"
         - ip: 95.217.216.183
-          nodeName: "unruffled-booth-5d85c6fbdf-ft9jr"
       ports:
         - port: 32094
