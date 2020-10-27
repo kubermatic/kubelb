@@ -12,3 +12,7 @@ Install CRD: `make install`
 
 Do not set more field's than necessary. Currently the CRD makes use of the Kubernetes types **Endpoint.Subset** and **Service.Ports** which offer more configuration. 
 However this can break the load balancing very fast and will be changed in the future.
+
+## Todo's: 
+
+* Cleanup upon deletion (probably with Finalizers)

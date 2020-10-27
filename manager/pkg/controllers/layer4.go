@@ -10,19 +10,8 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 )
 
-func (r *GlobalLoadBalancerReconciler) handleL4(glb *kubelbiov1alpha1.GlobalLoadBalancer) error {
-
-	log := r.Log.WithValues("globalloadbalancer", "layer4")
-
-	// Reconcile
-	// Service
-
-	desiredService := r.mapService(glb)
-
-	if err := ctrl.SetControllerReference(glb, desiredService, r.Scheme); err != nil {
-		log.Error(err, "Unable to SetControllerReference")
-		return err
-	}
+func (r *GlobalLoadBalancerReconciler) reconcileService(desiredService *corev1.Service) error {
+	log := r.Log.WithValues("globalloadbalancer", "l4-svc")
 
 	actualService := &corev1.Service{}
 	err := r.Get(r.ctx, types.NamespacedName{
@@ -34,35 +23,27 @@ func (r *GlobalLoadBalancerReconciler) handleL4(glb *kubelbiov1alpha1.GlobalLoad
 		if !apierrors.IsNotFound(err) {
 			return err
 		}
-		log.Info("Creating Service", "namespace", desiredService.Namespace, "name", desiredService.Name)
-		err = r.Create(r.ctx, desiredService)
-		if err != nil {
-			log.Error(err, "Unable to Create Service")
-			return err
-		}
-	} else {
-		if !reflect.DeepEqual(desiredService.Spec.Ports, actualService.Spec.Ports) {
-			log.Info("Updating Service", "namespace", desiredService.Namespace, "name", desiredService.Name)
-			actualService.Spec.Ports = desiredService.Spec.Ports
-
-			if err := r.Update(r.ctx, actualService); err != nil {
-				log.Error(err, "Unable to Update Service")
-				return err
-			}
-		}
+		log.Info("Creating service", "namespace", desiredService.Namespace, "name", desiredService.Name)
+		return r.Create(r.ctx, desiredService)
 	}
 
-	// Reconcile
-	// Endpoints
+	if !reflect.DeepEqual(desiredService.Spec.Ports, actualService.Spec.Ports) {
+		log.Info("Updating service", "namespace", desiredService.Namespace, "name", desiredService.Name)
+		actualService.Spec.Ports = desiredService.Spec.Ports
 
-	desiredEndpoints := r.mapEndpoints(glb)
+		return r.Update(r.ctx, actualService)
 
-	if err := ctrl.SetControllerReference(glb, desiredEndpoints, r.Scheme); err != nil {
-		return err
 	}
+
+	return nil
+}
+
+func (r *GlobalLoadBalancerReconciler) reconcileEndpoints(desiredEndpoints *corev1.Endpoints) error {
+
+	log := r.Log.WithValues("globalloadbalancer", "l4-endpoints")
 
 	actualEndpoints := &corev1.Endpoints{}
-	err = r.Get(r.ctx, types.NamespacedName{
+	err := r.Get(r.ctx, types.NamespacedName{
 		Name:      desiredEndpoints.Name,
 		Namespace: desiredEndpoints.Namespace,
 	}, actualEndpoints)
@@ -71,23 +52,52 @@ func (r *GlobalLoadBalancerReconciler) handleL4(glb *kubelbiov1alpha1.GlobalLoad
 		if !apierrors.IsNotFound(err) {
 			return err
 		}
-		log.Info("Creating Endpoints", "namespace", desiredEndpoints.Namespace, "name", desiredEndpoints.Name)
-		err = r.Create(r.ctx, desiredEndpoints)
-		if err != nil {
-			log.Error(err, "Unable to create Endpoint")
-			return err
-		}
-	} else {
-		if !reflect.DeepEqual(desiredEndpoints.Subsets, actualEndpoints.Subsets) {
-			log.Info("Updating Endpoints", "namespace", desiredEndpoints.Namespace, "name", desiredEndpoints.Name)
-			actualEndpoints.Subsets = desiredEndpoints.Subsets
-
-			if err := r.Update(r.ctx, desiredEndpoints); err != nil {
-				log.Error(err, "Unable to update Endpoint")
-				return err
-			}
-		}
+		log.Info("Creating endpoints", "namespace", desiredEndpoints.Namespace, "name", desiredEndpoints.Name)
+		return r.Create(r.ctx, desiredEndpoints)
 	}
+
+	if !reflect.DeepEqual(desiredEndpoints.Subsets, actualEndpoints.Subsets) {
+		log.Info("Updating endpoints", "namespace", desiredEndpoints.Namespace, "name", desiredEndpoints.Name)
+		actualEndpoints.Subsets = desiredEndpoints.Subsets
+
+		return r.Update(r.ctx, actualEndpoints)
+
+	}
+
+	return nil
+}
+
+func (r *GlobalLoadBalancerReconciler) handleL4(glb *kubelbiov1alpha1.GlobalLoadBalancer) error {
+
+	log := r.Log.WithValues("globalloadbalancer", "l4")
+
+	desiredService := r.mapService(glb)
+
+	if err := ctrl.SetControllerReference(glb, desiredService, r.Scheme); err != nil {
+		log.Error(err, "Unable to set controller reference")
+		return err
+	}
+
+	err := r.reconcileService(desiredService)
+
+	if err != nil {
+		log.Error(err, "Unable to reconcile service")
+		return err
+	}
+
+	desiredEndpoints := r.mapEndpoints(glb)
+
+	if err = ctrl.SetControllerReference(glb, desiredEndpoints, r.Scheme); err != nil {
+		return err
+	}
+
+	err = r.reconcileEndpoints(desiredEndpoints)
+
+	if err != nil {
+		log.Error(err, "Unable to reconcile endpoints")
+		return err
+	}
+
 	return nil
 
 }
@@ -115,5 +125,4 @@ func (r *GlobalLoadBalancerReconciler) mapEndpoints(glb *kubelbiov1alpha1.Global
 		},
 		Subsets: glb.Spec.Subsets,
 	}
-
 }
