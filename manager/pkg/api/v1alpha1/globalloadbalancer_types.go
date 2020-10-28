@@ -42,8 +42,74 @@ const (
 	Layer7 LoadBalancerType = "L7"
 )
 
+// LoadBalancerPort contains information on service's port.
+type LoadBalancerPort struct {
+
+	// The IP protocol for this port. Supports "TCP", "UDP", and "SCTP".
+	// Default is TCP.
+	// +optional
+	// +kubebuilder:default:=TCP
+	// +kubebuilder:validation:Enum=TCP;UDP;SCTP
+	Protocol corev1.Protocol `json:"protocol,omitempty" protobuf:"bytes,2,opt,name=protocol,casttype=Protocol"`
+
+	// The port that will be exposed by the LoadBalancer.
+	Port int32 `json:"port" protobuf:"varint,3,opt,name=port"`
+
+	// Number or name of the port to access on the pods targeted by the service.
+	// Number must be in the range 1 to 65535. If this is not specified, the value
+	// of the 'port' field is used (an identity map).
+	// Should be same value as endpoints port
+	TargetPort int32 `json:"targetPort,omitempty" protobuf:"bytes,4,opt,name=targetPort"`
+}
+
+// LoadBalancerEndpointPort is a tuple that describes a single port.
+type LoadBalancerEndpointPort struct {
+
+	// The port number of the endpoint.
+	Port int32 `json:"port" protobuf:"varint,2,opt,name=port"`
+
+	// The IP protocol for this port.
+	// Must be UDP, TCP, or SCTP.
+	// Default is TCP.
+	// +optional
+	// +kubebuilder:default:=TCP
+	// +kubebuilder:validation:Enum=TCP;UDP;SCTP
+	Protocol corev1.Protocol `json:"protocol,omitempty" protobuf:"bytes,3,opt,name=protocol,casttype=Protocol"`
+}
+
+// LoadBalancerEndpointAddress is a tuple that describes single IP address.
+type LoadBalancerEndpointAddress struct {
+
+	// The IP of this endpoint.
+	// May not be loopback (127.0.0.0/8), link-local (169.254.0.0/16),
+	// or link-local multicast ((224.0.0.0/24).
+	// TODO: This should allow hostname or IP, See #4447.
+	IP string `json:"ip" protobuf:"bytes,1,opt,name=ip"`
+	// The Hostname of this endpoint
+	// +optional
+	Hostname string `json:"hostname,omitempty" protobuf:"bytes,3,opt,name=hostname"`
+}
+
+// LoadBalancerEndpointSubset is a group of addresses with a common set of ports. The
+// expanded set of endpoints is the Cartesian product of Addresses x Ports.
+// For example, given:
+//   {
+//     Addresses: [{"ip": "10.10.1.1"}, {"ip": "10.10.2.2"}],
+//     Ports:     [{"name": "a", "port": 8675}, {"name": "b", "port": 309}]
+//   }
+// The resulting set of endpoints can be viewed as:
+//     a: [ 10.10.1.1:8675, 10.10.2.2:8675 ],
+//     b: [ 10.10.1.1:309, 10.10.2.2:309 ]
+type LoadBalancerEndpointSubset struct {
+	// IP addresses which offer the related ports that are marked as ready. These endpoints
+	// should be considered safe for load balancers and clients to utilize.
+	Addresses []LoadBalancerEndpointAddress `json:"addresses,omitempty" protobuf:"bytes,1,rep,name=addresses"`
+
+	// Port numbers available on the related IP addresses.
+	Ports []LoadBalancerEndpointPort `json:"ports,omitempty" protobuf:"bytes,3,rep,name=ports"`
+}
+
 // NOTE: json tags are required.  Any new fields you add must have json tags for the fields to be serialized.
-// Todo: Due to the usage of existing types the description is probably wrong. Check the generated CRD file
 // GlobalLoadBalancerSpec defines the desired state of GlobalLoadBalancer
 type GlobalLoadBalancerSpec struct {
 	// Important: Run "make" to regenerate code after modifying this file
@@ -54,11 +120,11 @@ type GlobalLoadBalancerSpec struct {
 	Type LoadBalancerType `json:"type,omitempty"`
 
 	// The list of ports that are exposed by the load balancer service.
-	Ports []corev1.ServicePort `json:"ports,omitempty"`
+	Ports []LoadBalancerPort `json:"ports,omitempty"`
 
 	// Sets of addresses and ports that comprise an exposed user service on a cluster.
 	// +optional
-	Subsets []corev1.EndpointSubset `json:"subsets,omitempty"`
+	Subsets []LoadBalancerEndpointSubset `json:"subsets,omitempty"`
 }
 
 // GlobalLoadBalancerStatus defines the observed state of GlobalLoadBalancer
@@ -74,7 +140,7 @@ type GlobalLoadBalancerStatus struct {
 
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
-
+// +kubebuilder:resource:shortName=glb
 // GlobalLoadBalancer is the Schema for the globalloadbalancers API
 type GlobalLoadBalancer struct {
 	metav1.TypeMeta   `json:",inline"`

@@ -19,3 +19,6 @@ Deploys the manager for each user cluster inside the LB Cluster
 ## Todo's
 
 Remove all biolerplate code and cleanup some autgenerated files
+
+Linting -> golangci-lint
+
