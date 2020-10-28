@@ -44,7 +44,7 @@ func ServiceIsDesiredState(actual, desired *corev1.Service) bool {
 	servicePortIsDesiredState := func(actual, desired corev1.ServicePort) bool {
 		return actual.Protocol == desired.Protocol &&
 			actual.Port == desired.Port &&
-			actual.TargetPort == actual.TargetPort
+			actual.TargetPort == desired.TargetPort
 	}
 
 	for i := 0; i < len(desired.Spec.Ports); i++ {
@@ -102,10 +102,13 @@ func EndpointsIsDesiredState(actual, desired *corev1.Endpoints) bool {
 	}
 
 	endpointPortIsDesiredState := func(actual, desired corev1.EndpointPort) bool {
-		return true
+		return actual.Port == desired.Port &&
+			actual.Protocol == desired.Protocol
 	}
+
 	endpointAddressIsDesiredState := func(actual, desired corev1.EndpointAddress) bool {
-		return true
+		return actual.Hostname == desired.Hostname &&
+			actual.IP == desired.IP
 	}
 
 	for i := 0; i < len(desired.Subsets); i++ {
