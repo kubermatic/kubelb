@@ -20,8 +20,7 @@ import (
 	"context"
 	"github.com/go-logr/logr"
 	"k8s.io/apimachinery/pkg/runtime"
-	glb "manager/pkg/api/v1alpha1"
-	kubelbiov1alpha1 "manager/pkg/api/v1alpha1"
+	kubelbiov1alpha1 "manager/pkg/api/globalloadbalancer/v1alpha1"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
@@ -52,7 +51,7 @@ func (r *GlobalLoadBalancerReconciler) Reconcile(req ctrl.Request) (ctrl.Result,
 
 	log.Info("reconciling LB", "name", globalLoadBalancer.Name, "namespace", globalLoadBalancer.Namespace)
 
-	if globalLoadBalancer.Spec.Type == glb.Layer4 {
+	if globalLoadBalancer.Spec.Type == kubelbiov1alpha1.Layer4 {
 		log.Info("handling layer 4 laod balancer")
 		err := r.handleL4(&globalLoadBalancer)
 

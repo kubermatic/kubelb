@@ -141,6 +141,7 @@ type GlobalLoadBalancerStatus struct {
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
 // +kubebuilder:resource:shortName=glb
+// +genclient
 // GlobalLoadBalancer is the Schema for the globalloadbalancers API
 type GlobalLoadBalancer struct {
 	metav1.TypeMeta   `json:",inline"`

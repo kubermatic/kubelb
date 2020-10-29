@@ -26,7 +26,7 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
-	kubelbiov1alpha1 "manager/pkg/api/v1alpha1"
+	kubelbiov1alpha1 "manager/pkg/api/globalloadbalancer/v1alpha1"
 	"manager/pkg/controllers"
 	// +kubebuilder:scaffold:imports
 )

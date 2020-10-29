@@ -4,7 +4,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/types"
-	kubelbiov1alpha1 "manager/pkg/api/v1alpha1"
+	kubelbiov1alpha1 "manager/pkg/api/globalloadbalancer/v1alpha1"
 	"manager/pkg/l4"
 	ctrl "sigs.k8s.io/controller-runtime"
 )
