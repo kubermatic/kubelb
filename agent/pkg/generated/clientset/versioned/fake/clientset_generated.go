@@ -18,9 +18,9 @@ limitations under the License.
 package fake
 
 import (
-	clientset "manager/pkg/generated/clientset/versioned"
-	kubelbv1alpha1 "manager/pkg/generated/clientset/versioned/typed/globalloadbalancer/v1alpha1"
-	fakekubelbv1alpha1 "manager/pkg/generated/clientset/versioned/typed/globalloadbalancer/v1alpha1/fake"
+	clientset "agent/pkg/generated/clientset/versioned"
+	kubelbv1alpha1 "agent/pkg/generated/clientset/versioned/typed/globalloadbalancer/v1alpha1"
+	fakekubelbv1alpha1 "agent/pkg/generated/clientset/versioned/typed/globalloadbalancer/v1alpha1/fake"
 
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/watch"
