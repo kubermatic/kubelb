@@ -1,4 +1,4 @@
-module agent
+module k8c.io/kubelb/agent
 
 go 1.13
 

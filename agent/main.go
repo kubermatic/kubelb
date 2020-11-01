@@ -17,8 +17,8 @@ limitations under the License.
 package main
 
 import (
-	"agent/pkg/controllers"
 	"flag"
+	"k8c.io/kubelb/agent/pkg/controllers"
 	"os"
 
 	"k8s.io/apimachinery/pkg/runtime"

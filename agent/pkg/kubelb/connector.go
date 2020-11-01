@@ -1,10 +1,10 @@
 package kubelb
 
 import (
-	kubelbClient "agent/pkg/generated/clientset/versioned"
-	kubelbv1alpha1 "agent/pkg/generated/clientset/versioned/typed/globalloadbalancer/v1alpha1"
 	"github.com/go-logr/logr"
-	v1alpha1 "k8c.io/kubelb/manager/pkg/api/globalloadbalancer/v1alpha1"
+	"k8c.io/kubelb/manager/pkg/api/globalloadbalancer/v1alpha1"
+	kubelbClient "k8c.io/kubelb/manager/pkg/generated/clientset/versioned"
+	kubelbv1alpha1 "k8c.io/kubelb/manager/pkg/generated/clientset/versioned/typed/globalloadbalancer/v1alpha1"
 	corev1 "k8s.io/api/core/v1"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/tools/clientcmd"

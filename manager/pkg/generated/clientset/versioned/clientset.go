@@ -18,8 +18,8 @@ limitations under the License.
 package versioned
 
 import (
-	kubelbv1alpha1 "agent/pkg/generated/clientset/versioned/typed/globalloadbalancer/v1alpha1"
 	"fmt"
+	kubelbv1alpha1 "k8c.io/kubelb/manager/pkg/generated/clientset/versioned/typed/globalloadbalancer/v1alpha1"
 
 	discovery "k8s.io/client-go/discovery"
 	rest "k8s.io/client-go/rest"

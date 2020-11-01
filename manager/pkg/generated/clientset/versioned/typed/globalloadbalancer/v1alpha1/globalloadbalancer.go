@@ -18,8 +18,8 @@ limitations under the License.
 package v1alpha1
 
 import (
-	scheme "agent/pkg/generated/clientset/versioned/scheme"
 	v1alpha1 "k8c.io/kubelb/manager/pkg/api/globalloadbalancer/v1alpha1"
+	scheme "k8c.io/kubelb/manager/pkg/generated/clientset/versioned/scheme"
 	"time"
 
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"

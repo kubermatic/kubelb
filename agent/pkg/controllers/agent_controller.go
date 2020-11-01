@@ -17,9 +17,9 @@ limitations under the License.
 package controllers
 
 import (
-	"agent/pkg/kubelb"
 	"context"
 	"github.com/go-logr/logr"
+	"k8c.io/kubelb/agent/pkg/kubelb"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
