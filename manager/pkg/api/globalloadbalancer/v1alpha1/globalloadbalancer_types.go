@@ -103,9 +103,11 @@ type LoadBalancerEndpointAddress struct {
 type LoadBalancerEndpointSubset struct {
 	// IP addresses which offer the related ports that are marked as ready. These endpoints
 	// should be considered safe for load balancers and clients to utilize.
+	//+kubebuilder:validation:MinItems:=1
 	Addresses []LoadBalancerEndpointAddress `json:"addresses,omitempty" protobuf:"bytes,1,rep,name=addresses"`
 
 	// Port numbers available on the related IP addresses.
+	//+kubebuilder:validation:MinItems:=1
 	Ports []LoadBalancerEndpointPort `json:"ports,omitempty" protobuf:"bytes,3,rep,name=ports"`
 }
 
@@ -123,7 +125,8 @@ type GlobalLoadBalancerSpec struct {
 	Ports []LoadBalancerPort `json:"ports,omitempty"`
 
 	// Sets of addresses and ports that comprise an exposed user service on a cluster.
-	// +optional
+	// +required
+	//+kubebuilder:validation:MinItems:=1
 	Subsets []LoadBalancerEndpointSubset `json:"subsets,omitempty"`
 }
 
