@@ -35,6 +35,8 @@ type GlobalLoadBalancerReconciler struct {
 
 // +kubebuilder:rbac:groups=kubelb.k8c.io,resources=globalloadbalancers,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=kubelb.k8c.io,resources=globalloadbalancers/status,verbs=get;update;patch
+// +kubebuilder:rbac:groups="",resources=services,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups="",resources=endpoints,verbs=get;list;watch;create;update;patch;delete
 
 func (r *GlobalLoadBalancerReconciler) Reconcile(req ctrl.Request) (ctrl.Result, error) {
 	r.ctx = context.Background()
