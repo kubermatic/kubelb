@@ -1,11 +1,11 @@
 package controllers
 
 import (
+	kubelbiov1alpha1 "k8c.io/kubelb/manager/pkg/api/globalloadbalancer/v1alpha1"
+	"k8c.io/kubelb/manager/pkg/l4"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/types"
-	kubelbiov1alpha1 "manager/pkg/api/globalloadbalancer/v1alpha1"
-	"manager/pkg/l4"
 	ctrl "sigs.k8s.io/controller-runtime"
 )
 
@@ -70,7 +70,7 @@ func (r *GlobalLoadBalancerReconciler) reconcileEndpoints(glb *kubelbiov1alpha1.
 			return err
 		}
 		log.Info("Creating endpoints", "namespace", glb.Namespace, "name", glb.Name)
-		return r.Create(r.ctx, l4.MapEndpoints(glb))
+		return r.Create(r.ctx, desiredEndpoints)
 	}
 
 	if !l4.EndpointsIsDesiredState(actualEndpoints, desiredEndpoints) {

@@ -1,6 +1,6 @@
 
 # Image URL to use all building/pushing image targets
-IMG ?= controller:latest
+IMG ?= kubelb-manager:latest
 # Produce CRDs that work back to Kubernetes 1.16+
 CRD_OPTIONS ?= "crd:crdVersions=v1"
 

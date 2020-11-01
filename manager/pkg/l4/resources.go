@@ -1,10 +1,10 @@
 package l4
 
 import (
+	kubelbiov1alpha1 "k8c.io/kubelb/manager/pkg/api/globalloadbalancer/v1alpha1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
-	kubelbiov1alpha1 "manager/pkg/api/globalloadbalancer/v1alpha1"
 )
 
 func MapService(glb *kubelbiov1alpha1.GlobalLoadBalancer) *corev1.Service {

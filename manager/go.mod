@@ -1,4 +1,4 @@
-module manager
+module k8c.io/kubelb/manager
 
 go 1.13
 
