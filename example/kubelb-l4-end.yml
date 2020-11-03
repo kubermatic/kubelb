@@ -1,0 +1,10 @@
+apiVersion: v1
+kind: Endpoints
+metadata:
+  name: swiss-army-knife
+subsets:
+  - addresses:
+      - ip: 135.181.43.211 #Node-1 address
+      - ip: 95.217.216.183 #Node-2 address
+    ports:
+      - port: 32094

@@ -1,0 +1,7 @@
+domain: kubelb.k8c.io
+repo: manager
+resources:
+- group: kubelb.io
+  kind: GlobalLoadBalancer
+  version: v1alpha1
+version: "2"

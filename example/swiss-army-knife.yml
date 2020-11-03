@@ -1,0 +1,45 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: swiss-army-knife
+  labels:
+    app: swiss-army-knife
+  annotations:
+    kubelb.enable: "true"
+spec:
+  ports:
+    - port: 9001
+      targetPort: 9001
+  selector:
+    app: swiss-army-knife
+  type: NodePort
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: swiss-army-knife
+  labels:
+    app: swiss-army-knife
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: swiss-army-knife
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: swiss-army-knife
+    spec:
+      containers:
+        - image: leodotcloud/swiss-army-knife
+          name: swiss-army-knife
+          env:
+            - name: PORT
+              value: "9001"
+            - name: ALPHABET
+              value: B
+          ports:
+            - containerPort: 9001

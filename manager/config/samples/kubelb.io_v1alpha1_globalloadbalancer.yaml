@@ -1,0 +1,41 @@
+apiVersion: kubelb.k8c.io/v1alpha1
+kind: GlobalLoadBalancer
+metadata:
+  name: globalloadbalancer-sample   # user servicename
+  namespace: default                # user clustername
+spec:
+  ports:  # []ServicePort
+    - name: "first"
+      protocol: "TCP"
+      port: 443
+#     targetPort: "first"
+#     "If this is a string, it will be looked up as a named port in the
+#	  target Pod's container ports. "
+#     So it probably wont work out of the box
+#     Schould point to the NodePort and matched by the controller
+#     targetPort: 31628
+    - name: "second"
+      protocol: "UDP"
+      port: 1337
+#     targetPort: "second"
+  Type: "L4" # LoadBalancer Type: Layer 4
+  subsets: # EndpointSubset
+    - addresses: # Cluster 1 Exposed by NodePort
+        - ip: 1.217.235.64
+          nodeName: "Node-1"
+        - ip: 1.216.210.137
+          nodeName: "Node-2"
+      ports:
+        - port: 31627
+          name: "first"
+          protocol: "TCP"
+        - port: 31628
+          name: "second"
+          protocol: "UDP"
+    - addresses: # Cluster 2 exposed by LoadBalancer
+        - hostname: ada4db0301cbd4a5b82552a014228dc1-584477280.eu-central-1.elb.amazonaws.com # LoadBalancer address
+      ports:
+        - port: 443
+          name: "first"
+        - port: 1337
+          name: "second"
