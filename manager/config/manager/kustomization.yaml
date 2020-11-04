@@ -5,7 +5,6 @@ kind: Kustomization
 images:
 - name: controller
   newName: registry.fanya.dev/kubelb-manager
-  newTag: latest
 - name: kubelb-manager
   newName: kubelb-manager
   newTag: latest

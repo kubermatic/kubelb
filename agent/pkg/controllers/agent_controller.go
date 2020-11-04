@@ -29,25 +29,55 @@ import (
 // KubeLbAgentReconciler reconciles a Service object
 type KubeLbAgentReconciler struct {
 	client.Client
-	Log    logr.Logger
-	Scheme *runtime.Scheme
+	KlbClient        *kubelb.Client
+	Log              logr.Logger
+	Scheme           *runtime.Scheme
+	ctx              context.Context
+	ClusterName      string
+	ClusterEndpoints []string
 }
 
 // +kubebuilder:rbac:groups=kubelb.k8c.io,resources=services,verbs=get;list;watch;update;patch
 // +kubebuilder:rbac:groups=kubelb.k8c.io,resources=services/status,verbs=get;update;patch
+// +kubebuilder:rbac:groups="",resources=node,verbs=get;list;watch
 
 func (r *KubeLbAgentReconciler) Reconcile(req ctrl.Request) (ctrl.Result, error) {
-	ctx := context.Background()
+	r.ctx = context.Background()
 	log := r.Log.WithValues("kubelb_agent", req.NamespacedName)
 
 	var service corev1.Service
-	if err := r.Get(ctx, req.NamespacedName, &service); err != nil {
+	err := r.Get(r.ctx, req.NamespacedName, &service)
+	if err != nil {
 		log.Error(err, "unable to fetch service")
 		// we'll ignore not-found errors, since they can't be fixed by an immediate
 		// requeue (we'll need to wait for a new notification), and we can get them
 		// on deleted requests.
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
+
+	nodes := &corev1.NodeList{}
+	err = r.List(context.Background(), nodes)
+
+	if err != nil {
+		log.Error(err, "unable to list nodes")
+		return ctrl.Result{}, err
+
+	}
+
+	var clusterEndpoints []string
+	//Todo: use env to control which ip should be used
+	for _, node := range nodes.Items {
+		var internalIp string
+		for _, address := range node.Status.Addresses {
+			if address.Type == corev1.NodeInternalIP {
+				internalIp = address.Address
+			}
+		}
+
+		clusterEndpoints = append(clusterEndpoints, internalIp)
+	}
+
+	r.ClusterEndpoints = clusterEndpoints
 
 	if service.Spec.Type != corev1.ServiceTypeNodePort {
 		return ctrl.Result{}, nil
@@ -61,18 +91,7 @@ func (r *KubeLbAgentReconciler) Reconcile(req ctrl.Request) (ctrl.Result, error)
 
 	log.Info("reconciling service", "name", service.Name, "namespace", service.Namespace)
 
-	nodes := &corev1.NodeList{}
-
-	err := r.List(ctx, nodes)
-
-	kubeLbConnector, err := kubelb.NewConnector(nodes, "default")
-
-	if err != nil {
-		log.Error(err, "Unable to create KubeLB GlobalLoadBalancerClient")
-		return ctrl.Result{}, err
-	}
-
-	err = kubeLbConnector.CreateL4GlobalLoadBalancer(service)
+	err = r.ReconcileGlobalLoadBalancer(&service)
 
 	if err != nil {
 		log.Error(err, "Unable to create L4 Load Balancer")
@@ -85,5 +104,6 @@ func (r *KubeLbAgentReconciler) Reconcile(req ctrl.Request) (ctrl.Result, error)
 func (r *KubeLbAgentReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&corev1.Service{}).
+		//For(&corev1.Node{}).
 		Complete(r)
 }

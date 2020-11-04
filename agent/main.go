@@ -19,6 +19,7 @@ package main
 import (
 	"flag"
 	"k8c.io/kubelb/agent/pkg/controllers"
+	"k8c.io/kubelb/agent/pkg/kubelb"
 	"os"
 
 	"k8s.io/apimachinery/pkg/runtime"
@@ -63,10 +64,23 @@ func main() {
 		os.Exit(1)
 	}
 
+	//Todo: set via env
+	//Todo: namespace needs to be created inside load balancing cluster
+	var clusterName = "default"
+
+	klbClient, err := kubelb.NewClient(clusterName)
+
+	if err != nil {
+		setupLog.Error(err, "unable to create kubelb client")
+		os.Exit(1)
+	}
+
 	if err = (&controllers.KubeLbAgentReconciler{
-		Client: mgr.GetClient(),
-		Log:    ctrl.Log.WithName("controllers").WithName("GlobalLoadBalancerAgent"),
-		Scheme: mgr.GetScheme(),
+		Client:      mgr.GetClient(),
+		Log:         ctrl.Log.WithName("controllers").WithName("GlobalLoadBalancerAgent"),
+		Scheme:      mgr.GetScheme(),
+		KlbClient:   klbClient,
+		ClusterName: clusterName,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "GlobalLoadBalancerAgent")
 		os.Exit(1)

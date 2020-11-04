@@ -7,6 +7,14 @@ metadata:
   name: manager-role
 rules:
 - apiGroups:
+  - ""
+  resources:
+  - node
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
   - kubelb.k8c.io
   resources:
   - services
