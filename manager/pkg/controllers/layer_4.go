@@ -16,6 +16,7 @@ func (r *GlobalLoadBalancerReconciler) reconcileService(glb *kubelbiov1alpha1.Gl
 
 	err := ctrl.SetControllerReference(glb, desiredService, r.Scheme)
 	if err != nil {
+		log.Error(err, "Unable to set controller reference")
 		return err
 	}
 
@@ -31,11 +32,6 @@ func (r *GlobalLoadBalancerReconciler) reconcileService(glb *kubelbiov1alpha1.Gl
 		}
 		log.Info("Creating service", "namespace", glb.Namespace, "name", glb.Name)
 		return r.Create(r.ctx, desiredService)
-	}
-
-	if err := ctrl.SetControllerReference(glb, desiredService, r.Scheme); err != nil {
-		log.Error(err, "Unable to set controller reference")
-		return err
 	}
 
 	if !l4.ServiceIsDesiredState(actualService, desiredService) {
@@ -56,6 +52,7 @@ func (r *GlobalLoadBalancerReconciler) reconcileEndpoints(glb *kubelbiov1alpha1.
 
 	err := ctrl.SetControllerReference(glb, desiredEndpoints, r.Scheme)
 	if err != nil {
+		log.Error(err, "Unable to set controller reference")
 		return err
 	}
 
