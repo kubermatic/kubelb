@@ -33,7 +33,7 @@ func (r *KubeLbAgentReconciler) ReconcileGlobalLoadBalancer(userService *corev1.
 	if !l4.GlobalLoadBalancerIsDesiredState(actualGlb, desiredGlb) {
 		log.Info("Updating glb", "namespace", desiredGlb.Namespace, "name", desiredGlb.Name)
 		actualGlb.Spec = desiredGlb.Spec
-		_, err = r.KlbClient.Update(desiredGlb)
+		_, err = r.KlbClient.Update(actualGlb)
 		return err
 	}
 

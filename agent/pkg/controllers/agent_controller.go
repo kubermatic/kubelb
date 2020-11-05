@@ -104,6 +104,5 @@ func (r *KubeLbAgentReconciler) Reconcile(req ctrl.Request) (ctrl.Result, error)
 func (r *KubeLbAgentReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&corev1.Service{}).
-		//For(&corev1.Node{}).
 		Complete(r)
 }
