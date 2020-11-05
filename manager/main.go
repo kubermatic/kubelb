@@ -58,7 +58,7 @@ func main() {
 		MetricsBindAddress: metricsAddr,
 		Port:               9443,
 		LeaderElection:     enableLeaderElection,
-		LeaderElectionID:   "manager.kubelb.k8c.io",
+		LeaderElectionID:   "k8c.io.kubelb.manager",
 	})
 	if err != nil {
 		setupLog.Error(err, "unable to start manager")

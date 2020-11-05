@@ -46,8 +46,8 @@ func main() {
 	var enableLeaderElection bool
 	flag.StringVar(&metricsAddr, "metrics-addr", ":8080", "The address the metric endpoint binds to.")
 	flag.BoolVar(&enableLeaderElection, "enable-leader-election", false,
-		"Enable leader election for controller manager. "+
-			"Enabling this will ensure there is only one active controller manager.")
+		"Enable leader election for controller agent. "+
+			"Enabling this will ensure there is only one active controller agent.")
 	flag.Parse()
 
 	ctrl.SetLogger(zap.New(zap.UseDevMode(true)))
@@ -57,10 +57,10 @@ func main() {
 		MetricsBindAddress: metricsAddr,
 		Port:               9443,
 		LeaderElection:     enableLeaderElection,
-		LeaderElectionID:   "k8c.io/kubelb/agent",
+		LeaderElectionID:   "k8c.io.kubelb.agent",
 	})
 	if err != nil {
-		setupLog.Error(err, "unable to start manager")
+		setupLog.Error(err, "unable to start agent")
 		os.Exit(1)
 	}
 
@@ -87,9 +87,9 @@ func main() {
 	}
 
 	// +kubebuilder:scaffold:builder
-	setupLog.Info("starting manager")
+	setupLog.Info("starting agent")
 	if err := mgr.Start(ctrl.SetupSignalHandler()); err != nil {
-		setupLog.Error(err, "problem running manager")
+		setupLog.Error(err, "problem running agent")
 		os.Exit(1)
 	}
 }

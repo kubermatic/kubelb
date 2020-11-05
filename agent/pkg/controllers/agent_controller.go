@@ -37,8 +37,8 @@ type KubeLbAgentReconciler struct {
 	ClusterEndpoints []string
 }
 
-// +kubebuilder:rbac:groups=kubelb.k8c.io,resources=services,verbs=get;list;watch;update;patch
-// +kubebuilder:rbac:groups=kubelb.k8c.io,resources=services/status,verbs=get;update;patch
+// +kubebuilder:rbac:groups="",resources=services,verbs=get;list;watch;update;patch
+// +kubebuilder:rbac:groups="",resources=services/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups="",resources=node,verbs=get;list;watch
 
 func (r *KubeLbAgentReconciler) Reconcile(req ctrl.Request) (ctrl.Result, error) {

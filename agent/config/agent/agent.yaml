@@ -24,11 +24,11 @@ spec:
     spec:
       containers:
       - command:
-        - /manager
-        args:
-        - --enable-leader-election
+        - /agent
+#        args:
+#        - --enable-leader-election
         image: controller:latest
-        name: manager
+        name: agent
         resources:
           limits:
             cpu: 100m
@@ -36,4 +36,14 @@ spec:
           requests:
             cpu: 100m
             memory: 20Mi
+        volumeMounts:
+          - name: kubelb-cfg
+            mountPath: "/home/nonroot/.kube/"
+            readOnly: true
+      volumes:
+        - name: kubelb-cfg
+          configMap:
+            name: kubelb-cfg
+      imagePullSecrets:
+        - name: regcred
       terminationGracePeriodSeconds: 10
