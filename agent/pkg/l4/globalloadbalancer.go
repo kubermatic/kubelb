@@ -9,33 +9,32 @@ import (
 func MapGlobalLoadBalancer(userService *corev1.Service, clusterEndpoints []string, clusterName string) *v1alpha1.GlobalLoadBalancer {
 
 	var lbServicePorts []v1alpha1.LoadBalancerPort
-	var lbEndpointSubsets []v1alpha1.LoadBalancerEndpointSubset
-	var lbEndpointPorts []v1alpha1.LoadBalancerEndpointPort
+	var lbEndpointSubsets []v1alpha1.LoadBalancerEndpoints
+	var lbEndpointPorts []v1alpha1.EndpointPort
 
 	//mapping into load balancing service and endpoint subset ports
 	for _, port := range userService.Spec.Ports {
 		lbServicePorts = append(lbServicePorts, v1alpha1.LoadBalancerPort{
 			//Todo: use annotation to set the lb port
-			Port:       80,
-			Protocol:   port.Protocol,
-			TargetPort: port.NodePort,
+			Port:     80,
+			Protocol: port.Protocol,
 		})
 
-		lbEndpointPorts = append(lbEndpointPorts, v1alpha1.LoadBalancerEndpointPort{
+		lbEndpointPorts = append(lbEndpointPorts, v1alpha1.EndpointPort{
 			Port:     port.NodePort,
 			Protocol: port.Protocol,
 		})
 
 	}
 
-	var endpointAddresses []v1alpha1.LoadBalancerEndpointAddress
+	var endpointAddresses []v1alpha1.EndpointAddress
 	for _, endpoint := range clusterEndpoints {
-		endpointAddresses = append(endpointAddresses, v1alpha1.LoadBalancerEndpointAddress{
+		endpointAddresses = append(endpointAddresses, v1alpha1.EndpointAddress{
 			IP: endpoint,
 		})
 	}
 
-	lbEndpointSubsets = append(lbEndpointSubsets, v1alpha1.LoadBalancerEndpointSubset{
+	lbEndpointSubsets = append(lbEndpointSubsets, v1alpha1.LoadBalancerEndpoints{
 		Addresses: endpointAddresses,
 		Ports:     lbEndpointPorts,
 	})
@@ -46,9 +45,9 @@ func MapGlobalLoadBalancer(userService *corev1.Service, clusterEndpoints []strin
 			Namespace: clusterName,
 		},
 		Spec: v1alpha1.GlobalLoadBalancerSpec{
-			Type:    v1alpha1.Layer4,
-			Ports:   lbServicePorts,
-			Subsets: lbEndpointSubsets,
+			Type:      v1alpha1.Layer4,
+			Ports:     lbServicePorts,
+			Endpoints: lbEndpointSubsets,
 		},
 	}
 }
@@ -66,8 +65,7 @@ func GlobalLoadBalancerIsDesiredState(actual, desired *v1alpha1.GlobalLoadBalanc
 
 	loadBalancerPortIsDesiredState := func(actual, desired v1alpha1.LoadBalancerPort) bool {
 		return actual.Protocol == desired.Protocol &&
-			actual.Port == desired.Port &&
-			actual.TargetPort == desired.TargetPort
+			actual.Port == desired.Port
 	}
 
 	for i := 0; i < len(desired.Spec.Ports); i++ {
@@ -76,29 +74,29 @@ func GlobalLoadBalancerIsDesiredState(actual, desired *v1alpha1.GlobalLoadBalanc
 		}
 	}
 
-	if len(actual.Spec.Subsets) != len(desired.Spec.Subsets) {
+	if len(actual.Spec.Endpoints) != len(desired.Spec.Endpoints) {
 		return false
 	}
 
-	endpointPortIsDesiredState := func(actual, desired v1alpha1.LoadBalancerEndpointPort) bool {
+	endpointPortIsDesiredState := func(actual, desired v1alpha1.EndpointPort) bool {
 		return actual.Port == desired.Port &&
 			actual.Protocol == desired.Protocol
 	}
 
-	endpointAddressIsDesiredState := func(actual, desired v1alpha1.LoadBalancerEndpointAddress) bool {
+	endpointAddressIsDesiredState := func(actual, desired v1alpha1.EndpointAddress) bool {
 		return actual.Hostname == desired.Hostname &&
 			actual.IP == desired.IP
 	}
 
-	for i := 0; i < len(desired.Spec.Subsets); i++ {
+	for i := 0; i < len(desired.Spec.Endpoints); i++ {
 
-		for a := 0; a < len(desired.Spec.Subsets[i].Addresses); a++ {
-			if !endpointAddressIsDesiredState(desired.Spec.Subsets[i].Addresses[a], actual.Spec.Subsets[i].Addresses[a]) {
+		for a := 0; a < len(desired.Spec.Endpoints[i].Addresses); a++ {
+			if !endpointAddressIsDesiredState(desired.Spec.Endpoints[i].Addresses[a], actual.Spec.Endpoints[i].Addresses[a]) {
 				return false
 			}
 		}
-		for p := 0; p < len(desired.Spec.Subsets[i].Ports); p++ {
-			if !endpointPortIsDesiredState(desired.Spec.Subsets[i].Ports[p], actual.Spec.Subsets[i].Ports[p]) {
+		for p := 0; p < len(desired.Spec.Endpoints[i].Ports); p++ {
+			if !endpointPortIsDesiredState(desired.Spec.Endpoints[i].Ports[p], actual.Spec.Endpoints[i].Ports[p]) {
 				return false
 			}
 		}

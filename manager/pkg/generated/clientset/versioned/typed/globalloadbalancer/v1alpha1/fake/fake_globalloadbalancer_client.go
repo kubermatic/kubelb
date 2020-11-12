@@ -19,7 +19,6 @@ package fake
 
 import (
 	v1alpha1 "k8c.io/kubelb/manager/pkg/generated/clientset/versioned/typed/globalloadbalancer/v1alpha1"
-
 	rest "k8s.io/client-go/rest"
 	testing "k8s.io/client-go/testing"
 )

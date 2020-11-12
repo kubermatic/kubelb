@@ -20,7 +20,6 @@ package v1alpha1
 import (
 	v1alpha1 "k8c.io/kubelb/manager/pkg/api/globalloadbalancer/v1alpha1"
 	"k8c.io/kubelb/manager/pkg/generated/clientset/versioned/scheme"
-
 	rest "k8s.io/client-go/rest"
 )
 
