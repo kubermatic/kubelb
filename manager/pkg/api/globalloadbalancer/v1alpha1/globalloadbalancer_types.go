@@ -59,11 +59,12 @@ type LoadBalancerPort struct {
 	// Number must be in the range 1 to 65535. If this is not specified, the value
 	// of the 'port' field is used (an identity map).
 	// Should be same value as endpoints port
-	TargetPort int32 `json:"targetPort,omitempty" protobuf:"bytes,4,opt,name=targetPort"`
+	// Todo: is this needed?
+	//TargetPort int32 `json:"targetPort,omitempty" protobuf:"bytes,4,opt,name=targetPort"`
 }
 
-// LoadBalancerEndpointPort is a tuple that describes a single port.
-type LoadBalancerEndpointPort struct {
+// EndpointPort is a tuple that describes a single port.
+type EndpointPort struct {
 
 	// The port number of the endpoint.
 	Port int32 `json:"port" protobuf:"varint,2,opt,name=port"`
@@ -77,8 +78,8 @@ type LoadBalancerEndpointPort struct {
 	Protocol corev1.Protocol `json:"protocol,omitempty" protobuf:"bytes,3,opt,name=protocol,casttype=Protocol"`
 }
 
-// LoadBalancerEndpointAddress is a tuple that describes single IP address.
-type LoadBalancerEndpointAddress struct {
+// EndpointAddress is a tuple that describes single IP address.
+type EndpointAddress struct {
 
 	// The IP of this endpoint.
 	// May not be loopback (127.0.0.0/8), link-local (169.254.0.0/16),
@@ -90,7 +91,7 @@ type LoadBalancerEndpointAddress struct {
 	Hostname string `json:"hostname,omitempty" protobuf:"bytes,3,opt,name=hostname"`
 }
 
-// LoadBalancerEndpointSubset is a group of addresses with a common set of ports. The
+// LoadBalancerEndpoints is a group of addresses with a common set of ports. The
 // expanded set of endpoints is the Cartesian product of Addresses x Ports.
 // For example, given:
 //   {
@@ -100,15 +101,15 @@ type LoadBalancerEndpointAddress struct {
 // The resulting set of endpoints can be viewed as:
 //     a: [ 10.10.1.1:8675, 10.10.2.2:8675 ],
 //     b: [ 10.10.1.1:309, 10.10.2.2:309 ]
-type LoadBalancerEndpointSubset struct {
+type LoadBalancerEndpoints struct {
 	// IP addresses which offer the related ports that are marked as ready. These endpoints
 	// should be considered safe for load balancers and clients to utilize.
 	//+kubebuilder:validation:MinItems:=1
-	Addresses []LoadBalancerEndpointAddress `json:"addresses,omitempty" protobuf:"bytes,1,rep,name=addresses"`
+	Addresses []EndpointAddress `json:"addresses,omitempty" protobuf:"bytes,1,rep,name=addresses"`
 
 	// Port numbers available on the related IP addresses.
 	//+kubebuilder:validation:MinItems:=1
-	Ports []LoadBalancerEndpointPort `json:"ports,omitempty" protobuf:"bytes,3,rep,name=ports"`
+	Ports []EndpointPort `json:"ports,omitempty" protobuf:"bytes,3,rep,name=ports"`
 }
 
 // NOTE: json tags are required.  Any new fields you add must have json tags for the fields to be serialized.
@@ -122,12 +123,14 @@ type GlobalLoadBalancerSpec struct {
 	Type LoadBalancerType `json:"type,omitempty"`
 
 	// The list of ports that are exposed by the load balancer service.
+	// only needed for layer 4
+	// +optional
 	Ports []LoadBalancerPort `json:"ports,omitempty"`
 
 	// Sets of addresses and ports that comprise an exposed user service on a cluster.
 	// +required
 	//+kubebuilder:validation:MinItems:=1
-	Subsets []LoadBalancerEndpointSubset `json:"subsets,omitempty"`
+	Endpoints []LoadBalancerEndpoints `json:"endpoints,omitempty"`
 }
 
 // GlobalLoadBalancerStatus defines the observed state of GlobalLoadBalancer

@@ -5,7 +5,7 @@ set -o nounset
 set -o pipefail
 
 # corresponding to go mod init <module>
-MODULE=manager
+MODULE=k8c.io/kubelb/manager
 # api package
 APIS_PKG=pkg/api
 # generated output package
@@ -24,4 +24,15 @@ bash "${CODEGEN_PKG}"/generate-groups.sh "client" \
   ${MODULE}/${OUTPUT_PKG} ${MODULE}/${APIS_PKG} \
   ${GROUP_VERSION} \
   --go-header-file "${SCRIPT_ROOT}"/hack/boilerplate.go.txt \
-  --output-base "$(dirname "${BASH_SOURCE[0]}")/../.."
+  --output-base "$(dirname "${BASH_SOURCE[0]}")"
+
+
+# The generator will create and search for k8c.io/kubelb/manager directory structure which is not given.
+# So this is a hack which takes the generated code created inside the hack folder and moves it
+# to the proper directory
+
+rm -r "${SCRIPT_ROOT}"/${OUTPUT_PKG}/*
+
+mv "${SCRIPT_ROOT}"/hack/${MODULE}/${OUTPUT_PKG}/* "${SCRIPT_ROOT}"/${OUTPUT_PKG}/
+
+rm -r "${SCRIPT_ROOT}"/hack/k8c.io
