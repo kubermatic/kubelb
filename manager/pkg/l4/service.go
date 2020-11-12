@@ -15,7 +15,7 @@ func MapService(glb *kubelbiov1alpha1.GlobalLoadBalancer) *corev1.Service {
 		ports = append(ports, corev1.ServicePort{
 			Protocol:   lbPort.Protocol,
 			Port:       lbPort.Port,
-			TargetPort: intstr.FromInt(int(lbPort.TargetPort)),
+			TargetPort: intstr.FromInt(8080),
 		})
 	}
 
@@ -23,10 +23,12 @@ func MapService(glb *kubelbiov1alpha1.GlobalLoadBalancer) *corev1.Service {
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      glb.Name,
 			Namespace: glb.Namespace,
+			Labels:    map[string]string{"app": glb.Name},
 		},
 		Spec: corev1.ServiceSpec{
-			Ports: ports,
-			Type:  corev1.ServiceTypeLoadBalancer,
+			Ports:    ports,
+			Selector: map[string]string{"app": glb.Name},
+			Type:     corev1.ServiceTypeLoadBalancer,
 		},
 	}
 }

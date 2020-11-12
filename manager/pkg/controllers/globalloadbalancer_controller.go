@@ -28,9 +28,10 @@ import (
 // GlobalLoadBalancerReconciler reconciles a GlobalLoadBalancer object
 type GlobalLoadBalancerReconciler struct {
 	client.Client
-	Log    logr.Logger
-	Scheme *runtime.Scheme
-	ctx    context.Context
+	Log         logr.Logger
+	Scheme      *runtime.Scheme
+	ctx         context.Context
+	ClusterName string
 }
 
 // +kubebuilder:rbac:groups=kubelb.k8c.io,resources=globalloadbalancers,verbs=get;list;watch;create;update;patch;delete

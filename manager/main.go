@@ -65,10 +65,12 @@ func main() {
 		os.Exit(1)
 	}
 
+	//Todo: set clusterName via env
 	if err = (&controllers.GlobalLoadBalancerReconciler{
-		Client: mgr.GetClient(),
-		Log:    ctrl.Log.WithName("controllers").WithName("GlobalLoadBalancer"),
-		Scheme: mgr.GetScheme(),
+		Client:      mgr.GetClient(),
+		Log:         ctrl.Log.WithName("controllers").WithName("GlobalLoadBalancer"),
+		Scheme:      mgr.GetScheme(),
+		ClusterName: "tenant-1",
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "GlobalLoadBalancer")
 		os.Exit(1)
