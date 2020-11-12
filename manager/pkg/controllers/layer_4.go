@@ -115,14 +115,7 @@ func (r *GlobalLoadBalancerReconciler) handleL4(glb *kubelbiov1alpha1.GlobalLoad
 
 	log := r.Log.WithValues("globalloadbalancer", "l4")
 
-	err := r.reconcileService(glb)
-
-	if err != nil {
-		log.Error(err, "Unable to reconcile service")
-		return err
-	}
-
-	err = r.reconcileConfigMap(glb)
+	err := r.reconcileConfigMap(glb)
 
 	if err != nil {
 		log.Error(err, "Unable to reconcile service")
@@ -133,6 +126,13 @@ func (r *GlobalLoadBalancerReconciler) handleL4(glb *kubelbiov1alpha1.GlobalLoad
 
 	if err != nil {
 		log.Error(err, "Unable to reconcile deployment")
+		return err
+	}
+
+	err = r.reconcileService(glb)
+
+	if err != nil {
+		log.Error(err, "Unable to reconcile service")
 		return err
 	}
 

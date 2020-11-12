@@ -10,6 +10,13 @@ import (
 func MapDeployment(glb *kubelbiov1alpha1.GlobalLoadBalancer) *appsv1.Deployment {
 
 	var replicas int32 = 1
+	var envoyListenerPorts []corev1.ContainerPort
+
+	for _, lbServicePort := range glb.Spec.Ports {
+		envoyListenerPorts = append(envoyListenerPorts, corev1.ContainerPort{
+			ContainerPort: lbServicePort.Port,
+		})
+	}
 
 	return &appsv1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{
@@ -32,9 +39,7 @@ func MapDeployment(glb *kubelbiov1alpha1.GlobalLoadBalancer) *appsv1.Deployment 
 						{
 							Name:  glb.Name,
 							Image: "envoyproxy/envoy:v1.16.0",
-							Ports: []corev1.ContainerPort{
-								{ContainerPort: 8080},
-							},
+							Ports: envoyListenerPorts,
 							VolumeMounts: []corev1.VolumeMount{
 								{
 									Name:      glb.Name,

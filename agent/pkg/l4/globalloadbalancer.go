@@ -15,12 +15,13 @@ func MapGlobalLoadBalancer(userService *corev1.Service, clusterEndpoints []strin
 	//mapping into load balancing service and endpoint subset ports
 	for _, port := range userService.Spec.Ports {
 		lbServicePorts = append(lbServicePorts, v1alpha1.LoadBalancerPort{
-			//Todo: use annotation to set the lb port
-			Port:     80,
+			Name:     port.Name,
+			Port:     port.Port,
 			Protocol: port.Protocol,
 		})
 
 		lbEndpointPorts = append(lbEndpointPorts, v1alpha1.EndpointPort{
+			Name:     port.Name,
 			Port:     port.NodePort,
 			Protocol: port.Protocol,
 		})
@@ -54,7 +55,6 @@ func MapGlobalLoadBalancer(userService *corev1.Service, clusterEndpoints []strin
 
 func GlobalLoadBalancerIsDesiredState(actual, desired *v1alpha1.GlobalLoadBalancer) bool {
 
-	//Type
 	if actual.Spec.Type != desired.Spec.Type {
 		return false
 	}

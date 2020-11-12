@@ -15,32 +15,72 @@ package l4
 
 import (
 	"bytes"
-	accessLog "github.com/envoyproxy/go-control-plane/envoy/config/accesslog/v3"
-	bootstrap "github.com/envoyproxy/go-control-plane/envoy/config/bootstrap/v3"
-	cluster "github.com/envoyproxy/go-control-plane/envoy/config/cluster/v3"
-	core "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
+	envoyAccessLog "github.com/envoyproxy/go-control-plane/envoy/config/accesslog/v3"
+	envoyBootstrap "github.com/envoyproxy/go-control-plane/envoy/config/bootstrap/v3"
+	envoyCluster "github.com/envoyproxy/go-control-plane/envoy/config/cluster/v3"
+	envoyCore "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	envoyEndpoint "github.com/envoyproxy/go-control-plane/envoy/config/endpoint/v3"
-	listener "github.com/envoyproxy/go-control-plane/envoy/config/listener/v3"
-	fileAccessLog "github.com/envoyproxy/go-control-plane/envoy/extensions/access_loggers/file/v3"
-	tp "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/network/tcp_proxy/v3"
+	envoyListener "github.com/envoyproxy/go-control-plane/envoy/config/listener/v3"
+	envoyFileAccessLog "github.com/envoyproxy/go-control-plane/envoy/extensions/access_loggers/file/v3"
+	envoyTcpProxy "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/network/tcp_proxy/v3"
 	"github.com/envoyproxy/go-control-plane/pkg/wellknown"
 	"github.com/golang/protobuf/jsonpb"
 	"github.com/golang/protobuf/ptypes"
 	kubelbiov1alpha1 "k8c.io/kubelb/manager/pkg/api/globalloadbalancer/v1alpha1"
+	corev1 "k8s.io/api/core/v1"
+	"strings"
 	"time"
 )
 
-const (
-	ListenerName = "listener_0"
-	ListenerPort = 8080
-)
+func toEnvoyConfig(glb *kubelbiov1alpha1.GlobalLoadBalancer, kubernetesClusterName string) string {
 
-func toEnvoyConfig(endpoints []kubelbiov1alpha1.LoadBalancerEndpoints, clusterName string) string {
+	var listener []*envoyListener.Listener
+	var cluster []*envoyCluster.Cluster
 
-	cfg := &bootstrap.Bootstrap{
-		StaticResources: &bootstrap.Bootstrap_StaticResources{
-			Listeners: []*listener.Listener{makeTCPListener(clusterName)},
-			Clusters:  []*cluster.Cluster{makeCluster(endpoints, clusterName)},
+	for _, lbServicePort := range glb.Spec.Ports {
+
+		var envoyClusterName string
+		if lbServicePort.Name != "" {
+			envoyClusterName = strings.Join([]string{envoyClusterName, lbServicePort.Name}, "-")
+		} else {
+			envoyClusterName = kubernetesClusterName
+		}
+
+		if lbServicePort.Protocol == corev1.ProtocolTCP {
+			listener = append(listener, makeTCPListener(envoyClusterName, lbServicePort.Name, uint32(lbServicePort.Port)))
+		} else {
+			//Todo: log unsupported
+		}
+	}
+
+	//multiple endpoints represent multiple clusters
+	for _, lbEndpoint := range glb.Spec.Endpoints {
+
+		for _, lbEndpointPorts := range lbEndpoint.Ports {
+
+			var lbEndpoints []*envoyEndpoint.LbEndpoint
+			var envoyClusterName string
+
+			if lbEndpointPorts.Name != "" {
+				envoyClusterName = strings.Join([]string{envoyClusterName, lbEndpointPorts.Name}, "-")
+			} else {
+				envoyClusterName = kubernetesClusterName
+			}
+
+			//each address -> one port
+			for _, lbEndpointAddress := range lbEndpoint.Addresses {
+				lbEndpoints = append(lbEndpoints, makeEndpoint(lbEndpointAddress.IP, uint32(lbEndpointPorts.Port)))
+			}
+
+			cluster = append(cluster, makeCluster(envoyClusterName, lbEndpoints))
+
+		}
+	}
+
+	cfg := &envoyBootstrap.Bootstrap{
+		StaticResources: &envoyBootstrap.Bootstrap_StaticResources{
+			Listeners: listener,
+			Clusters:  cluster,
 		},
 	}
 
@@ -52,46 +92,46 @@ func toEnvoyConfig(endpoints []kubelbiov1alpha1.LoadBalancerEndpoints, clusterNa
 	return jsonBuf.String()
 }
 
-func makeCluster(endpoints []kubelbiov1alpha1.LoadBalancerEndpoints, clusterName string) *cluster.Cluster {
-	return &cluster.Cluster{
+func makeCluster(clusterName string, lbEndpoints []*envoyEndpoint.LbEndpoint) *envoyCluster.Cluster {
+	return &envoyCluster.Cluster{
 		Name:                 clusterName,
 		ConnectTimeout:       ptypes.DurationProto(5 * time.Second),
-		ClusterDiscoveryType: &cluster.Cluster_Type{Type: cluster.Cluster_STATIC},
-		LbPolicy:             cluster.Cluster_ROUND_ROBIN,
-		LoadAssignment:       makeEndpoint(endpoints, clusterName),
-		DnsLookupFamily:      cluster.Cluster_V4_ONLY,
+		ClusterDiscoveryType: &envoyCluster.Cluster_Type{Type: envoyCluster.Cluster_STATIC},
+		LbPolicy:             envoyCluster.Cluster_ROUND_ROBIN,
+		LoadAssignment: &envoyEndpoint.ClusterLoadAssignment{
+			ClusterName: clusterName,
+			Endpoints: []*envoyEndpoint.LocalityLbEndpoints{{
+				LbEndpoints: lbEndpoints,
+			}},
+		},
+		DnsLookupFamily: envoyCluster.Cluster_V4_ONLY,
 	}
 }
 
-func makeEndpoint(endpoints []kubelbiov1alpha1.LoadBalancerEndpoints, clusterName string) *envoyEndpoint.ClusterLoadAssignment {
+func makeEndpoint(address string, port uint32) *envoyEndpoint.LbEndpoint {
 
-	return &envoyEndpoint.ClusterLoadAssignment{
-		ClusterName: clusterName,
-		Endpoints: []*envoyEndpoint.LocalityLbEndpoints{{
-			LbEndpoints: []*envoyEndpoint.LbEndpoint{{
-				HostIdentifier: &envoyEndpoint.LbEndpoint_Endpoint{
-					Endpoint: &envoyEndpoint.Endpoint{
-						Address: &core.Address{
-							Address: &core.Address_SocketAddress{
-								SocketAddress: &core.SocketAddress{
-									Protocol: core.SocketAddress_TCP,
-									Address:  endpoints[0].Addresses[0].IP,
-									PortSpecifier: &core.SocketAddress_PortValue{
-										PortValue: uint32(endpoints[0].Ports[0].Port),
-									},
-								},
+	return &envoyEndpoint.LbEndpoint{
+		HostIdentifier: &envoyEndpoint.LbEndpoint_Endpoint{
+			Endpoint: &envoyEndpoint.Endpoint{
+				Address: &envoyCore.Address{
+					Address: &envoyCore.Address_SocketAddress{
+						SocketAddress: &envoyCore.SocketAddress{
+							Protocol: envoyCore.SocketAddress_TCP,
+							Address:  address,
+							PortSpecifier: &envoyCore.SocketAddress_PortValue{
+								PortValue: port,
 							},
 						},
 					},
 				},
-			}},
-		}},
+			},
+		},
 	}
 }
 
-func makeTCPListener(ClusterName string) *listener.Listener {
+func makeTCPListener(clusterName string, listenerName string, listenerPort uint32) *envoyListener.Listener {
 
-	tcpProxyAccessLog := &fileAccessLog.FileAccessLog{
+	tcpProxyAccessLog := &envoyFileAccessLog.FileAccessLog{
 		Path: "/dev/stdout",
 	}
 	tcpProxyAccessLogAny, err := ptypes.MarshalAny(tcpProxyAccessLog)
@@ -99,44 +139,42 @@ func makeTCPListener(ClusterName string) *listener.Listener {
 		panic(err)
 	}
 
-	var (
-		tcpProxy = &tp.TcpProxy{
-			StatPrefix: "ingress_tcp_1",
-			ClusterSpecifier: &tp.TcpProxy_Cluster{
-				Cluster: ClusterName,
-			},
-			AccessLog: []*accessLog.AccessLog{
-				{
-					Name: "envoy.file_access_log",
-					ConfigType: &accessLog.AccessLog_TypedConfig{
-						TypedConfig: tcpProxyAccessLogAny,
-					},
+	tcpProxy := &envoyTcpProxy.TcpProxy{
+		StatPrefix: listenerName,
+		ClusterSpecifier: &envoyTcpProxy.TcpProxy_Cluster{
+			Cluster: clusterName,
+		},
+		AccessLog: []*envoyAccessLog.AccessLog{
+			{
+				Name: "envoy.file_access_log",
+				ConfigType: &envoyAccessLog.AccessLog_TypedConfig{
+					TypedConfig: tcpProxyAccessLogAny,
 				},
 			},
-		}
-	)
+		},
+	}
 	pbst, err := ptypes.MarshalAny(tcpProxy)
 	if err != nil {
 		panic(err)
 	}
 
-	return &listener.Listener{
-		Name: ListenerName,
-		Address: &core.Address{
-			Address: &core.Address_SocketAddress{
-				SocketAddress: &core.SocketAddress{
-					Protocol: core.SocketAddress_TCP,
+	return &envoyListener.Listener{
+		Name: listenerName,
+		Address: &envoyCore.Address{
+			Address: &envoyCore.Address_SocketAddress{
+				SocketAddress: &envoyCore.SocketAddress{
+					Protocol: envoyCore.SocketAddress_TCP,
 					Address:  "0.0.0.0",
-					PortSpecifier: &core.SocketAddress_PortValue{
-						PortValue: ListenerPort,
+					PortSpecifier: &envoyCore.SocketAddress_PortValue{
+						PortValue: listenerPort,
 					},
 				},
 			},
 		},
-		FilterChains: []*listener.FilterChain{{
-			Filters: []*listener.Filter{{
+		FilterChains: []*envoyListener.FilterChain{{
+			Filters: []*envoyListener.Filter{{
 				Name: wellknown.TCPProxy,
-				ConfigType: &listener.Filter_TypedConfig{
+				ConfigType: &envoyListener.Filter_TypedConfig{
 					TypedConfig: pbst,
 				},
 			}},

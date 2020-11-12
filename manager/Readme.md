@@ -10,9 +10,6 @@ Install CRD: `make install`
 
 ## CRD GlobalLoadBalancer
 
-Do not set more fields than necessary. Currently, the CRD makes use of the Kubernetes types **Endpoint.Subset** and **Service.Ports** which offer more configuration. 
-However, this can break the load balancing very fast and will be changed in the future.
-
 ## Client generation 
 
 There is a bug inside the golang.org/x/tools/. This bug got fixed, but the code-generator package use an old version.
@@ -26,6 +23,8 @@ To generate a new client for the CRD api run:
 `go mod vendor && ./hack/update-codegen.sh`
 
 ## Todo's: 
+
+* ValidatingAdmissionWebhook for CRD
 
 * Cleanup upon deletion (probably with Finalizers)
 

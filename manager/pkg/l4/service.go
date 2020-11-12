@@ -4,18 +4,17 @@ import (
 	kubelbiov1alpha1 "k8c.io/kubelb/manager/pkg/api/globalloadbalancer/v1alpha1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/util/intstr"
 )
 
 func MapService(glb *kubelbiov1alpha1.GlobalLoadBalancer) *corev1.Service {
 
 	var ports []corev1.ServicePort
 
-	for _, lbPort := range glb.Spec.Ports {
+	for _, lbServicePort := range glb.Spec.Ports {
 		ports = append(ports, corev1.ServicePort{
-			Protocol:   lbPort.Protocol,
-			Port:       lbPort.Port,
-			TargetPort: intstr.FromInt(8080),
+			Name:     lbServicePort.Name,
+			Port:     lbServicePort.Port,
+			Protocol: lbServicePort.Protocol,
 		})
 	}
 

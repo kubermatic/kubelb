@@ -4,14 +4,21 @@ metadata:
   name: swiss-army-knife   # user servicename
   namespace: default       # user clustername
 spec:
-  type: "L4"
-  ports:
-    - port: 80
-      targetPort: 32094
-      protocol: "TCP"
-  subsets:
+  endpoints:
     - addresses:
-        - ip: 135.181.43.211
-        - ip: 95.217.216.183
+        - ip: 168.119.189.211
+        - ip: 168.119.185.115
       ports:
-        - port: 32094
+        - name: a-port
+          port: 32019
+          protocol: TCP
+        - name: b-port
+          port: 32529
+          protocol: TCP
+  ports:
+    - name: a-port
+      port: 8080
+      protocol: TCP
+    - name: b-port
+      port: 8081
+      protocol: TCP

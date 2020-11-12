@@ -8,8 +8,12 @@ metadata:
     kubelb.enable: "true"
 spec:
   ports:
-    - port: 9001
+    - port: 8080
       targetPort: 9001
+      name: "a-port"
+    - port: 8081
+      targetPort: 9002
+      name: "b-port"
   selector:
     app: swiss-army-knife
   type: NodePort
@@ -22,7 +26,7 @@ metadata:
   labels:
     app: swiss-army-knife
 spec:
-  replicas: 1
+  replicas: 4
   selector:
     matchLabels:
       app: swiss-army-knife
@@ -35,11 +39,20 @@ spec:
     spec:
       containers:
         - image: leodotcloud/swiss-army-knife
-          name: swiss-army-knife
+          name: swiss-army-knife-a
           env:
             - name: PORT
               value: "9001"
             - name: ALPHABET
-              value: B
+              value: A
           ports:
             - containerPort: 9001
+        - image: leodotcloud/swiss-army-knife
+          name: swiss-army-knife-b
+          env:
+            - name: PORT
+              value: "9002"
+            - name: ALPHABET
+              value: B
+          ports:
+            - containerPort: 9002

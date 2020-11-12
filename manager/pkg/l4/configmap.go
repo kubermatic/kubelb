@@ -13,6 +13,6 @@ func MapConfigmap(glb *kubelbiov1alpha1.GlobalLoadBalancer, clusterName string) 
 			Name:      glb.Name,
 			Namespace: glb.Namespace,
 		},
-		Data: map[string]string{"envoy.yaml": toEnvoyConfig(glb.Spec.Endpoints, clusterName)},
+		Data: map[string]string{"envoy.yaml": toEnvoyConfig(glb, clusterName)},
 	}
 }
