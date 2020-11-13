@@ -26,6 +26,8 @@ import (
 	"github.com/envoyproxy/go-control-plane/pkg/wellknown"
 	"github.com/golang/protobuf/jsonpb"
 	"github.com/golang/protobuf/ptypes"
+	"github.com/golang/protobuf/ptypes/duration"
+	"github.com/golang/protobuf/ptypes/wrappers"
 	kubelbiov1alpha1 "k8c.io/kubelb/manager/pkg/api/globalloadbalancer/v1alpha1"
 	corev1 "k8s.io/api/core/v1"
 	"strings"
@@ -105,6 +107,17 @@ func makeCluster(clusterName string, lbEndpoints []*envoyEndpoint.LbEndpoint) *e
 			}},
 		},
 		DnsLookupFamily: envoyCluster.Cluster_V4_ONLY,
+		HealthChecks: []*envoyCore.HealthCheck{
+			{
+				Timeout:            &duration.Duration{Seconds: 5},
+				Interval:           &duration.Duration{Seconds: 5},
+				UnhealthyThreshold: &wrappers.UInt32Value{Value: 3},
+				HealthyThreshold:   &wrappers.UInt32Value{Value: 3},
+				HealthChecker: &envoyCore.HealthCheck_TcpHealthCheck_{
+					TcpHealthCheck: &envoyCore.HealthCheck_TcpHealthCheck{},
+				},
+			},
+		},
 	}
 }
 
