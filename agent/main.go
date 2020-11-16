@@ -75,19 +75,40 @@ func main() {
 		os.Exit(1)
 	}
 
-	if err = (&controllers.KubeLbAgentReconciler{
+	if err = (&controllers.KubeLbServiceReconciler{
 		Client:      mgr.GetClient(),
-		Log:         ctrl.Log.WithName("controllers").WithName("GlobalLoadBalancerAgent"),
+		Log:         ctrl.Log.WithName("service_agent_controllers"),
 		Scheme:      mgr.GetScheme(),
 		KlbClient:   klbClient,
 		ClusterName: clusterName,
 	}).SetupWithManager(mgr); err != nil {
-		setupLog.Error(err, "unable to create controller", "controller", "GlobalLoadBalancerAgent")
+		setupLog.Error(err, "unable to create controller", "controller", "service_agent_controllers")
+		os.Exit(1)
+	}
+
+	if err = (&controllers.KubeLbIngressReconciler{
+		Client:      mgr.GetClient(),
+		Log:         ctrl.Log.WithName("ingress_agent_controllers"),
+		Scheme:      mgr.GetScheme(),
+		KlbClient:   klbClient,
+		ClusterName: clusterName,
+	}).SetupWithManager(mgr); err != nil {
+		setupLog.Error(err, "unable to create controller", "controller", "ingress_agent_controllers")
+		os.Exit(1)
+	}
+
+	if err = (&controllers.KubeLbNodeReconciler{
+		Client:    mgr.GetClient(),
+		Log:       ctrl.Log.WithName("node_agent_controllers"),
+		Scheme:    mgr.GetScheme(),
+		KlbClient: klbClient,
+	}).SetupWithManager(mgr); err != nil {
+		setupLog.Error(err, "unable to create controller", "controller", "node_agent_controllers")
 		os.Exit(1)
 	}
 
 	// +kubebuilder:scaffold:builder
-	setupLog.Info("starting agent")
+	setupLog.Info("starting kubelb agent")
 	if err := mgr.Start(ctrl.SetupSignalHandler()); err != nil {
 		setupLog.Error(err, "problem running agent")
 		os.Exit(1)
