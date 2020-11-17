@@ -1,6 +1,6 @@
 # Manager
 
-The manager is responsible for the load balancer resources and takes care of GlobalLoadBalancer CRD 
+The manager is responsible for the load balancer resources and takes care of HTTPLoadBalancer and TCPLoadBalancer CRD 
 
 ## Kubebuilder 
 
@@ -8,15 +8,13 @@ Generate CRD: `make manifests`
 
 Install CRD: `make install`
 
-## CRD GlobalLoadBalancer
-
 ## Client generation 
 
-There is a bug inside the golang.org/x/tools/. This bug got fixed, but the code-generator package use an old version.
+There is a bug inside the golang.org/x/tools/. This bug got fixed, but the code-generator package uses an older version.
 
 https://github.com/golang/go/issues/34027
 
-Maybe there is a workaround, with the usage of GOPATH and no go modules.
+Maybe there is a workaround, with the usage of GOPATH and not go modules.
 
 To generate a new client for the CRD api run:
 
@@ -24,7 +22,4 @@ To generate a new client for the CRD api run:
 
 ## Todo's: 
 
-* ValidatingAdmissionWebhook for CRD
-
-* Cleanup upon deletion (probably with Finalizers)
-
+* ValidatingAdmissionWebhook for CRD 
