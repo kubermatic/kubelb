@@ -1,13 +1,13 @@
-# permissions for end users to edit globalloadbalancers.
+# permissions for end users to edit tcploadbalancers.
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
-  name: globalloadbalancer-editor-role
+  name: tcploadbalancer-editor-role
 rules:
 - apiGroups:
   - kubelb.k8c.io
   resources:
-  - globalloadbalancers
+  - tcploadbalancers
   verbs:
   - create
   - delete
@@ -19,6 +19,6 @@ rules:
 - apiGroups:
   - kubelb.k8c.io
   resources:
-  - globalloadbalancers/status
+  - tcploadbalancers/status
   verbs:
   - get

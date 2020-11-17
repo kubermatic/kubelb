@@ -1,0 +1,24 @@
+# permissions for end users to edit httploadbalancers.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: httploadbalancer-editor-role
+rules:
+- apiGroups:
+  - kubelb.k8c.io
+  resources:
+  - httploadbalancers
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - kubelb.k8c.io
+  resources:
+  - httploadbalancers/status
+  verbs:
+  - get

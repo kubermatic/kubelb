@@ -36,6 +36,4 @@ spec:
           requests:
             cpu: 100m
             memory: 20Mi
-      imagePullSecrets:
-        - name: regcred
       terminationGracePeriodSeconds: 10

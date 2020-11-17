@@ -1,7 +1,10 @@
 domain: kubelb.k8c.io
 repo: manager
 resources:
-- group: kubelb.io
-  kind: GlobalLoadBalancer
+- group: kubelb.k8c.io
+  kind: TCPLoadBalancer
+  version: v1alpha1
+- group: kubelb.k8c.io
+  kind: HTTPLoadBalancer
   version: v1alpha1
 version: "2"

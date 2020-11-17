@@ -21,26 +21,13 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-//
-//// LoadBalancerStatus describes if the loadbalancing is readily created
-//type LoadBalancerStatus string
-//
-//const (
-//	// ReadyPhase LoadBalancer routing is set up and working
-//	ReadyPhase LoadBalancerStatus = "Ready"
-//	// CreatingPhase LoadBalancer routing is still being set up by the manager
-//	CreatingPhase LoadBalancerStatus = "Creating"
-//)
+// NOTE: json tags are required.  Any new fields you add must have json tags for the fields to be serialized.
 
-// LoadBalancerType Type of load balancing
-type LoadBalancerType string
-
-const (
-	// Layer4 LoadBalancer
-	Layer4 LoadBalancerType = "L4"
-	// Layer7 LoadBalancer
-	Layer7 LoadBalancerType = "L7"
-)
+// TCPLoadBalancerStatus defines the observed state of TCPLoadBalancer
+type TCPLoadBalancerStatus struct {
+	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
+	// Important: Run "make" to regenerate code after modifying this file
+}
 
 // LoadBalancerPort contains information on service's port.
 type LoadBalancerPort struct {
@@ -62,13 +49,6 @@ type LoadBalancerPort struct {
 
 	// The port that will be exposed by the LoadBalancer.
 	Port int32 `json:"port" protobuf:"varint,3,opt,name=port"`
-
-	// Number or name of the port to access on the pods targeted by the service.
-	// Number must be in the range 1 to 65535. If this is not specified, the value
-	// of the 'port' field is used (an identity map).
-	// Should be same value as endpoints port
-	// Todo: is this needed?
-	//TargetPort int32 `json:"targetPort,omitempty" protobuf:"bytes,4,opt,name=targetPort"`
 }
 
 // EndpointPort is a tuple that describes a single port.
@@ -99,7 +79,6 @@ type EndpointAddress struct {
 	// The IP of this endpoint.
 	// May not be loopback (127.0.0.0/8), link-local (169.254.0.0/16),
 	// or link-local multicast ((224.0.0.0/24).
-	// TODO: This should allow hostname or IP, See #4447.
 	IP string `json:"ip" protobuf:"bytes,1,opt,name=ip"`
 	// The Hostname of this endpoint
 	// +optional
@@ -127,15 +106,9 @@ type LoadBalancerEndpoints struct {
 	Ports []EndpointPort `json:"ports,omitempty" protobuf:"bytes,3,rep,name=ports"`
 }
 
-// NOTE: json tags are required.  Any new fields you add must have json tags for the fields to be serialized.
-// GlobalLoadBalancerSpec defines the desired state of GlobalLoadBalancer
-type GlobalLoadBalancerSpec struct {
+// TCPLoadBalancerSpec defines the desired state of TCPLoadBalancer
+type TCPLoadBalancerSpec struct {
 	// Important: Run "make" to regenerate code after modifying this file
-
-	// Type of the load balancer
-	// This deciedes which kind of load balancing will be used and which features are enabled
-	// +required
-	Type LoadBalancerType `json:"type,omitempty"`
 
 	// The list of ports that are exposed by the load balancer service.
 	// only needed for layer 4
@@ -148,39 +121,29 @@ type GlobalLoadBalancerSpec struct {
 	Endpoints []LoadBalancerEndpoints `json:"endpoints,omitempty"`
 }
 
-// GlobalLoadBalancerStatus defines the observed state of GlobalLoadBalancer
-type GlobalLoadBalancerStatus struct {
-	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
-	// Important: Run "make" to regenerate code after modifying this file
-
-	// LoadBalancer contains the current status of the load-balancer,
-	// if one is present.
-	// +optional
-	LoadBalancer corev1.LoadBalancerStatus `json:"loadBalancer,omitempty"`
-}
-
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
-// +kubebuilder:resource:shortName=glb
+// +kubebuilder:resource:shortName=tcplb
 // +genclient
-// GlobalLoadBalancer is the Schema for the globalloadbalancers API
-type GlobalLoadBalancer struct {
+
+// TCPLoadBalancer is the Schema for the tcploadbalancers API
+type TCPLoadBalancer struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 
-	Spec   GlobalLoadBalancerSpec   `json:"spec,omitempty"`
-	Status GlobalLoadBalancerStatus `json:"status,omitempty"`
+	Spec   TCPLoadBalancerSpec   `json:"spec,omitempty"`
+	Status TCPLoadBalancerStatus `json:"status,omitempty"`
 }
 
 // +kubebuilder:object:root=true
 
-// GlobalLoadBalancerList contains a list of GlobalLoadBalancer
-type GlobalLoadBalancerList struct {
+// TCPLoadBalancerList contains a list of TCPLoadBalancer
+type TCPLoadBalancerList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`
-	Items           []GlobalLoadBalancer `json:"items"`
+	Items           []TCPLoadBalancer `json:"items"`
 }
 
 func init() {
-	SchemeBuilder.Register(&GlobalLoadBalancer{}, &GlobalLoadBalancerList{})
+	SchemeBuilder.Register(&TCPLoadBalancer{}, &TCPLoadBalancerList{})
 }

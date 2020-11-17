@@ -28,18 +28,18 @@ import (
 	"github.com/golang/protobuf/ptypes"
 	"github.com/golang/protobuf/ptypes/duration"
 	"github.com/golang/protobuf/ptypes/wrappers"
-	kubelbiov1alpha1 "k8c.io/kubelb/manager/pkg/api/globalloadbalancer/v1alpha1"
+	kubelbiov1alpha1 "k8c.io/kubelb/manager/pkg/api/kubelb.k8c.io/v1alpha1"
 	corev1 "k8s.io/api/core/v1"
 	"strings"
 	"time"
 )
 
-func toEnvoyConfig(glb *kubelbiov1alpha1.GlobalLoadBalancer, kubernetesClusterName string) string {
+func toEnvoyConfig(tcpLB *kubelbiov1alpha1.TCPLoadBalancer, kubernetesClusterName string) string {
 
 	var listener []*envoyListener.Listener
 	var cluster []*envoyCluster.Cluster
 
-	for _, lbServicePort := range glb.Spec.Ports {
+	for _, lbServicePort := range tcpLB.Spec.Ports {
 
 		var envoyClusterName string
 		if lbServicePort.Name != "" {
@@ -56,7 +56,7 @@ func toEnvoyConfig(glb *kubelbiov1alpha1.GlobalLoadBalancer, kubernetesClusterNa
 	}
 
 	//multiple endpoints represent multiple clusters
-	for _, lbEndpoint := range glb.Spec.Endpoints {
+	for _, lbEndpoint := range tcpLB.Spec.Endpoints {
 
 		for _, lbEndpointPorts := range lbEndpoint.Ports {
 

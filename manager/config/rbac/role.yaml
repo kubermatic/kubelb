@@ -9,7 +9,7 @@ rules:
 - apiGroups:
   - ""
   resources:
-  - endpoints
+  - deployments
   verbs:
   - create
   - delete
@@ -33,7 +33,7 @@ rules:
 - apiGroups:
   - kubelb.k8c.io
   resources:
-  - globalloadbalancers
+  - httploadbalancers
   verbs:
   - create
   - delete
@@ -45,7 +45,27 @@ rules:
 - apiGroups:
   - kubelb.k8c.io
   resources:
-  - globalloadbalancers/status
+  - httploadbalancers/status
+  verbs:
+  - get
+  - patch
+  - update
+- apiGroups:
+  - kubelb.k8c.io
+  resources:
+  - tcploadbalancers
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - kubelb.k8c.io
+  resources:
+  - tcploadbalancers/status
   verbs:
   - get
   - patch

@@ -1,17 +1,68 @@
+/*
+
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
 package controllers
 
 import (
-	kubelbiov1alpha1 "k8c.io/kubelb/manager/pkg/api/globalloadbalancer/v1alpha1"
+	"context"
 	"k8c.io/kubelb/manager/pkg/l4"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/types"
+
+	"github.com/go-logr/logr"
+	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/client"
+
+	kubelbk8ciov1alpha1 "k8c.io/kubelb/manager/pkg/api/kubelb.k8c.io/v1alpha1"
 )
 
-func (r *GlobalLoadBalancerReconciler) reconcileService(glb *kubelbiov1alpha1.GlobalLoadBalancer) error {
-	log := r.Log.WithValues("globalloadbalancer", "l4-svc")
+// TCPLoadBalancerReconciler reconciles a TCPLoadBalancer object
+type TCPLoadBalancerReconciler struct {
+	client.Client
+	Log         logr.Logger
+	Scheme      *runtime.Scheme
+	ctx         context.Context
+	ClusterName string
+}
+
+// +kubebuilder:rbac:groups=kubelb.k8c.io,resources=tcploadbalancers,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=kubelb.k8c.io,resources=tcploadbalancers/status,verbs=get;update;patch
+// +kubebuilder:rbac:groups="",resources=services,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups="",resources=deployments,verbs=get;list;watch;create;update;patch;delete
+
+func (r *TCPLoadBalancerReconciler) Reconcile(req ctrl.Request) (ctrl.Result, error) {
+	_ = context.Background()
+	_ = r.Log.WithValues("kubelb.k8c.io", req.NamespacedName)
+
+	// your logic here
+
+	return ctrl.Result{}, nil
+}
+
+func (r *TCPLoadBalancerReconciler) SetupWithManager(mgr ctrl.Manager) error {
+	return ctrl.NewControllerManagedBy(mgr).
+		For(&kubelbk8ciov1alpha1.TCPLoadBalancer{}).
+		Complete(r)
+}
+
+func (r *TCPLoadBalancerReconciler) reconcileService(glb *kubelbk8ciov1alpha1.TCPLoadBalancer) error {
+	log := r.Log.WithValues("TCPLoadBalancer", "l4-svc")
 
 	desiredService := l4.MapService(glb)
 
@@ -45,9 +96,9 @@ func (r *GlobalLoadBalancerReconciler) reconcileService(glb *kubelbiov1alpha1.Gl
 	return nil
 }
 
-func (r *GlobalLoadBalancerReconciler) reconcileConfigMap(glb *kubelbiov1alpha1.GlobalLoadBalancer) error {
+func (r *TCPLoadBalancerReconciler) reconcileConfigMap(glb *kubelbk8ciov1alpha1.TCPLoadBalancer) error {
 
-	log := r.Log.WithValues("globalloadbalancer", "l4-cfg")
+	log := r.Log.WithValues("TCPLoadBalancer", "l4-cfg")
 
 	desiredConfigMap := l4.MapConfigmap(glb, r.ClusterName)
 
@@ -78,9 +129,9 @@ func (r *GlobalLoadBalancerReconciler) reconcileConfigMap(glb *kubelbiov1alpha1.
 
 }
 
-func (r *GlobalLoadBalancerReconciler) reconcileDeployment(glb *kubelbiov1alpha1.GlobalLoadBalancer) error {
+func (r *TCPLoadBalancerReconciler) reconcileDeployment(glb *kubelbk8ciov1alpha1.TCPLoadBalancer) error {
 
-	log := r.Log.WithValues("globalloadbalancer", "l4-deployment")
+	log := r.Log.WithValues("TCPLoadBalancer", "l4-deployment")
 
 	desiredDeployment := l4.MapDeployment(glb)
 
@@ -111,9 +162,9 @@ func (r *GlobalLoadBalancerReconciler) reconcileDeployment(glb *kubelbiov1alpha1
 
 }
 
-func (r *GlobalLoadBalancerReconciler) handleL4(glb *kubelbiov1alpha1.GlobalLoadBalancer) error {
+func (r *TCPLoadBalancerReconciler) handleL4(glb *kubelbk8ciov1alpha1.TCPLoadBalancer) error {
 
-	log := r.Log.WithValues("globalloadbalancer", "l4")
+	log := r.Log.WithValues("TCPLoadBalancer", "l4")
 
 	err := r.reconcileConfigMap(glb)
 

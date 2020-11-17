@@ -1,5 +1,5 @@
 /*
-Copyright 2020 Kubermatic GmbH.
+
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -26,7 +26,7 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
-	kubelbiov1alpha1 "k8c.io/kubelb/manager/pkg/api/globalloadbalancer/v1alpha1"
+	kubelbk8ciov1alpha1 "k8c.io/kubelb/manager/pkg/api/kubelb.k8c.io/v1alpha1"
 	"k8c.io/kubelb/manager/pkg/controllers"
 	// +kubebuilder:scaffold:imports
 )
@@ -38,7 +38,8 @@ var (
 
 func init() {
 	_ = clientgoscheme.AddToScheme(scheme)
-	_ = kubelbiov1alpha1.AddToScheme(scheme)
+
+	_ = kubelbk8ciov1alpha1.AddToScheme(scheme)
 	// +kubebuilder:scaffold:scheme
 }
 
@@ -58,21 +59,20 @@ func main() {
 		MetricsBindAddress: metricsAddr,
 		Port:               9443,
 		LeaderElection:     enableLeaderElection,
-		LeaderElectionID:   "k8c.io.kubelb.manager",
+		LeaderElectionID:   "manager.kubelb.k8c.io",
 	})
 	if err != nil {
 		setupLog.Error(err, "unable to start manager")
 		os.Exit(1)
 	}
 
-	//Todo: set clusterName via env
-	if err = (&controllers.GlobalLoadBalancerReconciler{
+	if err = (&controllers.TCPLoadBalancerReconciler{
 		Client:      mgr.GetClient(),
-		Log:         ctrl.Log.WithName("controllers").WithName("GlobalLoadBalancer"),
+		Log:         ctrl.Log.WithName("controllers").WithName("TCPLoadBalancer"),
 		Scheme:      mgr.GetScheme(),
 		ClusterName: "tenant-1",
 	}).SetupWithManager(mgr); err != nil {
-		setupLog.Error(err, "unable to create controller", "controller", "GlobalLoadBalancer")
+		setupLog.Error(err, "unable to create controller", "controller", "TCPLoadBalancer")
 		os.Exit(1)
 	}
 	// +kubebuilder:scaffold:builder

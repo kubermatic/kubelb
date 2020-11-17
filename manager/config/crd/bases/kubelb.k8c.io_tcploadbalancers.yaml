@@ -6,23 +6,22 @@ metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.2.5
   creationTimestamp: null
-  name: globalloadbalancers.kubelb.k8c.io
+  name: tcploadbalancers.kubelb.k8c.io
 spec:
   group: kubelb.k8c.io
   names:
-    kind: GlobalLoadBalancer
-    listKind: GlobalLoadBalancerList
-    plural: globalloadbalancers
+    kind: TCPLoadBalancer
+    listKind: TCPLoadBalancerList
+    plural: tcploadbalancers
     shortNames:
-    - glb
-    singular: globalloadbalancer
+    - tcplb
+    singular: tcploadbalancer
   scope: Namespaced
   versions:
   - name: v1alpha1
     schema:
       openAPIV3Schema:
-        description: GlobalLoadBalancer is the Schema for the globalloadbalancers
-          API
+        description: TCPLoadBalancer is the Schema for the tcploadbalancers API
         properties:
           apiVersion:
             description: 'APIVersion defines the versioned schema of this representation
@@ -37,9 +36,7 @@ spec:
           metadata:
             type: object
           spec:
-            description: 'NOTE: json tags are required.  Any new fields you add must
-              have json tags for the fields to be serialized. GlobalLoadBalancerSpec
-              defines the desired state of GlobalLoadBalancer'
+            description: TCPLoadBalancerSpec defines the desired state of TCPLoadBalancer
             properties:
               endpoints:
                 description: Sets of addresses and ports that comprise an exposed
@@ -65,10 +62,9 @@ spec:
                             description: The Hostname of this endpoint
                             type: string
                           ip:
-                            description: 'The IP of this endpoint. May not be loopback
+                            description: The IP of this endpoint. May not be loopback
                               (127.0.0.0/8), link-local (169.254.0.0/16), or link-local
-                              multicast ((224.0.0.0/24). TODO: This should allow hostname
-                              or IP, See #4447.'
+                              multicast ((224.0.0.0/24).
                             type: string
                         required:
                         - ip
@@ -138,38 +134,9 @@ spec:
                   - port
                   type: object
                 type: array
-              type:
-                description: Type of the load balancer This deciedes which kind of
-                  load balancing will be used and which features are enabled
-                type: string
             type: object
           status:
-            description: GlobalLoadBalancerStatus defines the observed state of GlobalLoadBalancer
-            properties:
-              loadBalancer:
-                description: LoadBalancer contains the current status of the load-balancer,
-                  if one is present.
-                properties:
-                  ingress:
-                    description: Ingress is a list containing ingress points for the
-                      load-balancer. Traffic intended for the service should be sent
-                      to these ingress points.
-                    items:
-                      description: 'LoadBalancerIngress represents the status of a
-                        load-balancer ingress point: traffic intended for the service
-                        should be sent to an ingress point.'
-                      properties:
-                        hostname:
-                          description: Hostname is set for load-balancer ingress points
-                            that are DNS based (typically AWS load-balancers)
-                          type: string
-                        ip:
-                          description: IP is set for load-balancer ingress points
-                            that are IP based (typically GCE or OpenStack load-balancers)
-                          type: string
-                      type: object
-                    type: array
-                type: object
+            description: TCPLoadBalancerStatus defines the observed state of TCPLoadBalancer
             type: object
         type: object
     served: true

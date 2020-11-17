@@ -1,16 +1,16 @@
 package l4
 
 import (
-	kubelbiov1alpha1 "k8c.io/kubelb/manager/pkg/api/globalloadbalancer/v1alpha1"
+	kubelbiov1alpha1 "k8c.io/kubelb/manager/pkg/api/kubelb.k8c.io/v1alpha1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-func MapService(glb *kubelbiov1alpha1.GlobalLoadBalancer) *corev1.Service {
+func MapService(tcpLB *kubelbiov1alpha1.TCPLoadBalancer) *corev1.Service {
 
 	var ports []corev1.ServicePort
 
-	for _, lbServicePort := range glb.Spec.Ports {
+	for _, lbServicePort := range tcpLB.Spec.Ports {
 		ports = append(ports, corev1.ServicePort{
 			Name:     lbServicePort.Name,
 			Port:     lbServicePort.Port,
@@ -20,13 +20,13 @@ func MapService(glb *kubelbiov1alpha1.GlobalLoadBalancer) *corev1.Service {
 
 	return &corev1.Service{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      glb.Name,
-			Namespace: glb.Namespace,
-			Labels:    map[string]string{"app": glb.Name},
+			Name:      tcpLB.Name,
+			Namespace: tcpLB.Namespace,
+			Labels:    map[string]string{"app": tcpLB.Name},
 		},
 		Spec: corev1.ServiceSpec{
 			Ports:    ports,
-			Selector: map[string]string{"app": glb.Name},
+			Selector: map[string]string{"app": tcpLB.Name},
 			Type:     corev1.ServiceTypeLoadBalancer,
 		},
 	}

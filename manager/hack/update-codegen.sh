@@ -10,8 +10,8 @@ MODULE=k8c.io/kubelb/manager
 APIS_PKG=pkg/api
 # generated output package
 OUTPUT_PKG=pkg/generated
-# group-version such as globalloadbalancer:v1alpha1
-GROUP_VERSION=globalloadbalancer:v1alpha1
+# group-version such as kubelb.k8c.io:v1alpha1
+GROUP_VERSION="kubelb.k8c.io:v1alpha1"
 
 SCRIPT_ROOT=$(dirname "${BASH_SOURCE[0]}")/..
 CODEGEN_PKG=${CODEGEN_PKG:-$(cd "${SCRIPT_ROOT}"; ls -d -1 ./vendor/k8s.io/code-generator 2>/dev/null || echo ../code-generator)}

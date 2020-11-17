@@ -18,7 +18,7 @@ limitations under the License.
 package fake
 
 import (
-	v1alpha1 "k8c.io/kubelb/manager/pkg/generated/clientset/versioned/typed/globalloadbalancer/v1alpha1"
+	v1alpha1 "k8c.io/kubelb/manager/pkg/generated/clientset/versioned/typed/kubelb.k8c.io/v1alpha1"
 	rest "k8s.io/client-go/rest"
 	testing "k8s.io/client-go/testing"
 )
@@ -27,8 +27,12 @@ type FakeKubelbV1alpha1 struct {
 	*testing.Fake
 }
 
-func (c *FakeKubelbV1alpha1) GlobalLoadBalancers(namespace string) v1alpha1.GlobalLoadBalancerInterface {
-	return &FakeGlobalLoadBalancers{c, namespace}
+func (c *FakeKubelbV1alpha1) HTTPLoadBalancers(namespace string) v1alpha1.HTTPLoadBalancerInterface {
+	return &FakeHTTPLoadBalancers{c, namespace}
+}
+
+func (c *FakeKubelbV1alpha1) TCPLoadBalancers(namespace string) v1alpha1.TCPLoadBalancerInterface {
+	return &FakeTCPLoadBalancers{c, namespace}
 }
 
 // RESTClient returns a RESTClient that is used to communicate

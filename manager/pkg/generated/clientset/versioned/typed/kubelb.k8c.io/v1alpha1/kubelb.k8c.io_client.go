@@ -18,14 +18,15 @@ limitations under the License.
 package v1alpha1
 
 import (
-	v1alpha1 "k8c.io/kubelb/manager/pkg/api/globalloadbalancer/v1alpha1"
+	v1alpha1 "k8c.io/kubelb/manager/pkg/api/kubelb.k8c.io/v1alpha1"
 	"k8c.io/kubelb/manager/pkg/generated/clientset/versioned/scheme"
 	rest "k8s.io/client-go/rest"
 )
 
 type KubelbV1alpha1Interface interface {
 	RESTClient() rest.Interface
-	GlobalLoadBalancersGetter
+	HTTPLoadBalancersGetter
+	TCPLoadBalancersGetter
 }
 
 // KubelbV1alpha1Client is used to interact with features provided by the kubelb.k8c.io group.
@@ -33,8 +34,12 @@ type KubelbV1alpha1Client struct {
 	restClient rest.Interface
 }
 
-func (c *KubelbV1alpha1Client) GlobalLoadBalancers(namespace string) GlobalLoadBalancerInterface {
-	return newGlobalLoadBalancers(c, namespace)
+func (c *KubelbV1alpha1Client) HTTPLoadBalancers(namespace string) HTTPLoadBalancerInterface {
+	return newHTTPLoadBalancers(c, namespace)
+}
+
+func (c *KubelbV1alpha1Client) TCPLoadBalancers(namespace string) TCPLoadBalancerInterface {
+	return newTCPLoadBalancers(c, namespace)
 }
 
 // NewForConfig creates a new KubelbV1alpha1Client for the given config.
