@@ -110,15 +110,33 @@ type LoadBalancerEndpoints struct {
 type TCPLoadBalancerSpec struct {
 	// Important: Run "make" to regenerate code after modifying this file
 
+	// Sets of addresses and ports that comprise an exposed user service on a cluster.
+	// +required
+	//+kubebuilder:validation:MinItems:=1
+	Endpoints []LoadBalancerEndpoints `json:"endpoints,omitempty"`
+
 	// The list of ports that are exposed by the load balancer service.
 	// only needed for layer 4
 	// +optional
 	Ports []LoadBalancerPort `json:"ports,omitempty"`
 
-	// Sets of addresses and ports that comprise an exposed user service on a cluster.
-	// +required
-	//+kubebuilder:validation:MinItems:=1
-	Endpoints []LoadBalancerEndpoints `json:"endpoints,omitempty"`
+	// type determines how the Service is exposed. Defaults to ClusterIP. Valid
+	// options are ExternalName, ClusterIP, NodePort, and LoadBalancer.
+	// "ExternalName" maps to the specified externalName.
+	// "ClusterIP" allocates a cluster-internal IP address for load-balancing to
+	// endpoints. Endpoints are determined by the selector or if that is not
+	// specified, by manual construction of an Endpoints object. If clusterIP is
+	// "None", no virtual IP is allocated and the endpoints are published as a
+	// set of endpoints rather than a stable IP.
+	// "NodePort" builds on ClusterIP and allocates a port on every node which
+	// routes to the clusterIP.
+	// "LoadBalancer" builds on NodePort and creates an
+	// external load-balancer (if supported in the current cloud) which routes
+	// to the clusterIP.
+	// More info: https://kubernetes.io/docs/concepts/services-networking/service/#publishing-services-service-types
+	// +optional
+	// +kubebuilder:default:=ClusterIP
+	Type corev1.ServiceType `json:"type,omitempty" protobuf:"bytes,4,opt,name=type,casttype=ServiceType"`
 }
 
 // +kubebuilder:object:root=true

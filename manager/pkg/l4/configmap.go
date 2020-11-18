@@ -6,13 +6,13 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-func MapConfigmap(tcpLB *kubelbiov1alpha1.TCPLoadBalancer, clusterName string) *corev1.ConfigMap {
+func MapConfigmap(tcpLoadBalancer *kubelbiov1alpha1.TCPLoadBalancer, clusterName string) *corev1.ConfigMap {
 
 	return &corev1.ConfigMap{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      tcpLB.Name,
-			Namespace: tcpLB.Namespace,
+			Name:      tcpLoadBalancer.Name,
+			Namespace: tcpLoadBalancer.Namespace,
 		},
-		Data: map[string]string{"envoy.yaml": toEnvoyConfig(tcpLB, clusterName)},
+		Data: map[string]string{"envoy.yaml": toEnvoyConfig(tcpLoadBalancer, clusterName)},
 	}
 }

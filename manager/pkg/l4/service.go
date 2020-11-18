@@ -6,11 +6,11 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-func MapService(tcpLB *kubelbiov1alpha1.TCPLoadBalancer) *corev1.Service {
+func MapService(tcpLoadBalancer *kubelbiov1alpha1.TCPLoadBalancer) *corev1.Service {
 
 	var ports []corev1.ServicePort
 
-	for _, lbServicePort := range tcpLB.Spec.Ports {
+	for _, lbServicePort := range tcpLoadBalancer.Spec.Ports {
 		ports = append(ports, corev1.ServicePort{
 			Name:     lbServicePort.Name,
 			Port:     lbServicePort.Port,
@@ -20,14 +20,14 @@ func MapService(tcpLB *kubelbiov1alpha1.TCPLoadBalancer) *corev1.Service {
 
 	return &corev1.Service{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      tcpLB.Name,
-			Namespace: tcpLB.Namespace,
-			Labels:    map[string]string{"app": tcpLB.Name},
+			Name:      tcpLoadBalancer.Name,
+			Namespace: tcpLoadBalancer.Namespace,
+			Labels:    map[string]string{"app": tcpLoadBalancer.Name},
 		},
 		Spec: corev1.ServiceSpec{
 			Ports:    ports,
-			Selector: map[string]string{"app": tcpLB.Name},
-			Type:     corev1.ServiceTypeLoadBalancer,
+			Selector: map[string]string{"app": tcpLoadBalancer.Name},
+			Type:     tcpLoadBalancer.Spec.Type,
 		},
 	}
 }

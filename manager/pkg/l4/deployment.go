@@ -7,12 +7,12 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-func MapDeployment(tcpLB *kubelbiov1alpha1.TCPLoadBalancer) *appsv1.Deployment {
+func MapDeployment(tcpLoadBalancer *kubelbiov1alpha1.TCPLoadBalancer) *appsv1.Deployment {
 
 	var replicas int32 = 1
 	var envoyListenerPorts []corev1.ContainerPort
 
-	for _, lbServicePort := range tcpLB.Spec.Ports {
+	for _, lbServicePort := range tcpLoadBalancer.Spec.Ports {
 		envoyListenerPorts = append(envoyListenerPorts, corev1.ContainerPort{
 			ContainerPort: lbServicePort.Port,
 		})
@@ -20,29 +20,29 @@ func MapDeployment(tcpLB *kubelbiov1alpha1.TCPLoadBalancer) *appsv1.Deployment {
 
 	return &appsv1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      tcpLB.Name,
-			Namespace: tcpLB.Namespace,
+			Name:      tcpLoadBalancer.Name,
+			Namespace: tcpLoadBalancer.Namespace,
 		},
 		Spec: appsv1.DeploymentSpec{
 			Replicas: &replicas,
 			Selector: &metav1.LabelSelector{
-				MatchLabels: map[string]string{"app": tcpLB.Name},
+				MatchLabels: map[string]string{"app": tcpLoadBalancer.Name},
 			},
 			Template: corev1.PodTemplateSpec{
 				ObjectMeta: metav1.ObjectMeta{
-					Name:      tcpLB.Name,
-					Namespace: tcpLB.Namespace,
-					Labels:    map[string]string{"app": tcpLB.Name},
+					Name:      tcpLoadBalancer.Name,
+					Namespace: tcpLoadBalancer.Namespace,
+					Labels:    map[string]string{"app": tcpLoadBalancer.Name},
 				},
 				Spec: corev1.PodSpec{
 					Containers: []corev1.Container{
 						{
-							Name:  tcpLB.Name,
+							Name:  tcpLoadBalancer.Name,
 							Image: "envoyproxy/envoy:v1.16.0",
 							Ports: envoyListenerPorts,
 							VolumeMounts: []corev1.VolumeMount{
 								{
-									Name:      tcpLB.Name,
+									Name:      tcpLoadBalancer.Name,
 									MountPath: "/etc/envoy",
 									ReadOnly:  true,
 								},
@@ -50,10 +50,10 @@ func MapDeployment(tcpLB *kubelbiov1alpha1.TCPLoadBalancer) *appsv1.Deployment {
 						},
 					},
 					Volumes: []corev1.Volume{{
-						Name: tcpLB.Name,
+						Name: tcpLoadBalancer.Name,
 						VolumeSource: corev1.VolumeSource{
 							ConfigMap: &corev1.ConfigMapVolumeSource{
-								LocalObjectReference: corev1.LocalObjectReference{Name: tcpLB.Name},
+								LocalObjectReference: corev1.LocalObjectReference{Name: tcpLoadBalancer.Name},
 							},
 						},
 					}},

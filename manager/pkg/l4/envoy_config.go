@@ -34,12 +34,12 @@ import (
 	"time"
 )
 
-func toEnvoyConfig(tcpLB *kubelbiov1alpha1.TCPLoadBalancer, kubernetesClusterName string) string {
+func toEnvoyConfig(tcpLoadBalancer *kubelbiov1alpha1.TCPLoadBalancer, kubernetesClusterName string) string {
 
 	var listener []*envoyListener.Listener
 	var cluster []*envoyCluster.Cluster
 
-	for _, lbServicePort := range tcpLB.Spec.Ports {
+	for _, lbServicePort := range tcpLoadBalancer.Spec.Ports {
 
 		var envoyClusterName string
 		if lbServicePort.Name != "" {
@@ -56,7 +56,7 @@ func toEnvoyConfig(tcpLB *kubelbiov1alpha1.TCPLoadBalancer, kubernetesClusterNam
 	}
 
 	//multiple endpoints represent multiple clusters
-	for _, lbEndpoint := range tcpLB.Spec.Endpoints {
+	for _, lbEndpoint := range tcpLoadBalancer.Spec.Endpoints {
 
 		for _, lbEndpointPorts := range lbEndpoint.Ports {
 
