@@ -1,4 +1,4 @@
-package l4
+package resources
 
 import (
 	kubelbiov1alpha1 "k8c.io/kubelb/manager/pkg/api/kubelb.k8c.io/v1alpha1"

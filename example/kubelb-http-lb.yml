@@ -1,0 +1,17 @@
+apiVersion: kubelb.k8c.io/v1alpha1
+kind: HTTPLoadBalancer
+metadata:
+  name: swiss-army-knife   # user ingressname
+  namespace: default       # user clustername
+spec:
+  rules:
+      - http:
+          paths:
+          - path: /
+            backend:
+              serviceName: swiss-army-knife
+              servicePort: 8080
+#          - path: /b
+#            backend:
+#              serviceName: swiss-army-knife
+#              servicePort: 8081

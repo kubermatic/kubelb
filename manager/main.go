@@ -67,12 +67,20 @@ func main() {
 	}
 
 	if err = (&controllers.TCPLoadBalancerReconciler{
-		Client:      mgr.GetClient(),
-		Log:         ctrl.Log.WithName("controllers").WithName("TCPLoadBalancer"),
-		Scheme:      mgr.GetScheme(),
-		ClusterName: "tenant-1",
+		Client: mgr.GetClient(),
+		Log:    ctrl.Log.WithName("controllers").WithName("TCPLoadBalancer"),
+		Scheme: mgr.GetScheme(),
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "TCPLoadBalancer")
+		os.Exit(1)
+	}
+
+	if err = (&controllers.HTTPLoadBalancerReconciler{
+		Client: mgr.GetClient(),
+		Log:    ctrl.Log.WithName("controllers").WithName("HTTPLoadBalancer"),
+		Scheme: mgr.GetScheme(),
+	}).SetupWithManager(mgr); err != nil {
+		setupLog.Error(err, "unable to create controller", "controller", "HTTPLoadBalancer")
 		os.Exit(1)
 	}
 	// +kubebuilder:scaffold:builder

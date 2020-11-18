@@ -11,7 +11,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package l4
+package resources
 
 import (
 	"bytes"
@@ -34,18 +34,16 @@ import (
 	"time"
 )
 
-func toEnvoyConfig(tcpLoadBalancer *kubelbiov1alpha1.TCPLoadBalancer, kubernetesClusterName string) string {
+func toEnvoyConfig(tcpLoadBalancer *kubelbiov1alpha1.TCPLoadBalancer) string {
 
 	var listener []*envoyListener.Listener
 	var cluster []*envoyCluster.Cluster
 
 	for _, lbServicePort := range tcpLoadBalancer.Spec.Ports {
 
-		var envoyClusterName string
+		envoyClusterName := tcpLoadBalancer.Namespace
 		if lbServicePort.Name != "" {
 			envoyClusterName = strings.Join([]string{envoyClusterName, lbServicePort.Name}, "-")
-		} else {
-			envoyClusterName = kubernetesClusterName
 		}
 
 		if lbServicePort.Protocol == corev1.ProtocolTCP {
@@ -61,12 +59,10 @@ func toEnvoyConfig(tcpLoadBalancer *kubelbiov1alpha1.TCPLoadBalancer, kubernetes
 		for _, lbEndpointPorts := range lbEndpoint.Ports {
 
 			var lbEndpoints []*envoyEndpoint.LbEndpoint
-			var envoyClusterName string
+			envoyClusterName := tcpLoadBalancer.Namespace
 
 			if lbEndpointPorts.Name != "" {
 				envoyClusterName = strings.Join([]string{envoyClusterName, lbEndpointPorts.Name}, "-")
-			} else {
-				envoyClusterName = kubernetesClusterName
 			}
 
 			//each address -> one port

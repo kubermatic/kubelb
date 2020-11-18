@@ -6,14 +6,14 @@ metadata:
 spec:
   endpoints:
     - addresses:
-        - ip: 168.119.189.211
-        - ip: 168.119.185.115
+        - ip: 168.119.243.175
+        - ip: 168.119.152.165
       ports:
         - name: a-port
-          port: 32019
+          port: 32544
           protocol: TCP
         - name: b-port
-          port: 32529
+          port: 32627
           protocol: TCP
   ports:
     - name: a-port
@@ -22,3 +22,4 @@ spec:
     - name: b-port
       port: 8081
       protocol: TCP
+  type: ClusterIP
