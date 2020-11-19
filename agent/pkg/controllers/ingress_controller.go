@@ -25,15 +25,13 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/cache"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/controller-runtime/pkg/event"
-	"sigs.k8s.io/controller-runtime/pkg/predicate"
 )
 
 // KubeLbIngressReconciler reconciles a Service object
 type KubeLbIngressReconciler struct {
 	client.Client
 	ClusterCache cache.Cache
-	KlbClient    *kubelb.Client
+	KlbClient    *kubelb.HttpLBClient
 	Log          logr.Logger
 	Scheme       *runtime.Scheme
 	ctx          context.Context
@@ -54,48 +52,70 @@ func (r *KubeLbIngressReconciler) Reconcile(req ctrl.Request) (ctrl.Result, erro
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 
-	log.Info("Ingress:" + ingress.Name)
+	log.Info("reconciling ingress", "name", ingress.Name, "namespace", ingress.Namespace)
 
-	return ctrl.Result{}, nil
+	/*	var service corev1.Service
+		err = r.Get(r.ctx, types.NamespacedName{Name: ingress.Spec.Backend.ServiceName, Namespace: req.Namespace}, &service)
+
+		var clusterEndpoints []string
+
+		switch service.Spec.Type {
+
+		case corev1.ServiceTypeNodePort:
+			nodes := &corev1.NodeList{}
+			err = r.List(context.Background(), nodes)
+
+			if err != nil {
+				log.Error(err, "unable to list nodes")
+				return ctrl.Result{}, err
+			}
+			clusterEndpoints = kubelb.GetEndpoints(nodes, corev1.NodeInternalIP)
+
+		case corev1.ServiceTypeLoadBalancer:
+
+			for _, lbIngress := range service.Status.LoadBalancer.Ingress {
+
+				if lbIngress.IP != "" {
+					clusterEndpoints = append(clusterEndpoints, lbIngress.IP)
+				} else {
+					clusterEndpoints = append(clusterEndpoints, lbIngress.Hostname)
+				}
+			}
+
+		case corev1.ServiceTypeClusterIP:
+			//Todo: copy service and create one of type node port or update existing one
+		default:
+			log.Info("Unsupported service type")
+		}
+
+		desiredGlb := kubelb.MapTcpLoadBalancer(&service, clusterEndpoints, r.ClusterName, v1alpha1.Layer4)
+
+		actualGlb, err := r.TcpLBClient.Get(service.Name, v1.GetOptions{})
+
+		if err != nil {
+			if !apierrors.IsNotFound(err) {
+				return ctrl.Result{}, err
+			}
+			log.Info("Creating glb", "namespace", desiredGlb.Namespace, "name", desiredGlb.Name)
+			_, err = r.TcpLBClient.Create(desiredGlb)
+
+			return ctrl.Result{}, err
+		}
+
+		log.Info("Updating glb", "namespace", desiredGlb.Namespace, "name", desiredGlb.Name)
+		actualGlb.Spec = desiredGlb.Spec
+		_, err = r.TcpLBClient.Update(actualGlb)
+	*/
+
+	return ctrl.Result{}, err
 }
 
 func (r *KubeLbIngressReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&netv1beta1.Ingress{}).
-		WithEventFilter(&matchingIngressAnnotations{}).
+		WithEventFilter(&kubelb.MatchingAnnotationPredicate{
+			AnnotationIngressClass:      "kubernetes.io/ingress.class",
+			AnnotationIngressClassValue: "kubelb",
+		}).
 		Complete(r)
-}
-
-const (
-	AnnotationIngressClass      = "kubernetes.io/ingress.class"
-	AnnotationIngressClassValue = "kubelb"
-)
-
-var _ predicate.Predicate = &matchingIngressAnnotations{}
-
-type matchingIngressAnnotations struct{}
-
-// Create returns true if the Create event should be processed
-func (r *matchingIngressAnnotations) Create(e event.CreateEvent) bool {
-	return r.match(e.Meta.GetAnnotations())
-}
-
-// Delete returns true if the Delete event should be processed
-func (r *matchingIngressAnnotations) Delete(e event.DeleteEvent) bool {
-	return r.match(e.Meta.GetAnnotations())
-}
-
-// Update returns true if the Update event should be processed
-func (r *matchingIngressAnnotations) Update(e event.UpdateEvent) bool {
-	return r.match(e.MetaNew.GetAnnotations())
-}
-
-// Generic returns true if the Generic event should be processed
-func (r *matchingIngressAnnotations) Generic(e event.GenericEvent) bool {
-	return r.match(e.Meta.GetAnnotations())
-}
-
-func (r *matchingIngressAnnotations) match(annotations map[string]string) bool {
-	val, ok := annotations[AnnotationIngressClass]
-	return !(ok && val == "") && val == AnnotationIngressClassValue
 }

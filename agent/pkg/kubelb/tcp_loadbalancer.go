@@ -1,12 +1,12 @@
-package l4
+package kubelb
 
 import (
-	"k8c.io/kubelb/manager/pkg/api/globalloadbalancer/v1alpha1"
+	"k8c.io/kubelb/manager/pkg/api/kubelb.k8c.io/v1alpha1"
 	corev1 "k8s.io/api/core/v1"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-func MapGlobalLoadBalancer(userService *corev1.Service, clusterEndpoints []string, clusterName string) *v1alpha1.GlobalLoadBalancer {
+func MapTcpLoadBalancer(userService *corev1.Service, clusterEndpoints []string, clusterName string) *v1alpha1.TCPLoadBalancer {
 
 	var lbServicePorts []v1alpha1.LoadBalancerPort
 	var lbEndpointSubsets []v1alpha1.LoadBalancerEndpoints
@@ -40,20 +40,19 @@ func MapGlobalLoadBalancer(userService *corev1.Service, clusterEndpoints []strin
 		Ports:     lbEndpointPorts,
 	})
 
-	return &v1alpha1.GlobalLoadBalancer{
+	return &v1alpha1.TCPLoadBalancer{
 		ObjectMeta: v1.ObjectMeta{
 			Name:      userService.Name,
 			Namespace: clusterName,
 		},
-		Spec: v1alpha1.GlobalLoadBalancerSpec{
-			Type:      v1alpha1.Layer4,
+		Spec: v1alpha1.TCPLoadBalancerSpec{
 			Ports:     lbServicePorts,
 			Endpoints: lbEndpointSubsets,
 		},
 	}
 }
 
-func GlobalLoadBalancerIsDesiredState(actual, desired *v1alpha1.GlobalLoadBalancer) bool {
+func TcpLoadBalancerIsDesiredState(actual, desired *v1alpha1.TCPLoadBalancer) bool {
 
 	if actual.Spec.Type != desired.Spec.Type {
 		return false

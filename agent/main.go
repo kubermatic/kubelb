@@ -68,7 +68,7 @@ func main() {
 	//Todo: namespace needs to be created inside load balancing cluster
 	var clusterName = "default"
 
-	klbClient, err := kubelb.NewClient(clusterName)
+	tcpLBClient, err := kubelb.NewTcpLBClient(clusterName)
 
 	if err != nil {
 		setupLog.Error(err, "unable to create kubelb client")
@@ -79,10 +79,17 @@ func main() {
 		Client:      mgr.GetClient(),
 		Log:         ctrl.Log.WithName("service_agent_controllers"),
 		Scheme:      mgr.GetScheme(),
-		KlbClient:   klbClient,
+		TcpLBClient: tcpLBClient,
 		ClusterName: clusterName,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "service_agent_controllers")
+		os.Exit(1)
+	}
+
+	httpLBClient, err := kubelb.NewHttpLBClient(clusterName)
+
+	if err != nil {
+		setupLog.Error(err, "unable to create kubelb client")
 		os.Exit(1)
 	}
 
@@ -90,7 +97,7 @@ func main() {
 		Client:      mgr.GetClient(),
 		Log:         ctrl.Log.WithName("ingress_agent_controllers"),
 		Scheme:      mgr.GetScheme(),
-		KlbClient:   klbClient,
+		KlbClient:   httpLBClient,
 		ClusterName: clusterName,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "ingress_agent_controllers")
@@ -101,7 +108,7 @@ func main() {
 		Client:    mgr.GetClient(),
 		Log:       ctrl.Log.WithName("node_agent_controllers"),
 		Scheme:    mgr.GetScheme(),
-		KlbClient: klbClient,
+		KlbClient: tcpLBClient,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "node_agent_controllers")
 		os.Exit(1)

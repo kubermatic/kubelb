@@ -29,7 +29,7 @@ import (
 // KubeLbIngressReconciler reconciles a Service object
 type KubeLbNodeReconciler struct {
 	client.Client
-	KlbClient *kubelb.Client
+	KlbClient *kubelb.TcpLBClient
 	Log       logr.Logger
 	Scheme    *runtime.Scheme
 	ctx       context.Context
@@ -70,7 +70,7 @@ func (r *KubeLbNodeReconciler) Reconcile(req ctrl.Request) (ctrl.Result, error) 
 		clusterEndpoints = append(clusterEndpoints, internalIp)
 	}
 
-	// Todo: update all glb endpoints
+	// Todo: update all TcpLB endpoints
 
 	return ctrl.Result{}, nil
 }
