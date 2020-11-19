@@ -20,8 +20,12 @@ import (
 	"context"
 	"github.com/go-logr/logr"
 	"k8c.io/kubelb/agent/pkg/kubelb"
+	corev1 "k8s.io/api/core/v1"
 	netv1beta1 "k8s.io/api/networking/v1beta1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/cache"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -31,11 +35,16 @@ import (
 type KubeLbIngressReconciler struct {
 	client.Client
 	ClusterCache cache.Cache
-	KlbClient    *kubelb.HttpLBClient
+	HttpLBClient *kubelb.HttpLBClient
 	Log          logr.Logger
 	Scheme       *runtime.Scheme
 	ctx          context.Context
 	ClusterName  string
+}
+
+var IngressMatcher = &kubelb.MatchingAnnotationPredicate{
+	AnnotationName:  "kubernetes.io/ingress.class",
+	AnnotationValue: "kubelb",
 }
 
 // +kubebuilder:rbac:groups="",resources=ingress,verbs=get;list;watch;update;patch
@@ -54,68 +63,66 @@ func (r *KubeLbIngressReconciler) Reconcile(req ctrl.Request) (ctrl.Result, erro
 
 	log.Info("reconciling ingress", "name", ingress.Name, "namespace", ingress.Namespace)
 
-	/*	var service corev1.Service
-		err = r.Get(r.ctx, types.NamespacedName{Name: ingress.Spec.Backend.ServiceName, Namespace: req.Namespace}, &service)
+	err = r.exposeIngressBackendServices(&ingress)
 
-		var clusterEndpoints []string
+	if err != nil {
+		return ctrl.Result{}, err
+	}
 
-		switch service.Spec.Type {
+	desiredHttpLoadBalancer := kubelb.MapHttpLoadBalancer(&ingress, r.ClusterName)
 
-		case corev1.ServiceTypeNodePort:
-			nodes := &corev1.NodeList{}
-			err = r.List(context.Background(), nodes)
+	actualHttpLoadBalancer, err := r.HttpLBClient.Get(ingress.Name, v1.GetOptions{})
 
-			if err != nil {
-				log.Error(err, "unable to list nodes")
-				return ctrl.Result{}, err
-			}
-			clusterEndpoints = kubelb.GetEndpoints(nodes, corev1.NodeInternalIP)
-
-		case corev1.ServiceTypeLoadBalancer:
-
-			for _, lbIngress := range service.Status.LoadBalancer.Ingress {
-
-				if lbIngress.IP != "" {
-					clusterEndpoints = append(clusterEndpoints, lbIngress.IP)
-				} else {
-					clusterEndpoints = append(clusterEndpoints, lbIngress.Hostname)
-				}
-			}
-
-		case corev1.ServiceTypeClusterIP:
-			//Todo: copy service and create one of type node port or update existing one
-		default:
-			log.Info("Unsupported service type")
-		}
-
-		desiredGlb := kubelb.MapTcpLoadBalancer(&service, clusterEndpoints, r.ClusterName, v1alpha1.Layer4)
-
-		actualGlb, err := r.TcpLBClient.Get(service.Name, v1.GetOptions{})
-
-		if err != nil {
-			if !apierrors.IsNotFound(err) {
-				return ctrl.Result{}, err
-			}
-			log.Info("Creating glb", "namespace", desiredGlb.Namespace, "name", desiredGlb.Name)
-			_, err = r.TcpLBClient.Create(desiredGlb)
-
+	if err != nil {
+		if !apierrors.IsNotFound(err) {
 			return ctrl.Result{}, err
 		}
+		log.Info("Creating HttpLoadBalancer", "namespace", desiredHttpLoadBalancer.Namespace, "name", desiredHttpLoadBalancer.Name)
+		_, err = r.HttpLBClient.Create(desiredHttpLoadBalancer)
 
-		log.Info("Updating glb", "namespace", desiredGlb.Namespace, "name", desiredGlb.Name)
-		actualGlb.Spec = desiredGlb.Spec
-		_, err = r.TcpLBClient.Update(actualGlb)
-	*/
+		return ctrl.Result{}, err
+	}
+
+	log.Info("Updating HttpLoadBalancer", "namespace", desiredHttpLoadBalancer.Namespace, "name", desiredHttpLoadBalancer.Name)
+	actualHttpLoadBalancer.Spec = desiredHttpLoadBalancer.Spec
+	_, err = r.HttpLBClient.Update(actualHttpLoadBalancer)
 
 	return ctrl.Result{}, err
+}
+
+func (r *KubeLbIngressReconciler) exposeIngressBackendServices(ingress *netv1beta1.Ingress) error {
+
+	log := r.Log.WithValues("kubelb_ingress_agent", "exposing_backends")
+
+	for _, rule := range ingress.Spec.Rules {
+		for _, path := range rule.HTTP.Paths {
+
+			var service corev1.Service
+			err := r.Get(r.ctx, types.NamespacedName{Name: path.Backend.ServiceName, Namespace: ingress.Namespace}, &service)
+			if err != nil {
+				log.Error(err, "unable to fetch backend service")
+				return err
+			}
+
+			if ServiceMatcher.Match(service.GetAnnotations()) {
+				log.Info("Service already exposed by kubelb")
+				continue
+			}
+
+			service.Annotations[ServiceMatcher.AnnotationName] = ServiceMatcher.AnnotationValue
+			err = r.Update(r.ctx, &service)
+			if err != nil {
+				log.Error(err, "unable to set backend service annotation")
+				return err
+			}
+		}
+	}
+	return nil
 }
 
 func (r *KubeLbIngressReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&netv1beta1.Ingress{}).
-		WithEventFilter(&kubelb.MatchingAnnotationPredicate{
-			AnnotationIngressClass:      "kubernetes.io/ingress.class",
-			AnnotationIngressClassValue: "kubelb",
-		}).
+		WithEventFilter(IngressMatcher).
 		Complete(r)
 }

@@ -94,11 +94,11 @@ func main() {
 	}
 
 	if err = (&controllers.KubeLbIngressReconciler{
-		Client:      mgr.GetClient(),
-		Log:         ctrl.Log.WithName("ingress_agent_controllers"),
-		Scheme:      mgr.GetScheme(),
-		KlbClient:   httpLBClient,
-		ClusterName: clusterName,
+		Client:       mgr.GetClient(),
+		Log:          ctrl.Log.WithName("ingress_agent_controllers"),
+		Scheme:       mgr.GetScheme(),
+		HttpLBClient: httpLBClient,
+		ClusterName:  clusterName,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "ingress_agent_controllers")
 		os.Exit(1)

@@ -23,31 +23,31 @@ func GetEndpoints(nodes *corev1.NodeList, addressType corev1.NodeAddressType) []
 var _ predicate.Predicate = &MatchingAnnotationPredicate{}
 
 type MatchingAnnotationPredicate struct {
-	AnnotationIngressClass      string
-	AnnotationIngressClassValue string
+	AnnotationName  string
+	AnnotationValue string
 }
 
 // Create returns true if the Create event should be processed
 func (r *MatchingAnnotationPredicate) Create(e event.CreateEvent) bool {
-	return r.match(e.Meta.GetAnnotations())
+	return r.Match(e.Meta.GetAnnotations())
 }
 
 // Delete returns true if the Delete event should be processed
 func (r *MatchingAnnotationPredicate) Delete(e event.DeleteEvent) bool {
-	return r.match(e.Meta.GetAnnotations())
+	return r.Match(e.Meta.GetAnnotations())
 }
 
 // Update returns true if the Update event should be processed
 func (r *MatchingAnnotationPredicate) Update(e event.UpdateEvent) bool {
-	return r.match(e.MetaNew.GetAnnotations())
+	return r.Match(e.MetaNew.GetAnnotations())
 }
 
 // Generic returns true if the Generic event should be processed
 func (r *MatchingAnnotationPredicate) Generic(e event.GenericEvent) bool {
-	return r.match(e.Meta.GetAnnotations())
+	return r.Match(e.Meta.GetAnnotations())
 }
 
-func (r *MatchingAnnotationPredicate) match(annotations map[string]string) bool {
-	val, ok := annotations[r.AnnotationIngressClass]
-	return !(ok && val == "") && val == r.AnnotationIngressClassValue
+func (r *MatchingAnnotationPredicate) Match(annotations map[string]string) bool {
+	val, ok := annotations[r.AnnotationName]
+	return !(ok && val == "") && val == r.AnnotationValue
 }

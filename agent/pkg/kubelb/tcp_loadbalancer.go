@@ -25,7 +25,6 @@ func MapTcpLoadBalancer(userService *corev1.Service, clusterEndpoints []string, 
 			Port:     port.NodePort,
 			Protocol: port.Protocol,
 		})
-
 	}
 
 	var endpointAddresses []v1alpha1.EndpointAddress

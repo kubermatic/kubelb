@@ -4,8 +4,8 @@ metadata:
   name: swiss-army-knife
   labels:
     app: swiss-army-knife
-  annotations:
-    kubelb.enable: "true"
+#  annotations:
+#    kubernetes.io/service.class: kubelb
 spec:
   ports:
     - port: 8080
@@ -17,8 +17,29 @@ spec:
   selector:
     app: swiss-army-knife
   type: NodePort
-
 ---
+
+apiVersion: networking.k8s.io/v1beta1
+kind: Ingress
+metadata:
+  name: swiss-army-knife   # user ingressname
+  namespace: default       # user clustername
+  annotations:
+    kubernetes.io/ingress.class: kubelb
+spec:
+  rules:
+    - http:
+        paths:
+          - path: /
+            backend:
+              serviceName: swiss-army-knife
+              servicePort: 8080
+#          - path: /b
+#            backend:
+#              serviceName: swiss-army-knife
+#              servicePort: 8081
+---
+
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -26,7 +47,7 @@ metadata:
   labels:
     app: swiss-army-knife
 spec:
-  replicas: 4
+  replicas: 1
   selector:
     matchLabels:
       app: swiss-army-knife

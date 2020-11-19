@@ -38,6 +38,11 @@ type KubeLbServiceReconciler struct {
 	ClusterName string
 }
 
+var ServiceMatcher = &kubelb.MatchingAnnotationPredicate{
+	AnnotationName:  "kubernetes.io/service.class",
+	AnnotationValue: "kubelb",
+}
+
 // +kubebuilder:rbac:groups="",resources=services,verbs=get;list;watch;update;patch
 // +kubebuilder:rbac:groups="",resources=services/status,verbs=get
 func (r *KubeLbServiceReconciler) Reconcile(req ctrl.Request) (ctrl.Result, error) {
@@ -105,9 +110,6 @@ func (r *KubeLbServiceReconciler) SetupWithManager(mgr ctrl.Manager) error {
 
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&corev1.Service{}).
-		WithEventFilter(&kubelb.MatchingAnnotationPredicate{
-			AnnotationIngressClass:      "kubernetes.io/service.class",
-			AnnotationIngressClassValue: "kubelb",
-		}).
+		WithEventFilter(ServiceMatcher).
 		Complete(r)
 }
