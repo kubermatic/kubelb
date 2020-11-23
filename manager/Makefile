@@ -4,6 +4,9 @@ IMG ?= kubelb-manager:latest
 # Produce CRDs that work back to Kubernetes 1.16+
 CRD_OPTIONS ?= "crd:crdVersions=v1"
 
+# manager arguments
+ARGS ?= --metrics-addr=:8081
+
 # Get the currently used golang install path (in GOPATH/bin, unless GOBIN is set)
 ifeq (,$(shell go env GOBIN))
 GOBIN=$(shell go env GOPATH)/bin
@@ -23,7 +26,7 @@ manager: generate fmt vet
 
 # Run against the configured Kubernetes cluster in ~/.kube/config
 run: generate fmt vet manifests
-	go run ./main.go
+	go run ./main.go $(ARGS)
 
 # Install CRDs into a cluster
 install: manifests

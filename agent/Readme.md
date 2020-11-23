@@ -15,14 +15,14 @@ The agents requires the kubelb kubernetes config inside a configmap named: kubel
 ## Annotations
 Use annotations in the service object to control Kubelb.
 
-`kubelb.enable: "true"` | Enables Kubelb | 
---- | --- | 
+`kubernetes.io/ingress.class: "kubelb"`  Enables kubelb for ingress 
+
+`kubernetes.io/service.class: "kubelb"`  Enables kubelb for service 
+
+This is only needed if `serve-default-lb` is set to false. 
 
 For more information about Kubernetes annotations: [Concepts annotations](https://kubernetes.io/docs/concepts/overview/working-with-objects/annotations/)
 
-## L4
-
-For now, only L4 load balancing is available. 
 
 ## Todo's 
-
+ 

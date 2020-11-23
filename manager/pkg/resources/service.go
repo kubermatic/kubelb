@@ -44,8 +44,8 @@ func ServiceIsDesiredState(actual, desired *corev1.Service) bool {
 
 	servicePortIsDesiredState := func(actual, desired corev1.ServicePort) bool {
 		return actual.Protocol == desired.Protocol &&
-			actual.Port == desired.Port &&
-			actual.TargetPort == desired.TargetPort
+			actual.Port == desired.Port
+		//&& actual.TargetPort == desired.TargetPort
 	}
 
 	for i := 0; i < len(desired.Spec.Ports); i++ {

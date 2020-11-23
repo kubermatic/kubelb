@@ -25,8 +25,10 @@ import (
 
 // TCPLoadBalancerStatus defines the observed state of TCPLoadBalancer
 type TCPLoadBalancerStatus struct {
-	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
-	// Important: Run "make" to regenerate code after modifying this file
+	// LoadBalancer contains the current status of the load-balancer,
+	// if one is present.
+	// +optional
+	LoadBalancer corev1.LoadBalancerStatus `json:"loadBalancer,omitempty" protobuf:"bytes,1,opt,name=loadBalancer"`
 }
 
 // LoadBalancerPort contains information on service's port.

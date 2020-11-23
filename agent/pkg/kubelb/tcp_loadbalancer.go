@@ -47,6 +47,7 @@ func MapTcpLoadBalancer(userService *corev1.Service, clusterEndpoints []string, 
 		Spec: v1alpha1.TCPLoadBalancerSpec{
 			Ports:     lbServicePorts,
 			Endpoints: lbEndpointSubsets,
+			Type:      userService.Spec.Type,
 		},
 	}
 }
@@ -88,7 +89,16 @@ func TcpLoadBalancerIsDesiredState(actual, desired *v1alpha1.TCPLoadBalancer) bo
 
 	for i := 0; i < len(desired.Spec.Endpoints); i++ {
 
+		if len(desired.Spec.Endpoints[i].Addresses) != len(actual.Spec.Endpoints[i].Addresses) {
+			return false
+		}
+
+		if len(desired.Spec.Endpoints[i].Ports) != len(actual.Spec.Endpoints[i].Ports) {
+			return false
+		}
+
 		for a := 0; a < len(desired.Spec.Endpoints[i].Addresses); a++ {
+
 			if !endpointAddressIsDesiredState(desired.Spec.Endpoints[i].Addresses[a], actual.Spec.Endpoints[i].Addresses[a]) {
 				return false
 			}

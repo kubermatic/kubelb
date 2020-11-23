@@ -58,17 +58,7 @@ func (r *KubeLbNodeReconciler) Reconcile(req ctrl.Request) (ctrl.Result, error) 
 		return ctrl.Result{}, err
 	}
 
-	var clusterEndpoints []string
-	for _, node := range nodes.Items {
-		var internalIp string
-		for _, address := range node.Status.Addresses {
-			if address.Type == corev1.NodeInternalIP {
-				internalIp = address.Address
-			}
-		}
-
-		clusterEndpoints = append(clusterEndpoints, internalIp)
-	}
+	//clusterEndpoints := kubelb.GetEndpoints(nodes, corev1.NodeInternalIP)
 
 	// Todo: update all TcpLB endpoints
 

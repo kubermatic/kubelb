@@ -18,18 +18,19 @@ package controllers
 
 import (
 	"context"
+	"github.com/go-logr/logr"
+	kubelbk8ciov1alpha1 "k8c.io/kubelb/manager/pkg/api/kubelb.k8c.io/v1alpha1"
 	"k8c.io/kubelb/manager/pkg/resources"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
-	"k8s.io/apimachinery/pkg/types"
-
-	"github.com/go-logr/logr"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/cache"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-
-	kubelbk8ciov1alpha1 "k8c.io/kubelb/manager/pkg/api/kubelb.k8c.io/v1alpha1"
+	"sigs.k8s.io/controller-runtime/pkg/handler"
+	"sigs.k8s.io/controller-runtime/pkg/source"
 )
 
 // TCPLoadBalancerReconciler reconciles a TCPLoadBalancer object
@@ -38,6 +39,7 @@ type TCPLoadBalancerReconciler struct {
 	Log    logr.Logger
 	Scheme *runtime.Scheme
 	ctx    context.Context
+	Cache  cache.Cache
 }
 
 // +kubebuilder:rbac:groups=kubelb.k8c.io,resources=tcploadbalancers,verbs=get;list;watch;create;update;patch;delete
@@ -87,9 +89,27 @@ func (r *TCPLoadBalancerReconciler) Reconcile(req ctrl.Request) (ctrl.Result, er
 }
 
 func (r *TCPLoadBalancerReconciler) SetupWithManager(mgr ctrl.Manager) error {
-	return ctrl.NewControllerManagedBy(mgr).
-		For(&kubelbk8ciov1alpha1.TCPLoadBalancer{}).
-		Complete(r)
+	c, err := ctrl.NewControllerManagedBy(mgr).For(&kubelbk8ciov1alpha1.TCPLoadBalancer{}).Build(r)
+
+	if err != nil {
+		return err
+	}
+
+	serviceInformer, err := r.Cache.GetInformer(&corev1.Service{})
+	if err != nil {
+		r.Log.Error(err, "error occurred while getting service informer")
+		return err
+	}
+
+	err = c.Watch(
+		&source.Informer{Informer: serviceInformer},
+		&handler.EnqueueRequestForOwner{
+			OwnerType:    &kubelbk8ciov1alpha1.TCPLoadBalancer{},
+			IsController: true,
+		},
+	)
+
+	return nil
 }
 
 func (r *TCPLoadBalancerReconciler) reconcileService(tcpLoadBalancer *kubelbk8ciov1alpha1.TCPLoadBalancer) error {
@@ -120,8 +140,16 @@ func (r *TCPLoadBalancerReconciler) reconcileService(tcpLoadBalancer *kubelbk8ci
 	if !resources.ServiceIsDesiredState(actualService, desiredService) {
 		log.Info("Updating service", "namespace", tcpLoadBalancer.Namespace, "name", tcpLoadBalancer.Name)
 		actualService.Spec.Ports = desiredService.Spec.Ports
+		err = r.Update(r.ctx, actualService)
 
-		return r.Update(r.ctx, actualService)
+		if err != nil {
+			return err
+		}
+	}
+
+	if tcpLoadBalancer.Spec.Type == corev1.ServiceTypeLoadBalancer && len(tcpLoadBalancer.Status.LoadBalancer.Ingress) == 0 && len(actualService.Status.LoadBalancer.Ingress) != 0 {
+		tcpLoadBalancer.Status.LoadBalancer = actualService.Status.LoadBalancer
+		return r.Status().Update(r.ctx, tcpLoadBalancer)
 	}
 
 	return nil

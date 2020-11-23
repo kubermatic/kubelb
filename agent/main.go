@@ -20,6 +20,7 @@ import (
 	"flag"
 	"k8c.io/kubelb/agent/pkg/controllers"
 	"k8c.io/kubelb/agent/pkg/kubelb"
+	corev1 "k8s.io/api/core/v1"
 	"os"
 
 	"k8s.io/apimachinery/pkg/runtime"
@@ -43,11 +44,16 @@ func init() {
 
 func main() {
 	var metricsAddr string
+	var enableCloudController bool
 	var enableLeaderElection bool
-	flag.StringVar(&metricsAddr, "metrics-addr", ":8080", "The address the metric endpoint binds to.")
+	var endpointAddressTypeString string
+
+	flag.StringVar(&metricsAddr, "metrics-addr", ":0", "The address the metric endpoint binds to.")
+	//Todo: use annotation to have a per service configuration and set the default maybe here
+	flag.StringVar(&endpointAddressTypeString, "node-address-type", ":ExternalIP", "The address type used as an endpoint address.")
+	flag.BoolVar(&enableCloudController, "enable-cloud-provider", true, "Enables cloud controller like behavior.")
 	flag.BoolVar(&enableLeaderElection, "enable-leader-election", false,
-		"Enable leader election for controller agent. "+
-			"Enabling this will ensure there is only one active controller agent.")
+		"Enable leader election for controller agent. Enabling this will ensure there is only one active controller agent.")
 	flag.Parse()
 
 	ctrl.SetLogger(zap.New(zap.UseDevMode(true)))
@@ -75,12 +81,22 @@ func main() {
 		os.Exit(1)
 	}
 
+	//Todo: is there something better i could do=?
+	var endpointAddressType corev1.NodeAddressType
+	if endpointAddressTypeString == string(corev1.NodeInternalIP) {
+		endpointAddressType = corev1.NodeInternalIP
+	} else if endpointAddressTypeString == string(corev1.NodeExternalIP) {
+		endpointAddressType = corev1.NodeExternalIP
+	}
+
 	if err = (&controllers.KubeLbServiceReconciler{
-		Client:      mgr.GetClient(),
-		Log:         ctrl.Log.WithName("service_agent_controllers"),
-		Scheme:      mgr.GetScheme(),
-		TcpLBClient: tcpLBClient,
-		ClusterName: clusterName,
+		Client:              mgr.GetClient(),
+		Log:                 ctrl.Log.WithName("service_agent_controllers"),
+		Scheme:              mgr.GetScheme(),
+		TcpLBClient:         tcpLBClient,
+		CloudController:     enableCloudController,
+		EndpointAddressType: endpointAddressType,
+		ClusterName:         clusterName,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "service_agent_controllers")
 		os.Exit(1)

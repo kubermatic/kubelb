@@ -2,6 +2,26 @@
 
 The manager is responsible for the load balancer resources and takes care of HTTPLoadBalancer and TCPLoadBalancer CRD 
 
+## Requirements 
+
+Type `LoadBalancer` service implementation
+
+An Ingress Controller needs to be installed.
+
+To install Traefik as an Ingress Controller with helm v3 run:
+
+* `helm repo add traefik https://helm.traefik.io/traefik`
+
+* `helm repo update`
+
+* `kubectl create namespace traefik`
+
+* `helm install traefik traefik/traefik --namespace=traefik` 
+
+For development, you might want to run traefik in debug mode: 
+
+`helm install --namespace=traefik  --set="additionalArguments={--log.level=DEBUG}"  traefik traefik/traefik`
+
 ## Kubebuilder 
 
 Generate CRD: `make manifests`

@@ -18,6 +18,7 @@ package controllers
 
 import (
 	"context"
+	"errors"
 	"github.com/go-logr/logr"
 	"k8c.io/kubelb/agent/pkg/kubelb"
 	corev1 "k8s.io/api/core/v1"
@@ -26,16 +27,19 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"time"
 )
 
 // KubeLbIngressReconciler reconciles a Service object
 type KubeLbServiceReconciler struct {
 	client.Client
-	TcpLBClient *kubelb.TcpLBClient
-	Log         logr.Logger
-	Scheme      *runtime.Scheme
-	ctx         context.Context
-	ClusterName string
+	TcpLBClient         *kubelb.TcpLBClient
+	Log                 logr.Logger
+	Scheme              *runtime.Scheme
+	ctx                 context.Context
+	ClusterName         string
+	CloudController     bool
+	EndpointAddressType corev1.NodeAddressType
 }
 
 var ServiceMatcher = &kubelb.MatchingAnnotationPredicate{
@@ -66,10 +70,32 @@ func (r *KubeLbServiceReconciler) Reconcile(req ctrl.Request) (ctrl.Result, erro
 		return ctrl.Result{}, err
 	}
 
-	clusterEndpoints := kubelb.GetEndpoints(nodes, corev1.NodeInternalIP)
+	var clusterEndpoints []string
 
-	if service.Spec.Type != corev1.ServiceTypeNodePort {
-		return ctrl.Result{}, nil
+	//Use node ports as backend for nodePort service and load balancer if the agent server as cloud controller and should provision the load balacner
+	if service.Spec.Type == corev1.ServiceTypeNodePort || (service.Spec.Type == corev1.ServiceTypeLoadBalancer && r.CloudController) {
+		nodes := &corev1.NodeList{}
+		err = r.List(context.Background(), nodes)
+
+		if err != nil {
+			log.Error(err, "unable to list nodes")
+			return ctrl.Result{}, err
+		}
+		clusterEndpoints = kubelb.GetEndpoints(nodes, r.EndpointAddressType)
+
+	} else if service.Spec.Type == corev1.ServiceTypeLoadBalancer {
+		for _, lbIngress := range service.Status.LoadBalancer.Ingress {
+
+			if lbIngress.IP != "" {
+				clusterEndpoints = append(clusterEndpoints, lbIngress.IP)
+			} else {
+				clusterEndpoints = append(clusterEndpoints, lbIngress.Hostname)
+			}
+		}
+	} else {
+		err = errors.New("service type not supported")
+		log.Error(err, "Requires services to be either NodePort or LoadBalancer")
+		return ctrl.Result{}, err
 	}
 
 	log.Info("reconciling service", "name", service.Name, "namespace", service.Namespace)
@@ -93,14 +119,37 @@ func (r *KubeLbServiceReconciler) Reconcile(req ctrl.Request) (ctrl.Result, erro
 		log.Info("Creating TcpLoadBalancer", "namespace", desiredTcpLB.Namespace, "name", desiredTcpLB.Name)
 		_, err = r.TcpLBClient.Create(desiredTcpLB)
 
+		if service.Spec.Type == corev1.ServiceTypeLoadBalancer {
+			return ctrl.Result{
+				Requeue:      true,
+				RequeueAfter: 10 * time.Second,
+			}, nil
+		}
+
 		return ctrl.Result{}, err
+
 	}
 
 	if !kubelb.TcpLoadBalancerIsDesiredState(actualTcpLB, desiredTcpLB) {
 		log.Info("Updating TcpLoadBalancer", "namespace", desiredTcpLB.Namespace, "name", desiredTcpLB.Name)
 		actualTcpLB.Spec = desiredTcpLB.Spec
 		_, err = r.TcpLBClient.Update(actualTcpLB)
-		return ctrl.Result{}, err
+
+		if err != nil {
+			return ctrl.Result{}, err
+		}
+	}
+
+	if service.Spec.Type == corev1.ServiceTypeLoadBalancer && len(service.Status.LoadBalancer.Ingress) == 0 {
+
+		if len(actualTcpLB.Status.LoadBalancer.Ingress) == 0 {
+			return ctrl.Result{
+				Requeue:      true,
+				RequeueAfter: 10 * time.Second,
+			}, nil
+		}
+		service.Status.LoadBalancer = actualTcpLB.Status.LoadBalancer
+		return ctrl.Result{}, r.Client.Status().Update(r.ctx, &service)
 	}
 
 	return ctrl.Result{}, nil
