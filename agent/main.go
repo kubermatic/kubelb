@@ -20,14 +20,18 @@ import (
 	"flag"
 	"k8c.io/kubelb/agent/pkg/controllers"
 	"k8c.io/kubelb/agent/pkg/kubelb"
+	kubelbClient "k8c.io/kubelb/manager/pkg/generated/clientset/versioned"
+	informers "k8c.io/kubelb/manager/pkg/generated/informers/externalversions"
 	corev1 "k8s.io/api/core/v1"
-	"os"
-
 	"k8s.io/apimachinery/pkg/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	_ "k8s.io/client-go/plugin/pkg/client/auth/gcp"
+	"k8s.io/client-go/tools/clientcmd"
+	"os"
+	"path/filepath"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
+	"time"
 	// +kubebuilder:scaffold:imports
 )
 
@@ -38,6 +42,7 @@ var (
 
 func init() {
 	_ = clientgoscheme.AddToScheme(scheme)
+	//_ = kubelbk8ciov1alpha1.SchemeBuilder.AddToScheme(scheme)
 
 	// +kubebuilder:scaffold:scheme
 }
@@ -70,6 +75,21 @@ func main() {
 		os.Exit(1)
 	}
 
+	kubeconfig := filepath.Join(
+		os.Getenv("HOME"), ".kube", "kubelb",
+	)
+	config, err := clientcmd.BuildConfigFromFlags("", kubeconfig)
+	if err != nil {
+		os.Exit(1)
+	}
+
+	clientset, err := kubelbClient.NewForConfig(config)
+	if err != nil {
+		os.Exit(1)
+	}
+
+	tcpLoadBalancerInformerFactory := informers.NewSharedInformerFactory(clientset, time.Second*10)
+
 	//Todo: set via env
 	//Todo: namespace needs to be created inside load balancing cluster
 	var clusterName = "default"
@@ -90,15 +110,16 @@ func main() {
 	}
 
 	if err = (&controllers.KubeLbServiceReconciler{
-		Client:              mgr.GetClient(),
-		Log:                 ctrl.Log.WithName("service_agent_controllers"),
-		Scheme:              mgr.GetScheme(),
-		TcpLBClient:         tcpLBClient,
-		CloudController:     enableCloudController,
-		EndpointAddressType: endpointAddressType,
-		ClusterName:         clusterName,
+		Client:                  mgr.GetClient(),
+		Log:                     ctrl.Log.WithName("kubelb-service-agent.controller"),
+		Scheme:                  mgr.GetScheme(),
+		TcpLBClient:             tcpLBClient,
+		CloudController:         enableCloudController,
+		EndpointAddressType:     endpointAddressType,
+		ClusterName:             clusterName,
+		TcpLoadBalancerInformer: tcpLoadBalancerInformerFactory.Kubelb().V1alpha1().TCPLoadBalancers(),
 	}).SetupWithManager(mgr); err != nil {
-		setupLog.Error(err, "unable to create controller", "controller", "service_agent_controllers")
+		setupLog.Error(err, "unable to create controller", "controller", "kubelb-service-agent.controller")
 		os.Exit(1)
 	}
 
@@ -111,28 +132,31 @@ func main() {
 
 	if err = (&controllers.KubeLbIngressReconciler{
 		Client:       mgr.GetClient(),
-		Log:          ctrl.Log.WithName("ingress_agent_controllers"),
+		Log:          ctrl.Log.WithName("kubelb-ingress-agent.controller"),
 		Scheme:       mgr.GetScheme(),
 		HttpLBClient: httpLBClient,
 		ClusterName:  clusterName,
 	}).SetupWithManager(mgr); err != nil {
-		setupLog.Error(err, "unable to create controller", "controller", "ingress_agent_controllers")
+		setupLog.Error(err, "unable to create controller", "controller", "kubelb-ingress-agent.controller")
 		os.Exit(1)
 	}
 
 	if err = (&controllers.KubeLbNodeReconciler{
 		Client:    mgr.GetClient(),
-		Log:       ctrl.Log.WithName("node_agent_controllers"),
+		Log:       ctrl.Log.WithName("kubelb-node-agent.controller"),
 		Scheme:    mgr.GetScheme(),
 		KlbClient: tcpLBClient,
 	}).SetupWithManager(mgr); err != nil {
-		setupLog.Error(err, "unable to create controller", "controller", "node_agent_controllers")
+		setupLog.Error(err, "unable to create controller", "controller", "kubelb-node-agent.controller")
 		os.Exit(1)
 	}
 
+	sigHandler := ctrl.SetupSignalHandler()
+	tcpLoadBalancerInformerFactory.Start(sigHandler)
+
 	// +kubebuilder:scaffold:builder
 	setupLog.Info("starting kubelb agent")
-	if err := mgr.Start(ctrl.SetupSignalHandler()); err != nil {
+	if err := mgr.Start(sigHandler); err != nil {
 		setupLog.Error(err, "problem running agent")
 		os.Exit(1)
 	}
