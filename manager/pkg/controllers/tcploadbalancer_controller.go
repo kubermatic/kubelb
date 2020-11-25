@@ -140,6 +140,7 @@ func (r *TCPLoadBalancerReconciler) reconcileService(tcpLoadBalancer *kubelbk8ci
 	if !resources.ServiceIsDesiredState(actualService, desiredService) {
 		log.Info("Updating service", "namespace", tcpLoadBalancer.Namespace, "name", tcpLoadBalancer.Name)
 		actualService.Spec.Ports = desiredService.Spec.Ports
+		actualService.Spec.Type = desiredService.Spec.Type
 		err = r.Update(r.ctx, actualService)
 
 		if err != nil {
