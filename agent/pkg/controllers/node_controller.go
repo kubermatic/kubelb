@@ -19,7 +19,7 @@ package controllers
 import (
 	"context"
 	"github.com/go-logr/logr"
-	"k8c.io/kubelb/agent/pkg/kubelb"
+	"k8c.io/kubelb/manager/pkg/generated/clientset/versioned/typed/kubelb.k8c.io/v1alpha1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -29,7 +29,7 @@ import (
 // KubeLbIngressReconciler reconciles a Service object
 type KubeLbNodeReconciler struct {
 	client.Client
-	KlbClient *kubelb.TcpLBClient
+	KlbClient v1alpha1.TCPLoadBalancerInterface
 	Log       logr.Logger
 	Scheme    *runtime.Scheme
 	ctx       context.Context

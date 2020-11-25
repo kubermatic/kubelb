@@ -20,13 +20,11 @@ import (
 	"flag"
 	"k8c.io/kubelb/agent/pkg/controllers"
 	"k8c.io/kubelb/agent/pkg/kubelb"
-	kubelbClient "k8c.io/kubelb/manager/pkg/generated/clientset/versioned"
 	informers "k8c.io/kubelb/manager/pkg/generated/informers/externalversions"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	_ "k8s.io/client-go/plugin/pkg/client/auth/gcp"
-	"k8s.io/client-go/tools/clientcmd"
 	"os"
 	"path/filepath"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -36,8 +34,11 @@ import (
 )
 
 var (
-	scheme   = runtime.NewScheme()
-	setupLog = ctrl.Log.WithName("setup")
+	scheme            = runtime.NewScheme()
+	setupLog          = ctrl.Log.WithName("setup")
+	defaultKubeLbConf = filepath.Join(
+		os.Getenv("HOME"), ".kube", "kubelb",
+	)
 )
 
 func init() {
@@ -52,16 +53,36 @@ func main() {
 	var enableCloudController bool
 	var enableLeaderElection bool
 	var endpointAddressTypeString string
+	var clusterName string
+	var kubeLbKubeconf string
 
 	flag.StringVar(&metricsAddr, "metrics-addr", ":0", "The address the metric endpoint binds to.")
-	//Todo: use annotation to have a per service configuration and set the default maybe here
-	flag.StringVar(&endpointAddressTypeString, "node-address-type", ":ExternalIP", "The address type used as an endpoint address.")
-	flag.BoolVar(&enableCloudController, "enable-cloud-provider", true, "Enables cloud controller like behavior.")
+	flag.StringVar(&endpointAddressTypeString, "node-address-type", ":ExternalIP", "The default address type used as an endpoint address.")
+	flag.StringVar(&clusterName, "cluster-name", "default", "Cluster name where the agent is running. Resources inside the KubeLb cluster will get deployed to the namespace named by cluster name, must be unique.")
+	flag.StringVar(&kubeLbKubeconf, "kubelb-kubeconfig", defaultKubeLbConf, "The path to the kubelb cluster kubeconfig.")
+	flag.BoolVar(&enableCloudController, "enable-cloud-provider", true, "Enables cloud controller like behavior. This will set the status of TCP LoadBalancer")
 	flag.BoolVar(&enableLeaderElection, "enable-leader-election", false,
 		"Enable leader election for controller agent. Enabling this will ensure there is only one active controller agent.")
 	flag.Parse()
 
 	ctrl.SetLogger(zap.New(zap.UseDevMode(true)))
+
+	//Todo: is there something better i could do=?
+	var endpointAddressType corev1.NodeAddressType
+	if endpointAddressTypeString == string(corev1.NodeInternalIP) {
+		endpointAddressType = corev1.NodeInternalIP
+	} else if endpointAddressTypeString == string(corev1.NodeExternalIP) {
+		endpointAddressType = corev1.NodeExternalIP
+	}
+
+	kubeLbClient, err := kubelb.NewClient(clusterName, kubeLbKubeconf)
+
+	if err != nil {
+		setupLog.Error(err, "unable to create client for kubelb cluster")
+		os.Exit(1)
+	}
+
+	tcpLoadBalancerInformerFactory := informers.NewSharedInformerFactory(kubeLbClient.Clientset, time.Second*10)
 
 	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
 		Scheme:             scheme,
@@ -75,45 +96,11 @@ func main() {
 		os.Exit(1)
 	}
 
-	kubeconfig := filepath.Join(
-		os.Getenv("HOME"), ".kube", "kubelb",
-	)
-	config, err := clientcmd.BuildConfigFromFlags("", kubeconfig)
-	if err != nil {
-		os.Exit(1)
-	}
-
-	clientset, err := kubelbClient.NewForConfig(config)
-	if err != nil {
-		os.Exit(1)
-	}
-
-	tcpLoadBalancerInformerFactory := informers.NewSharedInformerFactory(clientset, time.Second*10)
-
-	//Todo: set via env
-	//Todo: namespace needs to be created inside load balancing cluster
-	var clusterName = "default"
-
-	tcpLBClient, err := kubelb.NewTcpLBClient(clusterName)
-
-	if err != nil {
-		setupLog.Error(err, "unable to create kubelb client")
-		os.Exit(1)
-	}
-
-	//Todo: is there something better i could do=?
-	var endpointAddressType corev1.NodeAddressType
-	if endpointAddressTypeString == string(corev1.NodeInternalIP) {
-		endpointAddressType = corev1.NodeInternalIP
-	} else if endpointAddressTypeString == string(corev1.NodeExternalIP) {
-		endpointAddressType = corev1.NodeExternalIP
-	}
-
 	if err = (&controllers.KubeLbServiceReconciler{
 		Client:                  mgr.GetClient(),
 		Log:                     ctrl.Log.WithName("kubelb-service-agent.controller"),
 		Scheme:                  mgr.GetScheme(),
-		TcpLBClient:             tcpLBClient,
+		TcpLBClient:             kubeLbClient.TcpLbClient,
 		CloudController:         enableCloudController,
 		EndpointAddressType:     endpointAddressType,
 		ClusterName:             clusterName,
@@ -123,18 +110,11 @@ func main() {
 		os.Exit(1)
 	}
 
-	httpLBClient, err := kubelb.NewHttpLBClient(clusterName)
-
-	if err != nil {
-		setupLog.Error(err, "unable to create kubelb client")
-		os.Exit(1)
-	}
-
 	if err = (&controllers.KubeLbIngressReconciler{
 		Client:       mgr.GetClient(),
 		Log:          ctrl.Log.WithName("kubelb-ingress-agent.controller"),
 		Scheme:       mgr.GetScheme(),
-		HttpLBClient: httpLBClient,
+		HttpLBClient: kubeLbClient.HttpLbClient,
 		ClusterName:  clusterName,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "kubelb-ingress-agent.controller")
@@ -145,7 +125,7 @@ func main() {
 		Client:    mgr.GetClient(),
 		Log:       ctrl.Log.WithName("kubelb-node-agent.controller"),
 		Scheme:    mgr.GetScheme(),
-		KlbClient: tcpLBClient,
+		KlbClient: kubeLbClient.TcpLbClient,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "kubelb-node-agent.controller")
 		os.Exit(1)

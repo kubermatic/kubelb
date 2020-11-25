@@ -6,7 +6,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 )
 
-//Todo: user addressType corev1.NodeAddressType
 func GetEndpoints(nodes *corev1.NodeList, addressType corev1.NodeAddressType) []string {
 	var clusterEndpoints []string
 	for _, node := range nodes.Items {

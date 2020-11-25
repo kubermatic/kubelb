@@ -20,6 +20,7 @@ import (
 	"context"
 	"github.com/go-logr/logr"
 	"k8c.io/kubelb/agent/pkg/kubelb"
+	kubelbv1alpha1 "k8c.io/kubelb/manager/pkg/generated/clientset/versioned/typed/kubelb.k8c.io/v1alpha1"
 	corev1 "k8s.io/api/core/v1"
 	netv1beta1 "k8s.io/api/networking/v1beta1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -35,7 +36,7 @@ import (
 type KubeLbIngressReconciler struct {
 	client.Client
 	ClusterCache cache.Cache
-	HttpLBClient *kubelb.HttpLBClient
+	HttpLBClient kubelbv1alpha1.HTTPLoadBalancerInterface
 	Log          logr.Logger
 	Scheme       *runtime.Scheme
 	ctx          context.Context
