@@ -8,6 +8,7 @@ import (
 )
 
 const LabelOriginNamespace = "kubelb.k8c.io/origin-ns"
+const LabelOriginName = "kubelb.k8c.io/origin-name"
 
 func MapTcpLoadBalancer(userService *corev1.Service, clusterEndpoints []string, clusterName string) *v1alpha1.TCPLoadBalancer {
 
@@ -48,6 +49,7 @@ func MapTcpLoadBalancer(userService *corev1.Service, clusterEndpoints []string, 
 			Namespace: clusterName,
 			Labels: map[string]string{
 				LabelOriginNamespace: userService.Namespace,
+				LabelOriginName:      userService.Name,
 			},
 		},
 		Spec: v1alpha1.TCPLoadBalancerSpec{

@@ -110,7 +110,7 @@ func (r *KubeLbServiceReconciler) Reconcile(req ctrl.Request) (ctrl.Result, erro
 
 	desiredTcpLB := kubelb.MapTcpLoadBalancer(&service, clusterEndpoints, r.ClusterName)
 
-	actualTcpLB, err := r.TcpLBClient.Get(service.Name, v1.GetOptions{})
+	actualTcpLB, err := r.TcpLBClient.Get(desiredTcpLB.Name, v1.GetOptions{})
 
 	if err != nil {
 		if !apierrors.IsNotFound(err) {
@@ -181,15 +181,21 @@ func (sm *TcpLbMapper) Map(m handler.MapObject) []ctrl.Request {
 	}
 
 	originalNamespace, ok := m.Meta.GetLabels()[kubelb.LabelOriginNamespace]
-	if !(ok && originalNamespace == "") {
-		sm.Log.Error(fmt.Errorf("required label \"%s\" not found", kubelb.LabelOriginNamespace), "failed to queue object, could not determine origin namespace")
+	if !ok || originalNamespace == "" {
+		sm.Log.Error(fmt.Errorf("required label \"%s\" not found", kubelb.LabelOriginNamespace), fmt.Sprintf("failed to queue service for TcpLoadBalacner: %s, could not determine origin namespace", m.Meta.GetName()))
+		return []ctrl.Request{}
+	}
+
+	originalName, ok := m.Meta.GetLabels()[kubelb.LabelOriginName]
+	if !ok || originalNamespace == "" {
+		sm.Log.Error(fmt.Errorf("required label \"%s\" not found", kubelb.LabelOriginName), fmt.Sprintf("failed to queue service for TcpLoadBalacner: %s, could not determine origin name", m.Meta.GetName()))
 		return []ctrl.Request{}
 	}
 
 	return []ctrl.Request{
 		{
 			NamespacedName: types.NamespacedName{
-				Name:      m.Meta.GetName(),
+				Name:      originalName,
 				Namespace: originalNamespace,
 			},
 		},
