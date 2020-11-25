@@ -19,6 +19,7 @@ package controllers
 import (
 	"context"
 	"errors"
+	"fmt"
 	"github.com/go-logr/logr"
 	"k8c.io/kubelb/agent/pkg/kubelb"
 	kubelbk8ciov1alpha1 "k8c.io/kubelb/manager/pkg/api/kubelb.k8c.io/v1alpha1"
@@ -109,14 +110,6 @@ func (r *KubeLbServiceReconciler) Reconcile(req ctrl.Request) (ctrl.Result, erro
 
 	desiredTcpLB := kubelb.MapTcpLoadBalancer(&service, clusterEndpoints, r.ClusterName)
 
-	//Todo: not possible because this resource lives in another cluster
-	// Probably use finalizers here instead
-	//err = ctrl.SetControllerReference(&service, desiredTcpLB, r.Scheme)
-	//if err != nil {
-	//	log.Error(err, "unable to set controller reference")
-	//	return ctrl.Result{}, err
-	//}
-
 	actualTcpLB, err := r.TcpLBClient.Get(service.Name, v1.GetOptions{})
 
 	if err != nil {
@@ -126,7 +119,6 @@ func (r *KubeLbServiceReconciler) Reconcile(req ctrl.Request) (ctrl.Result, erro
 		log.Info("creating TcpLoadBalancer", "namespace", desiredTcpLB.Namespace, "name", desiredTcpLB.Name)
 		_, err = r.TcpLBClient.Create(desiredTcpLB)
 		return ctrl.Result{}, err
-
 	}
 
 	if !kubelb.TcpLoadBalancerIsDesiredState(actualTcpLB, desiredTcpLB) {
@@ -161,7 +153,7 @@ func (r *KubeLbServiceReconciler) SetupWithManager(mgr ctrl.Manager) error {
 
 	err = c.Watch(
 		&source.Informer{Informer: r.TcpLoadBalancerInformer.Informer()},
-		&handler.EnqueueRequestsFromMapFunc{ToRequests: &TcpLbMapper{ClusterName: r.ClusterName}},
+		&handler.EnqueueRequestsFromMapFunc{ToRequests: &TcpLbMapper{ClusterName: r.ClusterName, Log: r.Log}},
 	)
 
 	return err
@@ -172,6 +164,7 @@ var _ handler.Mapper = &TcpLbMapper{}
 
 type TcpLbMapper struct {
 	ClusterName string
+	Log         logr.Logger
 }
 
 // Map enqueues a request per each iems at each node event.
@@ -187,12 +180,17 @@ func (sm *TcpLbMapper) Map(m handler.MapObject) []ctrl.Request {
 		return []ctrl.Request{}
 	}
 
-	//Todo: set owner ref or at least namespace of the corresponding svc inside TcpLb obejct
+	originalNamespace, ok := m.Meta.GetLabels()[kubelb.LabelOriginNamespace]
+	if !(ok && originalNamespace == "") {
+		sm.Log.Error(fmt.Errorf("required label \"%s\" not found", kubelb.LabelOriginNamespace), "failed to queue object, could not determine origin namespace")
+		return []ctrl.Request{}
+	}
+
 	return []ctrl.Request{
 		{
 			NamespacedName: types.NamespacedName{
 				Name:      m.Meta.GetName(),
-				Namespace: "default",
+				Namespace: originalNamespace,
 			},
 		},
 	}
