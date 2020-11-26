@@ -75,6 +75,11 @@ func main() {
 		endpointAddressType = corev1.NodeExternalIP
 	}
 
+	var sharedEndpoints = kubelb.Endpoints{
+		ClusterEndpoints:    []string{},
+		EndpointAddressType: endpointAddressType,
+	}
+
 	kubeLbClient, err := kubelb.NewClient(clusterName, kubeLbKubeconf)
 
 	if err != nil {
@@ -96,13 +101,24 @@ func main() {
 		os.Exit(1)
 	}
 
+	if err = (&controllers.KubeLbNodeReconciler{
+		Client:    mgr.GetClient(),
+		Log:       ctrl.Log.WithName("kubelb-node-agent.controller"),
+		Scheme:    mgr.GetScheme(),
+		KlbClient: kubeLbClient.TcpLbClient,
+		Endpoints: &sharedEndpoints,
+	}).SetupWithManager(mgr); err != nil {
+		setupLog.Error(err, "unable to create controller", "controller", "kubelb-node-agent.controller")
+		os.Exit(1)
+	}
+
 	if err = (&controllers.KubeLbServiceReconciler{
 		Client:                  mgr.GetClient(),
 		Log:                     ctrl.Log.WithName("kubelb-service-agent.controller"),
 		Scheme:                  mgr.GetScheme(),
 		TcpLBClient:             kubeLbClient.TcpLbClient,
 		CloudController:         enableCloudController,
-		EndpointAddressType:     endpointAddressType,
+		Endpoints:               &sharedEndpoints,
 		ClusterName:             clusterName,
 		TcpLoadBalancerInformer: tcpLoadBalancerInformerFactory.Kubelb().V1alpha1().TCPLoadBalancers(),
 	}).SetupWithManager(mgr); err != nil {
@@ -118,16 +134,6 @@ func main() {
 		ClusterName:  clusterName,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "kubelb-ingress-agent.controller")
-		os.Exit(1)
-	}
-
-	if err = (&controllers.KubeLbNodeReconciler{
-		Client:    mgr.GetClient(),
-		Log:       ctrl.Log.WithName("kubelb-node-agent.controller"),
-		Scheme:    mgr.GetScheme(),
-		KlbClient: kubeLbClient.TcpLbClient,
-	}).SetupWithManager(mgr); err != nil {
-		setupLog.Error(err, "unable to create controller", "controller", "kubelb-node-agent.controller")
 		os.Exit(1)
 	}
 

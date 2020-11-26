@@ -1,24 +1,9 @@
 package kubelb
 
 import (
-	corev1 "k8s.io/api/core/v1"
 	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 )
-
-func GetEndpoints(nodes *corev1.NodeList, addressType corev1.NodeAddressType) []string {
-	var clusterEndpoints []string
-	for _, node := range nodes.Items {
-		var internalIp string
-		for _, address := range node.Status.Addresses {
-			if address.Type == addressType {
-				internalIp = address.Address
-			}
-		}
-		clusterEndpoints = append(clusterEndpoints, internalIp)
-	}
-	return clusterEndpoints
-}
 
 var _ predicate.Predicate = &MatchingAnnotationPredicate{}
 

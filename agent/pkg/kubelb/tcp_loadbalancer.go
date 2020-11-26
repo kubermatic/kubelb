@@ -1,7 +1,7 @@
 package kubelb
 
 import (
-	"k8c.io/kubelb/manager/pkg/api/kubelb.k8c.io/v1alpha1"
+	kubelbiov1alpha1 "k8c.io/kubelb/manager/pkg/api/kubelb.k8c.io/v1alpha1"
 	corev1 "k8s.io/api/core/v1"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"strings"
@@ -10,40 +10,40 @@ import (
 const LabelOriginNamespace = "kubelb.k8c.io/origin-ns"
 const LabelOriginName = "kubelb.k8c.io/origin-name"
 
-func MapTcpLoadBalancer(userService *corev1.Service, clusterEndpoints []string, clusterName string) *v1alpha1.TCPLoadBalancer {
+func MapTcpLoadBalancer(userService *corev1.Service, clusterEndpoints []string, clusterName string) *kubelbiov1alpha1.TCPLoadBalancer {
 
-	var lbServicePorts []v1alpha1.LoadBalancerPort
-	var lbEndpointSubsets []v1alpha1.LoadBalancerEndpoints
-	var lbEndpointPorts []v1alpha1.EndpointPort
+	var lbServicePorts []kubelbiov1alpha1.LoadBalancerPort
+	var lbEndpointSubsets []kubelbiov1alpha1.LoadBalancerEndpoints
+	var lbEndpointPorts []kubelbiov1alpha1.EndpointPort
 
 	//mapping into load balancing service and endpoint subset ports
 	for _, port := range userService.Spec.Ports {
-		lbServicePorts = append(lbServicePorts, v1alpha1.LoadBalancerPort{
+		lbServicePorts = append(lbServicePorts, kubelbiov1alpha1.LoadBalancerPort{
 			Name:     port.Name,
 			Port:     port.Port,
 			Protocol: port.Protocol,
 		})
 
-		lbEndpointPorts = append(lbEndpointPorts, v1alpha1.EndpointPort{
+		lbEndpointPorts = append(lbEndpointPorts, kubelbiov1alpha1.EndpointPort{
 			Name:     port.Name,
 			Port:     port.NodePort,
 			Protocol: port.Protocol,
 		})
 	}
 
-	var endpointAddresses []v1alpha1.EndpointAddress
+	var endpointAddresses []kubelbiov1alpha1.EndpointAddress
 	for _, endpoint := range clusterEndpoints {
-		endpointAddresses = append(endpointAddresses, v1alpha1.EndpointAddress{
+		endpointAddresses = append(endpointAddresses, kubelbiov1alpha1.EndpointAddress{
 			IP: endpoint,
 		})
 	}
 
-	lbEndpointSubsets = append(lbEndpointSubsets, v1alpha1.LoadBalancerEndpoints{
+	lbEndpointSubsets = append(lbEndpointSubsets, kubelbiov1alpha1.LoadBalancerEndpoints{
 		Addresses: endpointAddresses,
 		Ports:     lbEndpointPorts,
 	})
 
-	return &v1alpha1.TCPLoadBalancer{
+	return &kubelbiov1alpha1.TCPLoadBalancer{
 		ObjectMeta: v1.ObjectMeta{
 			Name:      strings.Join([]string{userService.Namespace, userService.Name}, "-"),
 			Namespace: clusterName,
@@ -52,7 +52,7 @@ func MapTcpLoadBalancer(userService *corev1.Service, clusterEndpoints []string, 
 				LabelOriginName:      userService.Name,
 			},
 		},
-		Spec: v1alpha1.TCPLoadBalancerSpec{
+		Spec: kubelbiov1alpha1.TCPLoadBalancerSpec{
 			Ports:     lbServicePorts,
 			Endpoints: lbEndpointSubsets,
 			Type:      userService.Spec.Type,
@@ -60,7 +60,7 @@ func MapTcpLoadBalancer(userService *corev1.Service, clusterEndpoints []string, 
 	}
 }
 
-func TcpLoadBalancerIsDesiredState(actual, desired *v1alpha1.TCPLoadBalancer) bool {
+func TcpLoadBalancerIsDesiredState(actual, desired *kubelbiov1alpha1.TCPLoadBalancer) bool {
 
 	if actual.Spec.Type != desired.Spec.Type {
 		return false
@@ -70,7 +70,7 @@ func TcpLoadBalancerIsDesiredState(actual, desired *v1alpha1.TCPLoadBalancer) bo
 		return false
 	}
 
-	loadBalancerPortIsDesiredState := func(actual, desired v1alpha1.LoadBalancerPort) bool {
+	loadBalancerPortIsDesiredState := func(actual, desired kubelbiov1alpha1.LoadBalancerPort) bool {
 		return actual.Protocol == desired.Protocol &&
 			actual.Port == desired.Port
 	}
@@ -85,12 +85,12 @@ func TcpLoadBalancerIsDesiredState(actual, desired *v1alpha1.TCPLoadBalancer) bo
 		return false
 	}
 
-	endpointPortIsDesiredState := func(actual, desired v1alpha1.EndpointPort) bool {
+	endpointPortIsDesiredState := func(actual, desired kubelbiov1alpha1.EndpointPort) bool {
 		return actual.Port == desired.Port &&
 			actual.Protocol == desired.Protocol
 	}
 
-	endpointAddressIsDesiredState := func(actual, desired v1alpha1.EndpointAddress) bool {
+	endpointAddressIsDesiredState := func(actual, desired kubelbiov1alpha1.EndpointAddress) bool {
 		return actual.Hostname == desired.Hostname &&
 			actual.IP == desired.IP
 	}

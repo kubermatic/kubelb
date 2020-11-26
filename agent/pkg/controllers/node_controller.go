@@ -19,8 +19,11 @@ package controllers
 import (
 	"context"
 	"github.com/go-logr/logr"
+	"k8c.io/kubelb/agent/pkg/kubelb"
+	kubelbiov1alpha1 "k8c.io/kubelb/manager/pkg/api/kubelb.k8c.io/v1alpha1"
 	"k8c.io/kubelb/manager/pkg/generated/clientset/versioned/typed/kubelb.k8c.io/v1alpha1"
 	corev1 "k8s.io/api/core/v1"
+	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -33,36 +36,56 @@ type KubeLbNodeReconciler struct {
 	Log       logr.Logger
 	Scheme    *runtime.Scheme
 	ctx       context.Context
+	Endpoints *kubelb.Endpoints
 }
 
-// +kubebuilder:rbac:groups="",resources=node,verbs=get;list;watch
+// +kubebuilder:rbac:groups="",resources=node,verbs=list
 func (r *KubeLbNodeReconciler) Reconcile(req ctrl.Request) (ctrl.Result, error) {
 	r.ctx = context.Background()
 	log := r.Log.WithValues("cluster", req.NamespacedName)
 
-	var node corev1.Node
-	err := r.Get(r.ctx, req.NamespacedName, &node)
-	if err != nil {
-		log.Error(err, "unable to fetch node")
-		// we'll ignore not-found errors, since they can't be fixed by an immediate
-		// requeue (we'll need to wait for a new notification), and we can get them
-		// on deleted requests.
-		return ctrl.Result{}, client.IgnoreNotFound(err)
-	}
-
-	nodes := &corev1.NodeList{}
-	err = r.List(context.Background(), nodes)
+	nodeList := &corev1.NodeList{}
+	err := r.List(context.Background(), nodeList)
 
 	if err != nil {
-		log.Error(err, "unable to list nodes")
+		log.Error(err, "unable to list nodeList")
 		return ctrl.Result{}, err
 	}
 
-	//clusterEndpoints := kubelb.GetEndpoints(nodes, corev1.NodeInternalIP)
+	if r.Endpoints.EndpointIsDesiredState(nodeList) {
+		return ctrl.Result{}, err
+	}
 
-	// Todo: update all TcpLB endpoints
+	r.Endpoints.ClusterEndpoints = r.Endpoints.GetEndpoints(nodeList)
 
-	return ctrl.Result{}, nil
+	//patch endpoints
+	tcpLbList, err := r.KlbClient.List(v1.ListOptions{})
+
+	if err != nil {
+		log.Error(err, "unable to list TcpLoadBalancer")
+		return ctrl.Result{}, err
+	}
+
+	var endpointAddresses []kubelbiov1alpha1.EndpointAddress
+	for _, endpoint := range r.Endpoints.ClusterEndpoints {
+		endpointAddresses = append(endpointAddresses, kubelbiov1alpha1.EndpointAddress{
+			IP: endpoint,
+		})
+	}
+
+	for _, tcpLb := range tcpLbList.Items {
+		for _, endpoints := range tcpLb.Spec.Endpoints {
+			endpoints.Addresses = endpointAddresses
+		}
+
+		_, err = r.KlbClient.Update(&tcpLb)
+
+		if err != nil {
+			log.Error(err, "unable to update TcpLoadBalancer")
+		}
+	}
+
+	return ctrl.Result{}, err
 }
 
 func (r *KubeLbNodeReconciler) SetupWithManager(mgr ctrl.Manager) error {

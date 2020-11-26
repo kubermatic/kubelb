@@ -45,7 +45,7 @@ type KubeLbServiceReconciler struct {
 	ctx                     context.Context
 	ClusterName             string
 	CloudController         bool
-	EndpointAddressType     corev1.NodeAddressType
+	Endpoints               *kubelb.Endpoints
 	TcpLoadBalancerInformer kubelbk8ciov1alpha1informers.TCPLoadBalancerInformer
 }
 
@@ -71,28 +71,10 @@ func (r *KubeLbServiceReconciler) Reconcile(req ctrl.Request) (ctrl.Result, erro
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 
-	nodes := &corev1.NodeList{}
-	err = r.List(context.Background(), nodes)
-
-	if err != nil {
-		log.Error(err, "unable to list nodes")
-		return ctrl.Result{}, err
-	}
-
 	var clusterEndpoints []string
-
 	//Use node ports as backend for nodePort service and load balancer if the agent server as cloud controller and should provision the load balacner
 	if service.Spec.Type == corev1.ServiceTypeNodePort || (service.Spec.Type == corev1.ServiceTypeLoadBalancer && r.CloudController) {
-		nodes := &corev1.NodeList{}
-		err = r.List(context.Background(), nodes)
-
-		if err != nil {
-			log.Error(err, "unable to list nodes")
-			return ctrl.Result{}, err
-		}
-
-		clusterEndpoints = kubelb.GetEndpoints(nodes, r.EndpointAddressType)
-
+		clusterEndpoints = r.Endpoints.ClusterEndpoints
 	} else if service.Spec.Type == corev1.ServiceTypeLoadBalancer {
 		for _, lbIngress := range service.Status.LoadBalancer.Ingress {
 
@@ -187,7 +169,7 @@ func (sm *TcpLbMapper) Map(m handler.MapObject) []ctrl.Request {
 	}
 
 	originalName, ok := m.Meta.GetLabels()[kubelb.LabelOriginName]
-	if !ok || originalNamespace == "" {
+	if !ok || originalName == "" {
 		sm.Log.Error(fmt.Errorf("required label \"%s\" not found", kubelb.LabelOriginName), fmt.Sprintf("failed to queue service for TcpLoadBalacner: %s, could not determine origin name", m.Meta.GetName()))
 		return []ctrl.Request{}
 	}
