@@ -1,38 +1,62 @@
 package kubelb
 
 import (
-	"sigs.k8s.io/controller-runtime/pkg/event"
-	"sigs.k8s.io/controller-runtime/pkg/predicate"
+	"fmt"
+	"github.com/go-logr/logr"
+	kubelbk8ciov1alpha1 "k8c.io/kubelb/manager/pkg/api/kubelb.k8c.io/v1alpha1"
+	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
+	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/handler"
+	"strings"
 )
 
-var _ predicate.Predicate = &MatchingAnnotationPredicate{}
+const LabelOriginNamespace = "kubelb.k8c.io/origin-ns"
+const LabelOriginName = "kubelb.k8c.io/origin-name"
 
-type MatchingAnnotationPredicate struct {
-	AnnotationName  string
-	AnnotationValue string
+var _ handler.Mapper = &TcpLbMapper{}
+
+type TcpLbMapper struct {
+	ClusterName string
+	Log         logr.Logger
 }
 
-// Create returns true if the Create event should be processed
-func (r *MatchingAnnotationPredicate) Create(e event.CreateEvent) bool {
-	return r.Match(e.Meta.GetAnnotations())
+// Map enqueues a request per each iems at each node event.
+func (sm *TcpLbMapper) Map(m handler.MapObject) []ctrl.Request {
+
+	if m.Meta.GetNamespace() != sm.ClusterName {
+		return []ctrl.Request{}
+	}
+
+	tcpLb := m.Object.(*kubelbk8ciov1alpha1.TCPLoadBalancer)
+
+	if tcpLb.Spec.Type != corev1.ServiceTypeLoadBalancer {
+		return []ctrl.Request{}
+	}
+
+	originalNamespace, ok := m.Meta.GetLabels()[LabelOriginNamespace]
+	if !ok || originalNamespace == "" {
+		sm.Log.Error(fmt.Errorf("required label \"%s\" not found", LabelOriginNamespace), fmt.Sprintf("failed to queue service for TcpLoadBalacner: %s, could not determine origin namespace", m.Meta.GetName()))
+		return []ctrl.Request{}
+	}
+
+	originalName, ok := m.Meta.GetLabels()[LabelOriginName]
+	if !ok || originalName == "" {
+		sm.Log.Error(fmt.Errorf("required label \"%s\" not found", LabelOriginName), fmt.Sprintf("failed to queue service for TcpLoadBalacner: %s, could not determine origin name", m.Meta.GetName()))
+		return []ctrl.Request{}
+	}
+
+	return []ctrl.Request{
+		{
+			NamespacedName: types.NamespacedName{
+				Name:      originalName,
+				Namespace: originalNamespace,
+			},
+		},
+	}
 }
 
-// Delete returns true if the Delete event should be processed
-func (r *MatchingAnnotationPredicate) Delete(e event.DeleteEvent) bool {
-	return r.Match(e.Meta.GetAnnotations())
-}
-
-// Update returns true if the Update event should be processed
-func (r *MatchingAnnotationPredicate) Update(e event.UpdateEvent) bool {
-	return r.Match(e.MetaNew.GetAnnotations())
-}
-
-// Generic returns true if the Generic event should be processed
-func (r *MatchingAnnotationPredicate) Generic(e event.GenericEvent) bool {
-	return r.Match(e.Meta.GetAnnotations())
-}
-
-func (r *MatchingAnnotationPredicate) Match(annotations map[string]string) bool {
-	val, ok := annotations[r.AnnotationName]
-	return !(ok && val == "") && val == r.AnnotationValue
+func NamespacedName(obj *metav1.ObjectMeta) string {
+	return strings.Join([]string{obj.Namespace, obj.Name}, "-")
 }

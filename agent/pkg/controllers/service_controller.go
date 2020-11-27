@@ -19,22 +19,21 @@ package controllers
 import (
 	"context"
 	"errors"
-	"fmt"
 	"github.com/go-logr/logr"
 	"k8c.io/kubelb/agent/pkg/kubelb"
-	kubelbk8ciov1alpha1 "k8c.io/kubelb/manager/pkg/api/kubelb.k8c.io/v1alpha1"
 	"k8c.io/kubelb/manager/pkg/generated/clientset/versioned/typed/kubelb.k8c.io/v1alpha1"
 	kubelbk8ciov1alpha1informers "k8c.io/kubelb/manager/pkg/generated/informers/externalversions/kubelb.k8c.io/v1alpha1"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/source"
 )
+
+const TcpLbFinalizerName = "kubelb.k8c.io/tcplb-finalizer"
 
 // KubeLbIngressReconciler reconciles a Service object
 type KubeLbServiceReconciler struct {
@@ -49,7 +48,7 @@ type KubeLbServiceReconciler struct {
 	TcpLoadBalancerInformer kubelbk8ciov1alpha1informers.TCPLoadBalancerInformer
 }
 
-var ServiceMatcher = &kubelb.MatchingAnnotationPredicate{
+var ServiceMatcher = &MatchingAnnotationPredicate{
 	AnnotationName:  "kubernetes.io/service.class",
 	AnnotationValue: "kubelb",
 }
@@ -57,6 +56,7 @@ var ServiceMatcher = &kubelb.MatchingAnnotationPredicate{
 // +kubebuilder:rbac:groups="",resources=services,verbs=get;list;watch;update;patch
 // +kubebuilder:rbac:groups="",resources=services/status,verbs=get
 func (r *KubeLbServiceReconciler) Reconcile(req ctrl.Request) (ctrl.Result, error) {
+
 	r.ctx = context.Background()
 	log := r.Log.WithValues("cluster", r.ClusterName)
 
@@ -69,6 +69,40 @@ func (r *KubeLbServiceReconciler) Reconcile(req ctrl.Request) (ctrl.Result, erro
 			log.Error(err, "unable to fetch service")
 		}
 		return ctrl.Result{}, client.IgnoreNotFound(err)
+	}
+
+	// examine DeletionTimestamp to determine if object is under deletion
+	if service.ObjectMeta.DeletionTimestamp.IsZero() {
+		// The object is not being deleted, so if it does not have our finalizer,
+		// then lets add the finalizer and update the object. This is equivalent
+		// registering our finalizer.
+		if !ContainsString(service.ObjectMeta.Finalizers, TcpLbFinalizerName) {
+			service.ObjectMeta.Finalizers = append(service.ObjectMeta.Finalizers, TcpLbFinalizerName)
+			if err := r.Update(r.ctx, &service); err != nil {
+				return ctrl.Result{}, err
+			}
+		}
+	} else {
+		// The object is being deleted
+		if ContainsString(service.ObjectMeta.Finalizers, TcpLbFinalizerName) {
+
+			log.Info("deleting TCPLoadBalancer", "name", kubelb.NamespacedName(&service.ObjectMeta))
+
+			// our finalizer is present, so lets handle any external dependency
+			if err := r.TcpLBClient.Delete(kubelb.NamespacedName(&service.ObjectMeta), &v1.DeleteOptions{}); err != nil {
+				// if fail to delete the external dependency here, return with error
+				// so that it can be retried
+				return ctrl.Result{}, err
+			}
+			// remove our finalizer from the list and update it.
+			service.ObjectMeta.Finalizers = RemoveString(service.ObjectMeta.Finalizers, TcpLbFinalizerName)
+			if err := r.Update(r.ctx, &service); err != nil {
+				return ctrl.Result{}, err
+			}
+		}
+
+		// Stop reconciliation as the item is being deleted
+		return ctrl.Result{}, nil
 	}
 
 	var clusterEndpoints []string
@@ -135,51 +169,9 @@ func (r *KubeLbServiceReconciler) SetupWithManager(mgr ctrl.Manager) error {
 
 	err = c.Watch(
 		&source.Informer{Informer: r.TcpLoadBalancerInformer.Informer()},
-		&handler.EnqueueRequestsFromMapFunc{ToRequests: &TcpLbMapper{ClusterName: r.ClusterName, Log: r.Log}},
+		&handler.EnqueueRequestsFromMapFunc{ToRequests: &kubelb.TcpLbMapper{ClusterName: r.ClusterName, Log: r.Log}},
 	)
 
 	return err
 
-}
-
-var _ handler.Mapper = &TcpLbMapper{}
-
-type TcpLbMapper struct {
-	ClusterName string
-	Log         logr.Logger
-}
-
-// Map enqueues a request per each iems at each node event.
-func (sm *TcpLbMapper) Map(m handler.MapObject) []ctrl.Request {
-
-	if m.Meta.GetNamespace() != sm.ClusterName {
-		return []ctrl.Request{}
-	}
-
-	tcpLb := m.Object.(*kubelbk8ciov1alpha1.TCPLoadBalancer)
-
-	if tcpLb.Spec.Type != corev1.ServiceTypeLoadBalancer {
-		return []ctrl.Request{}
-	}
-
-	originalNamespace, ok := m.Meta.GetLabels()[kubelb.LabelOriginNamespace]
-	if !ok || originalNamespace == "" {
-		sm.Log.Error(fmt.Errorf("required label \"%s\" not found", kubelb.LabelOriginNamespace), fmt.Sprintf("failed to queue service for TcpLoadBalacner: %s, could not determine origin namespace", m.Meta.GetName()))
-		return []ctrl.Request{}
-	}
-
-	originalName, ok := m.Meta.GetLabels()[kubelb.LabelOriginName]
-	if !ok || originalName == "" {
-		sm.Log.Error(fmt.Errorf("required label \"%s\" not found", kubelb.LabelOriginName), fmt.Sprintf("failed to queue service for TcpLoadBalacner: %s, could not determine origin name", m.Meta.GetName()))
-		return []ctrl.Request{}
-	}
-
-	return []ctrl.Request{
-		{
-			NamespacedName: types.NamespacedName{
-				Name:      originalName,
-				Namespace: originalNamespace,
-			},
-		},
-	}
 }

@@ -32,6 +32,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
+const HttpLbFinalizerName = "kubelb.k8c.io/httplb-finalizer"
+
 // KubeLbIngressReconciler reconciles a Service object
 type KubeLbIngressReconciler struct {
 	client.Client
@@ -43,7 +45,7 @@ type KubeLbIngressReconciler struct {
 	ClusterName  string
 }
 
-var IngressMatcher = &kubelb.MatchingAnnotationPredicate{
+var IngressMatcher = &MatchingAnnotationPredicate{
 	AnnotationName:  "kubernetes.io/ingress.class",
 	AnnotationValue: "kubelb",
 }
@@ -52,6 +54,8 @@ var IngressMatcher = &kubelb.MatchingAnnotationPredicate{
 func (r *KubeLbIngressReconciler) Reconcile(req ctrl.Request) (ctrl.Result, error) {
 	r.ctx = context.Background()
 	log := r.Log.WithValues("kubelb_ingress_agent", req.NamespacedName)
+
+	log.Info("reconciling ingress", "name", req.Name, "namespace", req.Namespace)
 
 	var ingress netv1beta1.Ingress
 	err := r.Get(r.ctx, req.NamespacedName, &ingress)
@@ -62,9 +66,41 @@ func (r *KubeLbIngressReconciler) Reconcile(req ctrl.Request) (ctrl.Result, erro
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 
-	log.Info("reconciling ingress", "name", ingress.Name, "namespace", ingress.Namespace)
+	// examine DeletionTimestamp to determine if object is under deletion
+	if ingress.ObjectMeta.DeletionTimestamp.IsZero() {
+		// The object is not being deleted, so if it does not have our finalizer,
+		// then lets add the finalizer and update the object. This is equivalent
+		// registering our finalizer.
+		if !ContainsString(ingress.ObjectMeta.Finalizers, HttpLbFinalizerName) {
+			ingress.ObjectMeta.Finalizers = append(ingress.ObjectMeta.Finalizers, HttpLbFinalizerName)
+			if err := r.Update(r.ctx, &ingress); err != nil {
+				return ctrl.Result{}, err
+			}
+		}
+	} else {
+		// The object is being deleted
+		if ContainsString(ingress.ObjectMeta.Finalizers, HttpLbFinalizerName) {
 
-	err = r.exposeIngressBackendServices(&ingress)
+			log.Info("deleting HttpLoadBalancer", "name", kubelb.NamespacedName(&ingress.ObjectMeta))
+
+			// our finalizer is present, so lets handle any external dependency
+			if err := r.HttpLBClient.Delete(kubelb.NamespacedName(&ingress.ObjectMeta), &v1.DeleteOptions{}); err != nil {
+				// if fail to delete the external dependency here, return with error
+				// so that it can be retried
+				return ctrl.Result{}, err
+			}
+			// remove our finalizer from the list and update it.
+			ingress.ObjectMeta.Finalizers = RemoveString(ingress.ObjectMeta.Finalizers, HttpLbFinalizerName)
+			if err := r.Update(r.ctx, &ingress); err != nil {
+				return ctrl.Result{}, err
+			}
+		}
+
+		// Stop reconciliation as the item is being deleted
+		return ctrl.Result{}, nil
+	}
+
+	err = r.exposeBackendServices(&ingress)
 
 	if err != nil {
 		return ctrl.Result{}, err
@@ -91,7 +127,7 @@ func (r *KubeLbIngressReconciler) Reconcile(req ctrl.Request) (ctrl.Result, erro
 	return ctrl.Result{}, err
 }
 
-func (r *KubeLbIngressReconciler) exposeIngressBackendServices(ingress *netv1beta1.Ingress) error {
+func (r *KubeLbIngressReconciler) exposeBackendServices(ingress *netv1beta1.Ingress) error {
 
 	log := r.Log.WithValues("kubelb_ingress_agent", "exposing_backends")
 

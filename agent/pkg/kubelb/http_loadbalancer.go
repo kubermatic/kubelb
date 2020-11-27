@@ -3,7 +3,7 @@ package kubelb
 import (
 	"k8c.io/kubelb/manager/pkg/api/kubelb.k8c.io/v1alpha1"
 	"k8s.io/api/networking/v1beta1"
-	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 func MapHttpLoadBalancer(userIngress *v1beta1.Ingress, clusterName string) *v1alpha1.HTTPLoadBalancer {
@@ -32,9 +32,13 @@ func MapHttpLoadBalancer(userIngress *v1beta1.Ingress, clusterName string) *v1al
 	}
 
 	return &v1alpha1.HTTPLoadBalancer{
-		ObjectMeta: v1.ObjectMeta{
-			Name:      userIngress.Name,
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      NamespacedName(&userIngress.ObjectMeta),
 			Namespace: clusterName,
+			Labels: map[string]string{
+				LabelOriginNamespace: userIngress.Namespace,
+				LabelOriginName:      userIngress.Name,
+			},
 		},
 		Spec: v1alpha1.HTTPLoadBalancerSpec{
 			Rules: rules,

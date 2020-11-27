@@ -19,7 +19,7 @@ type Client struct {
 func NewClient(clusterName string, kubeConfPath string) (*Client, error) {
 
 	var kubeconfig string
-	if kubeConfPath != "" {
+	if kubeConfPath == "" {
 		kubeconfig = filepath.Join(
 			os.Getenv("HOME"), ".kube", "kubelb",
 		)

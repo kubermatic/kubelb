@@ -3,12 +3,8 @@ package kubelb
 import (
 	kubelbiov1alpha1 "k8c.io/kubelb/manager/pkg/api/kubelb.k8c.io/v1alpha1"
 	corev1 "k8s.io/api/core/v1"
-	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"strings"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
-
-const LabelOriginNamespace = "kubelb.k8c.io/origin-ns"
-const LabelOriginName = "kubelb.k8c.io/origin-name"
 
 func MapTcpLoadBalancer(userService *corev1.Service, clusterEndpoints []string, clusterName string) *kubelbiov1alpha1.TCPLoadBalancer {
 
@@ -44,8 +40,8 @@ func MapTcpLoadBalancer(userService *corev1.Service, clusterEndpoints []string, 
 	})
 
 	return &kubelbiov1alpha1.TCPLoadBalancer{
-		ObjectMeta: v1.ObjectMeta{
-			Name:      strings.Join([]string{userService.Namespace, userService.Name}, "-"),
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      NamespacedName(&userService.ObjectMeta),
 			Namespace: clusterName,
 			Labels: map[string]string{
 				LabelOriginNamespace: userService.Namespace,
