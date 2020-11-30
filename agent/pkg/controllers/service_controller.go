@@ -55,6 +55,7 @@ var ServiceMatcher = &MatchingAnnotationPredicate{
 
 // +kubebuilder:rbac:groups="",resources=services,verbs=get;list;watch;update;patch
 // +kubebuilder:rbac:groups="",resources=services/status,verbs=get
+
 func (r *KubeLbServiceReconciler) Reconcile(req ctrl.Request) (ctrl.Result, error) {
 
 	r.ctx = context.Background()

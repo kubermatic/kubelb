@@ -9,7 +9,7 @@ rules:
 - apiGroups:
   - ""
   resources:
-  - node
+  - nodes
   verbs:
   - get
   - list
@@ -30,5 +30,13 @@ rules:
   - services/status
   verbs:
   - get
+- apiGroups:
+  - networking.k8s.io
+  resources:
+  - ingresses
+  verbs:
+  - get
+  - list
   - patch
   - update
+  - watch

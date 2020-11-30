@@ -39,7 +39,8 @@ type KubeLbNodeReconciler struct {
 	Endpoints *kubelb.Endpoints
 }
 
-// +kubebuilder:rbac:groups="",resources=node,verbs=list
+// +kubebuilder:rbac:groups="",resources=nodes,verbs=list;get;watch
+
 func (r *KubeLbNodeReconciler) Reconcile(req ctrl.Request) (ctrl.Result, error) {
 	r.ctx = context.Background()
 	log := r.Log.WithValues("cluster", req.NamespacedName)

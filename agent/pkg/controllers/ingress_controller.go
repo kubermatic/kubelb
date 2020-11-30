@@ -50,7 +50,8 @@ var IngressMatcher = &MatchingAnnotationPredicate{
 	AnnotationValue: "kubelb",
 }
 
-// +kubebuilder:rbac:groups="",resources=ingress,verbs=get;list;watch;update;patch
+// +kubebuilder:rbac:groups=networking.k8s.io,resources=ingresses,verbs=get;list;watch;update;patch
+
 func (r *KubeLbIngressReconciler) Reconcile(req ctrl.Request) (ctrl.Result, error) {
 	r.ctx = context.Background()
 	log := r.Log.WithValues("kubelb_ingress_agent", req.NamespacedName)

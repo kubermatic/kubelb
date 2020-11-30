@@ -41,7 +41,7 @@ type HTTPLoadBalancerReconciler struct {
 
 // +kubebuilder:rbac:groups=kubelb.k8c.io,resources=httploadbalancers,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=kubelb.k8c.io,resources=httploadbalancers/status,verbs=get;update;patch
-// +kubebuilder:rbac:groups="",resources=ingress,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=networking.k8s.io,resources=ingresses,verbs=get;list;watch;create;update;patch;delete
 
 func (r *HTTPLoadBalancerReconciler) Reconcile(req ctrl.Request) (ctrl.Result, error) {
 	r.ctx = context.Background()
