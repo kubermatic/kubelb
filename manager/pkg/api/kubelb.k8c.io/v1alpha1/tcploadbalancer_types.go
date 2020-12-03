@@ -81,6 +81,7 @@ type EndpointAddress struct {
 	// The IP of this endpoint.
 	// May not be loopback (127.0.0.0/8), link-local (169.254.0.0/16),
 	// or link-local multicast ((224.0.0.0/24).
+	// +kubebuilder:validation:MinLength=7
 	IP string `json:"ip" protobuf:"bytes,1,opt,name=ip"`
 	// The Hostname of this endpoint
 	// +optional

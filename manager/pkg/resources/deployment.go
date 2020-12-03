@@ -39,24 +39,14 @@ func MapDeployment(tcpLoadBalancer *kubelbiov1alpha1.TCPLoadBalancer) *appsv1.De
 						{
 							Name:  tcpLoadBalancer.Name,
 							Image: "envoyproxy/envoy:v1.16.0",
-							Ports: envoyListenerPorts,
-							VolumeMounts: []corev1.VolumeMount{
-								{
-									Name:      tcpLoadBalancer.Name,
-									MountPath: "/etc/envoy",
-									ReadOnly:  true,
-								},
+							Args: []string{
+								"--config-yaml", GenerateBootstrap(),
+								"--service-node", tcpLoadBalancer.Name,
+								"--service-cluster", tcpLoadBalancer.Namespace,
 							},
+							Ports: envoyListenerPorts,
 						},
 					},
-					Volumes: []corev1.Volume{{
-						Name: tcpLoadBalancer.Name,
-						VolumeSource: corev1.VolumeSource{
-							ConfigMap: &corev1.ConfigMapVolumeSource{
-								LocalObjectReference: corev1.LocalObjectReference{Name: tcpLoadBalancer.Name},
-							},
-						},
-					}},
 				},
 			},
 		},

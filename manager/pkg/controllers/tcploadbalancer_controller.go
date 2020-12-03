@@ -18,8 +18,10 @@ package controllers
 
 import (
 	"context"
+	cachev3 "github.com/envoyproxy/go-control-plane/pkg/cache/v3"
 	"github.com/go-logr/logr"
 	kubelbk8ciov1alpha1 "k8c.io/kubelb/manager/pkg/api/kubelb.k8c.io/v1alpha1"
+	envoycp "k8c.io/kubelb/manager/pkg/envoy"
 	"k8c.io/kubelb/manager/pkg/resources"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -36,23 +38,23 @@ import (
 // TCPLoadBalancerReconciler reconciles a TCPLoadBalancer object
 type TCPLoadBalancerReconciler struct {
 	client.Client
-	Log    logr.Logger
-	Scheme *runtime.Scheme
-	ctx    context.Context
-	Cache  cache.Cache
+	Log        logr.Logger
+	Scheme     *runtime.Scheme
+	Ctx        context.Context
+	Cache      cache.Cache
+	EnvoyCache cachev3.SnapshotCache
 }
 
 // +kubebuilder:rbac:groups=kubelb.k8c.io,resources=tcploadbalancers,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=kubelb.k8c.io,resources=tcploadbalancers/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups="",resources=services,verbs=get;list;watch;create;update;patch;delete
-// +kubebuilder:rbac:groups="",resources=deployments,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups="apps",resources=deployments,verbs=get;list;watch;create;update;patch;delete
 
 func (r *TCPLoadBalancerReconciler) Reconcile(req ctrl.Request) (ctrl.Result, error) {
-	r.ctx = context.Background()
 	log := r.Log.WithValues("TCPLoadBalancer", req.NamespacedName)
 
 	var tcpLoadBalancer kubelbk8ciov1alpha1.TCPLoadBalancer
-	if err := r.Get(r.ctx, req.NamespacedName, &tcpLoadBalancer); err != nil {
+	if err := r.Get(r.Ctx, req.NamespacedName, &tcpLoadBalancer); err != nil {
 		log.Error(err, "unable to fetch TCPLoadBalancer")
 		// we'll ignore not-found errors, since they can't be fixed by an immediate
 		// requeue (we'll need to wait for a new notification), and we can get them
@@ -62,11 +64,10 @@ func (r *TCPLoadBalancerReconciler) Reconcile(req ctrl.Request) (ctrl.Result, er
 
 	log.Info("reconciling", "name", tcpLoadBalancer.Name, "namespace", tcpLoadBalancer.Namespace)
 
-	//Todo: replace this with envoy control-plane stuff
-	err := r.reconcileConfigMap(&tcpLoadBalancer)
+	err := r.reconcileEnvoySnapshot(&tcpLoadBalancer)
 
 	if err != nil {
-		log.Error(err, "Unable to reconcile service")
+		log.Error(err, "Unable to reconcile envoy snapshot")
 		return ctrl.Result{}, err
 	}
 
@@ -124,7 +125,7 @@ func (r *TCPLoadBalancerReconciler) reconcileService(tcpLoadBalancer *kubelbk8ci
 	}
 
 	actualService := &corev1.Service{}
-	err = r.Get(r.ctx, types.NamespacedName{
+	err = r.Get(r.Ctx, types.NamespacedName{
 		Name:      tcpLoadBalancer.Name,
 		Namespace: tcpLoadBalancer.Namespace,
 	}, actualService)
@@ -134,14 +135,14 @@ func (r *TCPLoadBalancerReconciler) reconcileService(tcpLoadBalancer *kubelbk8ci
 			return err
 		}
 		log.Info("Creating service", "namespace", tcpLoadBalancer.Namespace, "name", tcpLoadBalancer.Name)
-		return r.Create(r.ctx, desiredService)
+		return r.Create(r.Ctx, desiredService)
 	}
 
 	if !resources.ServiceIsDesiredState(actualService, desiredService) {
 		log.Info("Updating service", "namespace", tcpLoadBalancer.Namespace, "name", tcpLoadBalancer.Name)
 		actualService.Spec.Ports = desiredService.Spec.Ports
 		actualService.Spec.Type = desiredService.Spec.Type
-		err = r.Update(r.ctx, actualService)
+		err = r.Update(r.Ctx, actualService)
 
 		if err != nil {
 			return err
@@ -150,43 +151,31 @@ func (r *TCPLoadBalancerReconciler) reconcileService(tcpLoadBalancer *kubelbk8ci
 
 	if tcpLoadBalancer.Spec.Type == corev1.ServiceTypeLoadBalancer && len(tcpLoadBalancer.Status.LoadBalancer.Ingress) == 0 && len(actualService.Status.LoadBalancer.Ingress) != 0 {
 		tcpLoadBalancer.Status.LoadBalancer = actualService.Status.LoadBalancer
-		return r.Status().Update(r.ctx, tcpLoadBalancer)
+		return r.Status().Update(r.Ctx, tcpLoadBalancer)
 	}
 
 	return nil
 }
 
-func (r *TCPLoadBalancerReconciler) reconcileConfigMap(tcpLoadBalancer *kubelbk8ciov1alpha1.TCPLoadBalancer) error {
+func (r *TCPLoadBalancerReconciler) reconcileEnvoySnapshot(tcpLoadBalancer *kubelbk8ciov1alpha1.TCPLoadBalancer) error {
 
-	log := r.Log.WithValues("TCPLoadBalancer", "cfg")
+	log := r.Log.WithValues("TCPLoadBalancer", "snapshot")
 
-	desiredConfigMap := resources.MapConfigmap(tcpLoadBalancer)
+	desiredSnapshot := envoycp.MapSnapshot(tcpLoadBalancer)
 
-	err := ctrl.SetControllerReference(tcpLoadBalancer, desiredConfigMap, r.Scheme)
-	if err != nil {
-		log.Error(err, "Unable to set controller reference")
-		return err
+	// Create the snapshot that we'll serve to Envoy
+	if err := desiredSnapshot.Consistent(); err != nil {
+		log.Error(err, "snapshot inconsistency", desiredSnapshot)
+	}
+	log.Info("will serve snapshot", "Snapshot", desiredSnapshot, "NodeId", tcpLoadBalancer.Name)
+
+	// Add the snapshot to the cache
+	//Todo: check namespace and node-id uniqueness
+	if err := r.EnvoyCache.SetSnapshot(tcpLoadBalancer.Name, desiredSnapshot); err != nil {
+		log.Error(err, "snapshot error for", desiredSnapshot)
 	}
 
-	actualConfigMap := &corev1.ConfigMap{}
-	err = r.Get(r.ctx, types.NamespacedName{
-		Name:      tcpLoadBalancer.Name,
-		Namespace: tcpLoadBalancer.Namespace,
-	}, actualConfigMap)
-
-	if err != nil {
-		if !apierrors.IsNotFound(err) {
-			return err
-		}
-		log.Info("Creating configmap", "namespace", tcpLoadBalancer.Namespace, "name", tcpLoadBalancer.Name)
-		return r.Create(r.ctx, desiredConfigMap)
-	}
-
-	log.Info("Updating configmap", "namespace", tcpLoadBalancer.Namespace, "name", tcpLoadBalancer.Name)
-	actualConfigMap.Data = desiredConfigMap.Data
-
-	return r.Update(r.ctx, actualConfigMap)
-
+	return nil
 }
 
 func (r *TCPLoadBalancerReconciler) reconcileDeployment(tcpLoadBalancer *kubelbk8ciov1alpha1.TCPLoadBalancer) error {
@@ -202,7 +191,7 @@ func (r *TCPLoadBalancerReconciler) reconcileDeployment(tcpLoadBalancer *kubelbk
 	}
 
 	actualDeployment := &appsv1.Deployment{}
-	err = r.Get(r.ctx, types.NamespacedName{
+	err = r.Get(r.Ctx, types.NamespacedName{
 		Name:      tcpLoadBalancer.Name,
 		Namespace: tcpLoadBalancer.Namespace,
 	}, actualDeployment)
@@ -212,12 +201,12 @@ func (r *TCPLoadBalancerReconciler) reconcileDeployment(tcpLoadBalancer *kubelbk
 			return err
 		}
 		log.Info("Creating deployment", "namespace", tcpLoadBalancer.Namespace, "name", tcpLoadBalancer.Name)
-		return r.Create(r.ctx, desiredDeployment)
+		return r.Create(r.Ctx, desiredDeployment)
 	}
 
 	log.Info("Updating deployment", "namespace", tcpLoadBalancer.Namespace, "name", tcpLoadBalancer.Name)
 	actualDeployment.Spec = desiredDeployment.Spec
 
-	return r.Update(r.ctx, actualDeployment)
+	return r.Update(r.Ctx, actualDeployment)
 
 }

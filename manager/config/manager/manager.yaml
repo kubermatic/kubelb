@@ -4,6 +4,23 @@ metadata:
   labels:
     control-plane: controller-manager
   name: system
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: envoycp
+  namespace: system
+  labels:
+    control-plane: controller-manager
+spec:
+  ports:
+    - port: 8001
+      targetPort: 8001
+  selector:
+    control-plane: controller-manager
+  type: ClusterIP
+
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -29,6 +46,8 @@ spec:
         - --enable-leader-election
         image: controller:latest
         name: manager
+        ports:
+          - containerPort: 8001
         resources:
           limits:
             cpu: 100m

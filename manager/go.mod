@@ -8,6 +8,8 @@ require (
 	github.com/golang/protobuf v1.4.2
 	github.com/onsi/ginkgo v1.11.0
 	github.com/onsi/gomega v1.8.1
+	github.com/pkg/errors v0.8.1
+	google.golang.org/grpc v1.27.0
 	k8s.io/api v0.17.2
 	k8s.io/apimachinery v0.17.2
 	k8s.io/client-go v0.17.2

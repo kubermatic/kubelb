@@ -3,28 +3,28 @@ Copyright 2019 The Sponson Authors.
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
-    http://www.apache.org/licenses/LICENSE-2.0
+   http://www.apache.org/licenses/LICENSE-2.0
 Unless required by applicable law or agreed to in writing, software
 distributed under the License is distributed on an "AS IS" BASIS,
 WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
+
 */
 
-package resources
+package envoy
 
 import (
-	"bytes"
 	envoyAccessLog "github.com/envoyproxy/go-control-plane/envoy/config/accesslog/v3"
-	envoyBootstrap "github.com/envoyproxy/go-control-plane/envoy/config/bootstrap/v3"
 	envoyCluster "github.com/envoyproxy/go-control-plane/envoy/config/cluster/v3"
 	envoyCore "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	envoyEndpoint "github.com/envoyproxy/go-control-plane/envoy/config/endpoint/v3"
 	envoyListener "github.com/envoyproxy/go-control-plane/envoy/config/listener/v3"
 	envoyFileAccessLog "github.com/envoyproxy/go-control-plane/envoy/extensions/access_loggers/file/v3"
 	envoyTcpProxy "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/network/tcp_proxy/v3"
+	"github.com/envoyproxy/go-control-plane/pkg/cache/types"
+	"github.com/envoyproxy/go-control-plane/pkg/cache/v3"
 	"github.com/envoyproxy/go-control-plane/pkg/wellknown"
-	"github.com/golang/protobuf/jsonpb"
 	"github.com/golang/protobuf/ptypes"
 	"github.com/golang/protobuf/ptypes/duration"
 	"github.com/golang/protobuf/ptypes/wrappers"
@@ -34,10 +34,10 @@ import (
 	"time"
 )
 
-func toEnvoyConfig(tcpLoadBalancer *kubelbiov1alpha1.TCPLoadBalancer) string {
+func MapSnapshot(tcpLoadBalancer *kubelbiov1alpha1.TCPLoadBalancer) cache.Snapshot {
 
-	var listener []*envoyListener.Listener
-	var cluster []*envoyCluster.Cluster
+	var listener []types.Resource
+	var cluster []types.Resource
 
 	for _, lbServicePort := range tcpLoadBalancer.Spec.Ports {
 
@@ -75,26 +75,23 @@ func toEnvoyConfig(tcpLoadBalancer *kubelbiov1alpha1.TCPLoadBalancer) string {
 		}
 	}
 
-	cfg := &envoyBootstrap.Bootstrap{
-		StaticResources: &envoyBootstrap.Bootstrap_StaticResources{
-			Listeners: listener,
-			Clusters:  cluster,
-		},
-	}
-
-	var jsonBuf bytes.Buffer
-	if err := new(jsonpb.Marshaler).Marshal(&jsonBuf, cfg); err != nil {
-		panic(err)
-	}
-
-	return jsonBuf.String()
+	//Todo: increment version
+	return cache.NewSnapshot(
+		"1",
+		[]types.Resource{}, // endpoints
+		cluster,            //cluster
+		[]types.Resource{}, //routes
+		listener,           //listener
+		[]types.Resource{}, // runtimes
+		[]types.Resource{}, // secrets
+	)
 }
 
 func makeCluster(clusterName string, lbEndpoints []*envoyEndpoint.LbEndpoint) *envoyCluster.Cluster {
 	return &envoyCluster.Cluster{
 		Name:                 clusterName,
 		ConnectTimeout:       ptypes.DurationProto(5 * time.Second),
-		ClusterDiscoveryType: &envoyCluster.Cluster_Type{Type: envoyCluster.Cluster_STATIC},
+		ClusterDiscoveryType: &envoyCluster.Cluster_Type{Type: envoyCluster.Cluster_LOGICAL_DNS},
 		LbPolicy:             envoyCluster.Cluster_ROUND_ROBIN,
 		LoadAssignment: &envoyEndpoint.ClusterLoadAssignment{
 			ClusterName: clusterName,

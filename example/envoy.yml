@@ -1,0 +1,39 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: envoy-lb-test
+  labels:
+    app: envoy-lb-test
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: envoy-lb-test
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: envoy-lb-test
+    spec:
+      containers:
+        - image: envoyproxy/envoy:v1.16.0
+          name: envoy-lb-test
+          ports:
+            - containerPort: 8080
+#          command: ["/usr/local/bin/envoy -c /etc/envoy/envoy.yaml"]
+          args:
+            - "-c"
+            - "/etc/envoy/envoy.yaml"
+            - "--service-node"
+            - "default-swiss-army-knife"
+            - "--service-cluster"
+            - "tenant-1"
+          volumeMounts:
+            - name: envoy-cfg
+              mountPath: "/etc/envoy/"
+              readOnly: true
+      volumes:
+        - name: envoy-cfg
+          configMap:
+            name: envoy-cfg
