@@ -57,7 +57,7 @@ func main() {
 	var kubeLbKubeconf string
 
 	flag.StringVar(&metricsAddr, "metrics-addr", ":0", "The address the metric endpoint binds to.")
-	flag.StringVar(&endpointAddressTypeString, "node-address-type", ":ExternalIP", "The default address type used as an endpoint address.")
+	flag.StringVar(&endpointAddressTypeString, "node-address-type", "ExternalIP", "The default address type used as an endpoint address.")
 	flag.StringVar(&clusterName, "cluster-name", "default", "Cluster name where the agent is running. Resources inside the KubeLb cluster will get deployed to the namespace named by cluster name, must be unique.")
 	flag.StringVar(&kubeLbKubeconf, "kubelb-kubeconfig", defaultKubeLbConf, "The path to the kubelb cluster kubeconfig.")
 	flag.BoolVar(&enableCloudController, "enable-cloud-provider", true, "Enables cloud controller like behavior. This will set the status of TCP LoadBalancer")
@@ -73,6 +73,10 @@ func main() {
 		endpointAddressType = corev1.NodeInternalIP
 	} else if endpointAddressTypeString == string(corev1.NodeExternalIP) {
 		endpointAddressType = corev1.NodeExternalIP
+	} else {
+		//Todo: error message
+		setupLog.Info("address type could not be determine, got " + endpointAddressTypeString)
+		os.Exit(1)
 	}
 
 	var sharedEndpoints = kubelb.Endpoints{
@@ -87,7 +91,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	tcpLoadBalancerInformerFactory := informers.NewSharedInformerFactory(kubeLbClient.Clientset, time.Second*10)
+	tcpLoadBalancerInformerFactory := informers.NewSharedInformerFactory(kubeLbClient.Clientset, time.Second*120)
 
 	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
 		Scheme:             scheme,
