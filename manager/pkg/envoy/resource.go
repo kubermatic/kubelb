@@ -34,7 +34,7 @@ import (
 	"time"
 )
 
-func MapSnapshot(tcpLoadBalancer *kubelbiov1alpha1.TCPLoadBalancer) cache.Snapshot {
+func MapSnapshot(tcpLoadBalancer *kubelbiov1alpha1.TCPLoadBalancer, version string) cache.Snapshot {
 
 	var listener []types.Resource
 	var cluster []types.Resource
@@ -49,7 +49,7 @@ func MapSnapshot(tcpLoadBalancer *kubelbiov1alpha1.TCPLoadBalancer) cache.Snapsh
 		if lbServicePort.Protocol == corev1.ProtocolTCP {
 			listener = append(listener, makeTCPListener(envoyClusterName, lbServicePort.Name, uint32(lbServicePort.Port)))
 		} else {
-			//Todo: log unsupported
+			//Todo: unsupported
 		}
 	}
 
@@ -77,7 +77,7 @@ func MapSnapshot(tcpLoadBalancer *kubelbiov1alpha1.TCPLoadBalancer) cache.Snapsh
 
 	//Todo: increment version
 	return cache.NewSnapshot(
-		"1",
+		version,
 		[]types.Resource{}, // endpoints
 		cluster,            //cluster
 		[]types.Resource{}, //routes
@@ -91,7 +91,7 @@ func makeCluster(clusterName string, lbEndpoints []*envoyEndpoint.LbEndpoint) *e
 	return &envoyCluster.Cluster{
 		Name:                 clusterName,
 		ConnectTimeout:       ptypes.DurationProto(5 * time.Second),
-		ClusterDiscoveryType: &envoyCluster.Cluster_Type{Type: envoyCluster.Cluster_LOGICAL_DNS},
+		ClusterDiscoveryType: &envoyCluster.Cluster_Type{Type: envoyCluster.Cluster_STRICT_DNS},
 		LbPolicy:             envoyCluster.Cluster_ROUND_ROBIN,
 		LoadAssignment: &envoyEndpoint.ClusterLoadAssignment{
 			ClusterName: clusterName,

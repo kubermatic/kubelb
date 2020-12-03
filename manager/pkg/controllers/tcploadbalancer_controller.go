@@ -18,8 +18,11 @@ package controllers
 
 import (
 	"context"
+	"github.com/Masterminds/semver/v3"
 	cachev3 "github.com/envoyproxy/go-control-plane/pkg/cache/v3"
+	envoyresource "github.com/envoyproxy/go-control-plane/pkg/resource/v3"
 	"github.com/go-logr/logr"
+	"github.com/pkg/errors"
 	kubelbk8ciov1alpha1 "k8c.io/kubelb/manager/pkg/api/kubelb.k8c.io/v1alpha1"
 	envoycp "k8c.io/kubelb/manager/pkg/envoy"
 	"k8c.io/kubelb/manager/pkg/resources"
@@ -28,6 +31,7 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
+	"reflect"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/cache"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -161,18 +165,44 @@ func (r *TCPLoadBalancerReconciler) reconcileEnvoySnapshot(tcpLoadBalancer *kube
 
 	log := r.Log.WithValues("TCPLoadBalancer", "snapshot")
 
-	desiredSnapshot := envoycp.MapSnapshot(tcpLoadBalancer)
+	// Get current snapshot
+	currSnapshot, err := r.EnvoyCache.GetSnapshot(tcpLoadBalancer.Name)
+	if err != nil {
+		// Add the snapshot to the cache
+		//Todo: check namespace and node-id uniqueness
+		initSnapshot := envoycp.MapSnapshot(tcpLoadBalancer, "0.0.1")
+		log.Info("Serving", "snapshot", initSnapshot)
 
-	// Create the snapshot that we'll serve to Envoy
-	if err := desiredSnapshot.Consistent(); err != nil {
-		log.Error(err, "snapshot inconsistency", desiredSnapshot)
+		if err := r.EnvoyCache.SetSnapshot(tcpLoadBalancer.Name, initSnapshot); err != nil {
+			log.Error(err, "failed to set a new Envoy cache snapshot")
+		}
+		return nil
 	}
-	log.Info("will serve snapshot", "Snapshot", desiredSnapshot, "NodeId", tcpLoadBalancer.Name)
 
-	// Add the snapshot to the cache
-	//Todo: check namespace and node-id uniqueness
-	if err := r.EnvoyCache.SetSnapshot(tcpLoadBalancer.Name, desiredSnapshot); err != nil {
-		log.Error(err, "snapshot error for", desiredSnapshot)
+	lastUsedVersion, err := semver.NewVersion(currSnapshot.GetVersion(envoyresource.ClusterType))
+	if err != nil {
+		return errors.Wrap(err, "failed to parse version from last snapshot")
+	}
+
+	// Generate a new snapshot using the old version to be able to do a DeepEqual comparison
+	if reflect.DeepEqual(currSnapshot, envoycp.MapSnapshot(tcpLoadBalancer, lastUsedVersion.String())) {
+		log.Info("no changes detected")
+		return nil
+	}
+
+	newVersion := lastUsedVersion.IncMajor()
+	log.Info("detected a change. Updating the Envoy config cache...", "version", newVersion.String())
+
+	newSnapshot := envoycp.MapSnapshot(tcpLoadBalancer, newVersion.String())
+
+	if err := newSnapshot.Consistent(); err != nil {
+		return errors.Wrap(err, "new Envoy config snapshot is not consistent")
+
+	}
+	log.Info("Serving", "snapshot", newSnapshot)
+
+	if err := r.EnvoyCache.SetSnapshot(tcpLoadBalancer.Name, newSnapshot); err != nil {
+		return errors.Wrap(err, "failed to set a new Envoy cache snapshot")
 	}
 
 	return nil

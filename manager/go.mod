@@ -3,6 +3,7 @@ module k8c.io/kubelb/manager
 go 1.13
 
 require (
+	github.com/Masterminds/semver/v3 v3.1.1
 	github.com/envoyproxy/go-control-plane v0.9.7
 	github.com/go-logr/logr v0.1.0
 	github.com/golang/protobuf v1.4.2
