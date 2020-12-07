@@ -19,7 +19,6 @@ package main
 import (
 	"context"
 	"flag"
-	cachev3 "github.com/envoyproxy/go-control-plane/pkg/cache/v3"
 	envoycp "k8c.io/kubelb/manager/pkg/envoy"
 	"os"
 
@@ -48,17 +47,19 @@ func init() {
 
 func main() {
 	var metricsAddr string
+	var envoyListenAddress string
 	var enableLeaderElection bool
-	srv := envoycp.Server{}
+	var enableDebugMode bool
 
-	flag.StringVar(&srv.ListenAddress, "listen-address", ":8001", "Address to serve envoy control-plane on")
+	flag.StringVar(&envoyListenAddress, "listen-address", ":8001", "Address to serve envoy control-plane on")
 	flag.StringVar(&metricsAddr, "metrics-addr", ":0", "The address the metric endpoint binds to.")
 	flag.BoolVar(&enableLeaderElection, "enable-leader-election", false,
 		"Enable leader election for controller manager. "+
 			"Enabling this will ensure there is only one active controller manager.")
+	flag.BoolVar(&enableDebugMode, "debug", false, "Enables debug mode")
 	flag.Parse()
 
-	ctrl.SetLogger(zap.New(zap.UseDevMode(true)))
+	ctrl.SetLogger(zap.New(zap.UseDevMode(enableDebugMode)))
 
 	// setup signal handler
 	ctx, cancel := context.WithCancel(context.Background())
@@ -80,22 +81,26 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Create a snapshotCache
-	snapshotCache := cachev3.NewSnapshotCache(false, cachev3.IDHash{}, envoycp.Logger{})
-	srv.Cache = snapshotCache
+	envoyServer, err := envoycp.NewServer(envoyListenAddress, enableDebugMode)
 
-	if err := mgr.Add(&srv); err != nil {
+	if err != nil {
+		setupLog.Error(err, "unable to create envoy server")
+		os.Exit(1)
+	}
+
+	if err := mgr.Add(envoyServer); err != nil {
 		setupLog.Error(err, "failed to register envoy config server with controller-runtime manager")
 		os.Exit(1)
 	}
 
 	if err = (&controllers.TCPLoadBalancerReconciler{
-		Client:     mgr.GetClient(),
-		Log:        ctrl.Log.WithName("controllers").WithName("TCPLoadBalancer"),
-		Cache:      mgr.GetCache(),
-		Scheme:     mgr.GetScheme(),
-		EnvoyCache: snapshotCache,
-		Ctx:        ctx,
+		Client:         mgr.GetClient(),
+		Log:            ctrl.Log.WithName("controllers").WithName("TCPLoadBalancer"),
+		Cache:          mgr.GetCache(),
+		Scheme:         mgr.GetScheme(),
+		EnvoyCache:     envoyServer.Cache,
+		EnvoyBootstrap: envoyServer.GenerateBootstrap(),
+		Ctx:            ctx,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "TCPLoadBalancer")
 		os.Exit(1)

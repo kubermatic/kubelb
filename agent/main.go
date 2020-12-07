@@ -17,7 +17,9 @@ limitations under the License.
 package main
 
 import (
+	"errors"
 	"flag"
+	"fmt"
 	"k8c.io/kubelb/agent/pkg/controllers"
 	"k8c.io/kubelb/agent/pkg/kubelb"
 	informers "k8c.io/kubelb/manager/pkg/generated/informers/externalversions"
@@ -52,6 +54,7 @@ func main() {
 	var metricsAddr string
 	var enableCloudController bool
 	var enableLeaderElection bool
+	var enableDebugMode bool
 	var endpointAddressTypeString string
 	var clusterName string
 	var kubeLbKubeconf string
@@ -63,19 +66,19 @@ func main() {
 	flag.BoolVar(&enableCloudController, "enable-cloud-provider", true, "Enables cloud controller like behavior. This will set the status of TCP LoadBalancer")
 	flag.BoolVar(&enableLeaderElection, "enable-leader-election", false,
 		"Enable leader election for controller agent. Enabling this will ensure there is only one active controller agent.")
+	flag.BoolVar(&enableDebugMode, "debug", false, "Enables debug mode")
 	flag.Parse()
 
-	ctrl.SetLogger(zap.New(zap.UseDevMode(true)))
+	ctrl.SetLogger(zap.New(zap.UseDevMode(enableDebugMode)))
 
-	//Todo: is there something better i could do=?
+	//is there something better i could do=?
 	var endpointAddressType corev1.NodeAddressType
 	if endpointAddressTypeString == string(corev1.NodeInternalIP) {
 		endpointAddressType = corev1.NodeInternalIP
 	} else if endpointAddressTypeString == string(corev1.NodeExternalIP) {
 		endpointAddressType = corev1.NodeExternalIP
 	} else {
-		//Todo: error message
-		setupLog.Info("address type could not be determine, got " + endpointAddressTypeString)
+		setupLog.Error(errors.New("invalid node address type"), fmt.Sprintf("Expected: %s or %s, go: %s", corev1.NodeInternalIP, corev1.NodeExternalIP, endpointAddressTypeString))
 		os.Exit(1)
 	}
 

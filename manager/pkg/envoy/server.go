@@ -18,6 +18,8 @@ import (
 	cachev3 "github.com/envoyproxy/go-control-plane/pkg/cache/v3"
 	"github.com/pkg/errors"
 	"net"
+	"strconv"
+	"strings"
 
 	"google.golang.org/grpc"
 
@@ -46,15 +48,34 @@ func registerServer(grpcServer *grpc.Server, server serverv3.Server) {
 	runtimeservice.RegisterRuntimeDiscoveryServiceServer(grpcServer, server)
 }
 
-type Server struct {
-	ListenAddress string
+type server struct {
 	Cache         cachev3.SnapshotCache
+	listenAddress string
+	listenPort    uint32
+	enableAdmin   bool
+}
+
+func NewServer(listenAddress string, enableDebug bool) (*server, error) {
+
+	portString := strings.Split(listenAddress, ":")[1]
+	port, err := strconv.ParseUint(portString, 10, 32)
+	if err != nil {
+		return nil, err
+	}
+
+	return &server{
+		listenAddress: listenAddress,
+		listenPort:    uint32(port),
+		Cache:         cachev3.NewSnapshotCache(false, cachev3.IDHash{}, Logger{enableDebug}),
+		enableAdmin:   enableDebug,
+	}, nil
+
 }
 
 // Start the Envoy control plane server.
-func (s *Server) Start(stopChan <-chan struct{}) error {
+func (s *server) Start(stopChan <-chan struct{}) error {
 	ctx := context.Background()
-	// Create a cache
+	// Create a Cache
 	srv3 := serverv3.NewServer(ctx, s.Cache, nil)
 
 	// gRPC golang library sets a very small upper bound for the number gRPC/h2
@@ -65,14 +86,14 @@ func (s *Server) Start(stopChan <-chan struct{}) error {
 	grpcOptions = append(grpcOptions, grpc.MaxConcurrentStreams(grpcMaxConcurrentStreams))
 	grpcServer := grpc.NewServer(grpcOptions...)
 
-	lis, err := net.Listen("tcp", s.ListenAddress)
+	lis, err := net.Listen("tcp", s.listenAddress)
 	if err != nil {
 		return errors.Wrap(err, "envoy control plane server failed while start listening")
 	}
 
 	registerServer(grpcServer, srv3)
 
-	//s.Log.Infow("starting management service", "listen-address", s.ListenAddress)
+	//s.Log.Infow("starting management service", "listen-address", s.listenAddress)
 	if err = grpcServer.Serve(lis); err != nil {
 		return errors.Wrap(err, "envoy control plane server failed while start serving incoming connections")
 	}

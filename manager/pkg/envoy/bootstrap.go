@@ -1,4 +1,4 @@
-package resources
+package envoy
 
 import (
 	"bytes"
@@ -14,11 +14,25 @@ import (
 
 const xdsClusterName = "xds_cluster"
 
-//Todo: get values from the actual control-plane
 const controlPlaneAddress = "manager-envoycp.kubelb.svc"
-const controlPlanePort = 8001
 
-func GenerateBootstrap() string {
+func (s *server) GenerateBootstrap() string {
+
+	var adminCfg *envoyBootstrap.Admin = nil
+
+	if s.enableAdmin {
+		adminCfg = &envoyBootstrap.Admin{
+			AccessLogPath: "/dev/null",
+			Address: &envoyCore.Address{
+				Address: &envoyCore.Address_SocketAddress{SocketAddress: &envoyCore.SocketAddress{
+					Address: "0.0.0.0",
+					PortSpecifier: &envoyCore.SocketAddress_PortValue{
+						PortValue: 9001,
+					},
+				}},
+			},
+		}
+	}
 
 	cfg := &envoyBootstrap.Bootstrap{
 		DynamicResources: &envoyBootstrap.Bootstrap_DynamicResources{
@@ -78,7 +92,7 @@ func GenerateBootstrap() string {
 													SocketAddress: &envoyCore.SocketAddress{
 														Address: controlPlaneAddress,
 														PortSpecifier: &envoyCore.SocketAddress_PortValue{
-															PortValue: controlPlanePort,
+															PortValue: s.listenPort,
 														},
 													},
 												},
@@ -114,18 +128,7 @@ func GenerateBootstrap() string {
 				},
 			}},
 		},
-		//Todo: enable only if dev
-		Admin: &envoyBootstrap.Admin{
-			AccessLogPath: "/dev/null",
-			Address: &envoyCore.Address{
-				Address: &envoyCore.Address_SocketAddress{SocketAddress: &envoyCore.SocketAddress{
-					Address: "0.0.0.0",
-					PortSpecifier: &envoyCore.SocketAddress_PortValue{
-						PortValue: 9001,
-					},
-				}},
-			},
-		},
+		Admin: adminCfg,
 	}
 
 	var jsonBuf bytes.Buffer

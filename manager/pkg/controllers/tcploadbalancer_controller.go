@@ -42,11 +42,12 @@ import (
 // TCPLoadBalancerReconciler reconciles a TCPLoadBalancer object
 type TCPLoadBalancerReconciler struct {
 	client.Client
-	Log        logr.Logger
-	Scheme     *runtime.Scheme
-	Ctx        context.Context
-	Cache      cache.Cache
-	EnvoyCache cachev3.SnapshotCache
+	Log            logr.Logger
+	Scheme         *runtime.Scheme
+	Ctx            context.Context
+	Cache          cache.Cache
+	EnvoyCache     cachev3.SnapshotCache
+	EnvoyBootstrap string
 }
 
 // +kubebuilder:rbac:groups=kubelb.k8c.io,resources=tcploadbalancers,verbs=get;list;watch;create;update;patch;delete
@@ -212,7 +213,7 @@ func (r *TCPLoadBalancerReconciler) reconcileDeployment(tcpLoadBalancer *kubelbk
 
 	log := r.Log.WithValues("TCPLoadBalancer", "deployment")
 
-	desiredDeployment := resources.MapDeployment(tcpLoadBalancer)
+	desiredDeployment := resources.MapDeployment(tcpLoadBalancer, r.EnvoyBootstrap)
 
 	err := ctrl.SetControllerReference(tcpLoadBalancer, desiredDeployment, r.Scheme)
 	if err != nil {

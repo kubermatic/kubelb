@@ -7,7 +7,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-func MapDeployment(tcpLoadBalancer *kubelbiov1alpha1.TCPLoadBalancer) *appsv1.Deployment {
+func MapDeployment(tcpLoadBalancer *kubelbiov1alpha1.TCPLoadBalancer, conf string) *appsv1.Deployment {
 
 	var replicas int32 = 1
 	var envoyListenerPorts []corev1.ContainerPort
@@ -40,7 +40,7 @@ func MapDeployment(tcpLoadBalancer *kubelbiov1alpha1.TCPLoadBalancer) *appsv1.De
 							Name:  tcpLoadBalancer.Name,
 							Image: "envoyproxy/envoy:v1.16.0",
 							Args: []string{
-								"--config-yaml", GenerateBootstrap(),
+								"--config-yaml", conf,
 								"--service-node", tcpLoadBalancer.Name,
 								"--service-cluster", tcpLoadBalancer.Namespace,
 							},
