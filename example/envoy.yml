@@ -26,7 +26,7 @@ spec:
             - "-c"
             - "/etc/envoy/envoy.yaml"
             - "--service-node"
-            - "default-swiss-army-knife"
+            - "user-swiss-army-knife"
             - "--service-cluster"
             - "tenant-1"
           volumeMounts:

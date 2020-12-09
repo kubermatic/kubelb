@@ -29,12 +29,8 @@ agent: generate fmt vet
 	go build -o bin/agent cmd/agent/main.go
 
 # Run against the configured Kubernetes cluster in ~/.kube/config
-run-agent: generate fmt vet manifests
-	go run ./cmd/manager/main.go $(ARGS)
-
-# Run against the configured Kubernetes cluster in ~/.kube/config
-run-manager: generate fmt vet manifests
-	go run ./cmd/agent/main.go $(ARGS)
+run-%: generate fmt vet manifests
+	go run ./cmd/$*/main.go $(ARGS)
 
 # Install CRDs into a cluster
 install: manifests
@@ -45,19 +41,15 @@ uninstall: manifests
 	kustomize build config/crd | kubectl delete -f -
 
 # Deploy controller in the configured Kubernetes cluster in ~/.kube/config
-deploy-agent: manifests
-	cd config/agent && kustomize edit set image controller=${IMG}
-	kustomize build config/default | kubectl apply -f -
-
-# Deploy controller in the configured Kubernetes cluster in ~/.kube/config
-deploy-manager: manifests
-	cd config/manager && kustomize edit set image controller=${IMG}
-	kustomize build config/default | kubectl apply -f -
+deploy-%: manifests
+	cd config/$* && kustomize edit set image controller=${IMG}
+	kustomize build config/$* | kubectl apply -f -
 
 # Generate manifests e.g. CRD, RBAC etc.
 manifests: controller-gen
-	$(CONTROLLER_GEN) $(CRD_OPTIONS) paths="./..." output:crd:artifacts:config=config/crd/bases
-	#$(CONTROLLER_GEN) $(CRD_OPTIONS) rbac:roleName=manager-role webhook paths="./..." output:crd:artifacts:config=config/crd/bases
+	$(CONTROLLER_GEN) $(CRD_OPTIONS) webhook paths="./pkg/..." output:crd:artifacts:config=config/crd/bases
+	$(CONTROLLER_GEN) $(CRD_OPTIONS) rbac:roleName=agent-role paths="./pkg/controllers/agent/..." output:artifacts:config=config/agent/rbac
+	$(CONTROLLER_GEN) $(CRD_OPTIONS) rbac:roleName=manager-role paths="./pkg/controllers/kubelb/..." output:artifacts:config=config/manager/rbac
 
 # Run go fmt against code
 fmt:
