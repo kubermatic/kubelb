@@ -21,7 +21,7 @@ spec:
           name: envoy-lb-test
           ports:
             - containerPort: 8080
-#          command: ["/usr/local/bin/envoy -c /etc/envoy/envoy.yaml"]
+          #          command: ["/usr/local/bin/envoy -c /etc/envoy/envoy.yaml"]
           args:
             - "-c"
             - "/etc/envoy/envoy.yaml"

@@ -5,8 +5,8 @@ metadata:
   namespace: default       # user clustername
 spec:
   rules:
-      - http:
-          paths:
+    - http:
+        paths:
           - path: /
             backend:
               serviceName: swiss-army-knife

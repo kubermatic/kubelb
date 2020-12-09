@@ -6,7 +6,8 @@ Control-plane for multicluster loadbalancing.
 
 ## Agent
 
-Watches for Services, Ingress and node Changes inside the user cluster and creates a CRD accordingly inside the LB cluster
+Watches for Services, Ingress and node Changes inside the user cluster and creates a CRD accordingly inside the LB
+cluster
 
 ## Manager
 

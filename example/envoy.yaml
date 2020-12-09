@@ -19,8 +19,8 @@ dynamic_resources:
       api_type: GRPC
       transport_api_version: V3
       grpc_services:
-      - envoy_grpc:
-          cluster_name: xds_cluster
+        - envoy_grpc:
+            cluster_name: xds_cluster
       set_node_on_first_message_only: true
   lds_config:
     resource_api_version: V3
@@ -28,40 +28,40 @@ dynamic_resources:
       api_type: GRPC
       transport_api_version: V3
       grpc_services:
-      - envoy_grpc:
-          cluster_name: xds_cluster
+        - envoy_grpc:
+            cluster_name: xds_cluster
       set_node_on_first_message_only: true
 node:
   id: default-swiss-army-knife
 #  cluster: np-cluster
 static_resources:
   clusters:
-  - name: xds_cluster
-    connect_timeout: { seconds: 5 }
-    type: STRICT_DNS
-    load_assignment:
-      cluster_name: xds_cluster
-      endpoints:
-      - lb_endpoints:
-        - endpoint:
-            address:
-              socket_address:
-                address: manager-envoycp.kubelb.svc
-                port_value: 8001
-    lb_policy: ROUND_ROBIN
-    http2_protocol_options: {}
-    circuit_breakers:
-      thresholds:
-      - priority: high
-        max_connections: 100000
-        max_pending_requests: 100000
-        max_requests: 60000000
-        max_retries: 50
-      - priority: default
-        max_connections: 100000
-        max_pending_requests: 100000
-        max_requests: 60000000
-        max_retries: 50
+    - name: xds_cluster
+      connect_timeout: { seconds: 5 }
+      type: STRICT_DNS
+      load_assignment:
+        cluster_name: xds_cluster
+        endpoints:
+          - lb_endpoints:
+              - endpoint:
+                  address:
+                    socket_address:
+                      address: manager-envoycp.kubelb.svc
+                      port_value: 8001
+      lb_policy: ROUND_ROBIN
+      http2_protocol_options: { }
+      circuit_breakers:
+        thresholds:
+          - priority: high
+            max_connections: 100000
+            max_pending_requests: 100000
+            max_requests: 60000000
+            max_retries: 50
+          - priority: default
+            max_connections: 100000
+            max_pending_requests: 100000
+            max_requests: 60000000
+            max_retries: 50
   listeners:
 admin:
   access_log_path: /dev/null
