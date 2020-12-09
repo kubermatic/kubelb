@@ -2,7 +2,7 @@ apiVersion: kubelb.k8c.io/v1alpha1
 kind: TCPLoadBalancer
 metadata:
   name: swiss-army-knife   # user servicename
-  namespace: user       # user clustername
+  namespace: default       # user clustername
 spec:
   endpoints:
     - addresses:

@@ -2,7 +2,7 @@ apiVersion: kubelb.k8c.io/v1alpha1
 kind: HTTPLoadBalancer
 metadata:
   name: swiss-army-knife   # user ingressname
-  namespace: user       # user clustername
+  namespace: default       # user clustername
 spec:
   rules:
     - http:

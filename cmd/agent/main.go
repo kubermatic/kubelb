@@ -61,8 +61,8 @@ func main() {
 	var kubeLbKubeconf string
 
 	flag.StringVar(&metricsAddr, "metrics-addr", ":0", "The address the metric endpoint binds to.")
-	flag.StringVar(&endpointAddressTypeString, "node-address-type", "ExternalIP", "The user address type used as an endpoint address.")
-	flag.StringVar(&clusterName, "cluster-name", "user", "Cluster name where the agent is running. Resources inside the KubeLb cluster will get deployed to the namespace named by cluster name, must be unique.")
+	flag.StringVar(&endpointAddressTypeString, "node-address-type", "ExternalIP", "The default address type used as an endpoint address.")
+	flag.StringVar(&clusterName, "cluster-name", "default", "Cluster name where the agent is running. Resources inside the KubeLb cluster will get deployed to the namespace named by cluster name, must be unique.")
 	flag.StringVar(&kubeLbKubeconf, "kubelb-kubeconfig", defaultKubeLbConf, "The path to the kubelb cluster kubeconfig.")
 	flag.BoolVar(&enableCloudController, "enable-cloud-provider", true, "Enables cloud controller like behavior. This will set the status of TCP LoadBalancer")
 	flag.BoolVar(&enableLeaderElection, "enable-leader-election", false,

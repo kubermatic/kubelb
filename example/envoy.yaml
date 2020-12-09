@@ -32,7 +32,7 @@ dynamic_resources:
             cluster_name: xds_cluster
       set_node_on_first_message_only: true
 node:
-  id: user-swiss-army-knife
+  id: default-swiss-army-knife
 #  cluster: np-cluster
 static_resources:
   clusters:
@@ -57,7 +57,7 @@ static_resources:
             max_pending_requests: 100000
             max_requests: 60000000
             max_retries: 50
-          - priority: user
+          - priority: default
             max_connections: 100000
             max_pending_requests: 100000
             max_requests: 60000000

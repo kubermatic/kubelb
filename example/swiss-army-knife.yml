@@ -23,7 +23,7 @@ spec:
 #kind: Ingress
 #metadata:
 #  name: swiss-army-knife   # user ingressname
-#  namespace: user       # user clustername
+#  namespace: default       # user clustername
 #  annotations:
 #    kubernetes.io/ingress.class: kubelb
 #spec:
