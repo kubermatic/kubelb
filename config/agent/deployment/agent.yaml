@@ -52,13 +52,13 @@ spec:
               cpu: 100m
               memory: 20Mi
           volumeMounts:
-            - name: kubelb-cfg
+            - name: kubelb
               mountPath: "/home/nonroot/.kube/"
               readOnly: true
       volumes:
-        - name: kubelb-cfg
+        - name: kubelb
           configMap:
-            name: kubelb-cfg
+            name: kubelb
       imagePullSecrets:
         - name: regcred
       terminationGracePeriodSeconds: 10
