@@ -54,7 +54,7 @@ Deploy the agent to every user cluster where you want to use KubeLB
 
 The agent expects a configmap with a kubeconf file to access the load balancer cluster.
 
-To create such run: `kubectl create --namespace kubelb configmap kubelb --from-file <path to kubelb kubeconf file>`
+To create such run: `kubectl create --namespace kubelb configmap kubelb --from-file=<path to kubelb kubeconf file>`
 
 Deploy to user cluster: `make deploy-agent`
 

@@ -13,7 +13,7 @@
 # limitations under the License.
 
 
-# Build the manager binary
+# Build the agent binary
 FROM golang:1.13 as builder
 
 WORKDIR /workspace
@@ -31,11 +31,11 @@ COPY pkg pkg
 # Build
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 GO111MODULE=on go build -a -o agent main.go
 
-# Use distroless as minimal base image to package the manager binary
+# Use distroless as minimal base image to package the agent binary
 # Refer to https://github.com/GoogleContainerTools/distroless for more details
 FROM gcr.io/distroless/static:nonroot
 WORKDIR /
-COPY --from=builder /workspace/manager .
+COPY --from=builder /workspace/agent .
 USER nonroot:nonroot
 
 ENTRYPOINT ["/agent"]
