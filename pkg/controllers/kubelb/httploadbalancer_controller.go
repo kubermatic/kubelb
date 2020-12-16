@@ -44,21 +44,22 @@ type HTTPLoadBalancerReconciler struct {
 // +kubebuilder:rbac:groups=networking.k8s.io,resources=ingresses,verbs=get;list;watch;create;update;patch;delete
 
 func (r *HTTPLoadBalancerReconciler) Reconcile(req ctrl.Request) (ctrl.Result, error) {
-	log := r.Log.WithValues("HTTPLoadBalancer", req.NamespacedName)
+	log := r.Log.WithValues("name", req.Name, "namespace", req.Namespace)
+	log.V(2).Info("reconciling HTTPLoadBalancer")
 
 	var httpLoadBalancer kubelbk8ciov1alpha1.HTTPLoadBalancer
-	if err := r.Get(r.Ctx, req.NamespacedName, &httpLoadBalancer); err != nil {
-		log.Error(err, "unable to fetch HTTPLoadBalancer")
-		// we'll ignore not-found errors, since they can't be fixed by an immediate
-		// requeue (we'll need to wait for a new notification), and we can get them
-		// on deleted requests.
-		return ctrl.Result{}, client.IgnoreNotFound(err)
+	err := r.Get(r.Ctx, req.NamespacedName, &httpLoadBalancer)
+	if err != nil {
+		if client.IgnoreNotFound(err) != nil {
+			log.Error(err, "unable to fetch HTTPLoadBalancer")
+		}
+		log.V(3).Info("HTTPLoadBalancer not found")
+		return ctrl.Result{}, nil
 	}
 
-	log.Info("reconciling", "name", httpLoadBalancer.Name, "namespace", httpLoadBalancer.Namespace)
+	log.V(6).Info("processing", "HTTPLoadBalancer", httpLoadBalancer)
 
-	//Todo: replace this with envoy control-plane stuff
-	err := r.reconcileIngress(&httpLoadBalancer)
+	err = r.reconcileIngress(&httpLoadBalancer)
 
 	if err != nil {
 		log.Error(err, "Unable to reconcile ingress")
@@ -75,15 +76,15 @@ func (r *HTTPLoadBalancerReconciler) SetupWithManager(mgr ctrl.Manager) error {
 }
 
 func (r *HTTPLoadBalancerReconciler) reconcileIngress(httpLoadBalancer *kubelbk8ciov1alpha1.HTTPLoadBalancer) error {
-	log := r.Log.WithValues("TCPLoadBalancer", "resources-svc")
+	log := r.Log.WithValues("reconcile", "ingress")
 
 	desiredIngress := resources.MapIngress(httpLoadBalancer)
-
 	err := ctrl.SetControllerReference(httpLoadBalancer, desiredIngress, r.Scheme)
 	if err != nil {
 		log.Error(err, "Unable to set controller reference")
 		return err
 	}
+	log.V(6).Info("desired", "ingress", desiredIngress)
 
 	actualIngress := &netv1beta1.Ingress{}
 	err = r.Get(r.Ctx, types.NamespacedName{
@@ -91,15 +92,20 @@ func (r *HTTPLoadBalancerReconciler) reconcileIngress(httpLoadBalancer *kubelbk8
 		Namespace: httpLoadBalancer.Namespace,
 	}, actualIngress)
 
+	log.V(6).Info("actual", "ingress", actualIngress)
+
 	if err != nil {
 		if !apierrors.IsNotFound(err) {
 			return err
 		}
-		log.Info("Creating ingress", "namespace", httpLoadBalancer.Namespace, "name", httpLoadBalancer.Name)
+		log.Info("creating ingress", "name", httpLoadBalancer.Name, "namespace", httpLoadBalancer.Namespace)
 		return r.Create(r.Ctx, desiredIngress)
 	}
 
+	//Todo: implement isDesiredState
+	log.V(1).Info("updating ingress", "name", httpLoadBalancer.Name, "namespace", httpLoadBalancer.Namespace)
 	actualIngress.Spec = desiredIngress.Spec
+	log.V(7).Info("updated to", "ingress", actualIngress)
 
 	return r.Update(r.Ctx, actualIngress)
 

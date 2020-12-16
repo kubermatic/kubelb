@@ -95,7 +95,7 @@ func main() {
 
 	if err = (&kubelb.TCPLoadBalancerReconciler{
 		Client:         mgr.GetClient(),
-		Log:            ctrl.Log.WithName("controllers").WithName("TCPLoadBalancer"),
+		Log:            ctrl.Log.WithName("kubelb.tcploadbalancer.reconciler"),
 		Cache:          mgr.GetCache(),
 		Scheme:         mgr.GetScheme(),
 		EnvoyCache:     envoyServer.Cache,
@@ -108,7 +108,7 @@ func main() {
 
 	if err = (&kubelb.HTTPLoadBalancerReconciler{
 		Client: mgr.GetClient(),
-		Log:    ctrl.Log.WithName("controllers").WithName("HTTPLoadBalancer"),
+		Log:    ctrl.Log.WithName("kubelb.httploadbalancer.reconciler"),
 		Scheme: mgr.GetScheme(),
 		Ctx:    ctx,
 	}).SetupWithManager(mgr); err != nil {

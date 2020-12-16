@@ -59,9 +59,8 @@ var ServiceMatcher = &utils.MatchingAnnotationPredicate{
 
 func (r *KubeLbServiceReconciler) Reconcile(req ctrl.Request) (ctrl.Result, error) {
 
-	log := r.Log.WithValues("cluster", r.ClusterName)
-
-	log.Info("reconciling service", "name", req.Name, "namespace", req.Namespace)
+	log := r.Log.WithValues("name", req.Name, "namespace", req.Namespace)
+	log.V(2).Info("reconciling service")
 
 	var service corev1.Service
 	err := r.Get(r.Ctx, req.NamespacedName, &service)
@@ -69,8 +68,11 @@ func (r *KubeLbServiceReconciler) Reconcile(req ctrl.Request) (ctrl.Result, erro
 		if client.IgnoreNotFound(err) != nil {
 			log.Error(err, "unable to fetch service")
 		}
-		return ctrl.Result{}, client.IgnoreNotFound(err)
+		log.V(3).Info("service not found")
+		return ctrl.Result{}, nil
 	}
+
+	log.V(6).Info("processing", "service", service)
 
 	// examine DeletionTimestamp to determine if object is under deletion
 	if service.ObjectMeta.DeletionTimestamp.IsZero() {
@@ -79,6 +81,7 @@ func (r *KubeLbServiceReconciler) Reconcile(req ctrl.Request) (ctrl.Result, erro
 		// registering our finalizer.
 		if !utils.ContainsString(service.ObjectMeta.Finalizers, TcpLbFinalizerName) {
 			service.ObjectMeta.Finalizers = append(service.ObjectMeta.Finalizers, TcpLbFinalizerName)
+			log.V(4).Info("setting finalizer")
 			if err := r.Update(r.Ctx, &service); err != nil {
 				return ctrl.Result{}, err
 			}
@@ -87,19 +90,25 @@ func (r *KubeLbServiceReconciler) Reconcile(req ctrl.Request) (ctrl.Result, erro
 		// The object is being deleted
 		if utils.ContainsString(service.ObjectMeta.Finalizers, TcpLbFinalizerName) {
 
-			log.Info("deleting TCPLoadBalancer", "name", kubelb.NamespacedName(&service.ObjectMeta))
+			log.V(1).Info("deleting TCPLoadBalancer", "name", kubelb.NamespacedName(&service.ObjectMeta))
 
 			// our finalizer is present, so lets handle any external dependency
-			if err := r.TcpLBClient.Delete(kubelb.NamespacedName(&service.ObjectMeta), &v1.DeleteOptions{}); err != nil {
+			err := r.TcpLBClient.Delete(kubelb.NamespacedName(&service.ObjectMeta), &v1.DeleteOptions{})
+
+			if client.IgnoreNotFound(err) != nil {
 				// if fail to delete the external dependency here, return with error
 				// so that it can be retried
 				return ctrl.Result{}, err
+			} else {
+				log.V(3).Info("TCPLoadBalancer not found")
 			}
+
 			// remove our finalizer from the list and update it.
 			service.ObjectMeta.Finalizers = utils.RemoveString(service.ObjectMeta.Finalizers, TcpLbFinalizerName)
 			if err := r.Update(r.Ctx, &service); err != nil {
 				return ctrl.Result{}, err
 			}
+			log.V(4).Info("removed finalizer")
 		}
 
 		// Stop reconciliation as the item is being deleted
@@ -110,13 +119,16 @@ func (r *KubeLbServiceReconciler) Reconcile(req ctrl.Request) (ctrl.Result, erro
 	//Use node ports as backend for nodePort service and load balancer if the agent server as cloud controller and should provision the load balacner
 	if service.Spec.Type == corev1.ServiceTypeNodePort || (service.Spec.Type == corev1.ServiceTypeLoadBalancer && r.CloudController) {
 		clusterEndpoints = r.Endpoints.ClusterEndpoints
+		log.V(4).Info("use nodes as endpoint")
 	} else if service.Spec.Type == corev1.ServiceTypeLoadBalancer {
 		for _, lbIngress := range service.Status.LoadBalancer.Ingress {
 
 			if lbIngress.IP != "" {
 				clusterEndpoints = append(clusterEndpoints, lbIngress.IP)
+				log.V(4).Info("use load balancer ip as endpoint")
 			} else {
 				clusterEndpoints = append(clusterEndpoints, lbIngress.Hostname)
+				log.V(4).Info("use load balancer hostname as endpoint")
 			}
 		}
 	} else {
@@ -125,36 +137,49 @@ func (r *KubeLbServiceReconciler) Reconcile(req ctrl.Request) (ctrl.Result, erro
 		return ctrl.Result{}, err
 	}
 
+	log.V(5).Info("proceeding with", "endpoints", clusterEndpoints)
+
 	desiredTcpLB := kubelb.MapTcpLoadBalancer(&service, clusterEndpoints, r.ClusterName)
+	log.V(6).Info("desired", "TcpLoadBalancer", desiredTcpLB)
 
 	actualTcpLB, err := r.TcpLBClient.Get(desiredTcpLB.Name, v1.GetOptions{})
+	log.V(6).Info("actual", "TcpLoadBalancer", actualTcpLB)
 
 	if err != nil {
 		if !apierrors.IsNotFound(err) {
 			return ctrl.Result{}, err
 		}
-		log.Info("creating TcpLoadBalancer", "namespace", desiredTcpLB.Namespace, "name", desiredTcpLB.Name)
+		log.V(1).Info("creating TcpLoadBalancer", "name", desiredTcpLB.Name, "namespace", desiredTcpLB.Namespace)
 		_, err = r.TcpLBClient.Create(desiredTcpLB)
 		return ctrl.Result{}, err
 	}
 
-	if !kubelb.TcpLoadBalancerIsDesiredState(actualTcpLB, desiredTcpLB) {
-		log.Info("updating TcpLoadBalancer", "namespace", desiredTcpLB.Namespace, "name", desiredTcpLB.Name)
-		actualTcpLB.Spec = desiredTcpLB.Spec
-		_, err = r.TcpLBClient.Update(actualTcpLB)
-
-		if err != nil {
-			return ctrl.Result{}, err
-		}
+	if kubelb.TcpLoadBalancerIsDesiredState(actualTcpLB, desiredTcpLB) {
+		log.V(2).Info("TcpLoadBalancer is in desired state")
+		return ctrl.Result{}, nil
 	}
 
-	if service.Spec.Type == corev1.ServiceTypeLoadBalancer && len(service.Status.LoadBalancer.Ingress) != len(actualTcpLB.Status.LoadBalancer.Ingress) {
-		service.Status.LoadBalancer = actualTcpLB.Status.LoadBalancer
-		log.Info("updating service status", "namespace", desiredTcpLB.Namespace, "name", desiredTcpLB.Name)
-		return ctrl.Result{}, r.Client.Status().Update(r.Ctx, &service)
+	log.V(1).Info("updating TcpLoadBalancer spec", "name", desiredTcpLB.Name, "namespace", desiredTcpLB.Namespace)
+	actualTcpLB.Spec = desiredTcpLB.Spec
+	_, err = r.TcpLBClient.Update(actualTcpLB)
+
+	if err != nil {
+		return ctrl.Result{}, err
+	}
+	log.V(7).Info("updated to", "TcpLoadBalancer", actualTcpLB)
+
+	log.V(6).Info("load balancer status", "TcpLoadBalancer", actualTcpLB.Status.LoadBalancer.Ingress, "service", service.Status.LoadBalancer.Ingress)
+
+	if service.Spec.Type != corev1.ServiceTypeLoadBalancer || len(actualTcpLB.Status.LoadBalancer.Ingress) == len(service.Status.LoadBalancer.Ingress) {
+		log.V(2).Info("service status is in desired state")
+		return ctrl.Result{}, nil
 	}
 
-	return ctrl.Result{}, nil
+	log.V(1).Info("updating service status", "name", desiredTcpLB.Name, "namespace", desiredTcpLB.Namespace)
+	service.Status.LoadBalancer = actualTcpLB.Status.LoadBalancer
+	log.V(7).Info("updating to", "service status", service.Status.LoadBalancer)
+
+	return ctrl.Result{}, r.Client.Status().Update(r.Ctx, &service)
 }
 
 func (r *KubeLbServiceReconciler) SetupWithManager(mgr ctrl.Manager) error {

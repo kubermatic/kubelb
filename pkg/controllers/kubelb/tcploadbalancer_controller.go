@@ -56,20 +56,22 @@ type TCPLoadBalancerReconciler struct {
 // +kubebuilder:rbac:groups="apps",resources=deployments,verbs=get;list;watch;create;update;patch;delete
 
 func (r *TCPLoadBalancerReconciler) Reconcile(req ctrl.Request) (ctrl.Result, error) {
-	log := r.Log.WithValues("TCPLoadBalancer", req.NamespacedName)
+	log := r.Log.WithValues("name", req.Name, "namespace", req.Namespace)
+	log.V(2).Info("reconciling TCPLoadBalancer")
 
 	var tcpLoadBalancer kubelbk8ciov1alpha1.TCPLoadBalancer
-	if err := r.Get(r.Ctx, req.NamespacedName, &tcpLoadBalancer); err != nil {
-		log.Error(err, "unable to fetch TCPLoadBalancer")
-		// we'll ignore not-found errors, since they can't be fixed by an immediate
-		// requeue (we'll need to wait for a new notification), and we can get them
-		// on deleted requests.
-		return ctrl.Result{}, client.IgnoreNotFound(err)
+	err := r.Get(r.Ctx, req.NamespacedName, &tcpLoadBalancer)
+	if err != nil {
+		if client.IgnoreNotFound(err) != nil {
+			log.Error(err, "unable to fetch TCPLoadBalancer")
+		}
+		log.V(3).Info("TCPLoadBalancer not found")
+		return ctrl.Result{}, nil
 	}
 
-	log.Info("reconciling", "name", tcpLoadBalancer.Name, "namespace", tcpLoadBalancer.Namespace)
+	log.V(6).Info("processing", "TCPLoadBalancer", tcpLoadBalancer)
 
-	err := r.reconcileEnvoySnapshot(&tcpLoadBalancer)
+	err = r.reconcileEnvoySnapshot(&tcpLoadBalancer)
 
 	if err != nil {
 		log.Error(err, "Unable to reconcile envoy snapshot")
@@ -95,12 +97,17 @@ func (r *TCPLoadBalancerReconciler) Reconcile(req ctrl.Request) (ctrl.Result, er
 }
 
 func (r *TCPLoadBalancerReconciler) SetupWithManager(mgr ctrl.Manager) error {
-	c, err := ctrl.NewControllerManagedBy(mgr).For(&kubelbk8ciov1alpha1.TCPLoadBalancer{}).Build(r)
+	c, err := ctrl.NewControllerManagedBy(mgr).
+		For(&kubelbk8ciov1alpha1.TCPLoadBalancer{}).
+		Owns(&corev1.Service{}).
+		Owns(&appsv1.Deployment{}).
+		Build(r)
 
 	if err != nil {
 		return err
 	}
 
+	//Todo: same as owns? can be removed
 	serviceInformer, err := r.Cache.GetInformer(&corev1.Service{})
 	if err != nil {
 		r.Log.Error(err, "error occurred while getting service informer")
@@ -118,64 +125,22 @@ func (r *TCPLoadBalancerReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return nil
 }
 
-func (r *TCPLoadBalancerReconciler) reconcileService(tcpLoadBalancer *kubelbk8ciov1alpha1.TCPLoadBalancer) error {
-	log := r.Log.WithValues("TCPLoadBalancer", "svc")
-
-	desiredService := resources.MapService(tcpLoadBalancer)
-
-	err := ctrl.SetControllerReference(tcpLoadBalancer, desiredService, r.Scheme)
-	if err != nil {
-		log.Error(err, "Unable to set controller reference")
-		return err
-	}
-
-	actualService := &corev1.Service{}
-	err = r.Get(r.Ctx, types.NamespacedName{
-		Name:      tcpLoadBalancer.Name,
-		Namespace: tcpLoadBalancer.Namespace,
-	}, actualService)
-
-	if err != nil {
-		if !apierrors.IsNotFound(err) {
-			return err
-		}
-		log.Info("Creating service", "namespace", tcpLoadBalancer.Namespace, "name", tcpLoadBalancer.Name)
-		return r.Create(r.Ctx, desiredService)
-	}
-
-	if !resources.ServiceIsDesiredState(actualService, desiredService) {
-		log.Info("Updating service", "namespace", tcpLoadBalancer.Namespace, "name", tcpLoadBalancer.Name)
-		actualService.Spec.Ports = desiredService.Spec.Ports
-		actualService.Spec.Type = desiredService.Spec.Type
-		err = r.Update(r.Ctx, actualService)
-
-		if err != nil {
-			return err
-		}
-	}
-
-	if tcpLoadBalancer.Spec.Type == corev1.ServiceTypeLoadBalancer && len(tcpLoadBalancer.Status.LoadBalancer.Ingress) == 0 && len(actualService.Status.LoadBalancer.Ingress) != 0 {
-		tcpLoadBalancer.Status.LoadBalancer = actualService.Status.LoadBalancer
-		return r.Status().Update(r.Ctx, tcpLoadBalancer)
-	}
-
-	return nil
-}
-
 func (r *TCPLoadBalancerReconciler) reconcileEnvoySnapshot(tcpLoadBalancer *kubelbk8ciov1alpha1.TCPLoadBalancer) error {
 
-	log := r.Log.WithValues("TCPLoadBalancer", "snapshot")
+	log := r.Log.WithValues("reconcile", "envoy")
 
 	// Get current snapshot
 	currSnapshot, err := r.EnvoyCache.GetSnapshot(tcpLoadBalancer.Name)
+	//Todo: check for not found error and return if not
 	if err != nil {
 		// Add the snapshot to the cache
 		//Todo: check namespace and node-id uniqueness
 		initSnapshot := envoycp.MapSnapshot(tcpLoadBalancer, "0.0.1")
-		log.Info("Serving", "snapshot", initSnapshot)
+		log.V(1).Info("init snapshot", "service-node", tcpLoadBalancer.Name, "version", "0.0.1")
+		log.V(6).Info("serving", "snapshot", initSnapshot)
 
 		if err := r.EnvoyCache.SetSnapshot(tcpLoadBalancer.Name, initSnapshot); err != nil {
-			log.Error(err, "failed to set a new Envoy cache snapshot")
+			log.Error(err, "failed to set a new snapshot")
 		}
 		return nil
 	}
@@ -187,7 +152,7 @@ func (r *TCPLoadBalancerReconciler) reconcileEnvoySnapshot(tcpLoadBalancer *kube
 
 	// Generate a new snapshot using the old version to be able to do a DeepEqual comparison
 	if reflect.DeepEqual(currSnapshot, envoycp.MapSnapshot(tcpLoadBalancer, lastUsedVersion.String())) {
-		log.Info("no changes detected")
+		log.V(2).Info("snapshot is in desired state")
 		return nil
 	}
 
@@ -198,9 +163,9 @@ func (r *TCPLoadBalancerReconciler) reconcileEnvoySnapshot(tcpLoadBalancer *kube
 
 	if err := newSnapshot.Consistent(); err != nil {
 		return errors.Wrap(err, "new Envoy config snapshot is not consistent")
-
 	}
-	log.Info("Serving", "snapshot", newSnapshot)
+	log.V(1).Info("updating snapshot", "service-node", tcpLoadBalancer.Name, "version", newVersion.String())
+	log.V(6).Info("serving", "snapshot", newSnapshot)
 
 	if err := r.EnvoyCache.SetSnapshot(tcpLoadBalancer.Name, newSnapshot); err != nil {
 		return errors.Wrap(err, "failed to set a new Envoy cache snapshot")
@@ -211,15 +176,16 @@ func (r *TCPLoadBalancerReconciler) reconcileEnvoySnapshot(tcpLoadBalancer *kube
 
 func (r *TCPLoadBalancerReconciler) reconcileDeployment(tcpLoadBalancer *kubelbk8ciov1alpha1.TCPLoadBalancer) error {
 
-	log := r.Log.WithValues("TCPLoadBalancer", "deployment")
+	log := r.Log.WithValues("reconcile", "deployment")
 
 	desiredDeployment := resources.MapDeployment(tcpLoadBalancer, r.EnvoyBootstrap)
-
 	err := ctrl.SetControllerReference(tcpLoadBalancer, desiredDeployment, r.Scheme)
 	if err != nil {
 		log.Error(err, "Unable to set controller reference")
 		return err
 	}
+
+	log.V(6).Info("desired", "deployment", desiredDeployment)
 
 	actualDeployment := &appsv1.Deployment{}
 	err = r.Get(r.Ctx, types.NamespacedName{
@@ -227,17 +193,79 @@ func (r *TCPLoadBalancerReconciler) reconcileDeployment(tcpLoadBalancer *kubelbk
 		Namespace: tcpLoadBalancer.Namespace,
 	}, actualDeployment)
 
+	log.V(6).Info("actual", "deployment", actualDeployment)
+
 	if err != nil {
 		if !apierrors.IsNotFound(err) {
 			return err
 		}
-		log.Info("Creating deployment", "namespace", tcpLoadBalancer.Namespace, "name", tcpLoadBalancer.Name)
+		log.V(1).Info("creating deployment", "name", tcpLoadBalancer.Name, "namespace", tcpLoadBalancer.Namespace)
 		return r.Create(r.Ctx, desiredDeployment)
 	}
 
-	log.Info("Updating deployment", "namespace", tcpLoadBalancer.Namespace, "name", tcpLoadBalancer.Name)
+	log.V(1).Info("updating deployment", "name", tcpLoadBalancer.Name, "namespace", tcpLoadBalancer.Namespace)
 	actualDeployment.Spec = desiredDeployment.Spec
 
+	log.V(7).Info("updated to", "deployment", actualDeployment)
+
 	return r.Update(r.Ctx, actualDeployment)
+
+}
+
+func (r *TCPLoadBalancerReconciler) reconcileService(tcpLoadBalancer *kubelbk8ciov1alpha1.TCPLoadBalancer) error {
+	log := r.Log.WithValues("reconcile", "service")
+
+	desiredService := resources.MapService(tcpLoadBalancer)
+	err := ctrl.SetControllerReference(tcpLoadBalancer, desiredService, r.Scheme)
+	if err != nil {
+		log.Error(err, "Unable to set controller reference")
+		return err
+	}
+	log.V(6).Info("desired", "service", desiredService)
+
+	actualService := &corev1.Service{}
+	err = r.Get(r.Ctx, types.NamespacedName{
+		Name:      tcpLoadBalancer.Name,
+		Namespace: tcpLoadBalancer.Namespace,
+	}, actualService)
+
+	log.V(6).Info("actual", "service", actualService)
+
+	if err != nil {
+		if !apierrors.IsNotFound(err) {
+			return err
+		}
+		log.V(1).Info("creating service", "name", tcpLoadBalancer.Name, "namespace", tcpLoadBalancer.Namespace)
+		return r.Create(r.Ctx, desiredService)
+	}
+
+	if resources.ServiceIsDesiredState(actualService, desiredService) {
+		log.V(2).Info("service is in desired state")
+
+	} else {
+		log.V(1).Info("updating service", "name", tcpLoadBalancer.Name, "namespace", tcpLoadBalancer.Namespace)
+		actualService.Spec.Ports = desiredService.Spec.Ports
+		actualService.Spec.Type = desiredService.Spec.Type
+		log.V(7).Info("updated to", "service", actualService)
+
+		err = r.Update(r.Ctx, actualService)
+
+		if err != nil {
+			return err
+		}
+	}
+
+	log.V(6).Info("load balancer status", "TcpLoadBalancer", tcpLoadBalancer.Status.LoadBalancer.Ingress, "service", actualService.Status.LoadBalancer.Ingress)
+
+	if tcpLoadBalancer.Spec.Type != corev1.ServiceTypeLoadBalancer || len(tcpLoadBalancer.Status.LoadBalancer.Ingress) == len(actualService.Status.LoadBalancer.Ingress) {
+		log.V(2).Info("TcpLoadBalancer status is in desired state")
+	}
+
+	log.V(1).Info("updating TcpLoadBalancer status", "name", tcpLoadBalancer.Name, "namespace", tcpLoadBalancer.Namespace)
+
+	tcpLoadBalancer.Status.LoadBalancer = actualService.Status.LoadBalancer
+	log.V(7).Info("updating to", "TcpLoadBalancer status", tcpLoadBalancer.Status.LoadBalancer)
+
+	return r.Status().Update(r.Ctx, tcpLoadBalancer)
 
 }

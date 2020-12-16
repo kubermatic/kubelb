@@ -72,6 +72,8 @@ func main() {
 
 	ctrl.SetLogger(zap.New(zap.UseDevMode(enableDebugMode)))
 
+	setupLog.V(1).Info("cluster", "name", clusterName)
+
 	//is there something better i could do=?
 	var endpointAddressType corev1.NodeAddressType
 	if endpointAddressTypeString == string(corev1.NodeInternalIP) {
@@ -83,16 +85,11 @@ func main() {
 		os.Exit(1)
 	}
 
+	setupLog.V(1).Info("using endpoint address", "type", endpointAddressType)
+
 	var sharedEndpoints = kubelb.Endpoints{
 		ClusterEndpoints:    []string{},
 		EndpointAddressType: endpointAddressType,
-	}
-
-	kubeLbClient, err := kubelb.NewClient(clusterName, kubeLbKubeconf)
-
-	if err != nil {
-		setupLog.Error(err, "unable to create client for kubelb cluster")
-		os.Exit(1)
 	}
 
 	// setup signal handler
@@ -102,6 +99,12 @@ func main() {
 		<-signalHandler
 		cancel()
 	}()
+
+	kubeLbClient, err := kubelb.NewClient(clusterName, kubeLbKubeconf)
+	if err != nil {
+		setupLog.Error(err, "unable to create client for kubelb cluster")
+		os.Exit(1)
+	}
 
 	tcpLoadBalancerInformerFactory := informers.NewSharedInformerFactory(kubeLbClient.Clientset, time.Second*120)
 
@@ -119,18 +122,18 @@ func main() {
 
 	if err = (&agent.KubeLbNodeReconciler{
 		Client:    mgr.GetClient(),
-		Log:       ctrl.Log.WithName("kubelb-node-agent.controller"),
+		Log:       ctrl.Log.WithName("kubelb.node.reconciler"),
 		Scheme:    mgr.GetScheme(),
 		KlbClient: kubeLbClient.TcpLbClient,
 		Endpoints: &sharedEndpoints,
 	}).SetupWithManager(mgr); err != nil {
-		setupLog.Error(err, "unable to create controller", "controller", "kubelb-node-agent.controller")
+		setupLog.Error(err, "unable to create controller", "reconciler", "kubelb.node.reconciler")
 		os.Exit(1)
 	}
 
 	if err = (&agent.KubeLbServiceReconciler{
 		Client:                  mgr.GetClient(),
-		Log:                     ctrl.Log.WithName("kubelb-service-agent.controller"),
+		Log:                     ctrl.Log.WithName("kubelb.service.reconciler"),
 		Scheme:                  mgr.GetScheme(),
 		TcpLBClient:             kubeLbClient.TcpLbClient,
 		CloudController:         enableCloudController,
@@ -139,28 +142,27 @@ func main() {
 		TcpLoadBalancerInformer: tcpLoadBalancerInformerFactory.Kubelb().V1alpha1().TCPLoadBalancers(),
 		Ctx:                     ctx,
 	}).SetupWithManager(mgr); err != nil {
-		setupLog.Error(err, "unable to create controller", "controller", "kubelb-service-agent.controller")
+		setupLog.Error(err, "unable to create controller", "reconciler", "kubelb.service.reconciler")
 		os.Exit(1)
 	}
 
 	if err = (&agent.KubeLbIngressReconciler{
 		Client:       mgr.GetClient(),
-		Log:          ctrl.Log.WithName("kubelb-ingress-agent.controller"),
+		Log:          ctrl.Log.WithName("kubelb.ingress.reconciler"),
 		Scheme:       mgr.GetScheme(),
 		HttpLBClient: kubeLbClient.HttpLbClient,
 		ClusterName:  clusterName,
 		Ctx:          ctx,
 	}).SetupWithManager(mgr); err != nil {
-		setupLog.Error(err, "unable to create controller", "controller", "kubelb-ingress-agent.controller")
+		setupLog.Error(err, "unable to create controller", "reconciler", "kubelb.ingress.reconciler")
 		os.Exit(1)
 	}
 
-	sigHandler := ctrl.SetupSignalHandler()
-	tcpLoadBalancerInformerFactory.Start(sigHandler)
+	tcpLoadBalancerInformerFactory.Start(signalHandler)
 
 	// +kubebuilder:scaffold:builder
-	setupLog.Info("starting kubelb agent")
-	if err := mgr.Start(sigHandler); err != nil {
+	setupLog.V(1).Info("starting kubelb agent")
+	if err := mgr.Start(signalHandler); err != nil {
 		setupLog.Error(err, "problem running agent")
 		os.Exit(1)
 	}
