@@ -30,7 +30,7 @@ import (
 
 const xdsClusterName = "xds_cluster"
 
-const controlPlaneAddress = "manager-envoycp.kubelb.svc"
+const controlPlaneAddress = "envoycp.kubelb.svc"
 
 func (s *server) GenerateBootstrap() string {
 
@@ -123,6 +123,7 @@ func (s *server) GenerateBootstrap() string {
 				LoadBalancingPolicy: &envoyCluster.LoadBalancingPolicy{Policies: []*envoyCluster.LoadBalancingPolicy_Policy{{
 					Name: "ROUND_ROBIN",
 				}}},
+				//Todo: investigate - envoy have problems to connect without
 				Http2ProtocolOptions: &envoyCore.Http2ProtocolOptions{},
 				CircuitBreakers: &envoyCluster.CircuitBreakers{
 					Thresholds: []*envoyCluster.CircuitBreakers_Thresholds{

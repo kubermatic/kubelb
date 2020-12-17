@@ -54,7 +54,7 @@ func MapDeployment(tcpLoadBalancer *kubelbiov1alpha1.TCPLoadBalancer, conf strin
 					Containers: []corev1.Container{
 						{
 							Name:  tcpLoadBalancer.Name,
-							Image: "envoyproxy/envoy:v1.16.0",
+							Image: "envoyproxy/envoy:v1.16-latest",
 							Args: []string{
 								"--config-yaml", conf,
 								"--service-node", tcpLoadBalancer.Name,

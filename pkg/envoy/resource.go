@@ -24,6 +24,7 @@ import (
 	envoyListener "github.com/envoyproxy/go-control-plane/envoy/config/listener/v3"
 	envoyFileAccessLog "github.com/envoyproxy/go-control-plane/envoy/extensions/access_loggers/file/v3"
 	envoyTcpProxy "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/network/tcp_proxy/v3"
+	envoyUdpProxy "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/udp/udp_proxy/v3"
 	"github.com/envoyproxy/go-control-plane/pkg/cache/types"
 	"github.com/envoyproxy/go-control-plane/pkg/cache/v3"
 	"github.com/envoyproxy/go-control-plane/pkg/wellknown"
@@ -32,52 +33,56 @@ import (
 	"github.com/golang/protobuf/ptypes/wrappers"
 	kubelbiov1alpha1 "k8c.io/kubelb/pkg/api/kubelb.k8c.io/v1alpha1"
 	corev1 "k8s.io/api/core/v1"
+	"strconv"
 	"strings"
 	"time"
 )
+
+const defaultPortName = "port"
 
 func MapSnapshot(tcpLoadBalancer *kubelbiov1alpha1.TCPLoadBalancer, version string) cache.Snapshot {
 
 	var listener []types.Resource
 	var cluster []types.Resource
 
-	for _, lbServicePort := range tcpLoadBalancer.Spec.Ports {
+	for i, lbServicePort := range tcpLoadBalancer.Spec.Ports {
 
 		envoyClusterName := tcpLoadBalancer.Namespace
-		if lbServicePort.Name != "" {
-			envoyClusterName = strings.Join([]string{envoyClusterName, lbServicePort.Name}, "-")
+		if lbServicePort.Name == "" {
+			lbServicePort.Name = defaultPortName + strconv.Itoa(i)
 		}
+		envoyClusterName = strings.Join([]string{envoyClusterName, lbServicePort.Name}, "-")
 
 		if lbServicePort.Protocol == corev1.ProtocolTCP {
 			listener = append(listener, makeTCPListener(envoyClusterName, lbServicePort.Name, uint32(lbServicePort.Port)))
+		} else if lbServicePort.Protocol == corev1.ProtocolUDP {
+			listener = append(listener, makeUDPListener(envoyClusterName, lbServicePort.Name, uint32(lbServicePort.Port)))
 		} else {
-			//Todo: unsupported
+			//Todo: log unsupported
 		}
 	}
 
 	//multiple endpoints represent multiple clusters
 	for _, lbEndpoint := range tcpLoadBalancer.Spec.Endpoints {
 
-		for _, lbEndpointPorts := range lbEndpoint.Ports {
+		for i, lbEndpointPorts := range lbEndpoint.Ports {
 
 			var lbEndpoints []*envoyEndpoint.LbEndpoint
 			envoyClusterName := tcpLoadBalancer.Namespace
 
-			if lbEndpointPorts.Name != "" {
-				envoyClusterName = strings.Join([]string{envoyClusterName, lbEndpointPorts.Name}, "-")
+			if lbEndpointPorts.Name == "" {
+				lbEndpointPorts.Name = defaultPortName + strconv.Itoa(i)
 			}
+			envoyClusterName = strings.Join([]string{envoyClusterName, lbEndpointPorts.Name}, "-")
 
 			//each address -> one port
 			for _, lbEndpointAddress := range lbEndpoint.Addresses {
 				lbEndpoints = append(lbEndpoints, makeEndpoint(lbEndpointAddress.IP, uint32(lbEndpointPorts.Port)))
 			}
-
 			cluster = append(cluster, makeCluster(envoyClusterName, lbEndpoints))
-
 		}
 	}
 
-	//Todo: increment version
 	return cache.NewSnapshot(
 		version,
 		[]types.Resource{}, // endpoints
@@ -187,5 +192,44 @@ func makeTCPListener(clusterName string, listenerName string, listenerPort uint3
 				},
 			}},
 		}},
+	}
+}
+
+func makeUDPListener(clusterName string, listenerName string, listenerPort uint32) *envoyListener.Listener {
+
+	udpProxy := &envoyUdpProxy.UdpProxyConfig{
+		StatPrefix: listenerName,
+		RouteSpecifier: &envoyUdpProxy.UdpProxyConfig_Cluster{
+			Cluster: clusterName,
+		},
+	}
+
+	pbst, err := ptypes.MarshalAny(udpProxy)
+	if err != nil {
+		panic(err)
+	}
+
+	return &envoyListener.Listener{
+		Name: listenerName,
+		Address: &envoyCore.Address{
+			Address: &envoyCore.Address_SocketAddress{
+				SocketAddress: &envoyCore.SocketAddress{
+					Protocol: envoyCore.SocketAddress_UDP,
+					Address:  "0.0.0.0",
+					PortSpecifier: &envoyCore.SocketAddress_PortValue{
+						PortValue: listenerPort,
+					},
+				},
+			},
+		},
+		ListenerFilters: []*envoyListener.ListenerFilter{
+			{
+				Name: "envoy.filters.udp_listener.udp_proxy",
+				ConfigType: &envoyListener.ListenerFilter_TypedConfig{
+					TypedConfig: pbst,
+				},
+			},
+		},
+		ReusePort: true,
 	}
 }
