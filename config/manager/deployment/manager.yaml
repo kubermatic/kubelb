@@ -57,7 +57,8 @@ spec:
         - command:
             - /manager
           args:
-            - --enable-leader-election
+#            - --enable-leader-election
+            - --v=10
           image: controller:latest
           name: manager
           ports:
@@ -69,6 +70,4 @@ spec:
             requests:
               cpu: 100m
               memory: 20Mi
-      imagePullSecrets:
-        - name: regcred
       terminationGracePeriodSeconds: 10

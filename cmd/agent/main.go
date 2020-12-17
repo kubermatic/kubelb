@@ -21,6 +21,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"github.com/spf13/pflag"
 	"k8c.io/kubelb/pkg/controllers/agent"
 	informers "k8c.io/kubelb/pkg/generated/informers/externalversions"
 	"k8c.io/kubelb/pkg/kubelb"
@@ -28,17 +29,17 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	_ "k8s.io/client-go/plugin/pkg/client/auth/gcp"
+	"k8s.io/klog/v2"
+	"k8s.io/klog/v2/klogr"
 	"os"
 	"path/filepath"
 	ctrl "sigs.k8s.io/controller-runtime"
-	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 	"time"
 	// +kubebuilder:scaffold:imports
 )
 
 var (
 	scheme            = runtime.NewScheme()
-	setupLog          = ctrl.Log.WithName("setup")
 	defaultKubeLbConf = filepath.Join(
 		os.Getenv("HOME"), ".kube", "kubelb",
 	)
@@ -55,22 +56,34 @@ func main() {
 	var metricsAddr string
 	var enableCloudController bool
 	var enableLeaderElection bool
-	var enableDebugMode bool
 	var endpointAddressTypeString string
 	var clusterName string
 	var kubeLbKubeconf string
 
-	flag.StringVar(&metricsAddr, "metrics-addr", ":0", "The address the metric endpoint binds to.")
-	flag.StringVar(&endpointAddressTypeString, "node-address-type", "ExternalIP", "The default address type used as an endpoint address.")
-	flag.StringVar(&clusterName, "cluster-name", "default", "Cluster name where the agent is running. Resources inside the KubeLb cluster will get deployed to the namespace named by cluster name, must be unique.")
-	flag.StringVar(&kubeLbKubeconf, "kubelb-kubeconfig", defaultKubeLbConf, "The path to the kubelb cluster kubeconfig.")
-	flag.BoolVar(&enableCloudController, "enable-cloud-provider", true, "Enables cloud controller like behavior. This will set the status of TCP LoadBalancer")
-	flag.BoolVar(&enableLeaderElection, "enable-leader-election", false,
-		"Enable leader election for controller agent. Enabling this will ensure there is only one active controller agent.")
-	flag.BoolVar(&enableDebugMode, "debug", false, "Enables debug mode")
-	flag.Parse()
+	// Add klog flags
+	klogFlags := flag.NewFlagSet(os.Args[0], flag.ExitOnError)
+	klog.InitFlags(klogFlags)
 
-	ctrl.SetLogger(zap.New(zap.UseDevMode(enableDebugMode)))
+	flagset := pflag.NewFlagSet(os.Args[0], pflag.ExitOnError)
+	flagset.AddGoFlagSet(klogFlags)
+
+	flagset.StringVar(&metricsAddr, "metrics-addr", ":0", "The address the metric endpoint binds to.")
+	flagset.StringVar(&endpointAddressTypeString, "node-address-type", "ExternalIP", "The default address type used as an endpoint address.")
+	flagset.StringVar(&clusterName, "cluster-name", "default", "Cluster name where the agent is running. Resources inside the KubeLb cluster will get deployed to the namespace named by cluster name, must be unique.")
+	flagset.StringVar(&kubeLbKubeconf, "kubelb-kubeconfig", defaultKubeLbConf, "The path to the kubelb cluster kubeconfig.")
+	flagset.BoolVar(&enableCloudController, "enable-cloud-provider", true, "Enables cloud controller like behavior. This will set the status of TCP LoadBalancer")
+	flagset.BoolVar(&enableLeaderElection, "enable-leader-election", false,
+		"Enable leader election for controller agent. Enabling this will ensure there is only one active controller agent.")
+
+	err := flagset.Parse(os.Args[1:])
+	if err != nil {
+		os.Exit(1)
+	}
+
+	log := klogr.New()
+	ctrl.SetLogger(log)
+
+	setupLog := log.WithName("init")
 
 	setupLog.V(1).Info("cluster", "name", clusterName)
 

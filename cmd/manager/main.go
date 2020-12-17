@@ -19,14 +19,16 @@ package main
 import (
 	"context"
 	"flag"
+	"github.com/spf13/pflag"
 	envoycp "k8c.io/kubelb/pkg/envoy"
+	"k8s.io/klog/v2"
+	"k8s.io/klog/v2/klogr"
 	"os"
 
 	"k8s.io/apimachinery/pkg/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	_ "k8s.io/client-go/plugin/pkg/client/auth/gcp"
 	ctrl "sigs.k8s.io/controller-runtime"
-	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
 	kubelbk8ciov1alpha1 "k8c.io/kubelb/pkg/api/kubelb.k8c.io/v1alpha1"
 	"k8c.io/kubelb/pkg/controllers/kubelb"
@@ -34,8 +36,7 @@ import (
 )
 
 var (
-	scheme   = runtime.NewScheme()
-	setupLog = ctrl.Log.WithName("setup")
+	scheme = runtime.NewScheme()
 )
 
 func init() {
@@ -51,15 +52,29 @@ func main() {
 	var enableLeaderElection bool
 	var enableDebugMode bool
 
-	flag.StringVar(&envoyListenAddress, "listen-address", ":8001", "Address to serve envoy control-plane on")
-	flag.StringVar(&metricsAddr, "metrics-addr", ":0", "The address the metric endpoint binds to.")
-	flag.BoolVar(&enableLeaderElection, "enable-leader-election", false,
+	// Add klog flags
+	klogFlags := flag.NewFlagSet(os.Args[0], flag.ExitOnError)
+	klog.InitFlags(klogFlags)
+
+	flagset := pflag.NewFlagSet(os.Args[0], pflag.ExitOnError)
+	flagset.AddGoFlagSet(klogFlags)
+
+	flagset.StringVar(&envoyListenAddress, "listen-address", ":8001", "Address to serve envoy control-plane on")
+	flagset.StringVar(&metricsAddr, "metrics-addr", ":0", "The address the metric endpoint binds to.")
+	flagset.BoolVar(&enableLeaderElection, "enable-leader-election", false,
 		"Enable leader election for controller manager. "+
 			"Enabling this will ensure there is only one active controller manager.")
-	flag.BoolVar(&enableDebugMode, "debug", false, "Enables debug mode")
-	flag.Parse()
+	flagset.BoolVar(&enableDebugMode, "debug", false, "Enables debug mode")
 
-	ctrl.SetLogger(zap.New(zap.UseDevMode(enableDebugMode)))
+	err := flagset.Parse(os.Args[1:])
+	if err != nil {
+		os.Exit(1)
+	}
+
+	log := klogr.New()
+	ctrl.SetLogger(log)
+
+	setupLog := log.WithName("init")
 
 	// setup signal handler
 	ctx, cancel := context.WithCancel(context.Background())

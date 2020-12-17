@@ -40,8 +40,11 @@ spec:
       containers:
         - command:
             - /agent
-          #        args:
-          #        - --enable-leader-election
+          args:
+            #            - --enable-leader-election
+            - --cluster-name=tenant-1
+            - --node-address-type=InternalIP
+            - --v=10
           image: controller:latest
           name: agent
           resources:
@@ -59,6 +62,4 @@ spec:
         - name: kubelb
           configMap:
             name: kubelb
-      imagePullSecrets:
-        - name: regcred
       terminationGracePeriodSeconds: 10
