@@ -123,7 +123,7 @@ func (s *server) GenerateBootstrap() string {
 				LoadBalancingPolicy: &envoyCluster.LoadBalancingPolicy{Policies: []*envoyCluster.LoadBalancingPolicy_Policy{{
 					Name: "ROUND_ROBIN",
 				}}},
-				//Todo: investigate - envoy have problems to connect without
+				//Todo: investigate - envoy has problems to connect without
 				Http2ProtocolOptions: &envoyCore.Http2ProtocolOptions{},
 				CircuitBreakers: &envoyCluster.CircuitBreakers{
 					Thresholds: []*envoyCluster.CircuitBreakers_Thresholds{

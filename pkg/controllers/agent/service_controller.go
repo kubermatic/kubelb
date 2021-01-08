@@ -154,6 +154,21 @@ func (r *KubeLbServiceReconciler) Reconcile(req ctrl.Request) (ctrl.Result, erro
 		return ctrl.Result{}, err
 	}
 
+	log.V(6).Info("load balancer status", "TcpLoadBalancer", actualTcpLB.Status.LoadBalancer.Ingress, "service", service.Status.LoadBalancer.Ingress)
+
+	if service.Spec.Type != corev1.ServiceTypeLoadBalancer || len(actualTcpLB.Status.LoadBalancer.Ingress) == len(service.Status.LoadBalancer.Ingress) {
+		log.V(2).Info("service status is in desired state")
+	} else {
+		log.V(1).Info("updating service status", "name", desiredTcpLB.Name, "namespace", desiredTcpLB.Namespace)
+		service.Status.LoadBalancer = actualTcpLB.Status.LoadBalancer
+		log.V(7).Info("updating to", "service status", service.Status.LoadBalancer)
+
+		err = r.Client.Status().Update(r.Ctx, &service)
+		if err != nil {
+			return ctrl.Result{}, err
+		}
+	}
+
 	if kubelb.TcpLoadBalancerIsDesiredState(actualTcpLB, desiredTcpLB) {
 		log.V(2).Info("TcpLoadBalancer is in desired state")
 		return ctrl.Result{}, nil
@@ -168,18 +183,7 @@ func (r *KubeLbServiceReconciler) Reconcile(req ctrl.Request) (ctrl.Result, erro
 	}
 	log.V(7).Info("updated to", "TcpLoadBalancer", actualTcpLB)
 
-	log.V(6).Info("load balancer status", "TcpLoadBalancer", actualTcpLB.Status.LoadBalancer.Ingress, "service", service.Status.LoadBalancer.Ingress)
-
-	if service.Spec.Type != corev1.ServiceTypeLoadBalancer || len(actualTcpLB.Status.LoadBalancer.Ingress) == len(service.Status.LoadBalancer.Ingress) {
-		log.V(2).Info("service status is in desired state")
-		return ctrl.Result{}, nil
-	}
-
-	log.V(1).Info("updating service status", "name", desiredTcpLB.Name, "namespace", desiredTcpLB.Namespace)
-	service.Status.LoadBalancer = actualTcpLB.Status.LoadBalancer
-	log.V(7).Info("updating to", "service status", service.Status.LoadBalancer)
-
-	return ctrl.Result{}, r.Client.Status().Update(r.Ctx, &service)
+	return ctrl.Result{}, err
 }
 
 func (r *KubeLbServiceReconciler) SetupWithManager(mgr ctrl.Manager) error {
