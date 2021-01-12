@@ -18,7 +18,6 @@ package agent
 
 import (
 	"context"
-	"errors"
 	"github.com/go-logr/logr"
 	utils "k8c.io/kubelb/pkg/controllers"
 	"k8c.io/kubelb/pkg/generated/clientset/versioned/typed/kubelb.k8c.io/v1alpha1"
@@ -49,7 +48,7 @@ type KubeLbServiceReconciler struct {
 	TcpLoadBalancerInformer kubelbk8ciov1alpha1informers.TCPLoadBalancerInformer
 }
 
-var ServiceMatcher = &utils.MatchingAnnotationPredicate{
+var AnnotationServiceClassMatcher = &utils.MatchingAnnotationPredicate{
 	AnnotationName:  "kubernetes.io/service.class",
 	AnnotationValue: "kubelb",
 }
@@ -72,7 +71,15 @@ func (r *KubeLbServiceReconciler) Reconcile(req ctrl.Request) (ctrl.Result, erro
 		return ctrl.Result{}, nil
 	}
 
+	if service.Spec.Type != corev1.ServiceTypeNodePort && service.Spec.Type != corev1.ServiceTypeLoadBalancer ||
+		(!r.CloudController || service.Spec.Type == corev1.ServiceTypeNodePort) && !AnnotationServiceClassMatcher.Match(service.GetAnnotations()) {
+		return ctrl.Result{}, nil
+	}
+
+	clusterEndpoints := r.getEndpoints(&service)
+
 	log.V(6).Info("processing", "service", service)
+	log.V(5).Info("proceeding with", "endpoints", clusterEndpoints)
 
 	// examine DeletionTimestamp to determine if object is under deletion
 	if service.ObjectMeta.DeletionTimestamp.IsZero() {
@@ -113,28 +120,6 @@ func (r *KubeLbServiceReconciler) Reconcile(req ctrl.Request) (ctrl.Result, erro
 
 		// Stop reconciliation as the item is being deleted
 		return ctrl.Result{}, nil
-	}
-
-	var clusterEndpoints []string
-	//Use node ports as backend for nodePort service and load balancer if the agent server as cloud controller and should provision the load balacner
-	if service.Spec.Type == corev1.ServiceTypeNodePort || (service.Spec.Type == corev1.ServiceTypeLoadBalancer && r.CloudController) {
-		clusterEndpoints = r.Endpoints.ClusterEndpoints
-		log.V(4).Info("use nodes as endpoint")
-	} else if service.Spec.Type == corev1.ServiceTypeLoadBalancer {
-		for _, lbIngress := range service.Status.LoadBalancer.Ingress {
-
-			if lbIngress.IP != "" {
-				clusterEndpoints = append(clusterEndpoints, lbIngress.IP)
-				log.V(4).Info("use load balancer ip as endpoint")
-			} else {
-				clusterEndpoints = append(clusterEndpoints, lbIngress.Hostname)
-				log.V(4).Info("use load balancer hostname as endpoint")
-			}
-		}
-	} else {
-		err = errors.New("service type not supported")
-		log.Error(err, "requires services to be either NodePort or LoadBalancer")
-		return ctrl.Result{}, err
 	}
 
 	log.V(5).Info("proceeding with", "endpoints", clusterEndpoints)
@@ -189,9 +174,7 @@ func (r *KubeLbServiceReconciler) Reconcile(req ctrl.Request) (ctrl.Result, erro
 func (r *KubeLbServiceReconciler) SetupWithManager(mgr ctrl.Manager) error {
 
 	c, err := ctrl.NewControllerManagedBy(mgr).
-		For(&corev1.Service{}).
-		WithEventFilter(ServiceMatcher).
-		Build(r)
+		For(&corev1.Service{}).Build(r)
 
 	if err != nil {
 		return err
@@ -203,5 +186,27 @@ func (r *KubeLbServiceReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	)
 
 	return err
+
+}
+
+//Todo: document this behaviour
+func (r *KubeLbServiceReconciler) getEndpoints(service *corev1.Service) []string {
+
+	var clusterEndpoints []string
+
+	//Use LB Endpoint if there is any non KubeLb load balancer implementation
+	if service.Spec.Type == corev1.ServiceTypeLoadBalancer && !r.CloudController {
+		for _, lbIngress := range service.Status.LoadBalancer.Ingress {
+			if lbIngress.IP != "" {
+				clusterEndpoints = append(clusterEndpoints, lbIngress.IP)
+			} else {
+				clusterEndpoints = append(clusterEndpoints, lbIngress.Hostname)
+			}
+		}
+	} else {
+		clusterEndpoints = r.Endpoints.ClusterEndpoints
+	}
+
+	return clusterEndpoints
 
 }
