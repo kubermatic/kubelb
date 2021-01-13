@@ -1,5 +1,5 @@
 /*
-Copyright 2020 The KubeLB Authors.
+Copyright 2021 The KubeLB Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -18,6 +18,7 @@ limitations under the License.
 package v1alpha1
 
 import (
+	"context"
 	"time"
 
 	v1alpha1 "k8c.io/kubelb/pkg/api/kubelb.k8c.io/v1alpha1"
@@ -36,15 +37,15 @@ type TCPLoadBalancersGetter interface {
 
 // TCPLoadBalancerInterface has methods to work with TCPLoadBalancer resources.
 type TCPLoadBalancerInterface interface {
-	Create(*v1alpha1.TCPLoadBalancer) (*v1alpha1.TCPLoadBalancer, error)
-	Update(*v1alpha1.TCPLoadBalancer) (*v1alpha1.TCPLoadBalancer, error)
-	UpdateStatus(*v1alpha1.TCPLoadBalancer) (*v1alpha1.TCPLoadBalancer, error)
-	Delete(name string, options *v1.DeleteOptions) error
-	DeleteCollection(options *v1.DeleteOptions, listOptions v1.ListOptions) error
-	Get(name string, options v1.GetOptions) (*v1alpha1.TCPLoadBalancer, error)
-	List(opts v1.ListOptions) (*v1alpha1.TCPLoadBalancerList, error)
-	Watch(opts v1.ListOptions) (watch.Interface, error)
-	Patch(name string, pt types.PatchType, data []byte, subresources ...string) (result *v1alpha1.TCPLoadBalancer, err error)
+	Create(ctx context.Context, tCPLoadBalancer *v1alpha1.TCPLoadBalancer, opts v1.CreateOptions) (*v1alpha1.TCPLoadBalancer, error)
+	Update(ctx context.Context, tCPLoadBalancer *v1alpha1.TCPLoadBalancer, opts v1.UpdateOptions) (*v1alpha1.TCPLoadBalancer, error)
+	UpdateStatus(ctx context.Context, tCPLoadBalancer *v1alpha1.TCPLoadBalancer, opts v1.UpdateOptions) (*v1alpha1.TCPLoadBalancer, error)
+	Delete(ctx context.Context, name string, opts v1.DeleteOptions) error
+	DeleteCollection(ctx context.Context, opts v1.DeleteOptions, listOpts v1.ListOptions) error
+	Get(ctx context.Context, name string, opts v1.GetOptions) (*v1alpha1.TCPLoadBalancer, error)
+	List(ctx context.Context, opts v1.ListOptions) (*v1alpha1.TCPLoadBalancerList, error)
+	Watch(ctx context.Context, opts v1.ListOptions) (watch.Interface, error)
+	Patch(ctx context.Context, name string, pt types.PatchType, data []byte, opts v1.PatchOptions, subresources ...string) (result *v1alpha1.TCPLoadBalancer, err error)
 	TCPLoadBalancerExpansion
 }
 
@@ -63,20 +64,20 @@ func newTCPLoadBalancers(c *KubelbV1alpha1Client, namespace string) *tCPLoadBala
 }
 
 // Get takes name of the tCPLoadBalancer, and returns the corresponding tCPLoadBalancer object, and an error if there is any.
-func (c *tCPLoadBalancers) Get(name string, options v1.GetOptions) (result *v1alpha1.TCPLoadBalancer, err error) {
+func (c *tCPLoadBalancers) Get(ctx context.Context, name string, options v1.GetOptions) (result *v1alpha1.TCPLoadBalancer, err error) {
 	result = &v1alpha1.TCPLoadBalancer{}
 	err = c.client.Get().
 		Namespace(c.ns).
 		Resource("tcploadbalancers").
 		Name(name).
 		VersionedParams(&options, scheme.ParameterCodec).
-		Do().
+		Do(ctx).
 		Into(result)
 	return
 }
 
 // List takes label and field selectors, and returns the list of TCPLoadBalancers that match those selectors.
-func (c *tCPLoadBalancers) List(opts v1.ListOptions) (result *v1alpha1.TCPLoadBalancerList, err error) {
+func (c *tCPLoadBalancers) List(ctx context.Context, opts v1.ListOptions) (result *v1alpha1.TCPLoadBalancerList, err error) {
 	var timeout time.Duration
 	if opts.TimeoutSeconds != nil {
 		timeout = time.Duration(*opts.TimeoutSeconds) * time.Second
@@ -87,13 +88,13 @@ func (c *tCPLoadBalancers) List(opts v1.ListOptions) (result *v1alpha1.TCPLoadBa
 		Resource("tcploadbalancers").
 		VersionedParams(&opts, scheme.ParameterCodec).
 		Timeout(timeout).
-		Do().
+		Do(ctx).
 		Into(result)
 	return
 }
 
 // Watch returns a watch.Interface that watches the requested tCPLoadBalancers.
-func (c *tCPLoadBalancers) Watch(opts v1.ListOptions) (watch.Interface, error) {
+func (c *tCPLoadBalancers) Watch(ctx context.Context, opts v1.ListOptions) (watch.Interface, error) {
 	var timeout time.Duration
 	if opts.TimeoutSeconds != nil {
 		timeout = time.Duration(*opts.TimeoutSeconds) * time.Second
@@ -104,87 +105,90 @@ func (c *tCPLoadBalancers) Watch(opts v1.ListOptions) (watch.Interface, error) {
 		Resource("tcploadbalancers").
 		VersionedParams(&opts, scheme.ParameterCodec).
 		Timeout(timeout).
-		Watch()
+		Watch(ctx)
 }
 
 // Create takes the representation of a tCPLoadBalancer and creates it.  Returns the server's representation of the tCPLoadBalancer, and an error, if there is any.
-func (c *tCPLoadBalancers) Create(tCPLoadBalancer *v1alpha1.TCPLoadBalancer) (result *v1alpha1.TCPLoadBalancer, err error) {
+func (c *tCPLoadBalancers) Create(ctx context.Context, tCPLoadBalancer *v1alpha1.TCPLoadBalancer, opts v1.CreateOptions) (result *v1alpha1.TCPLoadBalancer, err error) {
 	result = &v1alpha1.TCPLoadBalancer{}
 	err = c.client.Post().
 		Namespace(c.ns).
 		Resource("tcploadbalancers").
+		VersionedParams(&opts, scheme.ParameterCodec).
 		Body(tCPLoadBalancer).
-		Do().
+		Do(ctx).
 		Into(result)
 	return
 }
 
 // Update takes the representation of a tCPLoadBalancer and updates it. Returns the server's representation of the tCPLoadBalancer, and an error, if there is any.
-func (c *tCPLoadBalancers) Update(tCPLoadBalancer *v1alpha1.TCPLoadBalancer) (result *v1alpha1.TCPLoadBalancer, err error) {
+func (c *tCPLoadBalancers) Update(ctx context.Context, tCPLoadBalancer *v1alpha1.TCPLoadBalancer, opts v1.UpdateOptions) (result *v1alpha1.TCPLoadBalancer, err error) {
 	result = &v1alpha1.TCPLoadBalancer{}
 	err = c.client.Put().
 		Namespace(c.ns).
 		Resource("tcploadbalancers").
 		Name(tCPLoadBalancer.Name).
+		VersionedParams(&opts, scheme.ParameterCodec).
 		Body(tCPLoadBalancer).
-		Do().
+		Do(ctx).
 		Into(result)
 	return
 }
 
 // UpdateStatus was generated because the type contains a Status member.
 // Add a +genclient:noStatus comment above the type to avoid generating UpdateStatus().
-
-func (c *tCPLoadBalancers) UpdateStatus(tCPLoadBalancer *v1alpha1.TCPLoadBalancer) (result *v1alpha1.TCPLoadBalancer, err error) {
+func (c *tCPLoadBalancers) UpdateStatus(ctx context.Context, tCPLoadBalancer *v1alpha1.TCPLoadBalancer, opts v1.UpdateOptions) (result *v1alpha1.TCPLoadBalancer, err error) {
 	result = &v1alpha1.TCPLoadBalancer{}
 	err = c.client.Put().
 		Namespace(c.ns).
 		Resource("tcploadbalancers").
 		Name(tCPLoadBalancer.Name).
 		SubResource("status").
+		VersionedParams(&opts, scheme.ParameterCodec).
 		Body(tCPLoadBalancer).
-		Do().
+		Do(ctx).
 		Into(result)
 	return
 }
 
 // Delete takes name of the tCPLoadBalancer and deletes it. Returns an error if one occurs.
-func (c *tCPLoadBalancers) Delete(name string, options *v1.DeleteOptions) error {
+func (c *tCPLoadBalancers) Delete(ctx context.Context, name string, opts v1.DeleteOptions) error {
 	return c.client.Delete().
 		Namespace(c.ns).
 		Resource("tcploadbalancers").
 		Name(name).
-		Body(options).
-		Do().
+		Body(&opts).
+		Do(ctx).
 		Error()
 }
 
 // DeleteCollection deletes a collection of objects.
-func (c *tCPLoadBalancers) DeleteCollection(options *v1.DeleteOptions, listOptions v1.ListOptions) error {
+func (c *tCPLoadBalancers) DeleteCollection(ctx context.Context, opts v1.DeleteOptions, listOpts v1.ListOptions) error {
 	var timeout time.Duration
-	if listOptions.TimeoutSeconds != nil {
-		timeout = time.Duration(*listOptions.TimeoutSeconds) * time.Second
+	if listOpts.TimeoutSeconds != nil {
+		timeout = time.Duration(*listOpts.TimeoutSeconds) * time.Second
 	}
 	return c.client.Delete().
 		Namespace(c.ns).
 		Resource("tcploadbalancers").
-		VersionedParams(&listOptions, scheme.ParameterCodec).
+		VersionedParams(&listOpts, scheme.ParameterCodec).
 		Timeout(timeout).
-		Body(options).
-		Do().
+		Body(&opts).
+		Do(ctx).
 		Error()
 }
 
 // Patch applies the patch and returns the patched tCPLoadBalancer.
-func (c *tCPLoadBalancers) Patch(name string, pt types.PatchType, data []byte, subresources ...string) (result *v1alpha1.TCPLoadBalancer, err error) {
+func (c *tCPLoadBalancers) Patch(ctx context.Context, name string, pt types.PatchType, data []byte, opts v1.PatchOptions, subresources ...string) (result *v1alpha1.TCPLoadBalancer, err error) {
 	result = &v1alpha1.TCPLoadBalancer{}
 	err = c.client.Patch(pt).
 		Namespace(c.ns).
 		Resource("tcploadbalancers").
-		SubResource(subresources...).
 		Name(name).
+		SubResource(subresources...).
+		VersionedParams(&opts, scheme.ParameterCodec).
 		Body(data).
-		Do().
+		Do(ctx).
 		Into(result)
 	return
 }

@@ -1,5 +1,5 @@
 /*
-Copyright 2020 The KubeLB Authors.
+Copyright 2021 The KubeLB Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -25,8 +25,10 @@ import (
 )
 
 // HTTPLoadBalancerLister helps list HTTPLoadBalancers.
+// All objects returned here must be treated as read-only.
 type HTTPLoadBalancerLister interface {
 	// List lists all HTTPLoadBalancers in the indexer.
+	// Objects returned here must be treated as read-only.
 	List(selector labels.Selector) (ret []*v1alpha1.HTTPLoadBalancer, err error)
 	// HTTPLoadBalancers returns an object that can list and get HTTPLoadBalancers.
 	HTTPLoadBalancers(namespace string) HTTPLoadBalancerNamespaceLister
@@ -57,10 +59,13 @@ func (s *hTTPLoadBalancerLister) HTTPLoadBalancers(namespace string) HTTPLoadBal
 }
 
 // HTTPLoadBalancerNamespaceLister helps list and get HTTPLoadBalancers.
+// All objects returned here must be treated as read-only.
 type HTTPLoadBalancerNamespaceLister interface {
 	// List lists all HTTPLoadBalancers in the indexer for a given namespace.
+	// Objects returned here must be treated as read-only.
 	List(selector labels.Selector) (ret []*v1alpha1.HTTPLoadBalancer, err error)
 	// Get retrieves the HTTPLoadBalancer from the indexer for a given namespace and name.
+	// Objects returned here must be treated as read-only.
 	Get(name string) (*v1alpha1.HTTPLoadBalancer, error)
 	HTTPLoadBalancerNamespaceListerExpansion
 }

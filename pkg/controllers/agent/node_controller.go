@@ -40,13 +40,13 @@ type KubeLbNodeReconciler struct {
 
 // +kubebuilder:rbac:groups="",resources=nodes,verbs=list;get;watch
 
-func (r *KubeLbNodeReconciler) Reconcile(req ctrl.Request) (ctrl.Result, error) {
+func (r *KubeLbNodeReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	log := r.Log.WithValues("name", req.Name)
 
 	log.V(2).Info("reconciling node")
 
 	nodeList := &corev1.NodeList{}
-	err := r.List(context.Background(), nodeList)
+	err := r.List(ctx, nodeList)
 
 	if err != nil {
 		log.Error(err, "unable to list nodeList")
@@ -67,7 +67,7 @@ func (r *KubeLbNodeReconciler) Reconcile(req ctrl.Request) (ctrl.Result, error) 
 	log.V(5).Info("proceeding with", "endpoints", r.Endpoints.ClusterEndpoints)
 
 	//patch endpoints
-	tcpLbList, err := r.KlbClient.List(v1.ListOptions{})
+	tcpLbList, err := r.KlbClient.List(ctx, v1.ListOptions{})
 	if err != nil {
 		log.Error(err, "unable to list TcpLoadBalancer")
 		return ctrl.Result{}, err
@@ -87,7 +87,7 @@ func (r *KubeLbNodeReconciler) Reconcile(req ctrl.Request) (ctrl.Result, error) 
 			endpoints.Addresses = endpointAddresses
 		}
 
-		_, err = r.KlbClient.Update(&tcpLb)
+		_, err = r.KlbClient.Update(ctx, &tcpLb, v1.UpdateOptions{})
 		if err != nil {
 			log.Error(err, "unable to update", "TcpLoadBalancer", tcpLb.Name)
 		}

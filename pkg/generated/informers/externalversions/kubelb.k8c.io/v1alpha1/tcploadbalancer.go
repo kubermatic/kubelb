@@ -1,5 +1,5 @@
 /*
-Copyright 2020 The KubeLB Authors.
+Copyright 2021 The KubeLB Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -18,6 +18,7 @@ limitations under the License.
 package v1alpha1
 
 import (
+	"context"
 	time "time"
 
 	kubelbk8ciov1alpha1 "k8c.io/kubelb/pkg/api/kubelb.k8c.io/v1alpha1"
@@ -60,13 +61,13 @@ func NewFilteredTCPLoadBalancerInformer(client versioned.Interface, namespace st
 				if tweakListOptions != nil {
 					tweakListOptions(&options)
 				}
-				return client.KubelbV1alpha1().TCPLoadBalancers(namespace).List(options)
+				return client.KubelbV1alpha1().TCPLoadBalancers(namespace).List(context.TODO(), options)
 			},
 			WatchFunc: func(options v1.ListOptions) (watch.Interface, error) {
 				if tweakListOptions != nil {
 					tweakListOptions(&options)
 				}
-				return client.KubelbV1alpha1().TCPLoadBalancers(namespace).Watch(options)
+				return client.KubelbV1alpha1().TCPLoadBalancers(namespace).Watch(context.TODO(), options)
 			},
 		},
 		&kubelbk8ciov1alpha1.TCPLoadBalancer{},

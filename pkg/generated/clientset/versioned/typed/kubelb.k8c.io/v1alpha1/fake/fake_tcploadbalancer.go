@@ -1,5 +1,5 @@
 /*
-Copyright 2020 The KubeLB Authors.
+Copyright 2021 The KubeLB Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -18,6 +18,8 @@ limitations under the License.
 package fake
 
 import (
+	"context"
+
 	v1alpha1 "k8c.io/kubelb/pkg/api/kubelb.k8c.io/v1alpha1"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	labels "k8s.io/apimachinery/pkg/labels"
@@ -38,7 +40,7 @@ var tcploadbalancersResource = schema.GroupVersionResource{Group: "kubelb.k8c.io
 var tcploadbalancersKind = schema.GroupVersionKind{Group: "kubelb.k8c.io", Version: "v1alpha1", Kind: "TCPLoadBalancer"}
 
 // Get takes name of the tCPLoadBalancer, and returns the corresponding tCPLoadBalancer object, and an error if there is any.
-func (c *FakeTCPLoadBalancers) Get(name string, options v1.GetOptions) (result *v1alpha1.TCPLoadBalancer, err error) {
+func (c *FakeTCPLoadBalancers) Get(ctx context.Context, name string, options v1.GetOptions) (result *v1alpha1.TCPLoadBalancer, err error) {
 	obj, err := c.Fake.
 		Invokes(testing.NewGetAction(tcploadbalancersResource, c.ns, name), &v1alpha1.TCPLoadBalancer{})
 
@@ -49,7 +51,7 @@ func (c *FakeTCPLoadBalancers) Get(name string, options v1.GetOptions) (result *
 }
 
 // List takes label and field selectors, and returns the list of TCPLoadBalancers that match those selectors.
-func (c *FakeTCPLoadBalancers) List(opts v1.ListOptions) (result *v1alpha1.TCPLoadBalancerList, err error) {
+func (c *FakeTCPLoadBalancers) List(ctx context.Context, opts v1.ListOptions) (result *v1alpha1.TCPLoadBalancerList, err error) {
 	obj, err := c.Fake.
 		Invokes(testing.NewListAction(tcploadbalancersResource, tcploadbalancersKind, c.ns, opts), &v1alpha1.TCPLoadBalancerList{})
 
@@ -71,14 +73,14 @@ func (c *FakeTCPLoadBalancers) List(opts v1.ListOptions) (result *v1alpha1.TCPLo
 }
 
 // Watch returns a watch.Interface that watches the requested tCPLoadBalancers.
-func (c *FakeTCPLoadBalancers) Watch(opts v1.ListOptions) (watch.Interface, error) {
+func (c *FakeTCPLoadBalancers) Watch(ctx context.Context, opts v1.ListOptions) (watch.Interface, error) {
 	return c.Fake.
 		InvokesWatch(testing.NewWatchAction(tcploadbalancersResource, c.ns, opts))
 
 }
 
 // Create takes the representation of a tCPLoadBalancer and creates it.  Returns the server's representation of the tCPLoadBalancer, and an error, if there is any.
-func (c *FakeTCPLoadBalancers) Create(tCPLoadBalancer *v1alpha1.TCPLoadBalancer) (result *v1alpha1.TCPLoadBalancer, err error) {
+func (c *FakeTCPLoadBalancers) Create(ctx context.Context, tCPLoadBalancer *v1alpha1.TCPLoadBalancer, opts v1.CreateOptions) (result *v1alpha1.TCPLoadBalancer, err error) {
 	obj, err := c.Fake.
 		Invokes(testing.NewCreateAction(tcploadbalancersResource, c.ns, tCPLoadBalancer), &v1alpha1.TCPLoadBalancer{})
 
@@ -89,7 +91,7 @@ func (c *FakeTCPLoadBalancers) Create(tCPLoadBalancer *v1alpha1.TCPLoadBalancer)
 }
 
 // Update takes the representation of a tCPLoadBalancer and updates it. Returns the server's representation of the tCPLoadBalancer, and an error, if there is any.
-func (c *FakeTCPLoadBalancers) Update(tCPLoadBalancer *v1alpha1.TCPLoadBalancer) (result *v1alpha1.TCPLoadBalancer, err error) {
+func (c *FakeTCPLoadBalancers) Update(ctx context.Context, tCPLoadBalancer *v1alpha1.TCPLoadBalancer, opts v1.UpdateOptions) (result *v1alpha1.TCPLoadBalancer, err error) {
 	obj, err := c.Fake.
 		Invokes(testing.NewUpdateAction(tcploadbalancersResource, c.ns, tCPLoadBalancer), &v1alpha1.TCPLoadBalancer{})
 
@@ -101,7 +103,7 @@ func (c *FakeTCPLoadBalancers) Update(tCPLoadBalancer *v1alpha1.TCPLoadBalancer)
 
 // UpdateStatus was generated because the type contains a Status member.
 // Add a +genclient:noStatus comment above the type to avoid generating UpdateStatus().
-func (c *FakeTCPLoadBalancers) UpdateStatus(tCPLoadBalancer *v1alpha1.TCPLoadBalancer) (*v1alpha1.TCPLoadBalancer, error) {
+func (c *FakeTCPLoadBalancers) UpdateStatus(ctx context.Context, tCPLoadBalancer *v1alpha1.TCPLoadBalancer, opts v1.UpdateOptions) (*v1alpha1.TCPLoadBalancer, error) {
 	obj, err := c.Fake.
 		Invokes(testing.NewUpdateSubresourceAction(tcploadbalancersResource, "status", c.ns, tCPLoadBalancer), &v1alpha1.TCPLoadBalancer{})
 
@@ -112,7 +114,7 @@ func (c *FakeTCPLoadBalancers) UpdateStatus(tCPLoadBalancer *v1alpha1.TCPLoadBal
 }
 
 // Delete takes name of the tCPLoadBalancer and deletes it. Returns an error if one occurs.
-func (c *FakeTCPLoadBalancers) Delete(name string, options *v1.DeleteOptions) error {
+func (c *FakeTCPLoadBalancers) Delete(ctx context.Context, name string, opts v1.DeleteOptions) error {
 	_, err := c.Fake.
 		Invokes(testing.NewDeleteAction(tcploadbalancersResource, c.ns, name), &v1alpha1.TCPLoadBalancer{})
 
@@ -120,15 +122,15 @@ func (c *FakeTCPLoadBalancers) Delete(name string, options *v1.DeleteOptions) er
 }
 
 // DeleteCollection deletes a collection of objects.
-func (c *FakeTCPLoadBalancers) DeleteCollection(options *v1.DeleteOptions, listOptions v1.ListOptions) error {
-	action := testing.NewDeleteCollectionAction(tcploadbalancersResource, c.ns, listOptions)
+func (c *FakeTCPLoadBalancers) DeleteCollection(ctx context.Context, opts v1.DeleteOptions, listOpts v1.ListOptions) error {
+	action := testing.NewDeleteCollectionAction(tcploadbalancersResource, c.ns, listOpts)
 
 	_, err := c.Fake.Invokes(action, &v1alpha1.TCPLoadBalancerList{})
 	return err
 }
 
 // Patch applies the patch and returns the patched tCPLoadBalancer.
-func (c *FakeTCPLoadBalancers) Patch(name string, pt types.PatchType, data []byte, subresources ...string) (result *v1alpha1.TCPLoadBalancer, err error) {
+func (c *FakeTCPLoadBalancers) Patch(ctx context.Context, name string, pt types.PatchType, data []byte, opts v1.PatchOptions, subresources ...string) (result *v1alpha1.TCPLoadBalancer, err error) {
 	obj, err := c.Fake.
 		Invokes(testing.NewPatchSubresourceAction(tcploadbalancersResource, c.ns, name, pt, data, subresources...), &v1alpha1.TCPLoadBalancer{})
 

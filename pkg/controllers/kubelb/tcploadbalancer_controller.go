@@ -44,7 +44,6 @@ type TCPLoadBalancerReconciler struct {
 	client.Client
 	Log            logr.Logger
 	Scheme         *runtime.Scheme
-	Ctx            context.Context
 	Cache          cache.Cache
 	EnvoyCache     cachev3.SnapshotCache
 	EnvoyBootstrap string
@@ -55,12 +54,12 @@ type TCPLoadBalancerReconciler struct {
 // +kubebuilder:rbac:groups="",resources=services,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups="apps",resources=deployments,verbs=get;list;watch;create;update;patch;delete
 
-func (r *TCPLoadBalancerReconciler) Reconcile(req ctrl.Request) (ctrl.Result, error) {
+func (r *TCPLoadBalancerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	log := r.Log.WithValues("name", req.Name, "namespace", req.Namespace)
 	log.V(2).Info("reconciling TCPLoadBalancer")
 
 	var tcpLoadBalancer kubelbk8ciov1alpha1.TCPLoadBalancer
-	err := r.Get(r.Ctx, req.NamespacedName, &tcpLoadBalancer)
+	err := r.Get(ctx, req.NamespacedName, &tcpLoadBalancer)
 	if err != nil {
 		if client.IgnoreNotFound(err) != nil {
 			log.Error(err, "unable to fetch TCPLoadBalancer")
@@ -78,14 +77,14 @@ func (r *TCPLoadBalancerReconciler) Reconcile(req ctrl.Request) (ctrl.Result, er
 		return ctrl.Result{}, err
 	}
 
-	err = r.reconcileDeployment(&tcpLoadBalancer)
+	err = r.reconcileDeployment(ctx, &tcpLoadBalancer)
 
 	if err != nil {
 		log.Error(err, "Unable to reconcile deployment")
 		return ctrl.Result{}, err
 	}
 
-	err = r.reconcileService(&tcpLoadBalancer)
+	err = r.reconcileService(ctx, &tcpLoadBalancer)
 
 	if err != nil {
 		log.Error(err, "Unable to reconcile service")
@@ -96,7 +95,7 @@ func (r *TCPLoadBalancerReconciler) Reconcile(req ctrl.Request) (ctrl.Result, er
 
 }
 
-func (r *TCPLoadBalancerReconciler) SetupWithManager(mgr ctrl.Manager) error {
+func (r *TCPLoadBalancerReconciler) SetupWithManager(mgr ctrl.Manager, ctx context.Context) error {
 	c, err := ctrl.NewControllerManagedBy(mgr).
 		For(&kubelbk8ciov1alpha1.TCPLoadBalancer{}).
 		Owns(&corev1.Service{}).
@@ -108,7 +107,7 @@ func (r *TCPLoadBalancerReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	}
 
 	//Todo: same as owns? can be removed
-	serviceInformer, err := r.Cache.GetInformer(&corev1.Service{})
+	serviceInformer, err := r.Cache.GetInformer(ctx, &corev1.Service{})
 	if err != nil {
 		r.Log.Error(err, "error occurred while getting service informer")
 		return err
@@ -174,7 +173,7 @@ func (r *TCPLoadBalancerReconciler) reconcileEnvoySnapshot(tcpLoadBalancer *kube
 	return nil
 }
 
-func (r *TCPLoadBalancerReconciler) reconcileDeployment(tcpLoadBalancer *kubelbk8ciov1alpha1.TCPLoadBalancer) error {
+func (r *TCPLoadBalancerReconciler) reconcileDeployment(ctx context.Context, tcpLoadBalancer *kubelbk8ciov1alpha1.TCPLoadBalancer) error {
 
 	log := r.Log.WithValues("reconcile", "deployment")
 
@@ -188,7 +187,7 @@ func (r *TCPLoadBalancerReconciler) reconcileDeployment(tcpLoadBalancer *kubelbk
 	log.V(6).Info("desired", "deployment", desiredDeployment)
 
 	actualDeployment := &appsv1.Deployment{}
-	err = r.Get(r.Ctx, types.NamespacedName{
+	err = r.Get(ctx, types.NamespacedName{
 		Name:      tcpLoadBalancer.Name,
 		Namespace: tcpLoadBalancer.Namespace,
 	}, actualDeployment)
@@ -200,7 +199,7 @@ func (r *TCPLoadBalancerReconciler) reconcileDeployment(tcpLoadBalancer *kubelbk
 			return err
 		}
 		log.V(1).Info("creating deployment", "name", tcpLoadBalancer.Name, "namespace", tcpLoadBalancer.Namespace)
-		return r.Create(r.Ctx, desiredDeployment)
+		return r.Create(ctx, desiredDeployment)
 	}
 
 	log.V(1).Info("updating deployment", "name", tcpLoadBalancer.Name, "namespace", tcpLoadBalancer.Namespace)
@@ -208,11 +207,11 @@ func (r *TCPLoadBalancerReconciler) reconcileDeployment(tcpLoadBalancer *kubelbk
 
 	log.V(7).Info("updated to", "deployment", actualDeployment)
 
-	return r.Update(r.Ctx, actualDeployment)
+	return r.Update(ctx, actualDeployment)
 
 }
 
-func (r *TCPLoadBalancerReconciler) reconcileService(tcpLoadBalancer *kubelbk8ciov1alpha1.TCPLoadBalancer) error {
+func (r *TCPLoadBalancerReconciler) reconcileService(ctx context.Context, tcpLoadBalancer *kubelbk8ciov1alpha1.TCPLoadBalancer) error {
 	log := r.Log.WithValues("reconcile", "service")
 
 	desiredService := resources.MapService(tcpLoadBalancer)
@@ -224,7 +223,7 @@ func (r *TCPLoadBalancerReconciler) reconcileService(tcpLoadBalancer *kubelbk8ci
 	log.V(6).Info("desired", "service", desiredService)
 
 	actualService := &corev1.Service{}
-	err = r.Get(r.Ctx, types.NamespacedName{
+	err = r.Get(ctx, types.NamespacedName{
 		Name:      tcpLoadBalancer.Name,
 		Namespace: tcpLoadBalancer.Namespace,
 	}, actualService)
@@ -236,7 +235,7 @@ func (r *TCPLoadBalancerReconciler) reconcileService(tcpLoadBalancer *kubelbk8ci
 			return err
 		}
 		log.V(1).Info("creating service", "name", tcpLoadBalancer.Name, "namespace", tcpLoadBalancer.Namespace)
-		return r.Create(r.Ctx, desiredService)
+		return r.Create(ctx, desiredService)
 	}
 
 	if resources.ServiceIsDesiredState(actualService, desiredService) {
@@ -248,7 +247,7 @@ func (r *TCPLoadBalancerReconciler) reconcileService(tcpLoadBalancer *kubelbk8ci
 		actualService.Spec.Type = desiredService.Spec.Type
 		log.V(7).Info("updated to", "service", actualService)
 
-		err = r.Update(r.Ctx, actualService)
+		err = r.Update(ctx, actualService)
 
 		if err != nil {
 			return err
@@ -266,6 +265,6 @@ func (r *TCPLoadBalancerReconciler) reconcileService(tcpLoadBalancer *kubelbk8ci
 	tcpLoadBalancer.Status.LoadBalancer = actualService.Status.LoadBalancer
 	log.V(7).Info("updating to", "TcpLoadBalancer status", tcpLoadBalancer.Status.LoadBalancer)
 
-	return r.Status().Update(r.Ctx, tcpLoadBalancer)
+	return r.Status().Update(ctx, tcpLoadBalancer)
 
 }

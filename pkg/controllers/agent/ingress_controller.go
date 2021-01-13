@@ -42,8 +42,8 @@ type KubeLbIngressReconciler struct {
 	HttpLBClient kubelbv1alpha1.HTTPLoadBalancerInterface
 	Log          logr.Logger
 	Scheme       *runtime.Scheme
-	Ctx          context.Context
-	ClusterName  string
+
+	ClusterName string
 }
 
 var IngressMatcher = &utils.MatchingAnnotationPredicate{
@@ -53,12 +53,12 @@ var IngressMatcher = &utils.MatchingAnnotationPredicate{
 
 // +kubebuilder:rbac:groups=networking.k8s.io,resources=ingresses,verbs=get;list;watch;update;patch
 
-func (r *KubeLbIngressReconciler) Reconcile(req ctrl.Request) (ctrl.Result, error) {
+func (r *KubeLbIngressReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	log := r.Log.WithValues("name", req.Name, "namespace", req.Namespace)
 	log.V(2).Info("reconciling ingress")
 
 	var ingress netv1beta1.Ingress
-	err := r.Get(r.Ctx, req.NamespacedName, &ingress)
+	err := r.Get(ctx, req.NamespacedName, &ingress)
 	if err != nil {
 		if client.IgnoreNotFound(err) != nil {
 			log.Error(err, "unable to fetch ingress")
@@ -75,7 +75,7 @@ func (r *KubeLbIngressReconciler) Reconcile(req ctrl.Request) (ctrl.Result, erro
 		if !utils.ContainsString(ingress.ObjectMeta.Finalizers, HttpLbFinalizerName) {
 			ingress.ObjectMeta.Finalizers = append(ingress.ObjectMeta.Finalizers, HttpLbFinalizerName)
 			log.V(4).Info("setting finalizer")
-			if err := r.Update(r.Ctx, &ingress); err != nil {
+			if err := r.Update(ctx, &ingress); err != nil {
 				return ctrl.Result{}, err
 			}
 		}
@@ -86,7 +86,7 @@ func (r *KubeLbIngressReconciler) Reconcile(req ctrl.Request) (ctrl.Result, erro
 			log.V(1).Info("deleting HttpLoadBalancer", "name", kubelb.NamespacedName(&ingress.ObjectMeta))
 
 			// our finalizer is present, so lets handle any external dependency
-			err := r.HttpLBClient.Delete(kubelb.NamespacedName(&ingress.ObjectMeta), &v1.DeleteOptions{})
+			err := r.HttpLBClient.Delete(ctx, kubelb.NamespacedName(&ingress.ObjectMeta), v1.DeleteOptions{})
 
 			if client.IgnoreNotFound(err) != nil {
 				// if fail to delete the external dependency here, return with error
@@ -98,7 +98,7 @@ func (r *KubeLbIngressReconciler) Reconcile(req ctrl.Request) (ctrl.Result, erro
 
 			// remove our finalizer from the list and update it.
 			ingress.ObjectMeta.Finalizers = utils.RemoveString(ingress.ObjectMeta.Finalizers, HttpLbFinalizerName)
-			if err := r.Update(r.Ctx, &ingress); err != nil {
+			if err := r.Update(ctx, &ingress); err != nil {
 				return ctrl.Result{}, err
 			}
 			log.V(4).Info("removed finalizer")
@@ -108,7 +108,7 @@ func (r *KubeLbIngressReconciler) Reconcile(req ctrl.Request) (ctrl.Result, erro
 		return ctrl.Result{}, nil
 	}
 
-	err = r.exposeBackendServices(&ingress)
+	err = r.exposeBackendServices(ctx, &ingress)
 
 	if err != nil {
 		return ctrl.Result{}, err
@@ -117,7 +117,7 @@ func (r *KubeLbIngressReconciler) Reconcile(req ctrl.Request) (ctrl.Result, erro
 	desiredHttpLoadBalancer := kubelb.MapHttpLoadBalancer(&ingress, r.ClusterName)
 	log.V(6).Info("desired", "HttpLoadBalancer", desiredHttpLoadBalancer)
 
-	actualHttpLoadBalancer, err := r.HttpLBClient.Get(ingress.Name, v1.GetOptions{})
+	actualHttpLoadBalancer, err := r.HttpLBClient.Get(ctx, ingress.Name, v1.GetOptions{})
 	log.V(6).Info("actual", "HttpLoadBalancer", actualHttpLoadBalancer)
 
 	if err != nil {
@@ -125,25 +125,25 @@ func (r *KubeLbIngressReconciler) Reconcile(req ctrl.Request) (ctrl.Result, erro
 			return ctrl.Result{}, err
 		}
 		log.V(1).Info("creating HttpLoadBalancer", "name", desiredHttpLoadBalancer.Name, "namespace", desiredHttpLoadBalancer.Namespace)
-		_, err = r.HttpLBClient.Create(desiredHttpLoadBalancer)
+		_, err = r.HttpLBClient.Create(ctx, desiredHttpLoadBalancer, v1.CreateOptions{})
 		return ctrl.Result{}, err
 	}
 
 	log.V(1).Info("Updating HttpLoadBalancer", "name", desiredHttpLoadBalancer.Name, "namespace", desiredHttpLoadBalancer.Namespace)
 	actualHttpLoadBalancer.Spec = desiredHttpLoadBalancer.Spec
-	_, err = r.HttpLBClient.Update(actualHttpLoadBalancer)
+	_, err = r.HttpLBClient.Update(ctx, actualHttpLoadBalancer, v1.UpdateOptions{})
 
 	return ctrl.Result{}, err
 }
 
-func (r *KubeLbIngressReconciler) exposeBackendServices(ingress *netv1beta1.Ingress) error {
+func (r *KubeLbIngressReconciler) exposeBackendServices(ctx context.Context, ingress *netv1beta1.Ingress) error {
 	log := r.Log
 
 	for _, rule := range ingress.Spec.Rules {
 		for _, path := range rule.HTTP.Paths {
 
 			var service corev1.Service
-			err := r.Get(r.Ctx, types.NamespacedName{Name: path.Backend.ServiceName, Namespace: ingress.Namespace}, &service)
+			err := r.Get(ctx, types.NamespacedName{Name: path.Backend.ServiceName, Namespace: ingress.Namespace}, &service)
 			if err != nil {
 				log.Error(err, "unable to fetch backend service")
 				return err
@@ -151,13 +151,13 @@ func (r *KubeLbIngressReconciler) exposeBackendServices(ingress *netv1beta1.Ingr
 
 			log.V(6).Info("exposing", "service", service)
 
-			if ServiceMatcher.Match(service.GetAnnotations()) {
+			if AnnotationServiceClassMatcher.Match(service.GetAnnotations()) {
 				log.V(3).Info("service already exposed by kubelb")
 				continue
 			}
 
-			service.Annotations[ServiceMatcher.AnnotationName] = ServiceMatcher.AnnotationValue
-			err = r.Update(r.Ctx, &service)
+			service.Annotations[AnnotationServiceClassMatcher.AnnotationName] = AnnotationServiceClassMatcher.AnnotationValue
+			err = r.Update(ctx, &service)
 			if err != nil {
 				log.Error(err, "unable to set backend service annotation")
 				return err

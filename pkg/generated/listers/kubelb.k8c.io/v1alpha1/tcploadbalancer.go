@@ -1,5 +1,5 @@
 /*
-Copyright 2020 The KubeLB Authors.
+Copyright 2021 The KubeLB Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -25,8 +25,10 @@ import (
 )
 
 // TCPLoadBalancerLister helps list TCPLoadBalancers.
+// All objects returned here must be treated as read-only.
 type TCPLoadBalancerLister interface {
 	// List lists all TCPLoadBalancers in the indexer.
+	// Objects returned here must be treated as read-only.
 	List(selector labels.Selector) (ret []*v1alpha1.TCPLoadBalancer, err error)
 	// TCPLoadBalancers returns an object that can list and get TCPLoadBalancers.
 	TCPLoadBalancers(namespace string) TCPLoadBalancerNamespaceLister
@@ -57,10 +59,13 @@ func (s *tCPLoadBalancerLister) TCPLoadBalancers(namespace string) TCPLoadBalanc
 }
 
 // TCPLoadBalancerNamespaceLister helps list and get TCPLoadBalancers.
+// All objects returned here must be treated as read-only.
 type TCPLoadBalancerNamespaceLister interface {
 	// List lists all TCPLoadBalancers in the indexer for a given namespace.
+	// Objects returned here must be treated as read-only.
 	List(selector labels.Selector) (ret []*v1alpha1.TCPLoadBalancer, err error)
 	// Get retrieves the TCPLoadBalancer from the indexer for a given namespace and name.
+	// Objects returned here must be treated as read-only.
 	Get(name string) (*v1alpha1.TCPLoadBalancer, error)
 	TCPLoadBalancerNamespaceListerExpansion
 }

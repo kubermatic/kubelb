@@ -1,5 +1,5 @@
 /*
-Copyright 2020 The KubeLB Authors.
+Copyright 2021 The KubeLB Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -18,6 +18,7 @@ limitations under the License.
 package v1alpha1
 
 import (
+	"context"
 	"time"
 
 	v1alpha1 "k8c.io/kubelb/pkg/api/kubelb.k8c.io/v1alpha1"
@@ -36,15 +37,15 @@ type HTTPLoadBalancersGetter interface {
 
 // HTTPLoadBalancerInterface has methods to work with HTTPLoadBalancer resources.
 type HTTPLoadBalancerInterface interface {
-	Create(*v1alpha1.HTTPLoadBalancer) (*v1alpha1.HTTPLoadBalancer, error)
-	Update(*v1alpha1.HTTPLoadBalancer) (*v1alpha1.HTTPLoadBalancer, error)
-	UpdateStatus(*v1alpha1.HTTPLoadBalancer) (*v1alpha1.HTTPLoadBalancer, error)
-	Delete(name string, options *v1.DeleteOptions) error
-	DeleteCollection(options *v1.DeleteOptions, listOptions v1.ListOptions) error
-	Get(name string, options v1.GetOptions) (*v1alpha1.HTTPLoadBalancer, error)
-	List(opts v1.ListOptions) (*v1alpha1.HTTPLoadBalancerList, error)
-	Watch(opts v1.ListOptions) (watch.Interface, error)
-	Patch(name string, pt types.PatchType, data []byte, subresources ...string) (result *v1alpha1.HTTPLoadBalancer, err error)
+	Create(ctx context.Context, hTTPLoadBalancer *v1alpha1.HTTPLoadBalancer, opts v1.CreateOptions) (*v1alpha1.HTTPLoadBalancer, error)
+	Update(ctx context.Context, hTTPLoadBalancer *v1alpha1.HTTPLoadBalancer, opts v1.UpdateOptions) (*v1alpha1.HTTPLoadBalancer, error)
+	UpdateStatus(ctx context.Context, hTTPLoadBalancer *v1alpha1.HTTPLoadBalancer, opts v1.UpdateOptions) (*v1alpha1.HTTPLoadBalancer, error)
+	Delete(ctx context.Context, name string, opts v1.DeleteOptions) error
+	DeleteCollection(ctx context.Context, opts v1.DeleteOptions, listOpts v1.ListOptions) error
+	Get(ctx context.Context, name string, opts v1.GetOptions) (*v1alpha1.HTTPLoadBalancer, error)
+	List(ctx context.Context, opts v1.ListOptions) (*v1alpha1.HTTPLoadBalancerList, error)
+	Watch(ctx context.Context, opts v1.ListOptions) (watch.Interface, error)
+	Patch(ctx context.Context, name string, pt types.PatchType, data []byte, opts v1.PatchOptions, subresources ...string) (result *v1alpha1.HTTPLoadBalancer, err error)
 	HTTPLoadBalancerExpansion
 }
 
@@ -63,20 +64,20 @@ func newHTTPLoadBalancers(c *KubelbV1alpha1Client, namespace string) *hTTPLoadBa
 }
 
 // Get takes name of the hTTPLoadBalancer, and returns the corresponding hTTPLoadBalancer object, and an error if there is any.
-func (c *hTTPLoadBalancers) Get(name string, options v1.GetOptions) (result *v1alpha1.HTTPLoadBalancer, err error) {
+func (c *hTTPLoadBalancers) Get(ctx context.Context, name string, options v1.GetOptions) (result *v1alpha1.HTTPLoadBalancer, err error) {
 	result = &v1alpha1.HTTPLoadBalancer{}
 	err = c.client.Get().
 		Namespace(c.ns).
 		Resource("httploadbalancers").
 		Name(name).
 		VersionedParams(&options, scheme.ParameterCodec).
-		Do().
+		Do(ctx).
 		Into(result)
 	return
 }
 
 // List takes label and field selectors, and returns the list of HTTPLoadBalancers that match those selectors.
-func (c *hTTPLoadBalancers) List(opts v1.ListOptions) (result *v1alpha1.HTTPLoadBalancerList, err error) {
+func (c *hTTPLoadBalancers) List(ctx context.Context, opts v1.ListOptions) (result *v1alpha1.HTTPLoadBalancerList, err error) {
 	var timeout time.Duration
 	if opts.TimeoutSeconds != nil {
 		timeout = time.Duration(*opts.TimeoutSeconds) * time.Second
@@ -87,13 +88,13 @@ func (c *hTTPLoadBalancers) List(opts v1.ListOptions) (result *v1alpha1.HTTPLoad
 		Resource("httploadbalancers").
 		VersionedParams(&opts, scheme.ParameterCodec).
 		Timeout(timeout).
-		Do().
+		Do(ctx).
 		Into(result)
 	return
 }
 
 // Watch returns a watch.Interface that watches the requested hTTPLoadBalancers.
-func (c *hTTPLoadBalancers) Watch(opts v1.ListOptions) (watch.Interface, error) {
+func (c *hTTPLoadBalancers) Watch(ctx context.Context, opts v1.ListOptions) (watch.Interface, error) {
 	var timeout time.Duration
 	if opts.TimeoutSeconds != nil {
 		timeout = time.Duration(*opts.TimeoutSeconds) * time.Second
@@ -104,87 +105,90 @@ func (c *hTTPLoadBalancers) Watch(opts v1.ListOptions) (watch.Interface, error) 
 		Resource("httploadbalancers").
 		VersionedParams(&opts, scheme.ParameterCodec).
 		Timeout(timeout).
-		Watch()
+		Watch(ctx)
 }
 
 // Create takes the representation of a hTTPLoadBalancer and creates it.  Returns the server's representation of the hTTPLoadBalancer, and an error, if there is any.
-func (c *hTTPLoadBalancers) Create(hTTPLoadBalancer *v1alpha1.HTTPLoadBalancer) (result *v1alpha1.HTTPLoadBalancer, err error) {
+func (c *hTTPLoadBalancers) Create(ctx context.Context, hTTPLoadBalancer *v1alpha1.HTTPLoadBalancer, opts v1.CreateOptions) (result *v1alpha1.HTTPLoadBalancer, err error) {
 	result = &v1alpha1.HTTPLoadBalancer{}
 	err = c.client.Post().
 		Namespace(c.ns).
 		Resource("httploadbalancers").
+		VersionedParams(&opts, scheme.ParameterCodec).
 		Body(hTTPLoadBalancer).
-		Do().
+		Do(ctx).
 		Into(result)
 	return
 }
 
 // Update takes the representation of a hTTPLoadBalancer and updates it. Returns the server's representation of the hTTPLoadBalancer, and an error, if there is any.
-func (c *hTTPLoadBalancers) Update(hTTPLoadBalancer *v1alpha1.HTTPLoadBalancer) (result *v1alpha1.HTTPLoadBalancer, err error) {
+func (c *hTTPLoadBalancers) Update(ctx context.Context, hTTPLoadBalancer *v1alpha1.HTTPLoadBalancer, opts v1.UpdateOptions) (result *v1alpha1.HTTPLoadBalancer, err error) {
 	result = &v1alpha1.HTTPLoadBalancer{}
 	err = c.client.Put().
 		Namespace(c.ns).
 		Resource("httploadbalancers").
 		Name(hTTPLoadBalancer.Name).
+		VersionedParams(&opts, scheme.ParameterCodec).
 		Body(hTTPLoadBalancer).
-		Do().
+		Do(ctx).
 		Into(result)
 	return
 }
 
 // UpdateStatus was generated because the type contains a Status member.
 // Add a +genclient:noStatus comment above the type to avoid generating UpdateStatus().
-
-func (c *hTTPLoadBalancers) UpdateStatus(hTTPLoadBalancer *v1alpha1.HTTPLoadBalancer) (result *v1alpha1.HTTPLoadBalancer, err error) {
+func (c *hTTPLoadBalancers) UpdateStatus(ctx context.Context, hTTPLoadBalancer *v1alpha1.HTTPLoadBalancer, opts v1.UpdateOptions) (result *v1alpha1.HTTPLoadBalancer, err error) {
 	result = &v1alpha1.HTTPLoadBalancer{}
 	err = c.client.Put().
 		Namespace(c.ns).
 		Resource("httploadbalancers").
 		Name(hTTPLoadBalancer.Name).
 		SubResource("status").
+		VersionedParams(&opts, scheme.ParameterCodec).
 		Body(hTTPLoadBalancer).
-		Do().
+		Do(ctx).
 		Into(result)
 	return
 }
 
 // Delete takes name of the hTTPLoadBalancer and deletes it. Returns an error if one occurs.
-func (c *hTTPLoadBalancers) Delete(name string, options *v1.DeleteOptions) error {
+func (c *hTTPLoadBalancers) Delete(ctx context.Context, name string, opts v1.DeleteOptions) error {
 	return c.client.Delete().
 		Namespace(c.ns).
 		Resource("httploadbalancers").
 		Name(name).
-		Body(options).
-		Do().
+		Body(&opts).
+		Do(ctx).
 		Error()
 }
 
 // DeleteCollection deletes a collection of objects.
-func (c *hTTPLoadBalancers) DeleteCollection(options *v1.DeleteOptions, listOptions v1.ListOptions) error {
+func (c *hTTPLoadBalancers) DeleteCollection(ctx context.Context, opts v1.DeleteOptions, listOpts v1.ListOptions) error {
 	var timeout time.Duration
-	if listOptions.TimeoutSeconds != nil {
-		timeout = time.Duration(*listOptions.TimeoutSeconds) * time.Second
+	if listOpts.TimeoutSeconds != nil {
+		timeout = time.Duration(*listOpts.TimeoutSeconds) * time.Second
 	}
 	return c.client.Delete().
 		Namespace(c.ns).
 		Resource("httploadbalancers").
-		VersionedParams(&listOptions, scheme.ParameterCodec).
+		VersionedParams(&listOpts, scheme.ParameterCodec).
 		Timeout(timeout).
-		Body(options).
-		Do().
+		Body(&opts).
+		Do(ctx).
 		Error()
 }
 
 // Patch applies the patch and returns the patched hTTPLoadBalancer.
-func (c *hTTPLoadBalancers) Patch(name string, pt types.PatchType, data []byte, subresources ...string) (result *v1alpha1.HTTPLoadBalancer, err error) {
+func (c *hTTPLoadBalancers) Patch(ctx context.Context, name string, pt types.PatchType, data []byte, opts v1.PatchOptions, subresources ...string) (result *v1alpha1.HTTPLoadBalancer, err error) {
 	result = &v1alpha1.HTTPLoadBalancer{}
 	err = c.client.Patch(pt).
 		Namespace(c.ns).
 		Resource("httploadbalancers").
-		SubResource(subresources...).
 		Name(name).
+		SubResource(subresources...).
+		VersionedParams(&opts, scheme.ParameterCodec).
 		Body(data).
-		Do().
+		Do(ctx).
 		Into(result)
 	return
 }

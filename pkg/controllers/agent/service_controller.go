@@ -18,7 +18,9 @@ package agent
 
 import (
 	"context"
+	"fmt"
 	"github.com/go-logr/logr"
+	kubelbk8ciov1alpha1 "k8c.io/kubelb/pkg/api/kubelb.k8c.io/v1alpha1"
 	utils "k8c.io/kubelb/pkg/controllers"
 	"k8c.io/kubelb/pkg/generated/clientset/versioned/typed/kubelb.k8c.io/v1alpha1"
 	kubelbk8ciov1alpha1informers "k8c.io/kubelb/pkg/generated/informers/externalversions/kubelb.k8c.io/v1alpha1"
@@ -27,9 +29,11 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
+	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 	"sigs.k8s.io/controller-runtime/pkg/source"
 )
 
@@ -41,7 +45,6 @@ type KubeLbServiceReconciler struct {
 	TcpLBClient             v1alpha1.TCPLoadBalancerInterface
 	Log                     logr.Logger
 	Scheme                  *runtime.Scheme
-	Ctx                     context.Context
 	ClusterName             string
 	CloudController         bool
 	Endpoints               *kubelb.Endpoints
@@ -56,13 +59,13 @@ var AnnotationServiceClassMatcher = &utils.MatchingAnnotationPredicate{
 // +kubebuilder:rbac:groups="",resources=services,verbs=get;list;watch;update;patch
 // +kubebuilder:rbac:groups="",resources=services/status,verbs=get;update;patch
 
-func (r *KubeLbServiceReconciler) Reconcile(req ctrl.Request) (ctrl.Result, error) {
+func (r *KubeLbServiceReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 
 	log := r.Log.WithValues("name", req.Name, "namespace", req.Namespace)
 	log.V(2).Info("reconciling service")
 
 	var service corev1.Service
-	err := r.Get(r.Ctx, req.NamespacedName, &service)
+	err := r.Get(ctx, req.NamespacedName, &service)
 	if err != nil {
 		if client.IgnoreNotFound(err) != nil {
 			log.Error(err, "unable to fetch service")
@@ -89,7 +92,7 @@ func (r *KubeLbServiceReconciler) Reconcile(req ctrl.Request) (ctrl.Result, erro
 		if !utils.ContainsString(service.ObjectMeta.Finalizers, TcpLbFinalizerName) {
 			service.ObjectMeta.Finalizers = append(service.ObjectMeta.Finalizers, TcpLbFinalizerName)
 			log.V(4).Info("setting finalizer")
-			if err := r.Update(r.Ctx, &service); err != nil {
+			if err := r.Update(ctx, &service); err != nil {
 				return ctrl.Result{}, err
 			}
 		}
@@ -100,7 +103,7 @@ func (r *KubeLbServiceReconciler) Reconcile(req ctrl.Request) (ctrl.Result, erro
 			log.V(1).Info("deleting TCPLoadBalancer", "name", kubelb.NamespacedName(&service.ObjectMeta))
 
 			// our finalizer is present, so lets handle any external dependency
-			err := r.TcpLBClient.Delete(kubelb.NamespacedName(&service.ObjectMeta), &v1.DeleteOptions{})
+			err := r.TcpLBClient.Delete(ctx, kubelb.NamespacedName(&service.ObjectMeta), v1.DeleteOptions{})
 
 			if client.IgnoreNotFound(err) != nil {
 				// if fail to delete the external dependency here, return with error
@@ -112,7 +115,7 @@ func (r *KubeLbServiceReconciler) Reconcile(req ctrl.Request) (ctrl.Result, erro
 
 			// remove our finalizer from the list and update it.
 			service.ObjectMeta.Finalizers = utils.RemoveString(service.ObjectMeta.Finalizers, TcpLbFinalizerName)
-			if err := r.Update(r.Ctx, &service); err != nil {
+			if err := r.Update(ctx, &service); err != nil {
 				return ctrl.Result{}, err
 			}
 			log.V(4).Info("removed finalizer")
@@ -127,7 +130,7 @@ func (r *KubeLbServiceReconciler) Reconcile(req ctrl.Request) (ctrl.Result, erro
 	desiredTcpLB := kubelb.MapTcpLoadBalancer(&service, clusterEndpoints, r.ClusterName)
 	log.V(6).Info("desired", "TcpLoadBalancer", desiredTcpLB)
 
-	actualTcpLB, err := r.TcpLBClient.Get(desiredTcpLB.Name, v1.GetOptions{})
+	actualTcpLB, err := r.TcpLBClient.Get(ctx, desiredTcpLB.Name, v1.GetOptions{})
 	log.V(6).Info("actual", "TcpLoadBalancer", actualTcpLB)
 
 	if err != nil {
@@ -135,7 +138,7 @@ func (r *KubeLbServiceReconciler) Reconcile(req ctrl.Request) (ctrl.Result, erro
 			return ctrl.Result{}, err
 		}
 		log.V(1).Info("creating TcpLoadBalancer", "name", desiredTcpLB.Name, "namespace", desiredTcpLB.Namespace)
-		_, err = r.TcpLBClient.Create(desiredTcpLB)
+		_, err = r.TcpLBClient.Create(ctx, desiredTcpLB, v1.CreateOptions{})
 		return ctrl.Result{}, err
 	}
 
@@ -148,7 +151,7 @@ func (r *KubeLbServiceReconciler) Reconcile(req ctrl.Request) (ctrl.Result, erro
 		service.Status.LoadBalancer = actualTcpLB.Status.LoadBalancer
 		log.V(7).Info("updating to", "service status", service.Status.LoadBalancer)
 
-		err = r.Client.Status().Update(r.Ctx, &service)
+		err = r.Client.Status().Update(ctx, &service)
 		if err != nil {
 			return ctrl.Result{}, err
 		}
@@ -161,7 +164,7 @@ func (r *KubeLbServiceReconciler) Reconcile(req ctrl.Request) (ctrl.Result, erro
 
 	log.V(1).Info("updating TcpLoadBalancer spec", "name", desiredTcpLB.Name, "namespace", desiredTcpLB.Namespace)
 	actualTcpLB.Spec = desiredTcpLB.Spec
-	_, err = r.TcpLBClient.Update(actualTcpLB)
+	_, err = r.TcpLBClient.Update(ctx, actualTcpLB, v1.UpdateOptions{})
 
 	if err != nil {
 		return ctrl.Result{}, err
@@ -182,7 +185,39 @@ func (r *KubeLbServiceReconciler) SetupWithManager(mgr ctrl.Manager) error {
 
 	err = c.Watch(
 		&source.Informer{Informer: r.TcpLoadBalancerInformer.Informer()},
-		&handler.EnqueueRequestsFromMapFunc{ToRequests: &kubelb.TcpLbMapper{ClusterName: r.ClusterName, Log: r.Log}},
+		handler.EnqueueRequestsFromMapFunc(func(a client.Object) []reconcile.Request {
+
+			if a.GetNamespace() != r.ClusterName {
+				return []reconcile.Request{}
+			}
+
+			tcpLb := a.(*kubelbk8ciov1alpha1.TCPLoadBalancer)
+
+			if tcpLb.Spec.Type != corev1.ServiceTypeLoadBalancer {
+				return []reconcile.Request{}
+			}
+
+			originalNamespace, ok := a.GetLabels()[kubelb.LabelOriginNamespace]
+			if !ok || originalNamespace == "" {
+				r.Log.Error(fmt.Errorf("required label \"%s\" not found", kubelb.LabelOriginNamespace), fmt.Sprintf("failed to queue service for TcpLoadBalacner: %s, could not determine origin namespace", a.GetName()))
+				return []reconcile.Request{}
+			}
+
+			originalName, ok := a.GetLabels()[kubelb.LabelOriginName]
+			if !ok || originalName == "" {
+				r.Log.Error(fmt.Errorf("required label \"%s\" not found", kubelb.LabelOriginName), fmt.Sprintf("failed to queue service for TcpLoadBalacner: %s, could not determine origin name", a.GetName()))
+				return []reconcile.Request{}
+			}
+
+			return []reconcile.Request{
+				{
+					NamespacedName: types.NamespacedName{
+						Name:      originalName,
+						Namespace: originalNamespace,
+					},
+				},
+			}
+		}),
 	)
 
 	return err

@@ -1,5 +1,5 @@
 /*
-Copyright 2020 The KubeLB Authors.
+Copyright 2021 The KubeLB Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -18,6 +18,8 @@ limitations under the License.
 package fake
 
 import (
+	"context"
+
 	v1alpha1 "k8c.io/kubelb/pkg/api/kubelb.k8c.io/v1alpha1"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	labels "k8s.io/apimachinery/pkg/labels"
@@ -38,7 +40,7 @@ var httploadbalancersResource = schema.GroupVersionResource{Group: "kubelb.k8c.i
 var httploadbalancersKind = schema.GroupVersionKind{Group: "kubelb.k8c.io", Version: "v1alpha1", Kind: "HTTPLoadBalancer"}
 
 // Get takes name of the hTTPLoadBalancer, and returns the corresponding hTTPLoadBalancer object, and an error if there is any.
-func (c *FakeHTTPLoadBalancers) Get(name string, options v1.GetOptions) (result *v1alpha1.HTTPLoadBalancer, err error) {
+func (c *FakeHTTPLoadBalancers) Get(ctx context.Context, name string, options v1.GetOptions) (result *v1alpha1.HTTPLoadBalancer, err error) {
 	obj, err := c.Fake.
 		Invokes(testing.NewGetAction(httploadbalancersResource, c.ns, name), &v1alpha1.HTTPLoadBalancer{})
 
@@ -49,7 +51,7 @@ func (c *FakeHTTPLoadBalancers) Get(name string, options v1.GetOptions) (result 
 }
 
 // List takes label and field selectors, and returns the list of HTTPLoadBalancers that match those selectors.
-func (c *FakeHTTPLoadBalancers) List(opts v1.ListOptions) (result *v1alpha1.HTTPLoadBalancerList, err error) {
+func (c *FakeHTTPLoadBalancers) List(ctx context.Context, opts v1.ListOptions) (result *v1alpha1.HTTPLoadBalancerList, err error) {
 	obj, err := c.Fake.
 		Invokes(testing.NewListAction(httploadbalancersResource, httploadbalancersKind, c.ns, opts), &v1alpha1.HTTPLoadBalancerList{})
 
@@ -71,14 +73,14 @@ func (c *FakeHTTPLoadBalancers) List(opts v1.ListOptions) (result *v1alpha1.HTTP
 }
 
 // Watch returns a watch.Interface that watches the requested hTTPLoadBalancers.
-func (c *FakeHTTPLoadBalancers) Watch(opts v1.ListOptions) (watch.Interface, error) {
+func (c *FakeHTTPLoadBalancers) Watch(ctx context.Context, opts v1.ListOptions) (watch.Interface, error) {
 	return c.Fake.
 		InvokesWatch(testing.NewWatchAction(httploadbalancersResource, c.ns, opts))
 
 }
 
 // Create takes the representation of a hTTPLoadBalancer and creates it.  Returns the server's representation of the hTTPLoadBalancer, and an error, if there is any.
-func (c *FakeHTTPLoadBalancers) Create(hTTPLoadBalancer *v1alpha1.HTTPLoadBalancer) (result *v1alpha1.HTTPLoadBalancer, err error) {
+func (c *FakeHTTPLoadBalancers) Create(ctx context.Context, hTTPLoadBalancer *v1alpha1.HTTPLoadBalancer, opts v1.CreateOptions) (result *v1alpha1.HTTPLoadBalancer, err error) {
 	obj, err := c.Fake.
 		Invokes(testing.NewCreateAction(httploadbalancersResource, c.ns, hTTPLoadBalancer), &v1alpha1.HTTPLoadBalancer{})
 
@@ -89,7 +91,7 @@ func (c *FakeHTTPLoadBalancers) Create(hTTPLoadBalancer *v1alpha1.HTTPLoadBalanc
 }
 
 // Update takes the representation of a hTTPLoadBalancer and updates it. Returns the server's representation of the hTTPLoadBalancer, and an error, if there is any.
-func (c *FakeHTTPLoadBalancers) Update(hTTPLoadBalancer *v1alpha1.HTTPLoadBalancer) (result *v1alpha1.HTTPLoadBalancer, err error) {
+func (c *FakeHTTPLoadBalancers) Update(ctx context.Context, hTTPLoadBalancer *v1alpha1.HTTPLoadBalancer, opts v1.UpdateOptions) (result *v1alpha1.HTTPLoadBalancer, err error) {
 	obj, err := c.Fake.
 		Invokes(testing.NewUpdateAction(httploadbalancersResource, c.ns, hTTPLoadBalancer), &v1alpha1.HTTPLoadBalancer{})
 
@@ -101,7 +103,7 @@ func (c *FakeHTTPLoadBalancers) Update(hTTPLoadBalancer *v1alpha1.HTTPLoadBalanc
 
 // UpdateStatus was generated because the type contains a Status member.
 // Add a +genclient:noStatus comment above the type to avoid generating UpdateStatus().
-func (c *FakeHTTPLoadBalancers) UpdateStatus(hTTPLoadBalancer *v1alpha1.HTTPLoadBalancer) (*v1alpha1.HTTPLoadBalancer, error) {
+func (c *FakeHTTPLoadBalancers) UpdateStatus(ctx context.Context, hTTPLoadBalancer *v1alpha1.HTTPLoadBalancer, opts v1.UpdateOptions) (*v1alpha1.HTTPLoadBalancer, error) {
 	obj, err := c.Fake.
 		Invokes(testing.NewUpdateSubresourceAction(httploadbalancersResource, "status", c.ns, hTTPLoadBalancer), &v1alpha1.HTTPLoadBalancer{})
 
@@ -112,7 +114,7 @@ func (c *FakeHTTPLoadBalancers) UpdateStatus(hTTPLoadBalancer *v1alpha1.HTTPLoad
 }
 
 // Delete takes name of the hTTPLoadBalancer and deletes it. Returns an error if one occurs.
-func (c *FakeHTTPLoadBalancers) Delete(name string, options *v1.DeleteOptions) error {
+func (c *FakeHTTPLoadBalancers) Delete(ctx context.Context, name string, opts v1.DeleteOptions) error {
 	_, err := c.Fake.
 		Invokes(testing.NewDeleteAction(httploadbalancersResource, c.ns, name), &v1alpha1.HTTPLoadBalancer{})
 
@@ -120,15 +122,15 @@ func (c *FakeHTTPLoadBalancers) Delete(name string, options *v1.DeleteOptions) e
 }
 
 // DeleteCollection deletes a collection of objects.
-func (c *FakeHTTPLoadBalancers) DeleteCollection(options *v1.DeleteOptions, listOptions v1.ListOptions) error {
-	action := testing.NewDeleteCollectionAction(httploadbalancersResource, c.ns, listOptions)
+func (c *FakeHTTPLoadBalancers) DeleteCollection(ctx context.Context, opts v1.DeleteOptions, listOpts v1.ListOptions) error {
+	action := testing.NewDeleteCollectionAction(httploadbalancersResource, c.ns, listOpts)
 
 	_, err := c.Fake.Invokes(action, &v1alpha1.HTTPLoadBalancerList{})
 	return err
 }
 
 // Patch applies the patch and returns the patched hTTPLoadBalancer.
-func (c *FakeHTTPLoadBalancers) Patch(name string, pt types.PatchType, data []byte, subresources ...string) (result *v1alpha1.HTTPLoadBalancer, err error) {
+func (c *FakeHTTPLoadBalancers) Patch(ctx context.Context, name string, pt types.PatchType, data []byte, opts v1.PatchOptions, subresources ...string) (result *v1alpha1.HTTPLoadBalancer, err error) {
 	obj, err := c.Fake.
 		Invokes(testing.NewPatchSubresourceAction(httploadbalancersResource, c.ns, name, pt, data, subresources...), &v1alpha1.HTTPLoadBalancer{})
 

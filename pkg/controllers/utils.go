@@ -30,22 +30,22 @@ type MatchingAnnotationPredicate struct {
 
 // Create returns true if the Create event should be processed
 func (r *MatchingAnnotationPredicate) Create(e event.CreateEvent) bool {
-	return r.Match(e.Meta.GetAnnotations())
+	return r.Match(e.Object.GetAnnotations())
 }
 
 // Delete returns true if the Delete event should be processed
 func (r *MatchingAnnotationPredicate) Delete(e event.DeleteEvent) bool {
-	return r.Match(e.Meta.GetAnnotations())
+	return r.Match(e.Object.GetAnnotations())
 }
 
 // Update returns true if the Update event should be processed
 func (r *MatchingAnnotationPredicate) Update(e event.UpdateEvent) bool {
-	return r.Match(e.MetaNew.GetAnnotations())
+	return r.Match(e.ObjectNew.GetAnnotations())
 }
 
 // Generic returns true if the Generic event should be processed
 func (r *MatchingAnnotationPredicate) Generic(e event.GenericEvent) bool {
-	return r.Match(e.Meta.GetAnnotations())
+	return r.Match(e.Object.GetAnnotations())
 }
 
 func (r *MatchingAnnotationPredicate) Match(annotations map[string]string) bool {

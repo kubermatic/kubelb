@@ -17,7 +17,6 @@ limitations under the License.
 package main
 
 import (
-	"context"
 	"errors"
 	"flag"
 	"fmt"
@@ -32,8 +31,10 @@ import (
 	"k8s.io/klog/v2"
 	"k8s.io/klog/v2/klogr"
 	"os"
+	"os/signal"
 	"path/filepath"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"syscall"
 	"time"
 	// +kubebuilder:scaffold:imports
 )
@@ -94,7 +95,7 @@ func main() {
 	} else if endpointAddressTypeString == string(corev1.NodeExternalIP) {
 		endpointAddressType = corev1.NodeExternalIP
 	} else {
-		setupLog.Error(errors.New("invalid node address type"), fmt.Sprintf("Expected: %s or %s, go: %s", corev1.NodeInternalIP, corev1.NodeExternalIP, endpointAddressTypeString))
+		setupLog.Error(errors.New("invalid node address type"), fmt.Sprintf("Expected: %s or %s, got: %s", corev1.NodeInternalIP, corev1.NodeExternalIP, endpointAddressTypeString))
 		os.Exit(1)
 	}
 
@@ -106,12 +107,7 @@ func main() {
 	}
 
 	// setup signal handler
-	ctx, cancel := context.WithCancel(context.Background())
-	signalHandler := ctrl.SetupSignalHandler()
-	go func() {
-		<-signalHandler
-		cancel()
-	}()
+	ctx := ctrl.SetupSignalHandler()
 
 	kubeLbClient, err := kubelb.NewClient(clusterName, kubeLbKubeconf)
 	if err != nil {
@@ -119,6 +115,7 @@ func main() {
 		os.Exit(1)
 	}
 
+	//verify update status in user cluster
 	tcpLoadBalancerInformerFactory := informers.NewSharedInformerFactory(kubeLbClient.Clientset, time.Second*120)
 
 	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
@@ -153,7 +150,6 @@ func main() {
 		Endpoints:               &sharedEndpoints,
 		ClusterName:             clusterName,
 		TcpLoadBalancerInformer: tcpLoadBalancerInformerFactory.Kubelb().V1alpha1().TCPLoadBalancers(),
-		Ctx:                     ctx,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "reconciler", "kubelb.service.reconciler")
 		os.Exit(1)
@@ -165,17 +161,27 @@ func main() {
 		Scheme:       mgr.GetScheme(),
 		HttpLBClient: kubeLbClient.HttpLbClient,
 		ClusterName:  clusterName,
-		Ctx:          ctx,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "reconciler", "kubelb.ingress.reconciler")
 		os.Exit(1)
 	}
 
-	tcpLoadBalancerInformerFactory.Start(signalHandler)
+	//this is a copy paste of SetupSignalHandler which only returns a context
+	tcplbInformerChannel := make(chan struct{})
+	c := make(chan os.Signal, 2)
+	signal.Notify(c, []os.Signal{os.Interrupt, syscall.SIGTERM}...)
+	go func() {
+		<-c
+		close(tcplbInformerChannel)
+		<-c
+		os.Exit(1) // second signal. Exit directly.
+	}()
+
+	tcpLoadBalancerInformerFactory.Start(tcplbInformerChannel)
 
 	// +kubebuilder:scaffold:builder
 	setupLog.V(1).Info("starting kubelb agent")
-	if err := mgr.Start(signalHandler); err != nil {
+	if err := mgr.Start(ctx); err != nil {
 		setupLog.Error(err, "problem running agent")
 		os.Exit(1)
 	}

@@ -36,19 +36,18 @@ type HTTPLoadBalancerReconciler struct {
 	client.Client
 	Log    logr.Logger
 	Scheme *runtime.Scheme
-	Ctx    context.Context
 }
 
 // +kubebuilder:rbac:groups=kubelb.k8c.io,resources=httploadbalancers,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=kubelb.k8c.io,resources=httploadbalancers/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=networking.k8s.io,resources=ingresses,verbs=get;list;watch;create;update;patch;delete
 
-func (r *HTTPLoadBalancerReconciler) Reconcile(req ctrl.Request) (ctrl.Result, error) {
+func (r *HTTPLoadBalancerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	log := r.Log.WithValues("name", req.Name, "namespace", req.Namespace)
 	log.V(2).Info("reconciling HTTPLoadBalancer")
 
 	var httpLoadBalancer kubelbk8ciov1alpha1.HTTPLoadBalancer
-	err := r.Get(r.Ctx, req.NamespacedName, &httpLoadBalancer)
+	err := r.Get(ctx, req.NamespacedName, &httpLoadBalancer)
 	if err != nil {
 		if client.IgnoreNotFound(err) != nil {
 			log.Error(err, "unable to fetch HTTPLoadBalancer")
@@ -59,7 +58,7 @@ func (r *HTTPLoadBalancerReconciler) Reconcile(req ctrl.Request) (ctrl.Result, e
 
 	log.V(6).Info("processing", "HTTPLoadBalancer", httpLoadBalancer)
 
-	err = r.reconcileIngress(&httpLoadBalancer)
+	err = r.reconcileIngress(ctx, &httpLoadBalancer)
 
 	if err != nil {
 		log.Error(err, "Unable to reconcile ingress")
@@ -75,7 +74,7 @@ func (r *HTTPLoadBalancerReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		Complete(r)
 }
 
-func (r *HTTPLoadBalancerReconciler) reconcileIngress(httpLoadBalancer *kubelbk8ciov1alpha1.HTTPLoadBalancer) error {
+func (r *HTTPLoadBalancerReconciler) reconcileIngress(ctx context.Context, httpLoadBalancer *kubelbk8ciov1alpha1.HTTPLoadBalancer) error {
 	log := r.Log.WithValues("reconcile", "ingress")
 
 	desiredIngress := resources.MapIngress(httpLoadBalancer)
@@ -87,7 +86,7 @@ func (r *HTTPLoadBalancerReconciler) reconcileIngress(httpLoadBalancer *kubelbk8
 	log.V(6).Info("desired", "ingress", desiredIngress)
 
 	actualIngress := &netv1beta1.Ingress{}
-	err = r.Get(r.Ctx, types.NamespacedName{
+	err = r.Get(ctx, types.NamespacedName{
 		Name:      httpLoadBalancer.Name,
 		Namespace: httpLoadBalancer.Namespace,
 	}, actualIngress)
@@ -99,7 +98,7 @@ func (r *HTTPLoadBalancerReconciler) reconcileIngress(httpLoadBalancer *kubelbk8
 			return err
 		}
 		log.Info("creating ingress", "name", httpLoadBalancer.Name, "namespace", httpLoadBalancer.Namespace)
-		return r.Create(r.Ctx, desiredIngress)
+		return r.Create(ctx, desiredIngress)
 	}
 
 	//Todo: implement isDesiredState
@@ -107,6 +106,6 @@ func (r *HTTPLoadBalancerReconciler) reconcileIngress(httpLoadBalancer *kubelbk8
 	actualIngress.Spec = desiredIngress.Spec
 	log.V(7).Info("updated to", "ingress", actualIngress)
 
-	return r.Update(r.Ctx, actualIngress)
+	return r.Update(ctx, actualIngress)
 
 }

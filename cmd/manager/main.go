@@ -17,7 +17,6 @@ limitations under the License.
 package main
 
 import (
-	"context"
 	"flag"
 	"github.com/spf13/pflag"
 	envoycp "k8c.io/kubelb/pkg/envoy"
@@ -77,12 +76,7 @@ func main() {
 	setupLog := log.WithName("init")
 
 	// setup signal handler
-	ctx, cancel := context.WithCancel(context.Background())
-	signalHandler := ctrl.SetupSignalHandler()
-	go func() {
-		<-signalHandler
-		cancel()
-	}()
+	ctx := ctrl.SetupSignalHandler()
 
 	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
 		Scheme:             scheme,
@@ -115,8 +109,7 @@ func main() {
 		Scheme:         mgr.GetScheme(),
 		EnvoyCache:     envoyServer.Cache,
 		EnvoyBootstrap: envoyServer.GenerateBootstrap(),
-		Ctx:            ctx,
-	}).SetupWithManager(mgr); err != nil {
+	}).SetupWithManager(mgr, ctx); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "TCPLoadBalancer")
 		os.Exit(1)
 	}
@@ -125,7 +118,6 @@ func main() {
 		Client: mgr.GetClient(),
 		Log:    ctrl.Log.WithName("kubelb.httploadbalancer.reconciler"),
 		Scheme: mgr.GetScheme(),
-		Ctx:    ctx,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "HTTPLoadBalancer")
 		os.Exit(1)
@@ -134,7 +126,7 @@ func main() {
 	// +kubebuilder:scaffold:builder
 
 	setupLog.Info("starting manager")
-	if err := mgr.Start(signalHandler); err != nil {
+	if err := mgr.Start(ctx); err != nil {
 		setupLog.Error(err, "problem running manager")
 		os.Exit(1)
 	}
