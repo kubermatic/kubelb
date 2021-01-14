@@ -19,7 +19,7 @@ package main
 import (
 	"flag"
 	"github.com/spf13/pflag"
-	envoycp "k8c.io/kubelb/pkg/envoy"
+	"k8c.io/kubelb/pkg/envoy"
 	"k8s.io/klog/v2"
 	"k8s.io/klog/v2/klogr"
 	"os"
@@ -90,7 +90,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	envoyServer, err := envoycp.NewServer(envoyListenAddress, enableDebugMode)
+	envoyServer, err := envoy.NewServer(envoyListenAddress, enableDebugMode)
 
 	if err != nil {
 		setupLog.Error(err, "unable to create envoy server")
