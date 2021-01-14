@@ -52,7 +52,10 @@ Deploy to load balancer cluster: `make deploy-manager`
 
 Deploy the agent to every user cluster where you want to use KubeLB
 
-The agent expects a configmap with a kubeconf file to access the load balancer cluster.
+Inside the deployment you need to change the ClusterName parameter to its actual name. Also make sure that a namespace
+is created inside the kubelb cluster, so the agent can create the CRDs inside its cluster namespace.
+
+The agent expects a configmap with a kubeconf file named `kubelb` to access the load balancer cluster.
 
 To create such run: `kubectl create --namespace kubelb configmap kubelb --from-file=<path to kubelb kubeconf file>`
 
