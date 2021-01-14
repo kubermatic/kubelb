@@ -25,10 +25,10 @@ import (
 	"github.com/pkg/errors"
 	kubelbk8ciov1alpha1 "k8c.io/kubelb/pkg/api/kubelb.k8c.io/v1alpha1"
 	envoycp "k8c.io/kubelb/pkg/envoy"
-	"k8c.io/kubelb/pkg/resources"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"reflect"
@@ -95,35 +95,6 @@ func (r *TCPLoadBalancerReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 
 }
 
-func (r *TCPLoadBalancerReconciler) SetupWithManager(mgr ctrl.Manager, ctx context.Context) error {
-	c, err := ctrl.NewControllerManagedBy(mgr).
-		For(&kubelbk8ciov1alpha1.TCPLoadBalancer{}).
-		Owns(&corev1.Service{}).
-		Owns(&appsv1.Deployment{}).
-		Build(r)
-
-	if err != nil {
-		return err
-	}
-
-	//Todo: same as owns? can be removed
-	serviceInformer, err := r.Cache.GetInformer(ctx, &corev1.Service{})
-	if err != nil {
-		r.Log.Error(err, "error occurred while getting service informer")
-		return err
-	}
-
-	err = c.Watch(
-		&source.Informer{Informer: serviceInformer},
-		&handler.EnqueueRequestForOwner{
-			OwnerType:    &kubelbk8ciov1alpha1.TCPLoadBalancer{},
-			IsController: true,
-		},
-	)
-
-	return nil
-}
-
 func (r *TCPLoadBalancerReconciler) reconcileEnvoySnapshot(tcpLoadBalancer *kubelbk8ciov1alpha1.TCPLoadBalancer) error {
 
 	log := r.Log.WithValues("reconcile", "envoy")
@@ -177,94 +148,170 @@ func (r *TCPLoadBalancerReconciler) reconcileDeployment(ctx context.Context, tcp
 
 	log := r.Log.WithValues("reconcile", "deployment")
 
-	desiredDeployment := resources.MapDeployment(tcpLoadBalancer, r.EnvoyBootstrap)
-	err := ctrl.SetControllerReference(tcpLoadBalancer, desiredDeployment, r.Scheme)
-	if err != nil {
-		log.Error(err, "Unable to set controller reference")
+	deployment := &appsv1.Deployment{
+		ObjectMeta: v1.ObjectMeta{
+			Name:      tcpLoadBalancer.Name,
+			Namespace: tcpLoadBalancer.Namespace,
+		},
+	}
+	err := r.Get(ctx, types.NamespacedName{
+		Name:      tcpLoadBalancer.Name,
+		Namespace: tcpLoadBalancer.Namespace,
+	}, deployment)
+
+	if err != nil && !apierrors.IsNotFound(err) {
 		return err
 	}
 
-	log.V(6).Info("desired", "deployment", desiredDeployment)
+	log.V(6).Info("actual", "deployment", deployment)
 
-	actualDeployment := &appsv1.Deployment{}
-	err = r.Get(ctx, types.NamespacedName{
-		Name:      tcpLoadBalancer.Name,
-		Namespace: tcpLoadBalancer.Namespace,
-	}, actualDeployment)
+	result, err := ctrl.CreateOrUpdate(ctx, r.Client, deployment, func() error {
 
-	log.V(6).Info("actual", "deployment", actualDeployment)
+		var replicas int32 = 1
+		var envoyListenerPorts []corev1.ContainerPort
 
-	if err != nil {
-		if !apierrors.IsNotFound(err) {
-			return err
+		for _, lbServicePort := range tcpLoadBalancer.Spec.Ports {
+			envoyListenerPorts = append(envoyListenerPorts, corev1.ContainerPort{
+				ContainerPort: lbServicePort.Port,
+			})
 		}
-		log.V(1).Info("creating deployment", "name", tcpLoadBalancer.Name, "namespace", tcpLoadBalancer.Namespace)
-		return r.Create(ctx, desiredDeployment)
-	}
 
-	log.V(1).Info("updating deployment", "name", tcpLoadBalancer.Name, "namespace", tcpLoadBalancer.Namespace)
-	actualDeployment.Spec = desiredDeployment.Spec
+		deployment.Spec.Replicas = &replicas
+		deployment.Spec.Selector = &v1.LabelSelector{
+			MatchLabels: map[string]string{"app": tcpLoadBalancer.Name},
+		}
 
-	log.V(7).Info("updated to", "deployment", actualDeployment)
+		deployment.Spec.Template.ObjectMeta = v1.ObjectMeta{
+			Name:      tcpLoadBalancer.Name,
+			Namespace: tcpLoadBalancer.Namespace,
+			Labels:    map[string]string{"app": tcpLoadBalancer.Name},
+		}
 
-	return r.Update(ctx, actualDeployment)
+		//Todo: is this enough? Do i even want to reconcile on updates
+		if len(deployment.Spec.Template.Spec.Containers) == 0 {
+			deployment.Spec.Template.Spec.Containers =
+				[]corev1.Container{
+					{
+						Name:  tcpLoadBalancer.Name,
+						Image: "envoyproxy/envoy:v1.16-latest",
+						Args: []string{
+							"--config-yaml", r.EnvoyBootstrap,
+							"--service-node", tcpLoadBalancer.Name,
+							"--service-cluster", tcpLoadBalancer.Namespace,
+						},
+						Ports: envoyListenerPorts,
+					},
+				}
+		}
+
+		return ctrl.SetControllerReference(tcpLoadBalancer, deployment, r.Scheme)
+
+	})
+
+	log.V(6).Info("desired", "deployment", deployment)
+
+	log.V(1).Info("operation fulfilled", "status", result)
+
+	return err
 
 }
 
 func (r *TCPLoadBalancerReconciler) reconcileService(ctx context.Context, tcpLoadBalancer *kubelbk8ciov1alpha1.TCPLoadBalancer) error {
 	log := r.Log.WithValues("reconcile", "service")
 
-	desiredService := resources.MapService(tcpLoadBalancer)
-	err := ctrl.SetControllerReference(tcpLoadBalancer, desiredService, r.Scheme)
-	if err != nil {
-		log.Error(err, "Unable to set controller reference")
-		return err
+	service := &corev1.Service{
+		ObjectMeta: v1.ObjectMeta{
+			Name:      tcpLoadBalancer.Name,
+			Namespace: tcpLoadBalancer.Namespace,
+			Labels:    map[string]string{"app": tcpLoadBalancer.Name},
+		},
 	}
-	log.V(6).Info("desired", "service", desiredService)
-
-	actualService := &corev1.Service{}
-	err = r.Get(ctx, types.NamespacedName{
+	err := r.Get(ctx, types.NamespacedName{
 		Name:      tcpLoadBalancer.Name,
 		Namespace: tcpLoadBalancer.Namespace,
-	}, actualService)
+	}, service)
 
-	log.V(6).Info("actual", "service", actualService)
+	if err != nil && !apierrors.IsNotFound(err) {
+		return err
+	}
+
+	log.V(6).Info("actual", "service", service)
+
+	result, err := ctrl.CreateOrUpdate(ctx, r.Client, service, func() error {
+
+		if len(service.Spec.Ports) == 0 {
+
+			var ports []corev1.ServicePort
+
+			for _, lbServicePort := range tcpLoadBalancer.Spec.Ports {
+				ports = append(ports, corev1.ServicePort{
+					Name:     lbServicePort.Name,
+					Port:     lbServicePort.Port,
+					Protocol: lbServicePort.Protocol,
+				})
+			}
+
+			service.Spec.Ports = ports
+
+		}
+
+		service.Spec.Selector = map[string]string{"app": tcpLoadBalancer.Name}
+		service.Spec.Type = tcpLoadBalancer.Spec.Type
+
+		return ctrl.SetControllerReference(tcpLoadBalancer, service, r.Scheme)
+
+	})
+
+	log.V(6).Info("desired", "service", service)
+
+	log.V(1).Info("operation fulfilled", "status", result)
 
 	if err != nil {
-		if !apierrors.IsNotFound(err) {
-			return err
-		}
-		log.V(1).Info("creating service", "name", tcpLoadBalancer.Name, "namespace", tcpLoadBalancer.Namespace)
-		return r.Create(ctx, desiredService)
+		return err
 	}
 
-	if resources.ServiceIsDesiredState(actualService, desiredService) {
-		log.V(2).Info("service is in desired state")
+	//Status changes
+	log.V(6).Info("load balancer status", "TcpLoadBalancer", tcpLoadBalancer.Status.LoadBalancer.Ingress, "service", service.Status.LoadBalancer.Ingress)
 
-	} else {
-		log.V(1).Info("updating service", "name", tcpLoadBalancer.Name, "namespace", tcpLoadBalancer.Namespace)
-		actualService.Spec.Ports = desiredService.Spec.Ports
-		actualService.Spec.Type = desiredService.Spec.Type
-		log.V(7).Info("updated to", "service", actualService)
-
-		err = r.Update(ctx, actualService)
-
-		if err != nil {
-			return err
-		}
-	}
-
-	log.V(6).Info("load balancer status", "TcpLoadBalancer", tcpLoadBalancer.Status.LoadBalancer.Ingress, "service", actualService.Status.LoadBalancer.Ingress)
-
-	if tcpLoadBalancer.Spec.Type != corev1.ServiceTypeLoadBalancer || len(tcpLoadBalancer.Status.LoadBalancer.Ingress) == len(actualService.Status.LoadBalancer.Ingress) {
+	if tcpLoadBalancer.Spec.Type != corev1.ServiceTypeLoadBalancer || len(tcpLoadBalancer.Status.LoadBalancer.Ingress) == len(service.Status.LoadBalancer.Ingress) {
 		log.V(2).Info("TcpLoadBalancer status is in desired state")
+		return nil
 	}
 
 	log.V(1).Info("updating TcpLoadBalancer status", "name", tcpLoadBalancer.Name, "namespace", tcpLoadBalancer.Namespace)
 
-	tcpLoadBalancer.Status.LoadBalancer = actualService.Status.LoadBalancer
+	tcpLoadBalancer.Status.LoadBalancer = service.Status.LoadBalancer
 	log.V(7).Info("updating to", "TcpLoadBalancer status", tcpLoadBalancer.Status.LoadBalancer)
 
 	return r.Status().Update(ctx, tcpLoadBalancer)
 
+}
+
+func (r *TCPLoadBalancerReconciler) SetupWithManager(mgr ctrl.Manager, ctx context.Context) error {
+	c, err := ctrl.NewControllerManagedBy(mgr).
+		For(&kubelbk8ciov1alpha1.TCPLoadBalancer{}).
+		Owns(&corev1.Service{}).
+		Owns(&appsv1.Deployment{}).
+		Build(r)
+
+	if err != nil {
+		return err
+	}
+
+	//Todo: same as owns? can be removed : leave it
+	serviceInformer, err := r.Cache.GetInformer(ctx, &corev1.Service{})
+	if err != nil {
+		r.Log.Error(err, "error occurred while getting service informer")
+		return err
+	}
+
+	err = c.Watch(
+		&source.Informer{Informer: serviceInformer},
+		&handler.EnqueueRequestForOwner{
+			OwnerType:    &kubelbk8ciov1alpha1.TCPLoadBalancer{},
+			IsController: true,
+		},
+	)
+
+	return nil
 }

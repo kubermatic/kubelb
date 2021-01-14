@@ -18,9 +18,8 @@ package kubelb
 
 import (
 	"context"
-	"k8c.io/kubelb/pkg/resources"
 	netv1beta1 "k8s.io/api/networking/v1beta1"
-	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 
 	"github.com/go-logr/logr"
@@ -68,44 +67,70 @@ func (r *HTTPLoadBalancerReconciler) Reconcile(ctx context.Context, req ctrl.Req
 	return ctrl.Result{}, nil
 }
 
+func (r *HTTPLoadBalancerReconciler) reconcileIngress(ctx context.Context, httpLoadBalancer *kubelbk8ciov1alpha1.HTTPLoadBalancer) error {
+	log := r.Log.WithValues("reconcile", "ingress")
+
+	ingress := &netv1beta1.Ingress{}
+	err := r.Get(ctx, types.NamespacedName{
+		Name:      httpLoadBalancer.Name,
+		Namespace: httpLoadBalancer.Namespace,
+	}, ingress)
+
+	if err != nil {
+		return err
+	}
+
+	log.V(6).Info("actual", "ingress", ingress)
+
+	result, err := ctrl.CreateOrUpdate(ctx, r.Client, ingress, func() error {
+
+		var rules []netv1beta1.IngressRule
+
+		for _, rule := range httpLoadBalancer.Spec.Rules {
+
+			var paths []netv1beta1.HTTPIngressPath
+
+			for _, path := range rule.HTTP.Paths {
+				paths = append(paths, netv1beta1.HTTPIngressPath{
+					Path: path.Path,
+					Backend: netv1beta1.IngressBackend{
+						ServiceName: path.Backend.ServiceName,
+						ServicePort: path.Backend.ServicePort,
+					},
+				})
+			}
+
+			rules = append(rules, netv1beta1.IngressRule{
+				IngressRuleValue: netv1beta1.IngressRuleValue{
+					HTTP: &netv1beta1.HTTPIngressRuleValue{
+						Paths: paths,
+					},
+				},
+			})
+		}
+
+		ingress.ObjectMeta = v1.ObjectMeta{
+			Name:      httpLoadBalancer.Name,
+			Namespace: httpLoadBalancer.Namespace,
+			Labels:    map[string]string{"app": httpLoadBalancer.Name},
+		}
+
+		ingress.Spec.Rules = rules
+
+		return ctrl.SetControllerReference(httpLoadBalancer, ingress, r.Scheme)
+
+	})
+
+	log.V(6).Info("desired", "ingress", ingress)
+
+	log.V(1).Info("status", result)
+
+	return err
+
+}
+
 func (r *HTTPLoadBalancerReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&kubelbk8ciov1alpha1.HTTPLoadBalancer{}).
 		Complete(r)
-}
-
-func (r *HTTPLoadBalancerReconciler) reconcileIngress(ctx context.Context, httpLoadBalancer *kubelbk8ciov1alpha1.HTTPLoadBalancer) error {
-	log := r.Log.WithValues("reconcile", "ingress")
-
-	desiredIngress := resources.MapIngress(httpLoadBalancer)
-	err := ctrl.SetControllerReference(httpLoadBalancer, desiredIngress, r.Scheme)
-	if err != nil {
-		log.Error(err, "Unable to set controller reference")
-		return err
-	}
-	log.V(6).Info("desired", "ingress", desiredIngress)
-
-	actualIngress := &netv1beta1.Ingress{}
-	err = r.Get(ctx, types.NamespacedName{
-		Name:      httpLoadBalancer.Name,
-		Namespace: httpLoadBalancer.Namespace,
-	}, actualIngress)
-
-	log.V(6).Info("actual", "ingress", actualIngress)
-
-	if err != nil {
-		if !apierrors.IsNotFound(err) {
-			return err
-		}
-		log.Info("creating ingress", "name", httpLoadBalancer.Name, "namespace", httpLoadBalancer.Namespace)
-		return r.Create(ctx, desiredIngress)
-	}
-
-	//Todo: implement isDesiredState
-	log.V(1).Info("updating ingress", "name", httpLoadBalancer.Name, "namespace", httpLoadBalancer.Namespace)
-	actualIngress.Spec = desiredIngress.Spec
-	log.V(7).Info("updated to", "ingress", actualIngress)
-
-	return r.Update(ctx, actualIngress)
-
 }
