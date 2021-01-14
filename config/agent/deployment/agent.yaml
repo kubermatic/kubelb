@@ -44,8 +44,8 @@ spec:
             #            - --enable-leader-election
             - --cluster-name=tenant-1
             - --node-address-type=InternalIP
-            - --v=10
-          image: controller:latest
+            - --v=3
+          image: quay.io/kubermatic-labs/kubelb:agent-latest
           name: agent
           resources:
             limits:

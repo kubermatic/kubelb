@@ -57,9 +57,9 @@ spec:
         - command:
             - /manager
           args:
-#            - --enable-leader-election
-            - --v=10
-          image: controller:latest
+            #            - --enable-leader-election
+            - --v=3
+          image: quay.io/kubermatic-labs/kubelb:manager-latest
           name: manager
           ports:
             - containerPort: 8001
