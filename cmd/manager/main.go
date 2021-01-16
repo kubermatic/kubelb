@@ -19,18 +19,16 @@ package main
 import (
 	"flag"
 	"github.com/spf13/pflag"
+	kubelbk8ciov1alpha1 "k8c.io/kubelb/pkg/api/kubelb.k8c.io/v1alpha1"
+	"k8c.io/kubelb/pkg/controllers/kubelb"
 	"k8c.io/kubelb/pkg/envoy"
-	"k8s.io/klog/v2"
-	"k8s.io/klog/v2/klogr"
-	"os"
-
 	"k8s.io/apimachinery/pkg/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	_ "k8s.io/client-go/plugin/pkg/client/auth/gcp"
+	"k8s.io/klog/v2"
+	"k8s.io/klog/v2/klogr"
+	"os"
 	ctrl "sigs.k8s.io/controller-runtime"
-
-	kubelbk8ciov1alpha1 "k8c.io/kubelb/pkg/api/kubelb.k8c.io/v1alpha1"
-	"k8c.io/kubelb/pkg/controllers/kubelb"
 	// +kubebuilder:scaffold:imports
 )
 
@@ -70,10 +68,9 @@ func main() {
 		os.Exit(1)
 	}
 
-	log := klogr.New()
-	ctrl.SetLogger(log)
+	ctrl.SetLogger(klogr.New())
 
-	setupLog := log.WithName("init")
+	setupLog := ctrl.Log.WithName("init")
 
 	// setup signal handler
 	ctx := ctrl.SetupSignalHandler()
@@ -104,7 +101,6 @@ func main() {
 
 	if err = (&kubelb.TCPLoadBalancerReconciler{
 		Client:         mgr.GetClient(),
-		Log:            ctrl.Log.WithName("kubelb.tcploadbalancer.reconciler"),
 		Cache:          mgr.GetCache(),
 		Scheme:         mgr.GetScheme(),
 		EnvoyCache:     envoyServer.Cache,
@@ -116,7 +112,6 @@ func main() {
 
 	if err = (&kubelb.HTTPLoadBalancerReconciler{
 		Client: mgr.GetClient(),
-		Log:    ctrl.Log.WithName("kubelb.httploadbalancer.reconciler"),
 		Scheme: mgr.GetScheme(),
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "HTTPLoadBalancer")

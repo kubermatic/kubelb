@@ -21,7 +21,6 @@ import (
 	"github.com/Masterminds/semver/v3"
 	cachev3 "github.com/envoyproxy/go-control-plane/pkg/cache/v3"
 	envoyresource "github.com/envoyproxy/go-control-plane/pkg/resource/v3"
-	"github.com/go-logr/logr"
 	"github.com/pkg/errors"
 	kubelbk8ciov1alpha1 "k8c.io/kubelb/pkg/api/kubelb.k8c.io/v1alpha1"
 	envoycp "k8c.io/kubelb/pkg/envoy"
@@ -42,7 +41,6 @@ import (
 // TCPLoadBalancerReconciler reconciles a TCPLoadBalancer object
 type TCPLoadBalancerReconciler struct {
 	client.Client
-	Log            logr.Logger
 	Scheme         *runtime.Scheme
 	Cache          cache.Cache
 	EnvoyCache     cachev3.SnapshotCache
@@ -55,7 +53,8 @@ type TCPLoadBalancerReconciler struct {
 // +kubebuilder:rbac:groups="apps",resources=deployments,verbs=get;list;watch;create;update;patch;delete
 
 func (r *TCPLoadBalancerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	log := r.Log.WithValues("name", req.Name, "namespace", req.Namespace)
+	log := ctrl.LoggerFrom(ctx)
+
 	log.V(2).Info("reconciling TCPLoadBalancer")
 
 	var tcpLoadBalancer kubelbk8ciov1alpha1.TCPLoadBalancer
@@ -70,7 +69,7 @@ func (r *TCPLoadBalancerReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 
 	log.V(6).Info("processing", "TCPLoadBalancer", tcpLoadBalancer)
 
-	err = r.reconcileEnvoySnapshot(&tcpLoadBalancer)
+	err = r.reconcileEnvoySnapshot(ctx, &tcpLoadBalancer)
 
 	if err != nil {
 		log.Error(err, "Unable to reconcile envoy snapshot")
@@ -95,9 +94,9 @@ func (r *TCPLoadBalancerReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 
 }
 
-func (r *TCPLoadBalancerReconciler) reconcileEnvoySnapshot(tcpLoadBalancer *kubelbk8ciov1alpha1.TCPLoadBalancer) error {
+func (r *TCPLoadBalancerReconciler) reconcileEnvoySnapshot(ctx context.Context, tcpLoadBalancer *kubelbk8ciov1alpha1.TCPLoadBalancer) error {
 
-	log := r.Log.WithValues("reconcile", "envoy")
+	log := ctrl.LoggerFrom(ctx).WithValues("reconcile", "envoy")
 
 	// Get current snapshot
 	currSnapshot, err := r.EnvoyCache.GetSnapshot(tcpLoadBalancer.Name)
@@ -106,11 +105,11 @@ func (r *TCPLoadBalancerReconciler) reconcileEnvoySnapshot(tcpLoadBalancer *kube
 		// Add the snapshot to the cache
 		//Todo: check namespace and node-id uniqueness
 		initSnapshot := envoycp.MapSnapshot(tcpLoadBalancer, "0.0.1")
-		log.V(1).Info("init snapshot", "service-node", tcpLoadBalancer.Name, "version", "0.0.1")
+		log.Info("init snapshot", "service-node", tcpLoadBalancer.Name, "version", "0.0.1")
 		log.V(6).Info("serving", "snapshot", initSnapshot)
 
 		if err := r.EnvoyCache.SetSnapshot(tcpLoadBalancer.Name, initSnapshot); err != nil {
-			log.Error(err, "failed to set a new snapshot")
+			return err
 		}
 		return nil
 	}
@@ -134,7 +133,7 @@ func (r *TCPLoadBalancerReconciler) reconcileEnvoySnapshot(tcpLoadBalancer *kube
 	if err := newSnapshot.Consistent(); err != nil {
 		return errors.Wrap(err, "new Envoy config snapshot is not consistent")
 	}
-	log.V(1).Info("updating snapshot", "service-node", tcpLoadBalancer.Name, "version", newVersion.String())
+	log.Info("updating snapshot", "service-node", tcpLoadBalancer.Name, "version", newVersion.String())
 	log.V(6).Info("serving", "snapshot", newSnapshot)
 
 	if err := r.EnvoyCache.SetSnapshot(tcpLoadBalancer.Name, newSnapshot); err != nil {
@@ -146,7 +145,7 @@ func (r *TCPLoadBalancerReconciler) reconcileEnvoySnapshot(tcpLoadBalancer *kube
 
 func (r *TCPLoadBalancerReconciler) reconcileDeployment(ctx context.Context, tcpLoadBalancer *kubelbk8ciov1alpha1.TCPLoadBalancer) error {
 
-	log := r.Log.WithValues("reconcile", "deployment")
+	log := ctrl.LoggerFrom(ctx).WithValues("reconcile", "deployment")
 
 	deployment := &appsv1.Deployment{
 		ObjectMeta: v1.ObjectMeta{
@@ -210,14 +209,14 @@ func (r *TCPLoadBalancerReconciler) reconcileDeployment(ctx context.Context, tcp
 
 	log.V(6).Info("desired", "deployment", deployment)
 
-	log.V(1).Info("operation fulfilled", "status", result)
+	log.V(2).Info("operation fulfilled", "status", result)
 
 	return err
 
 }
 
 func (r *TCPLoadBalancerReconciler) reconcileService(ctx context.Context, tcpLoadBalancer *kubelbk8ciov1alpha1.TCPLoadBalancer) error {
-	log := r.Log.WithValues("reconcile", "service")
+	log := ctrl.LoggerFrom(ctx).WithValues("reconcile", "service")
 
 	service := &corev1.Service{
 		ObjectMeta: v1.ObjectMeta{
@@ -264,7 +263,7 @@ func (r *TCPLoadBalancerReconciler) reconcileService(ctx context.Context, tcpLoa
 
 	log.V(6).Info("desired", "service", service)
 
-	log.V(1).Info("operation fulfilled", "status", result)
+	log.V(2).Info("operation fulfilled", "status", result)
 
 	if err != nil {
 		return err
@@ -278,10 +277,10 @@ func (r *TCPLoadBalancerReconciler) reconcileService(ctx context.Context, tcpLoa
 		return nil
 	}
 
-	log.V(1).Info("updating TcpLoadBalancer status", "name", tcpLoadBalancer.Name, "namespace", tcpLoadBalancer.Namespace)
+	log.V(2).Info("updating TcpLoadBalancer status", "name", tcpLoadBalancer.Name, "namespace", tcpLoadBalancer.Namespace)
 
 	tcpLoadBalancer.Status.LoadBalancer = service.Status.LoadBalancer
-	log.V(7).Info("updating to", "TcpLoadBalancer status", tcpLoadBalancer.Status.LoadBalancer)
+	log.V(5).Info("updating to", "TcpLoadBalancer status", tcpLoadBalancer.Status.LoadBalancer)
 
 	return r.Status().Update(ctx, tcpLoadBalancer)
 
@@ -301,7 +300,6 @@ func (r *TCPLoadBalancerReconciler) SetupWithManager(mgr ctrl.Manager, ctx conte
 	//Todo: same as owns? can be removed : leave it
 	serviceInformer, err := r.Cache.GetInformer(ctx, &corev1.Service{})
 	if err != nil {
-		r.Log.Error(err, "error occurred while getting service informer")
 		return err
 	}
 

@@ -19,6 +19,7 @@ package kubelb
 import (
 	"context"
 	netv1beta1 "k8s.io/api/networking/v1beta1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 
@@ -42,7 +43,8 @@ type HTTPLoadBalancerReconciler struct {
 // +kubebuilder:rbac:groups=networking.k8s.io,resources=ingresses,verbs=get;list;watch;create;update;patch;delete
 
 func (r *HTTPLoadBalancerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	log := r.Log.WithValues("name", req.Name, "namespace", req.Namespace)
+	log := ctrl.LoggerFrom(ctx)
+
 	log.V(2).Info("reconciling HTTPLoadBalancer")
 
 	var httpLoadBalancer kubelbk8ciov1alpha1.HTTPLoadBalancer
@@ -68,7 +70,7 @@ func (r *HTTPLoadBalancerReconciler) Reconcile(ctx context.Context, req ctrl.Req
 }
 
 func (r *HTTPLoadBalancerReconciler) reconcileIngress(ctx context.Context, httpLoadBalancer *kubelbk8ciov1alpha1.HTTPLoadBalancer) error {
-	log := r.Log.WithValues("reconcile", "ingress")
+	log := ctrl.LoggerFrom(ctx).WithValues("reconcile", "ingress")
 
 	ingress := &netv1beta1.Ingress{}
 	err := r.Get(ctx, types.NamespacedName{
@@ -76,7 +78,7 @@ func (r *HTTPLoadBalancerReconciler) reconcileIngress(ctx context.Context, httpL
 		Namespace: httpLoadBalancer.Namespace,
 	}, ingress)
 
-	if err != nil {
+	if err != nil && !apierrors.IsNotFound(err) {
 		return err
 	}
 
