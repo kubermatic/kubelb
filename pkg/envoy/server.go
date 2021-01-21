@@ -51,14 +51,14 @@ func registerServer(grpcServer *grpc.Server, server serverv3.Server) {
 	runtimeservice.RegisterRuntimeDiscoveryServiceServer(grpcServer, server)
 }
 
-type server struct {
+type Server struct {
 	Cache         cachev3.SnapshotCache
 	listenAddress string
 	listenPort    uint32
 	enableAdmin   bool
 }
 
-func NewServer(listenAddress string, enableDebug bool) (*server, error) {
+func NewServer(listenAddress string, enableDebug bool) (*Server, error) {
 
 	portString := strings.Split(listenAddress, ":")[1]
 	port, err := strconv.ParseUint(portString, 10, 32)
@@ -66,7 +66,7 @@ func NewServer(listenAddress string, enableDebug bool) (*server, error) {
 		return nil, err
 	}
 
-	return &server{
+	return &Server{
 		listenAddress: listenAddress,
 		listenPort:    uint32(port),
 		Cache:         cachev3.NewSnapshotCache(false, cachev3.IDHash{}, Logger{enableDebug}),
@@ -76,7 +76,7 @@ func NewServer(listenAddress string, enableDebug bool) (*server, error) {
 }
 
 // Start the Envoy control plane server.
-func (s *server) Start(ctx context.Context) error {
+func (s *Server) Start(ctx context.Context) error {
 	// Create a Cache
 	srv3 := serverv3.NewServer(ctx, s.Cache, nil)
 

@@ -20,7 +20,7 @@ import (
 	"flag"
 	"github.com/spf13/pflag"
 	kubelbk8ciov1alpha1 "k8c.io/kubelb/pkg/api/kubelb.k8c.io/v1alpha1"
-	"k8c.io/kubelb/pkg/controllers/kubelb"
+	"k8c.io/kubelb/pkg/controllers/manager"
 	"k8c.io/kubelb/pkg/envoy"
 	"k8s.io/apimachinery/pkg/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
@@ -99,7 +99,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	if err = (&kubelb.TCPLoadBalancerReconciler{
+	if err = (&manager.TCPLoadBalancerReconciler{
 		Client:         mgr.GetClient(),
 		Cache:          mgr.GetCache(),
 		Scheme:         mgr.GetScheme(),
@@ -110,7 +110,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	if err = (&kubelb.HTTPLoadBalancerReconciler{
+	if err = (&manager.HTTPLoadBalancerReconciler{
 		Client: mgr.GetClient(),
 		Scheme: mgr.GetScheme(),
 	}).SetupWithManager(mgr); err != nil {

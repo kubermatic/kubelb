@@ -32,7 +32,7 @@ const xdsClusterName = "xds_cluster"
 
 const controlPlaneAddress = "envoycp.kubelb.svc"
 
-func (s *server) GenerateBootstrap() string {
+func (s *Server) GenerateBootstrap() string {
 
 	var adminCfg *envoyBootstrap.Admin = nil
 
