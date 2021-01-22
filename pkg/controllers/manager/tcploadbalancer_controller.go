@@ -24,6 +24,7 @@ import (
 	"github.com/pkg/errors"
 	kubelbk8ciov1alpha1 "k8c.io/kubelb/pkg/api/kubelb.k8c.io/v1alpha1"
 	envoycp "k8c.io/kubelb/pkg/envoy"
+	"k8c.io/kubelb/pkg/kubelb"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -177,16 +178,16 @@ func (r *TCPLoadBalancerReconciler) reconcileDeployment(ctx context.Context, tcp
 
 		deployment.Spec.Replicas = &replicas
 		deployment.Spec.Selector = &v1.LabelSelector{
-			MatchLabels: map[string]string{"app": tcpLoadBalancer.Name},
+			MatchLabels: map[string]string{kubelb.LabelAppKubernetesName: tcpLoadBalancer.Name},
 		}
 
 		deployment.Spec.Template.ObjectMeta = v1.ObjectMeta{
 			Name:      tcpLoadBalancer.Name,
 			Namespace: tcpLoadBalancer.Namespace,
-			Labels:    map[string]string{"app": tcpLoadBalancer.Name},
+			Labels:    map[string]string{kubelb.LabelAppKubernetesName: tcpLoadBalancer.Name},
 		}
 
-		//Todo: is this enough? Do i even want to reconcile on updates
+		//Todo: reconcile on updates
 		if len(deployment.Spec.Template.Spec.Containers) == 0 {
 			deployment.Spec.Template.Spec.Containers =
 				[]corev1.Container{
@@ -222,7 +223,7 @@ func (r *TCPLoadBalancerReconciler) reconcileService(ctx context.Context, tcpLoa
 		ObjectMeta: v1.ObjectMeta{
 			Name:      tcpLoadBalancer.Name,
 			Namespace: tcpLoadBalancer.Namespace,
-			Labels:    map[string]string{"app": tcpLoadBalancer.Name},
+			Labels:    map[string]string{kubelb.LabelAppKubernetesName: tcpLoadBalancer.Name},
 		},
 	}
 	err := r.Get(ctx, types.NamespacedName{
@@ -238,23 +239,19 @@ func (r *TCPLoadBalancerReconciler) reconcileService(ctx context.Context, tcpLoa
 
 	result, err := ctrl.CreateOrUpdate(ctx, r.Client, service, func() error {
 
-		if len(service.Spec.Ports) == 0 {
-
-			var ports []corev1.ServicePort
-
-			for _, lbServicePort := range tcpLoadBalancer.Spec.Ports {
-				ports = append(ports, corev1.ServicePort{
-					Name:     lbServicePort.Name,
-					Port:     lbServicePort.Port,
-					Protocol: lbServicePort.Protocol,
-				})
-			}
-
-			service.Spec.Ports = ports
-
+		var ports []corev1.ServicePort
+		for _, lbServicePort := range tcpLoadBalancer.Spec.Ports {
+			ports = append(ports, corev1.ServicePort{
+				Name:     lbServicePort.Name,
+				Port:     lbServicePort.Port,
+				Protocol: lbServicePort.Protocol,
+			})
 		}
 
-		service.Spec.Selector = map[string]string{"app": tcpLoadBalancer.Name}
+		//Todo: triggers updated everytime cause of the nodeport
+		service.Spec.Ports = ports
+
+		service.Spec.Selector = map[string]string{kubelb.LabelAppKubernetesName: tcpLoadBalancer.Name}
 		service.Spec.Type = tcpLoadBalancer.Spec.Type
 
 		return ctrl.SetControllerReference(tcpLoadBalancer, service, r.Scheme)

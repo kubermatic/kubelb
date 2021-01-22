@@ -61,7 +61,3 @@ func MapHttpLoadBalancer(userIngress *v1beta1.Ingress, clusterName string) *v1al
 		},
 	}
 }
-
-func HttpLoadBalancerIsDesiredState(actual, desired *v1alpha1.HTTPLoadBalancer) bool {
-	return false
-}

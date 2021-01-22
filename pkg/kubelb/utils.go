@@ -24,6 +24,13 @@ import (
 const LabelOriginNamespace = "kubelb.k8c.io/origin-ns"
 const LabelOriginName = "kubelb.k8c.io/origin-name"
 
+const LabelAppKubernetesName = "app.kubernetes.io/name"            //mysql
+const LabelAppKubernetesInstance = "app.kubernetes.io/instance"    //mysql-abcxzy"
+const LabelAppKubernetesVersion = "app.kubernetes.io/version"      //5.7.21
+const LabelAppKubernetesComponent = "app.kubernetes.io/component"  // database
+const LabelAppKubernetesPartOf = "app.kubernetes.io/part-of"       //wordpress
+const LabelAppKubernetesManagedBy = "app.kubernetes.io/managed-by" //helm
+
 func NamespacedName(obj *metav1.ObjectMeta) string {
 	return strings.Join([]string{obj.Namespace, obj.Name}, "-")
 }
