@@ -18,14 +18,21 @@ package manager
 
 import (
 	"context"
+	clusterv3 "github.com/envoyproxy/go-control-plane/envoy/config/cluster/v3"
+	envoyCore "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
+	endpointv3 "github.com/envoyproxy/go-control-plane/envoy/config/endpoint/v3"
+	listenerv3 "github.com/envoyproxy/go-control-plane/envoy/config/listener/v3"
+	"github.com/envoyproxy/go-control-plane/pkg/resource/v3"
+	"github.com/golang/protobuf/ptypes"
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 	kubelbk8ciov1alpha1 "k8c.io/kubelb/pkg/api/kubelb.k8c.io/v1alpha1"
 	envoycp "k8c.io/kubelb/pkg/envoy"
+	"k8c.io/kubelb/pkg/kubelb"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
-	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+
 	"reflect"
 	"time"
 )
@@ -34,60 +41,28 @@ var _ = Describe("TcpLb deployment and service creation", func() {
 
 	// Define utility constants for object names and testing timeouts/durations and intervals.
 	const (
-		tcpLbName      = "app1"
+		tcpLbName      = "serious-application"
 		tcpLbNamespace = "default"
 
 		timeout  = time.Second * 10
-		duration = time.Second * 10
 		interval = time.Millisecond * 250
 	)
 
+	var lookupKey = types.NamespacedName{Name: tcpLbName, Namespace: tcpLbNamespace}
+	var ctx = context.Background()
+
 	Context("When creating a TcpLoadBalancer", func() {
+		var tcpLb = GetDefaultTcpLoadBalancer(tcpLbName, tcpLbNamespace)
+		It("Should create an envoy deployment", func() {
 
-		var tcpLb = &kubelbk8ciov1alpha1.TCPLoadBalancer{
-			TypeMeta: v1.TypeMeta{
-				APIVersion: APIVersion,
-				Kind:       Kind,
-			},
-			ObjectMeta: v1.ObjectMeta{
-				Name:      tcpLbName,
-				Namespace: tcpLbNamespace,
-			},
-			Spec: kubelbk8ciov1alpha1.TCPLoadBalancerSpec{
-				Endpoints: []kubelbk8ciov1alpha1.LoadBalancerEndpoints{
-					{
-						Addresses: []kubelbk8ciov1alpha1.EndpointAddress{
-							{
-								IP: "123.123.123.123",
-							},
-						},
-						Ports: []kubelbk8ciov1alpha1.EndpointPort{
-							{
-								Port: 9090,
-							},
-						}},
-				},
-				Ports: []kubelbk8ciov1alpha1.LoadBalancerPort{
-					{
-						Port: 80,
-					},
-				},
-				Type: corev1.ServiceTypeLoadBalancer,
-			},
-		}
-
-		It("Should create an envoy deployment with a matching service", func() {
-
-			ctx := context.Background()
 			Expect(k8sClient.Create(ctx, tcpLb)).Should(Succeed())
 
 			By("creating a new deployment")
 
-			deploymentLookupKey := types.NamespacedName{Name: tcpLbName, Namespace: tcpLbNamespace}
 			createdDeployment := &appsv1.Deployment{}
 
 			Eventually(func() bool {
-				err := k8sClient.Get(ctx, deploymentLookupKey, createdDeployment)
+				err := k8sClient.Get(ctx, lookupKey, createdDeployment)
 				if err != nil {
 					return false
 				}
@@ -99,18 +74,17 @@ var _ = Describe("TcpLb deployment and service creation", func() {
 
 			By("creating a corresponding service")
 
-			serviceLookupKey := types.NamespacedName{Name: tcpLbName, Namespace: tcpLbNamespace}
 			createdService := &corev1.Service{}
 
 			Eventually(func() bool {
-				err := k8sClient.Get(ctx, serviceLookupKey, createdService)
+				err := k8sClient.Get(ctx, lookupKey, createdService)
 				if err != nil {
 					return false
 				}
 				return true
 			}, timeout, interval).Should(BeTrue())
 
-			Expect(createdDeployment.Spec.Template.Labels["app"]).Should(Equal(createdService.Spec.Selector["app"]))
+			Expect(createdDeployment.Spec.Template.Labels[kubelb.LabelAppKubernetesName]).Should(Equal(createdService.Spec.Selector[kubelb.LabelAppKubernetesName]))
 			Expect(createdService.OwnerReferences[0].Name).Should(Equal(tcpLbName))
 
 			By("creating an envoy snapshot")
@@ -119,6 +93,126 @@ var _ = Describe("TcpLb deployment and service creation", func() {
 			Expect(err).ToNot(HaveOccurred())
 
 			Expect(reflect.DeepEqual(snapshot, envoycp.MapSnapshot(tcpLb, "0.0.1"))).To(BeTrue())
+
+		})
+	})
+
+	Context("When updating an existing TcpLoadBalancers Ports", func() {
+
+		It("Should update the load balancer service and envoy snapshot", func() {
+
+			existingTcpLb := &kubelbk8ciov1alpha1.TCPLoadBalancer{}
+
+			Eventually(func() bool {
+				err := k8sClient.Get(ctx, lookupKey, existingTcpLb)
+				if err != nil {
+					return false
+				}
+				return true
+			}, timeout, interval).Should(BeTrue())
+
+			//Make sure we have only 1 port in the existing TcpLoadBalancer
+			Expect(len(existingTcpLb.Spec.Ports)).To(BeEquivalentTo(1))
+
+			existingTcpLb.Spec.Ports[0].Name = "port-a"
+			existingTcpLb.Spec.Endpoints[0].Ports[0].Name = "port-a"
+
+			existingTcpLb.Spec.Ports = append(existingTcpLb.Spec.Ports, kubelbk8ciov1alpha1.LoadBalancerPort{
+				Name: "port-b",
+				Port: 81,
+			})
+
+			existingTcpLb.Spec.Endpoints[0].Ports = append(existingTcpLb.Spec.Endpoints[0].Ports, kubelbk8ciov1alpha1.EndpointPort{
+				Name: "port-b",
+				Port: 8081,
+			})
+
+			//Todo: this should actually fail on update if there is no corresponding endpoint port set,
+			//as well as a name to map those. Go ahead with admission webhooks
+			Expect(k8sClient.Update(ctx, existingTcpLb)).Should(Succeed())
+
+			By("updating the service ports")
+
+			updatedService := &corev1.Service{}
+
+			Eventually(func() bool {
+				err := k8sClient.Get(ctx, lookupKey, updatedService)
+				if err != nil {
+					return false
+				}
+
+				for _, servicePort := range updatedService.Spec.Ports {
+					if servicePort.Port == 81 {
+						return true
+					}
+				}
+
+				return false
+			}, timeout, interval).Should(BeTrue())
+
+			Expect(updatedService.Spec.Ports[0].Name).To(Equal("port-a"))
+			Expect(updatedService.Spec.Ports[1].Name).To(Equal("port-b"))
+			Expect(updatedService.Spec.Ports[1].Port).To(Equal(int32(81)))
+
+			By("updating the envoy listener")
+
+			snapshot, err := envoyServer.Cache.GetSnapshot(tcpLbName)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(reflect.DeepEqual(snapshot, envoycp.MapSnapshot(existingTcpLb, "1.0.0"))).To(BeTrue())
+
+			listener := snapshot.GetResources(resource.ListenerType)
+
+			Expect(len(listener)).To(BeEquivalentTo(2))
+
+			aListenerAny, err := ptypes.MarshalAny(listener["port-a"])
+			Expect(err).ToNot(HaveOccurred())
+			aListener := &listenerv3.Listener{}
+			err = ptypes.UnmarshalAny(aListenerAny, aListener)
+			Expect(err).ToNot(HaveOccurred())
+
+			Expect(aListener.Name).To(Equal("port-a"))
+
+			socketAddress := aListener.Address.Address.(*envoyCore.Address_SocketAddress)
+			socketPortValue := socketAddress.SocketAddress.PortSpecifier.(*envoyCore.SocketAddress_PortValue)
+			Expect(socketPortValue.PortValue).To(Equal(uint32(80)))
+
+			bListenerAny, err := ptypes.MarshalAny(listener["port-b"])
+			Expect(err).ToNot(HaveOccurred())
+			bListener := &listenerv3.Listener{}
+			err = ptypes.UnmarshalAny(bListenerAny, bListener)
+			Expect(err).ToNot(HaveOccurred())
+
+			Expect(bListener.Name).To(Equal("port-b"))
+
+			socketAddress = bListener.Address.Address.(*envoyCore.Address_SocketAddress)
+			socketPortValue = socketAddress.SocketAddress.PortSpecifier.(*envoyCore.SocketAddress_PortValue)
+			Expect(socketPortValue.PortValue).To(Equal(uint32(81)))
+
+			By("updating the envoy cluster")
+
+			cluster := snapshot.GetResources(resource.ClusterType)
+
+			ClusterAny, err := ptypes.MarshalAny(cluster["default-port-a"])
+			Expect(err).ToNot(HaveOccurred())
+			envoyCluster := &clusterv3.Cluster{}
+			err = ptypes.UnmarshalAny(ClusterAny, envoyCluster)
+			Expect(err).ToNot(HaveOccurred())
+			clusterLbEndpoint := envoyCluster.LoadAssignment.Endpoints[0].LbEndpoints[0].HostIdentifier.(*endpointv3.LbEndpoint_Endpoint)
+			socketAddress = clusterLbEndpoint.Endpoint.Address.Address.(*envoyCore.Address_SocketAddress)
+			socketPortValue = socketAddress.SocketAddress.PortSpecifier.(*envoyCore.SocketAddress_PortValue)
+
+			Expect(socketPortValue.PortValue).To(Equal(uint32(8080)))
+
+			ClusterAny, err = ptypes.MarshalAny(cluster["default-port-b"])
+			Expect(err).ToNot(HaveOccurred())
+			envoyCluster = &clusterv3.Cluster{}
+			err = ptypes.UnmarshalAny(ClusterAny, envoyCluster)
+			Expect(err).ToNot(HaveOccurred())
+			clusterLbEndpoint = envoyCluster.LoadAssignment.Endpoints[0].LbEndpoints[0].HostIdentifier.(*endpointv3.LbEndpoint_Endpoint)
+			socketAddress = clusterLbEndpoint.Endpoint.Address.Address.(*envoyCore.Address_SocketAddress)
+			socketPortValue = socketAddress.SocketAddress.PortSpecifier.(*envoyCore.SocketAddress_PortValue)
+
+			Expect(socketPortValue.PortValue).To(Equal(uint32(8081)))
 
 		})
 	})

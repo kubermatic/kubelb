@@ -20,6 +20,8 @@ import (
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 	"k8c.io/kubelb/pkg/envoy"
+	corev1 "k8s.io/api/core/v1"
+	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/rest"
 	"k8s.io/klog/v2/klogr"
@@ -47,7 +49,7 @@ var envoyServer *envoy.Server
 const APIVersion = "kubelb.k8c.io/v1alpha1"
 const Kind = "TcpLoadBalancer"
 
-func TestApi(t *testing.T) {
+func TestTcpLoadBalancerCustomResource(t *testing.T) {
 	RegisterFailHandler(Fail)
 
 	RunSpecsWithDefaultAndCustomReporters(t,
@@ -56,7 +58,7 @@ func TestApi(t *testing.T) {
 }
 
 var _ = BeforeSuite(func() {
-	logf.SetLogger(zap.New(zap.UseDevMode(true)))
+	logf.SetLogger(zap.New(zap.UseDevMode(false)))
 
 	By("bootstrapping test environment")
 	testEnv = &envtest.Environment{
@@ -109,3 +111,37 @@ var _ = AfterSuite(func() {
 	err := testEnv.Stop()
 	Expect(err).ToNot(HaveOccurred())
 })
+
+func GetDefaultTcpLoadBalancer(name string, namespace string) *kubelbk8ciov1alpha1.TCPLoadBalancer {
+	return &kubelbk8ciov1alpha1.TCPLoadBalancer{
+		TypeMeta: v1.TypeMeta{
+			APIVersion: APIVersion,
+			Kind:       Kind,
+		},
+		ObjectMeta: v1.ObjectMeta{
+			Name:      name,
+			Namespace: namespace,
+		},
+		Spec: kubelbk8ciov1alpha1.TCPLoadBalancerSpec{
+			Endpoints: []kubelbk8ciov1alpha1.LoadBalancerEndpoints{
+				{
+					Addresses: []kubelbk8ciov1alpha1.EndpointAddress{
+						{
+							IP: "123.123.123.123",
+						},
+					},
+					Ports: []kubelbk8ciov1alpha1.EndpointPort{
+						{
+							Port: 8080,
+						},
+					}},
+			},
+			Ports: []kubelbk8ciov1alpha1.LoadBalancerPort{
+				{
+					Port: 80,
+				},
+			},
+			Type: corev1.ServiceTypeLoadBalancer,
+		},
+	}
+}
