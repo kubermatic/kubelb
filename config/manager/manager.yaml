@@ -12,41 +12,53 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-
 apiVersion: v1
 kind: Namespace
 metadata:
   labels:
-    control-plane: agent
-  name: system
+    control-plane: manager
+  name: kubelb
+---
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    control-plane: manager
+  name: envoycp
+  namespace: kubelb
+spec:
+  ports:
+    - port: 8001
+      targetPort: 8001
+  selector:
+    control-plane: manager
+  type: ClusterIP
 ---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: agent
-  namespace: system
   labels:
-    control-plane: agent
+    control-plane: manager
+  name: manager
+  namespace: kubelb
 spec:
+  replicas: 1
   selector:
     matchLabels:
-      control-plane: agent
-  replicas: 1
+      control-plane: manager
   template:
     metadata:
       labels:
-        control-plane: agent
+        control-plane: manager
     spec:
       containers:
         - command:
-            - /agent
-          args:
-            #            - --enable-leader-election
-            - --cluster-name=tenant-1
-            - --node-address-type=InternalIP
-            - --v=3
-          image: quay.io/kubermatic-labs/kubelb:agent-latest
-          name: agent
+            - /manager
+          image: quay.io/weirdmachine/kubelb-manager:latest
+          imagePullPolicy: Always
+          name: manager
+          ports:
+            - containerPort: 8001
           resources:
             limits:
               cpu: 100m
@@ -54,12 +66,4 @@ spec:
             requests:
               cpu: 100m
               memory: 20Mi
-          volumeMounts:
-            - name: kubelb
-              mountPath: "/home/nonroot/.kube/"
-              readOnly: true
-      volumes:
-        - name: kubelb
-          configMap:
-            name: kubelb
       terminationGracePeriodSeconds: 10

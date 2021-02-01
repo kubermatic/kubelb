@@ -53,7 +53,7 @@ spec:
               properties:
                 rules:
                   description: A list of host rules used to configure the Ingress. If
-                    unspecified, or no rule matches, all traffic is sent to the user
+                    unspecified, or no rule matches, all traffic is sent to the default
                     backend.
                   items:
                     description: IngressRule represents the rules mapping the paths

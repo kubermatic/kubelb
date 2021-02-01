@@ -101,6 +101,7 @@ spec:
                               format: int32
                               type: integer
                             protocol:
+                              default: TCP
                               description: The IP protocol for this port. Must be UDP,
                                 TCP, or SCTP. Default is TCP.
                               enum:
@@ -135,6 +136,7 @@ spec:
                         format: int32
                         type: integer
                       protocol:
+                        default: TCP
                         description: The IP protocol for this port. Supports "TCP",
                           "UDP", and "SCTP". Default is TCP.
                         enum:
@@ -147,6 +149,7 @@ spec:
                     type: object
                   type: array
                 type:
+                  default: ClusterIP
                   description: 'type determines how the Service is exposed. Defaults
                   to ClusterIP. Valid options are ExternalName, ClusterIP, NodePort,
                   and LoadBalancer. "ExternalName" maps to the specified externalName.
