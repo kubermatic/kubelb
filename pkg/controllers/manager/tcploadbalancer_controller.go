@@ -308,5 +308,5 @@ func (r *TCPLoadBalancerReconciler) SetupWithManager(mgr ctrl.Manager, ctx conte
 		},
 	)
 
-	return nil
+	return err
 }

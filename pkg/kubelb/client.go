@@ -53,8 +53,7 @@ func NewClient(clusterName string, kubeConfPath string) (*Client, error) {
 		return nil, err
 	}
 
-	var kubeLbAlpha1Clientset kubelbv1alpha1.KubelbV1alpha1Interface
-	kubeLbAlpha1Clientset = clientset.KubelbV1alpha1()
+	kubeLbAlpha1Clientset := clientset.KubelbV1alpha1()
 
 	tcpLBClient := kubeLbAlpha1Clientset.TCPLoadBalancers(clusterName)
 	httpLBClient := kubeLbAlpha1Clientset.HTTPLoadBalancers(clusterName)

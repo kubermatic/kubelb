@@ -73,7 +73,7 @@ deploy-%: manifests
 manifests: controller-gen
 	$(CONTROLLER_GEN) $(CRD_OPTIONS) webhook paths="./pkg/..." output:crd:artifacts:config=config/crd/bases
 	$(CONTROLLER_GEN) $(CRD_OPTIONS) rbac:roleName=agent-role paths="./pkg/controllers/agent/..." output:artifacts:config=config/agent/rbac
-	$(CONTROLLER_GEN) $(CRD_OPTIONS) rbac:roleName=manager-role paths="./pkg/controllers/kubelb/..." output:artifacts:config=config/manager/rbac
+	$(CONTROLLER_GEN) $(CRD_OPTIONS) rbac:roleName=manager-role paths="./pkg/controllers/manager/..." output:artifacts:config=config/manager/rbac
 
 # Build manager image
 docker-build-manager:
@@ -101,6 +101,9 @@ fmt:
 # Run go vet against code
 vet:
 	go vet ./...
+
+lint:
+	golangci-lint run -v --timeout=5m
 
 # Generate code
 generate: controller-gen
