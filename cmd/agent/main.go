@@ -116,7 +116,7 @@ func main() {
 	}
 
 	//verify update status in user cluster
-	tcpLoadBalancerInformerFactory := informers.NewSharedInformerFactory(kubeLbClient.Clientset, time.Second*120)
+	tcpLoadBalancerInformerFactory := informers.NewSharedInformerFactoryWithOptions(kubeLbClient.Clientset, time.Second*120, informers.WithNamespace(clusterName))
 
 	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
 		Scheme:             scheme,
