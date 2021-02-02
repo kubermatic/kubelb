@@ -41,9 +41,6 @@ echo "Creating cache for revision ${GIT_HEAD_HASH} / Go ${GO_VERSION} ..."
 echo "Building binaries"
 make all
 
-echo "Building tests"
-make build-tests
-
 echo "Creating gocache archive"
 ARCHIVE_FILE="/tmp/${GIT_HEAD_HASH}.tar"
 # No compression because that needs quite a bit of CPU
