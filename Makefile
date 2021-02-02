@@ -105,6 +105,12 @@ vet:
 lint:
 	golangci-lint run -v --timeout=5m
 
+check-dependencies:
+	go mod verify
+
+verify-boilerplate:
+	./hack/verify-boilerplate.sh
+
 # Generate code
 generate: controller-gen
 	$(CONTROLLER_GEN) object:headerFile="hack/boilerplate/boilerplate.go.txt" paths="./..."

@@ -14,10 +14,9 @@
 # limitations under the License.
 
 
-set -euo pipefail
+set -eu
 
 cd $(dirname $0)/..
 
 boilerplate \
-  -boilerplates hack/boilerplate/ \
-  .
+  -boilerplates hack/boilerplate/

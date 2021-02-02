@@ -24,7 +24,9 @@ presubmits:
       containers:
         - image: golang:1.15
           command:
-            - "go mod verify"
+            - make
+          args:
+            - check-dependencies
           resources:
             requests:
               cpu: 1
@@ -72,7 +74,9 @@ presubmits:
       containers:
         - image: quay.io/kubermatic-labs/boilerplate:v0.1.1
           command:
-            - "-boilerplates hack/boilerplate/"
+            - make
+          args:
+            - verify-boilerplate
 
   - name: pull-kubelb-build
     always_run: true
