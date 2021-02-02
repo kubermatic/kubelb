@@ -17,14 +17,13 @@ limitations under the License.
 package envoy
 
 import (
-	"bytes"
 	envoyBootstrap "github.com/envoyproxy/go-control-plane/envoy/config/bootstrap/v3"
 	envoyCluster "github.com/envoyproxy/go-control-plane/envoy/config/cluster/v3"
 	envoyCore "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	envoyEndpoint "github.com/envoyproxy/go-control-plane/envoy/config/endpoint/v3"
-	"github.com/golang/protobuf/jsonpb"
 	"github.com/golang/protobuf/ptypes"
 	"github.com/golang/protobuf/ptypes/wrappers"
+	"google.golang.org/protobuf/encoding/protojson"
 	"time"
 )
 
@@ -148,10 +147,10 @@ func (s *Server) GenerateBootstrap() string {
 		Admin: adminCfg,
 	}
 
-	var jsonBuf bytes.Buffer
-	if err := new(jsonpb.Marshaler).Marshal(&jsonBuf, cfg); err != nil {
+	jsonBytes, err := protojson.Marshal(cfg)
+	if err != nil {
 		panic(err)
 	}
 
-	return jsonBuf.String()
+	return string(jsonBytes)
 }

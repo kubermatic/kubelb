@@ -55,9 +55,8 @@ func MapSnapshot(tcpLoadBalancer *kubelbiov1alpha1.TCPLoadBalancer, version stri
 			listener = append(listener, makeTCPListener(envoyClusterName, lbServicePort.Name, uint32(lbServicePort.Port)))
 		} else if lbServicePort.Protocol == corev1.ProtocolUDP {
 			listener = append(listener, makeUDPListener(envoyClusterName, lbServicePort.Name, uint32(lbServicePort.Port)))
-		} else {
-			//Todo: log unsupported
 		}
+
 	}
 
 	//multiple endpoints represent multiple clusters

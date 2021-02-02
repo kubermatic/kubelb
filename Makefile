@@ -12,13 +12,25 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# Image URL to use all building/pushing image targets
-IMG ?= kubelb-manager:latest
+SHELL = /bin/bash -eu -o pipefail
+
 # Produce CRDs that work back to Kubernetes 1.16+
 CRD_OPTIONS ?= "crd:crdVersions=v1"
 
-# manager arguments
-ARGS ?= --metrics-addr=:8081
+# run arguments
+ARGS ?= -v=1
+
+REGISTRY ?= quay.io
+REGISTRY_NAMESPACE ?= kubermatic-labs
+
+IMAGE_TAG = "latest"
+
+MANAGER_IMAGE_NAME ?= $(REGISTRY)/$(REGISTRY_NAMESPACE)/kubelb
+AGENT_IMAGE_NAME ?= $(REGISTRY)/$(REGISTRY_NAMESPACE)/kubelb-agent
+
+LDFLAGS ?= -ldflags '-s -w'
+
+export GIT_TAG ?= $(shell git tag --points-at HEAD)
 
 # Get the currently used golang install path (in GOPATH/bin, unless GOBIN is set)
 ifeq (,$(shell go env GOBIN))
@@ -33,7 +45,7 @@ all: manager agent
 test: generate fmt vet manifests
 	go test ./... -coverprofile cover.out
 
-# Build operator binary
+# Build manager binary
 manager: generate fmt vet
 	go build -o bin/manager cmd/manager/main.go
 
@@ -55,14 +67,32 @@ uninstall: manifests
 
 # Deploy controller in the configured Kubernetes cluster in ~/.kube/config
 deploy-%: manifests
-	cd config/$* && kustomize edit set image controller=${IMG}
 	kustomize build config/$* | kubectl apply -f -
 
 # Generate manifests e.g. CRD, RBAC etc.
 manifests: controller-gen
 	$(CONTROLLER_GEN) $(CRD_OPTIONS) webhook paths="./pkg/..." output:crd:artifacts:config=config/crd/bases
 	$(CONTROLLER_GEN) $(CRD_OPTIONS) rbac:roleName=agent-role paths="./pkg/controllers/agent/..." output:artifacts:config=config/agent/rbac
-	$(CONTROLLER_GEN) $(CRD_OPTIONS) rbac:roleName=manager-role paths="./pkg/controllers/kubelb/..." output:artifacts:config=config/manager/rbac
+	$(CONTROLLER_GEN) $(CRD_OPTIONS) rbac:roleName=manager-role paths="./pkg/controllers/manager/..." output:artifacts:config=config/manager/rbac
+
+# Build manager image
+docker-build-manager:
+	docker build -f manager.dockerfile -t $(MANAGER_IMAGE_NAME):$(IMAGE_TAG) .
+
+# Build agent image
+docker-build-agent:
+	docker build -f agent.dockerfile -t $(AGENT_IMAGE_NAME):$(IMAGE_TAG) .
+
+# publish docker images
+docker-image-publish: docker-build-manager docker-build-agent
+	docker push $(MANAGER_IMAGE_NAME):$(IMAGE_TAG)
+	docker push $(AGENT_IMAGE_NAME):$(IMAGE_TAG)
+	if [[ -n "$(GIT_TAG)" ]]; then \
+  		docker tag $(MANAGER_IMAGE_NAME):$(IMAGE_TAG) $(MANAGER_IMAGE_NAME):$(GIT_TAG) ;\
+		docker tag $(AGENT_IMAGE_NAME):$(IMAGE_TAG) $(AGENT_IMAGE_NAME):$(GIT_TAG) ;\
+		docker push $(AGENT_IMAGE_NAME):$(GIT_TAG) ;\
+		docker push $(MANAGER_IMAGE_NAME):$(GIT_TAG) ;\
+  	fi
 
 # Run go fmt against code
 fmt:
@@ -71,6 +101,15 @@ fmt:
 # Run go vet against code
 vet:
 	go vet ./...
+
+lint:
+	golangci-lint run -v --timeout=5m
+
+check-dependencies:
+	go mod verify
+
+verify-boilerplate:
+	./hack/verify-boilerplate.sh
 
 # Generate code
 generate: controller-gen

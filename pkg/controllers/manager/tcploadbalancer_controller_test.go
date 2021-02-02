@@ -63,10 +63,7 @@ var _ = Describe("TcpLb deployment and service creation", func() {
 
 			Eventually(func() bool {
 				err := k8sClient.Get(ctx, lookupKey, createdDeployment)
-				if err != nil {
-					return false
-				}
-				return true
+				return err == nil
 			}, timeout, interval).Should(BeTrue())
 
 			Expect(createdDeployment.Spec.Template.Spec.Containers[0].Args[1]).Should(Equal(envoyServer.GenerateBootstrap()))
@@ -78,10 +75,7 @@ var _ = Describe("TcpLb deployment and service creation", func() {
 
 			Eventually(func() bool {
 				err := k8sClient.Get(ctx, lookupKey, createdService)
-				if err != nil {
-					return false
-				}
-				return true
+				return err == nil
 			}, timeout, interval).Should(BeTrue())
 
 			Expect(createdDeployment.Spec.Template.Labels[kubelb.LabelAppKubernetesName]).Should(Equal(createdService.Spec.Selector[kubelb.LabelAppKubernetesName]))
@@ -105,10 +99,7 @@ var _ = Describe("TcpLb deployment and service creation", func() {
 
 			Eventually(func() bool {
 				err := k8sClient.Get(ctx, lookupKey, existingTcpLb)
-				if err != nil {
-					return false
-				}
-				return true
+				return err == nil
 			}, timeout, interval).Should(BeTrue())
 
 			//Make sure we have only 1 port in the existing TcpLoadBalancer
