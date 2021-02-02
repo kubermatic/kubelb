@@ -147,8 +147,7 @@ postsubmits:
               set -euo pipefail &&
               /usr/local/bin/entrypoint.sh &&
               docker login -u $QUAY_IO_USERNAME -p $QUAY_IO_PASSWORD quay.io &&
-              ./hack/ci-download-gocache.sh &&
-              make docker-image-publish
+              make download-gocache docker-image-publish
           # docker-in-docker needs privileged mode
           securityContext:
             privileged: true
