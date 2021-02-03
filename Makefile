@@ -21,7 +21,7 @@ CRD_OPTIONS ?= "crd:crdVersions=v1"
 ARGS ?= -v=1
 
 REGISTRY ?= quay.io
-REGISTRY_NAMESPACE ?= kubermatic-labs
+REGISTRY_NAMESPACE ?= kubermatic
 
 IMAGE_TAG = latest
 
@@ -47,11 +47,11 @@ test: generate fmt vet manifests
 
 # Build manager binary
 manager: generate fmt vet
-	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 GO111MODULE=on go build -a -o bin/manager cmd/manager/main.go
+	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 GO111MODULE=on go build $(LDFLAGS) -a -o bin/manager cmd/manager/main.go
 
 # Build agent binary
 agent: generate fmt vet
-	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 GO111MODULE=on go build -a -o bin/agent cmd/agent/main.go
+	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 GO111MODULE=on go build $(LDFLAGS) -a -o bin/agent cmd/agent/main.go
 
 # Run against the configured Kubernetes cluster in ~/.kube/config
 run-%: generate fmt vet manifests
