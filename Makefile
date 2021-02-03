@@ -23,7 +23,7 @@ ARGS ?= -v=1
 REGISTRY ?= quay.io
 REGISTRY_NAMESPACE ?= kubermatic-labs
 
-IMAGE_TAG = "latest"
+IMAGE_TAG = latest
 
 MANAGER_IMAGE_NAME ?= $(REGISTRY)/$(REGISTRY_NAMESPACE)/kubelb
 AGENT_IMAGE_NAME ?= $(REGISTRY)/$(REGISTRY_NAMESPACE)/kubelb-agent
@@ -47,11 +47,11 @@ test: generate fmt vet manifests
 
 # Build manager binary
 manager: generate fmt vet
-	go build -o bin/manager cmd/manager/main.go
+	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 GO111MODULE=on go build -a -o bin/manager cmd/manager/main.go
 
 # Build agent binary
 agent: generate fmt vet
-	go build -o bin/agent cmd/agent/main.go
+	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 GO111MODULE=on go build -a -o bin/agent cmd/agent/main.go
 
 # Run against the configured Kubernetes cluster in ~/.kube/config
 run-%: generate fmt vet manifests
@@ -84,7 +84,7 @@ docker-build-agent:
 	docker build -f agent.dockerfile -t $(AGENT_IMAGE_NAME):$(IMAGE_TAG) .
 
 # publish docker images
-docker-image-publish: docker-build-manager docker-build-agent
+docker-image-publish: manager agent docker-build-manager docker-build-agent
 	docker push $(MANAGER_IMAGE_NAME):$(IMAGE_TAG)
 	docker push $(AGENT_IMAGE_NAME):$(IMAGE_TAG)
 	if [[ -n "$(GIT_TAG)" ]]; then \
