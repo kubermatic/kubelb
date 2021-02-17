@@ -54,7 +54,7 @@ spec:
       containers:
         - command:
             - /manager
-          image: quay.io/weirdmachine/kubelb-manager:latest
+          image: quay.io/kubermatic/kubelb:latest
           imagePullPolicy: Always
           name: manager
           ports:

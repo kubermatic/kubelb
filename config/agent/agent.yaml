@@ -43,7 +43,7 @@ spec:
             - --v=3
           command:
             - /agent
-          image: quay.io/weirdmachine/kubelb-agent:latest
+          image: quay.io/kubermatic/kubelb-agent:latest
           imagePullPolicy: Always
           name: agent
           resources:
