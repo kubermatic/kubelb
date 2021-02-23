@@ -101,7 +101,7 @@ func (r *TCPLoadBalancerReconciler) reconcileEnvoySnapshot(ctx context.Context, 
 	log.V(2).Info("verify envoy snapshot")
 
 	// Get current snapshot
-	currSnapshot, err := r.EnvoyCache.GetSnapshot(tcpLoadBalancer.Name)
+	actualSnapshot, err := r.EnvoyCache.GetSnapshot(tcpLoadBalancer.Name)
 	if err != nil {
 		// Add the snapshot to the cache
 		//Todo: check namespace and node-id uniqueness
@@ -114,14 +114,18 @@ func (r *TCPLoadBalancerReconciler) reconcileEnvoySnapshot(ctx context.Context, 
 		}
 		return nil
 	}
+	log.V(5).Info("actual", "snapshot", actualSnapshot)
 
-	lastUsedVersion, err := semver.NewVersion(currSnapshot.GetVersion(envoyresource.ClusterType))
+	lastUsedVersion, err := semver.NewVersion(actualSnapshot.GetVersion(envoyresource.ClusterType))
 	if err != nil {
 		return errors.Wrap(err, "failed to parse version from last snapshot")
 	}
 
+	desiredSnapshot := envoycp.MapSnapshot(tcpLoadBalancer, lastUsedVersion.String())
+	log.V(5).Info("desired", "snapshot", desiredSnapshot)
+
 	// Generate a new snapshot using the old version to be able to do a DeepEqual comparison
-	if reflect.DeepEqual(currSnapshot, envoycp.MapSnapshot(tcpLoadBalancer, lastUsedVersion.String())) {
+	if reflect.DeepEqual(actualSnapshot, desiredSnapshot) {
 		log.V(2).Info("snapshot is in desired state")
 		return nil
 	}
@@ -135,7 +139,6 @@ func (r *TCPLoadBalancerReconciler) reconcileEnvoySnapshot(ctx context.Context, 
 		return errors.Wrap(err, "new Envoy config snapshot is not consistent")
 	}
 	log.Info("updating snapshot", "service-node", tcpLoadBalancer.Name, "version", newVersion.String())
-	log.V(5).Info("serving", "snapshot", newSnapshot)
 
 	if err := r.EnvoyCache.SetSnapshot(tcpLoadBalancer.Name, newSnapshot); err != nil {
 		return errors.Wrap(err, "failed to set a new Envoy cache snapshot")
@@ -278,7 +281,7 @@ func (r *TCPLoadBalancerReconciler) reconcileService(ctx context.Context, tcpLoa
 
 	log.V(5).Info("desired", "service", service)
 
-	log.V(2).Info("operation fulfilled", "status", result)
+	log.V(2).Info( "operation fulfilled", "status", result)
 
 	if err != nil {
 		return err
