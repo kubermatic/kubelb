@@ -68,7 +68,7 @@ func (r *TCPLoadBalancerReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 		return ctrl.Result{}, nil
 	}
 
-	log.V(6).Info("processing", "TCPLoadBalancer", tcpLoadBalancer)
+	log.V(5).Info("processing", "TCPLoadBalancer", tcpLoadBalancer)
 
 	err = r.reconcileEnvoySnapshot(ctx, &tcpLoadBalancer)
 
@@ -98,16 +98,16 @@ func (r *TCPLoadBalancerReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 func (r *TCPLoadBalancerReconciler) reconcileEnvoySnapshot(ctx context.Context, tcpLoadBalancer *kubelbk8ciov1alpha1.TCPLoadBalancer) error {
 
 	log := ctrl.LoggerFrom(ctx).WithValues("reconcile", "envoy")
+	log.V(2).Info("verify envoy snapshot")
 
 	// Get current snapshot
 	currSnapshot, err := r.EnvoyCache.GetSnapshot(tcpLoadBalancer.Name)
-	//Todo: check for not found error and return if not
 	if err != nil {
 		// Add the snapshot to the cache
 		//Todo: check namespace and node-id uniqueness
 		initSnapshot := envoycp.MapSnapshot(tcpLoadBalancer, "0.0.1")
 		log.Info("init snapshot", "service-node", tcpLoadBalancer.Name, "version", "0.0.1")
-		log.V(6).Info("serving", "snapshot", initSnapshot)
+		log.V(5).Info("serving", "snapshot", initSnapshot)
 
 		if err := r.EnvoyCache.SetSnapshot(tcpLoadBalancer.Name, initSnapshot); err != nil {
 			return err
@@ -135,7 +135,7 @@ func (r *TCPLoadBalancerReconciler) reconcileEnvoySnapshot(ctx context.Context, 
 		return errors.Wrap(err, "new Envoy config snapshot is not consistent")
 	}
 	log.Info("updating snapshot", "service-node", tcpLoadBalancer.Name, "version", newVersion.String())
-	log.V(6).Info("serving", "snapshot", newSnapshot)
+	log.V(5).Info("serving", "snapshot", newSnapshot)
 
 	if err := r.EnvoyCache.SetSnapshot(tcpLoadBalancer.Name, newSnapshot); err != nil {
 		return errors.Wrap(err, "failed to set a new Envoy cache snapshot")
@@ -147,6 +147,8 @@ func (r *TCPLoadBalancerReconciler) reconcileEnvoySnapshot(ctx context.Context, 
 func (r *TCPLoadBalancerReconciler) reconcileDeployment(ctx context.Context, tcpLoadBalancer *kubelbk8ciov1alpha1.TCPLoadBalancer) error {
 
 	log := ctrl.LoggerFrom(ctx).WithValues("reconcile", "deployment")
+	log.V(2).Info("verify deployment")
+
 
 	deployment := &appsv1.Deployment{
 		ObjectMeta: v1.ObjectMeta{
@@ -163,7 +165,7 @@ func (r *TCPLoadBalancerReconciler) reconcileDeployment(ctx context.Context, tcp
 		return err
 	}
 
-	log.V(6).Info("actual", "deployment", deployment)
+	log.V(5).Info("actual", "deployment", deployment)
 
 	result, err := ctrl.CreateOrUpdate(ctx, r.Client, deployment, func() error {
 
@@ -208,7 +210,7 @@ func (r *TCPLoadBalancerReconciler) reconcileDeployment(ctx context.Context, tcp
 
 	})
 
-	log.V(6).Info("desired", "deployment", deployment)
+	log.V(5).Info("desired", "deployment", deployment)
 
 	log.V(2).Info("operation fulfilled", "status", result)
 
@@ -218,6 +220,10 @@ func (r *TCPLoadBalancerReconciler) reconcileDeployment(ctx context.Context, tcp
 
 func (r *TCPLoadBalancerReconciler) reconcileService(ctx context.Context, tcpLoadBalancer *kubelbk8ciov1alpha1.TCPLoadBalancer) error {
 	log := ctrl.LoggerFrom(ctx).WithValues("reconcile", "service")
+
+
+	log.V(2).Info("verify service")
+
 
 	service := &corev1.Service{
 		ObjectMeta: v1.ObjectMeta{
@@ -235,20 +241,32 @@ func (r *TCPLoadBalancerReconciler) reconcileService(ctx context.Context, tcpLoa
 		return err
 	}
 
-	log.V(6).Info("actual", "service", service)
+	log.V(5).Info("actual", "service", service)
+
+	allocatedServicePorts := len(tcpLoadBalancer.Spec.Ports)
 
 	result, err := ctrl.CreateOrUpdate(ctx, r.Client, service, func() error {
 
 		var ports []corev1.ServicePort
-		for _, lbServicePort := range tcpLoadBalancer.Spec.Ports {
-			ports = append(ports, corev1.ServicePort{
-				Name:     lbServicePort.Name,
-				Port:     lbServicePort.Port,
-				Protocol: lbServicePort.Protocol,
-			})
+		for currentLbPort, lbServicePort := range tcpLoadBalancer.Spec.Ports {
+
+			var allocatedPort corev1.ServicePort
+			if currentLbPort > allocatedServicePorts {
+				allocatedPort = corev1.ServicePort{
+					Name:     lbServicePort.Name,
+					Port:     lbServicePort.Port,
+					Protocol: lbServicePort.Protocol,
+				}
+			} else {
+				allocatedPort = service.Spec.Ports[currentLbPort]
+
+				allocatedPort.Name = lbServicePort.Name
+				allocatedPort.Port = lbServicePort.Port
+				allocatedPort.Protocol = lbServicePort.Protocol
+			}
+			ports = append(ports, allocatedPort)
 		}
 
-		//Todo: triggers updated everytime cause of the nodeport
 		service.Spec.Ports = ports
 
 		service.Spec.Selector = map[string]string{kubelb.LabelAppKubernetesName: tcpLoadBalancer.Name}
@@ -258,7 +276,7 @@ func (r *TCPLoadBalancerReconciler) reconcileService(ctx context.Context, tcpLoa
 
 	})
 
-	log.V(6).Info("desired", "service", service)
+	log.V(5).Info("desired", "service", service)
 
 	log.V(2).Info("operation fulfilled", "status", result)
 
@@ -267,17 +285,17 @@ func (r *TCPLoadBalancerReconciler) reconcileService(ctx context.Context, tcpLoa
 	}
 
 	//Status changes
-	log.V(6).Info("load balancer status", "TcpLoadBalancer", tcpLoadBalancer.Status.LoadBalancer.Ingress, "service", service.Status.LoadBalancer.Ingress)
+	log.V(5).Info("load balancer status", "TcpLoadBalancer", tcpLoadBalancer.Status.LoadBalancer.Ingress, "service", service.Status.LoadBalancer.Ingress)
 
 	if tcpLoadBalancer.Spec.Type != corev1.ServiceTypeLoadBalancer || len(tcpLoadBalancer.Status.LoadBalancer.Ingress) == len(service.Status.LoadBalancer.Ingress) {
 		log.V(2).Info("TcpLoadBalancer status is in desired state")
 		return nil
 	}
 
-	log.V(2).Info("updating TcpLoadBalancer status", "name", tcpLoadBalancer.Name, "namespace", tcpLoadBalancer.Namespace)
+	log.V(3).Info("updating TcpLoadBalancer status", "name", tcpLoadBalancer.Name, "namespace", tcpLoadBalancer.Namespace)
 
 	tcpLoadBalancer.Status.LoadBalancer = service.Status.LoadBalancer
-	log.V(5).Info("updating to", "TcpLoadBalancer status", tcpLoadBalancer.Status.LoadBalancer)
+	log.V(4).Info("updating to", "TcpLoadBalancer status", tcpLoadBalancer.Status.LoadBalancer)
 
 	return r.Status().Update(ctx, tcpLoadBalancer)
 

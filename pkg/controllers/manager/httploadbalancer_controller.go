@@ -57,7 +57,7 @@ func (r *HTTPLoadBalancerReconciler) Reconcile(ctx context.Context, req ctrl.Req
 		return ctrl.Result{}, nil
 	}
 
-	log.V(6).Info("processing", "HTTPLoadBalancer", httpLoadBalancer)
+	log.V(5).Info("processing", "HTTPLoadBalancer", httpLoadBalancer)
 
 	err = r.reconcileIngress(ctx, &httpLoadBalancer)
 
@@ -82,7 +82,7 @@ func (r *HTTPLoadBalancerReconciler) reconcileIngress(ctx context.Context, httpL
 		return err
 	}
 
-	log.V(6).Info("actual", "ingress", ingress)
+	log.V(5).Info("actual", "ingress", ingress)
 
 	result, err := ctrl.CreateOrUpdate(ctx, r.Client, ingress, func() error {
 
@@ -123,7 +123,7 @@ func (r *HTTPLoadBalancerReconciler) reconcileIngress(ctx context.Context, httpL
 
 	})
 
-	log.V(6).Info("desired", "ingress", ingress)
+	log.V(5).Info("desired", "ingress", ingress)
 
 	log.V(1).Info("status", result)
 
