@@ -31,6 +31,7 @@ import (
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/apimachinery/pkg/util/intstr"
 	"reflect"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/cache"
@@ -65,6 +66,7 @@ func (r *TCPLoadBalancerReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 			log.Error(err, "unable to fetch TCPLoadBalancer")
 		}
 		log.V(3).Info("TCPLoadBalancer not found")
+		r.EnvoyCache.ClearSnapshot(req.Name)
 		return ctrl.Result{}, nil
 	}
 
@@ -109,11 +111,9 @@ func (r *TCPLoadBalancerReconciler) reconcileEnvoySnapshot(ctx context.Context, 
 		log.Info("init snapshot", "service-node", tcpLoadBalancer.Name, "version", "0.0.1")
 		log.V(5).Info("serving", "snapshot", initSnapshot)
 
-		if err := r.EnvoyCache.SetSnapshot(tcpLoadBalancer.Name, initSnapshot); err != nil {
-			return err
-		}
-		return nil
+		return r.EnvoyCache.SetSnapshot(tcpLoadBalancer.Name, initSnapshot)
 	}
+
 	log.V(5).Info("actual", "snapshot", actualSnapshot)
 
 	lastUsedVersion, err := semver.NewVersion(actualSnapshot.GetVersion(envoyresource.ClusterType))
@@ -131,8 +131,6 @@ func (r *TCPLoadBalancerReconciler) reconcileEnvoySnapshot(ctx context.Context, 
 	}
 
 	newVersion := lastUsedVersion.IncMajor()
-	log.Info("detected a change. Updating the Envoy config cache...", "version", newVersion.String())
-
 	newSnapshot := envoycp.MapSnapshot(tcpLoadBalancer, newVersion.String())
 
 	if err := newSnapshot.Consistent(); err != nil {
@@ -151,7 +149,6 @@ func (r *TCPLoadBalancerReconciler) reconcileDeployment(ctx context.Context, tcp
 
 	log := ctrl.LoggerFrom(ctx).WithValues("reconcile", "deployment")
 	log.V(2).Info("verify deployment")
-
 
 	deployment := &appsv1.Deployment{
 		ObjectMeta: v1.ObjectMeta{
@@ -177,6 +174,7 @@ func (r *TCPLoadBalancerReconciler) reconcileDeployment(ctx context.Context, tcp
 
 		for _, lbServicePort := range tcpLoadBalancer.Spec.Ports {
 			envoyListenerPorts = append(envoyListenerPorts, corev1.ContainerPort{
+				//Name:          lbServicePort.Name,
 				ContainerPort: lbServicePort.Port,
 			})
 		}
@@ -192,22 +190,37 @@ func (r *TCPLoadBalancerReconciler) reconcileDeployment(ctx context.Context, tcp
 			Labels:    map[string]string{kubelb.LabelAppKubernetesName: tcpLoadBalancer.Name},
 		}
 
-		//Todo: reconcile on updates
-		if len(deployment.Spec.Template.Spec.Containers) == 0 {
-			deployment.Spec.Template.Spec.Containers =
-				[]corev1.Container{
-					{
-						Name:  tcpLoadBalancer.Name,
-						Image: "envoyproxy/envoy:v1.16-latest",
-						Args: []string{
-							"--config-yaml", r.EnvoyBootstrap,
-							"--service-node", tcpLoadBalancer.Name,
-							"--service-cluster", tcpLoadBalancer.Namespace,
-						},
-						Ports: envoyListenerPorts,
+		var containers []corev1.Container
+
+		if len(deployment.Spec.Template.Spec.Containers) == 1 {
+			currentContainer := deployment.Spec.Template.Spec.Containers[0]
+
+			currentContainer.Name = tcpLoadBalancer.Name
+			currentContainer.Image = "envoyproxy/envoy:v1.16-latest"
+			currentContainer.Args = []string{
+				"--config-yaml", r.EnvoyBootstrap,
+				"--service-node", tcpLoadBalancer.Name,
+				"--service-cluster", tcpLoadBalancer.Namespace,
+			}
+			currentContainer.Ports = envoyListenerPorts
+
+			containers = append(containers, currentContainer)
+		} else {
+			containers = []corev1.Container{
+				{
+					Name:  tcpLoadBalancer.Name,
+					Image: "envoyproxy/envoy:v1.16-latest",
+					Args: []string{
+						"--config-yaml", r.EnvoyBootstrap,
+						"--service-node", tcpLoadBalancer.Name,
+						"--service-cluster", tcpLoadBalancer.Namespace,
 					},
-				}
+					Ports: envoyListenerPorts,
+				},
+			}
 		}
+
+		deployment.Spec.Template.Spec.Containers = containers
 
 		return ctrl.SetControllerReference(tcpLoadBalancer, deployment, r.Scheme)
 
@@ -224,9 +237,7 @@ func (r *TCPLoadBalancerReconciler) reconcileDeployment(ctx context.Context, tcp
 func (r *TCPLoadBalancerReconciler) reconcileService(ctx context.Context, tcpLoadBalancer *kubelbk8ciov1alpha1.TCPLoadBalancer) error {
 	log := ctrl.LoggerFrom(ctx).WithValues("reconcile", "service")
 
-
 	log.V(2).Info("verify service")
-
 
 	service := &corev1.Service{
 		ObjectMeta: v1.ObjectMeta{
@@ -246,7 +257,7 @@ func (r *TCPLoadBalancerReconciler) reconcileService(ctx context.Context, tcpLoa
 
 	log.V(5).Info("actual", "service", service)
 
-	allocatedServicePorts := len(tcpLoadBalancer.Spec.Ports)
+	allocatedServicePorts := len(service.Spec.Ports)
 
 	result, err := ctrl.CreateOrUpdate(ctx, r.Client, service, func() error {
 
@@ -254,18 +265,23 @@ func (r *TCPLoadBalancerReconciler) reconcileService(ctx context.Context, tcpLoa
 		for currentLbPort, lbServicePort := range tcpLoadBalancer.Spec.Ports {
 
 			var allocatedPort corev1.ServicePort
-			if currentLbPort > allocatedServicePorts {
-				allocatedPort = corev1.ServicePort{
-					Name:     lbServicePort.Name,
-					Port:     lbServicePort.Port,
-					Protocol: lbServicePort.Protocol,
-				}
-			} else {
+
+			//Edit existing port
+			if currentLbPort < allocatedServicePorts {
 				allocatedPort = service.Spec.Ports[currentLbPort]
 
 				allocatedPort.Name = lbServicePort.Name
 				allocatedPort.Port = lbServicePort.Port
+				allocatedPort.TargetPort = intstr.FromInt(int(lbServicePort.Port))
 				allocatedPort.Protocol = lbServicePort.Protocol
+
+			} else {
+				allocatedPort = corev1.ServicePort{
+					Name:       lbServicePort.Name,
+					Port:       lbServicePort.Port,
+					TargetPort: intstr.FromInt(int(lbServicePort.Port)),
+					Protocol:   lbServicePort.Protocol,
+				}
 			}
 			ports = append(ports, allocatedPort)
 		}
@@ -281,7 +297,7 @@ func (r *TCPLoadBalancerReconciler) reconcileService(ctx context.Context, tcpLoa
 
 	log.V(5).Info("desired", "service", service)
 
-	log.V(2).Info( "operation fulfilled", "status", result)
+	log.V(2).Info("operation fulfilled", "status", result)
 
 	if err != nil {
 		return err
