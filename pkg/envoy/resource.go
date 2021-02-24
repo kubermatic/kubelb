@@ -43,18 +43,18 @@ func MapSnapshot(tcpLoadBalancer *kubelbiov1alpha1.TCPLoadBalancer, version stri
 	var listener []types.Resource
 	var cluster []types.Resource
 
-	for i, lbServicePort := range tcpLoadBalancer.Spec.Ports {
+	for currentLbPort, lbServicePort := range tcpLoadBalancer.Spec.Ports {
 
 		envoyClusterName := tcpLoadBalancer.Namespace
 		if lbServicePort.Name == "" {
-			lbServicePort.Name = defaultPortName + strconv.Itoa(i)
+			lbServicePort.Name = defaultPortName + strconv.Itoa(currentLbPort)
 		}
 		envoyClusterName = strings.Join([]string{envoyClusterName, lbServicePort.Name}, "-")
 
 		if lbServicePort.Protocol == corev1.ProtocolTCP {
-			listener = append(listener, makeTCPListener(envoyClusterName, lbServicePort.Name, uint32(lbServicePort.Port)))
+			listener = append(listener, makeTCPListener(envoyClusterName, lbServicePort.Name, uint32(tcpLoadBalancer.Spec.Endpoints[0].Ports[currentLbPort].Port)))
 		} else if lbServicePort.Protocol == corev1.ProtocolUDP {
-			listener = append(listener, makeUDPListener(envoyClusterName, lbServicePort.Name, uint32(lbServicePort.Port)))
+			listener = append(listener, makeUDPListener(envoyClusterName, lbServicePort.Name, uint32(tcpLoadBalancer.Spec.Endpoints[0].Ports[currentLbPort].Port)))
 		}
 
 	}

@@ -72,6 +72,12 @@ func (r *TCPLoadBalancerReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 
 	log.V(5).Info("processing", "TCPLoadBalancer", tcpLoadBalancer)
 
+	//Todo: check validation webhook - ports must equal endpoint ports as well
+	if len(tcpLoadBalancer.Spec.Endpoints) == 0 {
+		log.Error(errors.New("Invalid Spec"), "No Endpoints set")
+		return ctrl.Result{}, nil
+	}
+
 	err = r.reconcileEnvoySnapshot(ctx, &tcpLoadBalancer)
 
 	if err != nil {
@@ -172,10 +178,11 @@ func (r *TCPLoadBalancerReconciler) reconcileDeployment(ctx context.Context, tcp
 		var replicas int32 = 1
 		var envoyListenerPorts []corev1.ContainerPort
 
-		for _, lbServicePort := range tcpLoadBalancer.Spec.Ports {
+		//use endpoint node port as internal envoy port
+		for _, epPort := range tcpLoadBalancer.Spec.Endpoints[0].Ports {
 			envoyListenerPorts = append(envoyListenerPorts, corev1.ContainerPort{
 				//Name:          lbServicePort.Name,
-				ContainerPort: lbServicePort.Port,
+				ContainerPort: epPort.Port,
 			})
 		}
 
@@ -196,7 +203,7 @@ func (r *TCPLoadBalancerReconciler) reconcileDeployment(ctx context.Context, tcp
 			currentContainer := deployment.Spec.Template.Spec.Containers[0]
 
 			currentContainer.Name = tcpLoadBalancer.Name
-			currentContainer.Image = "envoyproxy/envoy:v1.16-latest"
+			currentContainer.Image = "envoyproxy/envoy-alpine:v1.16-latest"
 			currentContainer.Args = []string{
 				"--config-yaml", r.EnvoyBootstrap,
 				"--service-node", tcpLoadBalancer.Name,
@@ -209,7 +216,7 @@ func (r *TCPLoadBalancerReconciler) reconcileDeployment(ctx context.Context, tcp
 			containers = []corev1.Container{
 				{
 					Name:  tcpLoadBalancer.Name,
-					Image: "envoyproxy/envoy:v1.16-latest",
+					Image: "envoyproxy/envoy-alpine:v1.16-latest",
 					Args: []string{
 						"--config-yaml", r.EnvoyBootstrap,
 						"--service-node", tcpLoadBalancer.Name,
@@ -272,14 +279,14 @@ func (r *TCPLoadBalancerReconciler) reconcileService(ctx context.Context, tcpLoa
 
 				allocatedPort.Name = lbServicePort.Name
 				allocatedPort.Port = lbServicePort.Port
-				allocatedPort.TargetPort = intstr.FromInt(int(lbServicePort.Port))
+				allocatedPort.TargetPort = intstr.FromInt(int(tcpLoadBalancer.Spec.Endpoints[0].Ports[currentLbPort].Port))
 				allocatedPort.Protocol = lbServicePort.Protocol
 
 			} else {
 				allocatedPort = corev1.ServicePort{
 					Name:       lbServicePort.Name,
 					Port:       lbServicePort.Port,
-					TargetPort: intstr.FromInt(int(lbServicePort.Port)),
+					TargetPort: intstr.FromInt(int(tcpLoadBalancer.Spec.Endpoints[0].Ports[currentLbPort].Port)),
 					Protocol:   lbServicePort.Protocol,
 				}
 			}
