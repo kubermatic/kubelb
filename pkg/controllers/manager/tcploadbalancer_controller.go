@@ -117,7 +117,7 @@ func (r *TCPLoadBalancerReconciler) reconcileEnvoySnapshot(ctx context.Context, 
 		log.Info("init snapshot", "service-node", tcpLoadBalancer.Name, "version", "0.0.1")
 		log.V(5).Info("serving", "snapshot", initSnapshot)
 
-		return r.EnvoyCache.SetSnapshot(tcpLoadBalancer.Name, initSnapshot)
+		return r.EnvoyCache.SetSnapshot(kubelb.NamespacedName(&tcpLoadBalancer.ObjectMeta), initSnapshot)
 	}
 
 	log.V(5).Info("actual", "snapshot", actualSnapshot)
@@ -144,7 +144,7 @@ func (r *TCPLoadBalancerReconciler) reconcileEnvoySnapshot(ctx context.Context, 
 	}
 	log.Info("updating snapshot", "service-node", tcpLoadBalancer.Name, "version", newVersion.String())
 
-	if err := r.EnvoyCache.SetSnapshot(tcpLoadBalancer.Name, newSnapshot); err != nil {
+	if err := r.EnvoyCache.SetSnapshot(kubelb.NamespacedName(&tcpLoadBalancer.ObjectMeta), newSnapshot); err != nil {
 		return errors.Wrap(err, "failed to set a new Envoy cache snapshot")
 	}
 
@@ -206,7 +206,7 @@ func (r *TCPLoadBalancerReconciler) reconcileDeployment(ctx context.Context, tcp
 			currentContainer.Image = "envoyproxy/envoy-alpine:v1.16-latest"
 			currentContainer.Args = []string{
 				"--config-yaml", r.EnvoyBootstrap,
-				"--service-node", tcpLoadBalancer.Name,
+				"--service-node", kubelb.NamespacedName(&tcpLoadBalancer.ObjectMeta),
 				"--service-cluster", tcpLoadBalancer.Namespace,
 			}
 			currentContainer.Ports = envoyListenerPorts
@@ -219,7 +219,7 @@ func (r *TCPLoadBalancerReconciler) reconcileDeployment(ctx context.Context, tcp
 					Image: "envoyproxy/envoy-alpine:v1.16-latest",
 					Args: []string{
 						"--config-yaml", r.EnvoyBootstrap,
-						"--service-node", tcpLoadBalancer.Name,
+						"--service-node", kubelb.NamespacedName(&tcpLoadBalancer.ObjectMeta),
 						"--service-cluster", tcpLoadBalancer.Namespace,
 					},
 					Ports: envoyListenerPorts,
