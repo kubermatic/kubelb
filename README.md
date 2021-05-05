@@ -57,7 +57,7 @@ is created inside the kubelb cluster, so the agent can create the CRDs inside it
 
 The agent expects a configmap with a kubeconf file named `kubelb` to access the load balancer cluster.
 
-To create such run: `kubectl create --namespace kubelb configmap kubelb --from-file=<path to kubelb kubeconf file>`
+To create such run: `kubectl --namespace kubelb create secret generic kubelb --from-file=<path to kubelb kubeconf file>`
 
 Deploy to user cluster: `make deploy-agent`
 
