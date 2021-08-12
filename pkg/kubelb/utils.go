@@ -17,8 +17,9 @@ limitations under the License.
 package kubelb
 
 import (
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"strings"
+
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 const LabelOriginNamespace = "kubelb.k8c.io/origin-ns"

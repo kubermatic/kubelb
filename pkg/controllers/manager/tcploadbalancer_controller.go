@@ -18,13 +18,12 @@ package manager
 
 import (
 	"context"
+	"reflect"
+
 	"github.com/Masterminds/semver/v3"
 	cachev3 "github.com/envoyproxy/go-control-plane/pkg/cache/v3"
 	envoyresource "github.com/envoyproxy/go-control-plane/pkg/resource/v3"
 	"github.com/pkg/errors"
-	kubelbk8ciov1alpha1 "k8c.io/kubelb/pkg/api/kubelb.k8c.io/v1alpha1"
-	envoycp "k8c.io/kubelb/pkg/envoy"
-	"k8c.io/kubelb/pkg/kubelb"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -32,12 +31,15 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/intstr"
-	"reflect"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/cache"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/source"
+
+	kubelbk8ciov1alpha1 "k8c.io/kubelb/pkg/api/kubelb.k8c.io/v1alpha1"
+	envoycp "k8c.io/kubelb/pkg/envoy"
+	"k8c.io/kubelb/pkg/kubelb"
 )
 
 // TCPLoadBalancerReconciler reconciles a TCPLoadBalancer object
@@ -66,7 +68,10 @@ func (r *TCPLoadBalancerReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 			log.Error(err, "unable to fetch TCPLoadBalancer")
 		}
 		log.V(3).Info("TCPLoadBalancer not found")
-		r.EnvoyCache.ClearSnapshot(req.Name)
+		r.EnvoyCache.ClearSnapshot(kubelb.NamespacedName(&v1.ObjectMeta{
+			Name:      req.Name,
+			Namespace: req.Namespace,
+		}))
 		return ctrl.Result{}, nil
 	}
 
@@ -109,10 +114,9 @@ func (r *TCPLoadBalancerReconciler) reconcileEnvoySnapshot(ctx context.Context, 
 	log.V(2).Info("verify envoy snapshot")
 
 	// Get current snapshot
-	actualSnapshot, err := r.EnvoyCache.GetSnapshot(tcpLoadBalancer.Name)
+	actualSnapshot, err := r.EnvoyCache.GetSnapshot(kubelb.NamespacedName(&tcpLoadBalancer.ObjectMeta))
 	if err != nil {
 		// Add the snapshot to the cache
-		//Todo: check namespace and node-id uniqueness
 		initSnapshot := envoycp.MapSnapshot(tcpLoadBalancer, "0.0.1")
 		log.Info("init snapshot", "service-node", tcpLoadBalancer.Name, "version", "0.0.1")
 		log.V(5).Info("serving", "snapshot", initSnapshot)

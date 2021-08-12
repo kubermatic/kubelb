@@ -18,6 +18,7 @@ package manager
 
 import (
 	"context"
+
 	clusterv3 "github.com/envoyproxy/go-control-plane/envoy/config/cluster/v3"
 	envoyCore "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	endpointv3 "github.com/envoyproxy/go-control-plane/envoy/config/endpoint/v3"
@@ -26,12 +27,13 @@ import (
 	"github.com/golang/protobuf/ptypes"
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
-	kubelbk8ciov1alpha1 "k8c.io/kubelb/pkg/api/kubelb.k8c.io/v1alpha1"
-	envoycp "k8c.io/kubelb/pkg/envoy"
-	"k8c.io/kubelb/pkg/kubelb"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/types"
+
+	kubelbk8ciov1alpha1 "k8c.io/kubelb/pkg/api/kubelb.k8c.io/v1alpha1"
+	envoycp "k8c.io/kubelb/pkg/envoy"
+	"k8c.io/kubelb/pkg/kubelb"
 
 	"reflect"
 	"time"
@@ -47,12 +49,11 @@ var _ = Describe("TcpLb deployment and service creation", func() {
 		timeout  = time.Second * 10
 		interval = time.Millisecond * 250
 	)
-
+	var tcpLb = GetDefaultTcpLoadBalancer(tcpLbName, tcpLbNamespace)
 	var lookupKey = types.NamespacedName{Name: tcpLbName, Namespace: tcpLbNamespace}
 	var ctx = context.Background()
 
 	Context("When creating a TcpLoadBalancer", func() {
-		var tcpLb = GetDefaultTcpLoadBalancer(tcpLbName, tcpLbNamespace)
 		It("Should create an envoy deployment", func() {
 
 			Expect(k8sClient.Create(ctx, tcpLb)).Should(Succeed())
@@ -83,7 +84,7 @@ var _ = Describe("TcpLb deployment and service creation", func() {
 
 			By("creating an envoy snapshot")
 
-			snapshot, err := envoyServer.Cache.GetSnapshot(tcpLbName)
+			snapshot, err := envoyServer.Cache.GetSnapshot(kubelb.NamespacedName(&tcpLb.ObjectMeta))
 			Expect(err).ToNot(HaveOccurred())
 
 			Expect(reflect.DeepEqual(snapshot, envoycp.MapSnapshot(tcpLb, "0.0.1"))).To(BeTrue())
@@ -147,7 +148,7 @@ var _ = Describe("TcpLb deployment and service creation", func() {
 
 			By("updating the envoy listener")
 
-			snapshot, err := envoyServer.Cache.GetSnapshot(tcpLbName)
+			snapshot, err := envoyServer.Cache.GetSnapshot(kubelb.NamespacedName(&tcpLb.ObjectMeta))
 			Expect(err).ToNot(HaveOccurred())
 			Expect(reflect.DeepEqual(snapshot, envoycp.MapSnapshot(existingTcpLb, "1.0.0"))).To(BeTrue())
 
@@ -165,7 +166,7 @@ var _ = Describe("TcpLb deployment and service creation", func() {
 
 			socketAddress := aListener.Address.Address.(*envoyCore.Address_SocketAddress)
 			socketPortValue := socketAddress.SocketAddress.PortSpecifier.(*envoyCore.SocketAddress_PortValue)
-			Expect(socketPortValue.PortValue).To(Equal(uint32(80)))
+			Expect(socketPortValue.PortValue).To(Equal(uint32(8080)))
 
 			bListenerAny, err := ptypes.MarshalAny(listener["port-b"])
 			Expect(err).ToNot(HaveOccurred())
@@ -177,7 +178,7 @@ var _ = Describe("TcpLb deployment and service creation", func() {
 
 			socketAddress = bListener.Address.Address.(*envoyCore.Address_SocketAddress)
 			socketPortValue = socketAddress.SocketAddress.PortSpecifier.(*envoyCore.SocketAddress_PortValue)
-			Expect(socketPortValue.PortValue).To(Equal(uint32(81)))
+			Expect(socketPortValue.PortValue).To(Equal(uint32(8081)))
 
 			By("updating the envoy cluster")
 
