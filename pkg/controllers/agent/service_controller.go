@@ -19,12 +19,8 @@ package agent
 import (
 	"context"
 	"fmt"
+
 	"github.com/go-logr/logr"
-	kubelbk8ciov1alpha1 "k8c.io/kubelb/pkg/api/kubelb.k8c.io/v1alpha1"
-	utils "k8c.io/kubelb/pkg/controllers"
-	"k8c.io/kubelb/pkg/generated/clientset/versioned/typed/kubelb.k8c.io/v1alpha1"
-	kubelbk8ciov1alpha1informers "k8c.io/kubelb/pkg/generated/informers/externalversions/kubelb.k8c.io/v1alpha1"
-	"k8c.io/kubelb/pkg/kubelb"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -35,11 +31,17 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 	"sigs.k8s.io/controller-runtime/pkg/source"
+
+	kubelbk8ciov1alpha1 "k8c.io/kubelb/pkg/api/kubelb.k8c.io/v1alpha1"
+	utils "k8c.io/kubelb/pkg/controllers"
+	"k8c.io/kubelb/pkg/generated/clientset/versioned/typed/kubelb.k8c.io/v1alpha1"
+	kubelbk8ciov1alpha1informers "k8c.io/kubelb/pkg/generated/informers/externalversions/kubelb.k8c.io/v1alpha1"
+	"k8c.io/kubelb/pkg/kubelb"
 )
 
 const TcpLbFinalizerName = "kubelb.k8c.io/tcplb-finalizer"
 
-// KubeLbIngressReconciler reconciles a Service object
+// KubeLbServiceReconciler reconciles a Service object
 type KubeLbServiceReconciler struct {
 	client.Client
 	TcpLBClient             v1alpha1.TCPLoadBalancerInterface
@@ -224,7 +226,6 @@ func (r *KubeLbServiceReconciler) SetupWithManager(mgr ctrl.Manager) error {
 
 }
 
-//Todo: document this behaviour
 func (r *KubeLbServiceReconciler) getEndpoints(service *corev1.Service) []string {
 
 	var clusterEndpoints []string

@@ -17,6 +17,10 @@ limitations under the License.
 package envoy
 
 import (
+	"strconv"
+	"strings"
+	"time"
+
 	envoyAccessLog "github.com/envoyproxy/go-control-plane/envoy/config/accesslog/v3"
 	envoyCluster "github.com/envoyproxy/go-control-plane/envoy/config/cluster/v3"
 	envoyCore "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
@@ -25,15 +29,16 @@ import (
 	envoyFileAccessLog "github.com/envoyproxy/go-control-plane/envoy/extensions/access_loggers/file/v3"
 	envoyTcpProxy "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/network/tcp_proxy/v3"
 	envoyUdpProxy "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/udp/udp_proxy/v3"
+	envoy_type_v3 "github.com/envoyproxy/go-control-plane/envoy/type/v3"
 	"github.com/envoyproxy/go-control-plane/pkg/cache/types"
 	"github.com/envoyproxy/go-control-plane/pkg/cache/v3"
 	"github.com/envoyproxy/go-control-plane/pkg/wellknown"
 	"github.com/golang/protobuf/ptypes"
-	kubelbiov1alpha1 "k8c.io/kubelb/pkg/api/kubelb.k8c.io/v1alpha1"
+	"github.com/golang/protobuf/ptypes/duration"
+	"github.com/golang/protobuf/ptypes/wrappers"
 	corev1 "k8s.io/api/core/v1"
-	"strconv"
-	"strings"
-	"time"
+
+	kubelbiov1alpha1 "k8c.io/kubelb/pkg/api/kubelb.k8c.io/v1alpha1"
 )
 
 const defaultPortName = "port"
@@ -94,8 +99,8 @@ func MapSnapshot(tcpLoadBalancer *kubelbiov1alpha1.TCPLoadBalancer, version stri
 func makeCluster(clusterName string, lbEndpoints []*envoyEndpoint.LbEndpoint) *envoyCluster.Cluster {
 	return &envoyCluster.Cluster{
 		Name:                 clusterName,
-		ConnectTimeout:       ptypes.DurationProto(5 * time.Second),
 		ClusterDiscoveryType: &envoyCluster.Cluster_Type{Type: envoyCluster.Cluster_STRICT_DNS},
+		ConnectTimeout:       ptypes.DurationProto(5 * time.Second),
 		LbPolicy:             envoyCluster.Cluster_ROUND_ROBIN,
 		LoadAssignment: &envoyEndpoint.ClusterLoadAssignment{
 			ClusterName: clusterName,
@@ -103,21 +108,21 @@ func makeCluster(clusterName string, lbEndpoints []*envoyEndpoint.LbEndpoint) *e
 				LbEndpoints: lbEndpoints,
 			}},
 		},
+		HealthChecks: []*envoyCore.HealthCheck{
+			{
+				Timeout:            &duration.Duration{Seconds: 5},
+				Interval:           &duration.Duration{Seconds: 15},
+				UnhealthyThreshold: &wrappers.UInt32Value{Value: 3},
+				HealthyThreshold:   &wrappers.UInt32Value{Value: 5},
+				HealthChecker: &envoyCore.HealthCheck_TcpHealthCheck_{
+					TcpHealthCheck: &envoyCore.HealthCheck_TcpHealthCheck{},
+				},
+			},
+		},
+		CommonLbConfig: &envoyCluster.Cluster_CommonLbConfig{
+			HealthyPanicThreshold: &envoy_type_v3.Percent{Value: 0},
+		},
 		DnsLookupFamily: envoyCluster.Cluster_V4_ONLY,
-
-		//Todo: Control HealthChecks via TCPLoadBalancer
-		//HealthChecks: []*envoyCore.HealthCheck{
-		//	{
-		//		Timeout:            &duration.Duration{Seconds: 5},
-		//		Interval:           &duration.Duration{Seconds: 5},
-		//		UnhealthyThreshold: &wrappers.UInt32Value{Value: 3},
-		//		HealthyThreshold:   &wrappers.UInt32Value{Value: 3},
-		//		HealthChecker: &envoyCore.HealthCheck_TcpHealthCheck_{
-		//			TcpHealthCheck: &envoyCore.HealthCheck_TcpHealthCheck{},
-		//
-		//		},
-		//	},
-		//},
 	}
 }
 
@@ -137,6 +142,7 @@ func makeEndpoint(address string, port uint32) *envoyEndpoint.LbEndpoint {
 						},
 					},
 				},
+				HealthCheckConfig: &envoyEndpoint.Endpoint_HealthCheckConfig{},
 			},
 		},
 	}
@@ -162,6 +168,13 @@ func makeTCPListener(clusterName string, listenerName string, listenerPort uint3
 				Name: "envoy.file_access_log",
 				ConfigType: &envoyAccessLog.AccessLog_TypedConfig{
 					TypedConfig: tcpProxyAccessLogAny,
+				},
+				Filter: &envoyAccessLog.AccessLogFilter{
+					FilterSpecifier: &envoyAccessLog.AccessLogFilter_ResponseFlagFilter{
+						ResponseFlagFilter: &envoyAccessLog.ResponseFlagFilter{
+							Flags: []string{"UH", "UF", "UO", "NR", "URX", "DT"},
+						},
+					},
 				},
 			},
 		},

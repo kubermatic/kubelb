@@ -220,7 +220,7 @@ func (r *TCPLoadBalancerReconciler) reconcileDeployment(ctx context.Context, tcp
 			containers = []corev1.Container{
 				{
 					Name:  tcpLoadBalancer.Name,
-					Image: "envoyproxy/envoy-alpine:v1.16-latest",
+					Image: "envoyproxy/envoy:v1.19.1",
 					Args: []string{
 						"--config-yaml", r.EnvoyBootstrap,
 						"--service-node", kubelb.NamespacedName(&tcpLoadBalancer.ObjectMeta),

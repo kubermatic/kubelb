@@ -18,18 +18,20 @@ package agent
 
 import (
 	"context"
+
 	"github.com/go-logr/logr"
-	kubelbiov1alpha1 "k8c.io/kubelb/pkg/api/kubelb.k8c.io/v1alpha1"
-	"k8c.io/kubelb/pkg/generated/clientset/versioned/typed/kubelb.k8c.io/v1alpha1"
-	"k8c.io/kubelb/pkg/kubelb"
 	corev1 "k8s.io/api/core/v1"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+
+	kubelbiov1alpha1 "k8c.io/kubelb/pkg/api/kubelb.k8c.io/v1alpha1"
+	"k8c.io/kubelb/pkg/generated/clientset/versioned/typed/kubelb.k8c.io/v1alpha1"
+	"k8c.io/kubelb/pkg/kubelb"
 )
 
-// KubeLbIngressReconciler reconciles a Service object
+// KubeLbNodeReconciler reconciles a Service object
 type KubeLbNodeReconciler struct {
 	client.Client
 	KlbClient v1alpha1.TCPLoadBalancerInterface

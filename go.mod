@@ -4,7 +4,7 @@ go 1.15
 
 require (
 	github.com/Masterminds/semver/v3 v3.1.1
-	github.com/envoyproxy/go-control-plane v0.9.8
+	github.com/envoyproxy/go-control-plane v0.9.9
 	github.com/go-logr/logr v0.3.0
 	github.com/go-logr/zapr v0.3.0 // indirect
 	github.com/golang/protobuf v1.4.3
@@ -12,7 +12,7 @@ require (
 	github.com/onsi/gomega v1.10.4
 	github.com/pkg/errors v0.9.1
 	github.com/spf13/pflag v1.0.5
-	google.golang.org/grpc v1.27.0
+	google.golang.org/grpc v1.36.0
 	google.golang.org/protobuf v1.25.0
 	k8s.io/api v0.19.2
 	k8s.io/apimachinery v0.19.2
