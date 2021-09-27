@@ -17,18 +17,25 @@ limitations under the License.
 package main
 
 import (
+	"context"
 	"flag"
+	"os"
+	"time"
+
 	"github.com/spf13/pflag"
-	kubelbk8ciov1alpha1 "k8c.io/kubelb/pkg/api/kubelb.k8c.io/v1alpha1"
-	"k8c.io/kubelb/pkg/controllers/manager"
-	"k8c.io/kubelb/pkg/envoy"
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	_ "k8s.io/client-go/plugin/pkg/client/auth/gcp"
 	"k8s.io/klog/v2"
 	"k8s.io/klog/v2/klogr"
-	"os"
 	ctrl "sigs.k8s.io/controller-runtime"
+	ctrlclient "sigs.k8s.io/controller-runtime/pkg/client"
+
+	kubelbk8ciov1alpha1 "k8c.io/kubelb/pkg/api/kubelb.k8c.io/v1alpha1"
+	"k8c.io/kubelb/pkg/controllers/manager"
+	"k8c.io/kubelb/pkg/envoy"
+	"k8c.io/kubelb/pkg/kubelb"
 	// +kubebuilder:scaffold:imports
 )
 
@@ -119,6 +126,36 @@ func main() {
 	}
 
 	// +kubebuilder:scaffold:builder
+
+	//restart existing envoy pods to reset their snapshot version
+	go func() {
+		client := mgr.GetClient()
+
+		//wait for the controller to come up
+		time.Sleep(20 * time.Second)
+
+		var pods corev1.PodList
+		err = client.List(context.Background(), &pods, &ctrlclient.ListOptions{})
+		if err != nil {
+			setupLog.Error(err, "unable to list pods")
+			os.Exit(1)
+		}
+
+		for _, pod := range pods.Items {
+
+			value, ok := pod.ObjectMeta.Labels[kubelb.LabelAppKubernetesManagedBy]
+			if !ok || value != kubelb.LabelControllerName {
+				continue
+			}
+
+			setupLog.Info("resetting envoy", "pod", pod.Name)
+
+			err = client.Delete(context.Background(), &pod, &ctrlclient.DeleteOptions{})
+			if err != nil {
+				setupLog.Error(err, "failed to restart", "pod", pod.Name)
+			}
+		}
+	}()
 
 	setupLog.Info("starting manager")
 	if err := mgr.Start(ctx); err != nil {

@@ -24,6 +24,7 @@ import (
 
 const LabelOriginNamespace = "kubelb.k8c.io/origin-ns"
 const LabelOriginName = "kubelb.k8c.io/origin-name"
+const LabelControllerName = "kubelb"
 
 const LabelAppKubernetesName = "app.kubernetes.io/name"            //mysql
 const LabelAppKubernetesInstance = "app.kubernetes.io/instance"    //mysql-abcxzy"

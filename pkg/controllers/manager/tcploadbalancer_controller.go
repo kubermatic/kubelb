@@ -55,6 +55,7 @@ type TCPLoadBalancerReconciler struct {
 // +kubebuilder:rbac:groups=kubelb.k8c.io,resources=tcploadbalancers/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups="",resources=services,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups="apps",resources=deployments,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups="",resources=pods,verbs=list;watch;delete
 
 func (r *TCPLoadBalancerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	log := ctrl.LoggerFrom(ctx)
@@ -190,6 +191,8 @@ func (r *TCPLoadBalancerReconciler) reconcileDeployment(ctx context.Context, tcp
 			})
 		}
 
+		deployment.Labels = map[string]string{kubelb.LabelAppKubernetesName: tcpLoadBalancer.Name, kubelb.LabelAppKubernetesManagedBy: kubelb.LabelControllerName}
+
 		deployment.Spec.Replicas = &replicas
 		deployment.Spec.Selector = &v1.LabelSelector{
 			MatchLabels: map[string]string{kubelb.LabelAppKubernetesName: tcpLoadBalancer.Name},
@@ -198,7 +201,7 @@ func (r *TCPLoadBalancerReconciler) reconcileDeployment(ctx context.Context, tcp
 		deployment.Spec.Template.ObjectMeta = v1.ObjectMeta{
 			Name:      tcpLoadBalancer.Name,
 			Namespace: tcpLoadBalancer.Namespace,
-			Labels:    map[string]string{kubelb.LabelAppKubernetesName: tcpLoadBalancer.Name},
+			Labels:    map[string]string{kubelb.LabelAppKubernetesName: tcpLoadBalancer.Name, kubelb.LabelAppKubernetesManagedBy: kubelb.LabelControllerName},
 		}
 
 		var containers []corev1.Container
