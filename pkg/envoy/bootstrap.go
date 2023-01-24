@@ -17,14 +17,15 @@ limitations under the License.
 package envoy
 
 import (
+	"time"
+
 	envoyBootstrap "github.com/envoyproxy/go-control-plane/envoy/config/bootstrap/v3"
 	envoyCluster "github.com/envoyproxy/go-control-plane/envoy/config/cluster/v3"
 	envoyCore "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	envoyEndpoint "github.com/envoyproxy/go-control-plane/envoy/config/endpoint/v3"
-	"github.com/golang/protobuf/ptypes"
 	"github.com/golang/protobuf/ptypes/wrappers"
 	"google.golang.org/protobuf/encoding/protojson"
-	"time"
+	"google.golang.org/protobuf/types/known/durationpb"
 )
 
 const xdsClusterName = "xds_cluster"
@@ -37,7 +38,6 @@ func (s *Server) GenerateBootstrap() string {
 
 	if s.enableAdmin {
 		adminCfg = &envoyBootstrap.Admin{
-			AccessLogPath: "/dev/null",
 			Address: &envoyCore.Address{
 				Address: &envoyCore.Address_SocketAddress{SocketAddress: &envoyCore.SocketAddress{
 					Address: "0.0.0.0",
@@ -91,7 +91,7 @@ func (s *Server) GenerateBootstrap() string {
 		StaticResources: &envoyBootstrap.Bootstrap_StaticResources{
 			Clusters: []*envoyCluster.Cluster{{
 				Name:                 xdsClusterName,
-				ConnectTimeout:       ptypes.DurationProto(5 * time.Second),
+				ConnectTimeout:       durationpb.New(5 * time.Second),
 				ClusterDiscoveryType: &envoyCluster.Cluster_Type{Type: envoyCluster.Cluster_STRICT_DNS},
 				LbPolicy:             envoyCluster.Cluster_ROUND_ROBIN,
 				LoadAssignment: &envoyEndpoint.ClusterLoadAssignment{
@@ -120,10 +120,8 @@ func (s *Server) GenerateBootstrap() string {
 					},
 				},
 				LoadBalancingPolicy: &envoyCluster.LoadBalancingPolicy{Policies: []*envoyCluster.LoadBalancingPolicy_Policy{{
-					Name: "ROUND_ROBIN",
+					//					Name: "ROUND_ROBIN",
 				}}},
-				//Todo: investigate - envoy has problems to connect without
-				Http2ProtocolOptions: &envoyCore.Http2ProtocolOptions{},
 				CircuitBreakers: &envoyCluster.CircuitBreakers{
 					Thresholds: []*envoyCluster.CircuitBreakers_Thresholds{
 						{

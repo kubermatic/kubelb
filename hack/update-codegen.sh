@@ -41,7 +41,7 @@ bash "${CODEGEN_PKG}"/generate-groups.sh "client,lister,informer" \
   --output-base "$(dirname "${BASH_SOURCE[0]}")"
 
 
-# The generator will create and search for k8c.io/kubelb/manager directory structure which is not given.
+# The generator will create and search for k8c.io/kubelb/kubelb directory structure which is not given.
 # So this is a hack which takes the generated code created inside the hack folder and moves it
 # to the proper directory
 

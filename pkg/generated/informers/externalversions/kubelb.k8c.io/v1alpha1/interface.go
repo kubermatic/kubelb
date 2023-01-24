@@ -1,5 +1,5 @@
 /*
-Copyright 2021 The KubeLB Authors.
+Copyright 2023 The KubeLB Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -23,10 +23,8 @@ import (
 
 // Interface provides access to all the informers in this group version.
 type Interface interface {
-	// HTTPLoadBalancers returns a HTTPLoadBalancerInformer.
-	HTTPLoadBalancers() HTTPLoadBalancerInformer
-	// TCPLoadBalancers returns a TCPLoadBalancerInformer.
-	TCPLoadBalancers() TCPLoadBalancerInformer
+	// LoadBalancers returns a LoadBalancerInformer.
+	LoadBalancers() LoadBalancerInformer
 }
 
 type version struct {
@@ -40,12 +38,7 @@ func New(f internalinterfaces.SharedInformerFactory, namespace string, tweakList
 	return &version{factory: f, namespace: namespace, tweakListOptions: tweakListOptions}
 }
 
-// HTTPLoadBalancers returns a HTTPLoadBalancerInformer.
-func (v *version) HTTPLoadBalancers() HTTPLoadBalancerInformer {
-	return &hTTPLoadBalancerInformer{factory: v.factory, namespace: v.namespace, tweakListOptions: v.tweakListOptions}
-}
-
-// TCPLoadBalancers returns a TCPLoadBalancerInformer.
-func (v *version) TCPLoadBalancers() TCPLoadBalancerInformer {
-	return &tCPLoadBalancerInformer{factory: v.factory, namespace: v.namespace, tweakListOptions: v.tweakListOptions}
+// LoadBalancers returns a LoadBalancerInformer.
+func (v *version) LoadBalancers() LoadBalancerInformer {
+	return &loadBalancerInformer{factory: v.factory, namespace: v.namespace, tweakListOptions: v.tweakListOptions}
 }

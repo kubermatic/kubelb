@@ -1,5 +1,5 @@
 /*
-Copyright 2021 The KubeLB Authors.
+Copyright 2023 The KubeLB Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -17,18 +17,10 @@ limitations under the License.
 
 package v1alpha1
 
-// HTTPLoadBalancerListerExpansion allows custom methods to be added to
-// HTTPLoadBalancerLister.
-type HTTPLoadBalancerListerExpansion interface{}
+// LoadBalancerListerExpansion allows custom methods to be added to
+// LoadBalancerLister.
+type LoadBalancerListerExpansion interface{}
 
-// HTTPLoadBalancerNamespaceListerExpansion allows custom methods to be added to
-// HTTPLoadBalancerNamespaceLister.
-type HTTPLoadBalancerNamespaceListerExpansion interface{}
-
-// TCPLoadBalancerListerExpansion allows custom methods to be added to
-// TCPLoadBalancerLister.
-type TCPLoadBalancerListerExpansion interface{}
-
-// TCPLoadBalancerNamespaceListerExpansion allows custom methods to be added to
-// TCPLoadBalancerNamespaceLister.
-type TCPLoadBalancerNamespaceListerExpansion interface{}
+// LoadBalancerNamespaceListerExpansion allows custom methods to be added to
+// LoadBalancerNamespaceLister.
+type LoadBalancerNamespaceListerExpansion interface{}

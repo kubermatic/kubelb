@@ -1,0 +1,29 @@
+apiVersion: kubelb.k8c.io/v1alpha1
+kind: LoadBalancer
+metadata:
+  labels:
+    app.kubernetes.io/name: loadbalancer
+    app.kubernetes.io/instance: loadbalancer-sample
+    app.kubernetes.io/part-of: kubebuilder
+    app.kuberentes.io/managed-by: kustomize
+    app.kubernetes.io/created-by: kubebuilder
+  name: loadbalancer-sample
+spec:
+  endpoints:
+    - addresses:
+        - ip: 168.119.189.211
+        - ip: 168.119.185.115
+      ports:
+        - name: a-port
+          port: 32019
+          protocol: TCP
+        - name: b-port
+          port: 32529
+          protocol: TCP
+  ports:
+    - name: a-port
+      port: 8080
+      protocol: TCP
+    - name: b-port
+      port: 8081
+      protocol: TCP

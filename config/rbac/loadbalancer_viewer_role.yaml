@@ -1,0 +1,27 @@
+# permissions for end users to view loadbalancers.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  labels:
+    app.kubernetes.io/name: clusterrole
+    app.kubernetes.io/instance: loadbalancer-viewer-role
+    app.kubernetes.io/component: rbac
+    app.kubernetes.io/created-by: kubebuilder
+    app.kubernetes.io/part-of: kubebuilder
+    app.kubernetes.io/managed-by: kustomize
+  name: loadbalancer-viewer-role
+rules:
+- apiGroups:
+  - kubelb.k8c.io
+  resources:
+  - loadbalancers
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - kubelb.k8c.io
+  resources:
+  - loadbalancers/status
+  verbs:
+  - get

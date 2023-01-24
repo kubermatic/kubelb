@@ -1,5 +1,5 @@
 /*
-Copyright 2021 The KubeLB Authors.
+Copyright 2023 The KubeLB Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -27,12 +27,8 @@ type FakeKubelbV1alpha1 struct {
 	*testing.Fake
 }
 
-func (c *FakeKubelbV1alpha1) HTTPLoadBalancers(namespace string) v1alpha1.HTTPLoadBalancerInterface {
-	return &FakeHTTPLoadBalancers{c, namespace}
-}
-
-func (c *FakeKubelbV1alpha1) TCPLoadBalancers(namespace string) v1alpha1.TCPLoadBalancerInterface {
-	return &FakeTCPLoadBalancers{c, namespace}
+func (c *FakeKubelbV1alpha1) LoadBalancers(namespace string) v1alpha1.LoadBalancerInterface {
+	return &FakeLoadBalancers{c, namespace}
 }
 
 // RESTClient returns a RESTClient that is used to communicate

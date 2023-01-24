@@ -22,7 +22,7 @@ presubmits:
       preset-goproxy: "true"
     spec:
       containers:
-        - image: golang:1.15
+        - image: golang:1.19
           command:
             - make
           args:
@@ -39,7 +39,7 @@ presubmits:
       preset-goproxy: "true"
     spec:
       containers:
-        - image: golangci/golangci-lint:v1.36
+        - image: golangci/golangci-lint:v1.50
           command:
             - make
           args:
@@ -57,11 +57,11 @@ presubmits:
       preset-goproxy: "true"
     spec:
       containers:
-        - image: quay.io/kubermatic/yamllint:0.1
+        - image: quay.io/kubermatic/build:go-1.19-node-18-kind-0.16-2
           command:
-            - "sh"
-            - "-c"
-            - "yamllint -c .yamllint.conf ."
+            - make
+          args:
+            - yamllint
           resources:
             requests:
               cpu: 200m
@@ -72,7 +72,7 @@ presubmits:
     clone_uri: "ssh://git@github.com/kubermatic/kubelb.git"
     spec:
       containers:
-        - image: quay.io/kubermatic-labs/boilerplate:v0.1.1
+        - image: quay.io/kubermatic/build:go-1.19-node-18-kind-0.16-2
           command:
             - make
           args:
@@ -86,12 +86,11 @@ presubmits:
       preset-goproxy: "true"
     spec:
       containers:
-        - image: golang:1.15.7
+        - image: golang:1.19
           command:
             - make
           args:
-            - manager
-            - agent
+            - all
           resources:
             requests:
               memory: 1Gi
@@ -100,33 +99,8 @@ presubmits:
               memory: 2Gi
               cpu: 2
 
-
-#  curl -L https://go.kubebuilder.io/dl/2.3.1/${os}/${arch} | tar -xz -C /tmp/
-#
-#  # move to a long-term location and put it on your path
-#  # (you'll need to set the KUBEBUILDER_ASSETS env var if you put it somewhere else)
-#  sudo mv /tmp/kubebuilder_2.3.1_${os}_${arch} /usr/local/kubebuilder
-#  export PATH=$PATH:/usr/local/kubebuilder/bin
-
-#  - name: pull-kubelb-test
-#    always_run: true
-#    decorate: true
-#    clone_uri: "ssh://git@github.com/kubermatic/kubelb.git"
-#    labels:
-#      preset-goproxy: "true"
-#    spec:
-#      containers:
-#        - image: golang:1.15
-#          command:
-#            - make
-#          args:
-#            - test
-#          resources:
-#            requests:
-#              cpu: 800m
-
 postsubmits:
-  - name: ci-push-kubelb-manager
+  - name: ci-push-kubelb
     always_run: true
     decorate: true
     clone_uri: "ssh://git@github.com/kubermatic/kubelb.git"
@@ -142,7 +116,7 @@ postsubmits:
       preset-goproxy: "true"
     spec:
       containers:
-        - image: quay.io/kubermatic/go-docker:15.1-1903-1
+        - image: quay.io/kubermatic/build:go-1.19-node-18-kind-0.16-2
           command:
             - /bin/bash
             - -c
@@ -172,7 +146,7 @@ postsubmits:
       preset-goproxy: "true"
     spec:
       containers:
-        - image: quay.io/kubermatic/go-docker:15.1-1903-1
+        - image: quay.io/kubermatic/build:go-1.19-node-18-kind-0.16-2
           command:
             - "./hack/ci-upload-gocache.sh"
           resources:

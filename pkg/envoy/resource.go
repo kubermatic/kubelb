@@ -29,13 +29,14 @@ import (
 	envoyFileAccessLog "github.com/envoyproxy/go-control-plane/envoy/extensions/access_loggers/file/v3"
 	envoyTcpProxy "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/network/tcp_proxy/v3"
 	envoyUdpProxy "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/udp/udp_proxy/v3"
-	envoy_type_v3 "github.com/envoyproxy/go-control-plane/envoy/type/v3"
 	"github.com/envoyproxy/go-control-plane/pkg/cache/types"
 	"github.com/envoyproxy/go-control-plane/pkg/cache/v3"
+	"github.com/envoyproxy/go-control-plane/pkg/resource/v3"
 	"github.com/envoyproxy/go-control-plane/pkg/wellknown"
-	"github.com/golang/protobuf/ptypes"
 	"github.com/golang/protobuf/ptypes/duration"
 	"github.com/golang/protobuf/ptypes/wrappers"
+	"google.golang.org/protobuf/types/known/anypb"
+	"google.golang.org/protobuf/types/known/durationpb"
 	corev1 "k8s.io/api/core/v1"
 
 	kubelbiov1alpha1 "k8c.io/kubelb/pkg/api/kubelb.k8c.io/v1alpha1"
@@ -43,34 +44,34 @@ import (
 
 const defaultPortName = "port"
 
-func MapSnapshot(tcpLoadBalancer *kubelbiov1alpha1.TCPLoadBalancer, version string) cache.Snapshot {
+func MapSnapshot(LoadBalancer *kubelbiov1alpha1.LoadBalancer, version string) *cache.Snapshot {
 
 	var listener []types.Resource
 	var cluster []types.Resource
 
-	for currentLbPort, lbServicePort := range tcpLoadBalancer.Spec.Ports {
+	for currentLbPort, lbServicePort := range LoadBalancer.Spec.Ports {
 
-		envoyClusterName := tcpLoadBalancer.Namespace
+		envoyClusterName := LoadBalancer.Namespace
 		if lbServicePort.Name == "" {
 			lbServicePort.Name = defaultPortName + strconv.Itoa(currentLbPort)
 		}
 		envoyClusterName = strings.Join([]string{envoyClusterName, lbServicePort.Name}, "-")
 
 		if lbServicePort.Protocol == corev1.ProtocolTCP {
-			listener = append(listener, makeTCPListener(envoyClusterName, lbServicePort.Name, uint32(tcpLoadBalancer.Spec.Endpoints[0].Ports[currentLbPort].Port)))
+			listener = append(listener, makeTCPListener(envoyClusterName, lbServicePort.Name, uint32(LoadBalancer.Spec.Endpoints[0].Ports[currentLbPort].Port)))
 		} else if lbServicePort.Protocol == corev1.ProtocolUDP {
-			listener = append(listener, makeUDPListener(envoyClusterName, lbServicePort.Name, uint32(tcpLoadBalancer.Spec.Endpoints[0].Ports[currentLbPort].Port)))
+			listener = append(listener, makeUDPListener(envoyClusterName, lbServicePort.Name, uint32(LoadBalancer.Spec.Endpoints[0].Ports[currentLbPort].Port)))
 		}
 
 	}
 
 	//multiple endpoints represent multiple clusters
-	for _, lbEndpoint := range tcpLoadBalancer.Spec.Endpoints {
+	for _, lbEndpoint := range LoadBalancer.Spec.Endpoints {
 
 		for i, lbEndpointPorts := range lbEndpoint.Ports {
 
 			var lbEndpoints []*envoyEndpoint.LbEndpoint
-			envoyClusterName := tcpLoadBalancer.Namespace
+			envoyClusterName := LoadBalancer.Namespace
 
 			if lbEndpointPorts.Name == "" {
 				lbEndpointPorts.Name = defaultPortName + strconv.Itoa(i)
@@ -85,22 +86,20 @@ func MapSnapshot(tcpLoadBalancer *kubelbiov1alpha1.TCPLoadBalancer, version stri
 		}
 	}
 
-	return cache.NewSnapshot(
-		version,
-		[]types.Resource{}, // endpoints
-		cluster,            //cluster
-		[]types.Resource{}, //routes
-		listener,           //listener
-		[]types.Resource{}, // runtimes
-		[]types.Resource{}, // secrets
-	)
+	snapshot, _ := cache.NewSnapshot(version, map[resource.Type][]types.Resource{
+		resource.ClusterType:  cluster,
+		resource.ListenerType: listener,
+	})
+
+	return snapshot
+
 }
 
 func makeCluster(clusterName string, lbEndpoints []*envoyEndpoint.LbEndpoint) *envoyCluster.Cluster {
 	return &envoyCluster.Cluster{
 		Name:                 clusterName,
+		ConnectTimeout:       durationpb.New(5 * time.Second),
 		ClusterDiscoveryType: &envoyCluster.Cluster_Type{Type: envoyCluster.Cluster_STRICT_DNS},
-		ConnectTimeout:       ptypes.DurationProto(5 * time.Second),
 		LbPolicy:             envoyCluster.Cluster_ROUND_ROBIN,
 		LoadAssignment: &envoyEndpoint.ClusterLoadAssignment{
 			ClusterName: clusterName,
@@ -108,21 +107,20 @@ func makeCluster(clusterName string, lbEndpoints []*envoyEndpoint.LbEndpoint) *e
 				LbEndpoints: lbEndpoints,
 			}},
 		},
+		DnsLookupFamily: envoyCluster.Cluster_V4_ONLY,
+
+		//Todo: Control HealthChecks via LoadBalancer
 		HealthChecks: []*envoyCore.HealthCheck{
 			{
 				Timeout:            &duration.Duration{Seconds: 5},
-				Interval:           &duration.Duration{Seconds: 15},
+				Interval:           &duration.Duration{Seconds: 5},
 				UnhealthyThreshold: &wrappers.UInt32Value{Value: 3},
-				HealthyThreshold:   &wrappers.UInt32Value{Value: 5},
+				HealthyThreshold:   &wrappers.UInt32Value{Value: 3},
 				HealthChecker: &envoyCore.HealthCheck_TcpHealthCheck_{
 					TcpHealthCheck: &envoyCore.HealthCheck_TcpHealthCheck{},
 				},
 			},
 		},
-		CommonLbConfig: &envoyCluster.Cluster_CommonLbConfig{
-			HealthyPanicThreshold: &envoy_type_v3.Percent{Value: 0},
-		},
-		DnsLookupFamily: envoyCluster.Cluster_V4_ONLY,
 	}
 }
 
@@ -142,7 +140,6 @@ func makeEndpoint(address string, port uint32) *envoyEndpoint.LbEndpoint {
 						},
 					},
 				},
-				HealthCheckConfig: &envoyEndpoint.Endpoint_HealthCheckConfig{},
 			},
 		},
 	}
@@ -153,7 +150,7 @@ func makeTCPListener(clusterName string, listenerName string, listenerPort uint3
 	tcpProxyAccessLog := &envoyFileAccessLog.FileAccessLog{
 		Path: "/dev/stdout",
 	}
-	tcpProxyAccessLogAny, err := ptypes.MarshalAny(tcpProxyAccessLog)
+	tcpProxyAccessLogAny, err := anypb.New(tcpProxyAccessLog)
 	if err != nil {
 		panic(err)
 	}
@@ -169,17 +166,10 @@ func makeTCPListener(clusterName string, listenerName string, listenerPort uint3
 				ConfigType: &envoyAccessLog.AccessLog_TypedConfig{
 					TypedConfig: tcpProxyAccessLogAny,
 				},
-				Filter: &envoyAccessLog.AccessLogFilter{
-					FilterSpecifier: &envoyAccessLog.AccessLogFilter_ResponseFlagFilter{
-						ResponseFlagFilter: &envoyAccessLog.ResponseFlagFilter{
-							Flags: []string{"UH", "UF", "UO", "NR", "URX", "DT"},
-						},
-					},
-				},
 			},
 		},
 	}
-	pbst, err := ptypes.MarshalAny(tcpProxy)
+	pbst, err := anypb.New(tcpProxy)
 	if err != nil {
 		panic(err)
 	}
@@ -217,7 +207,7 @@ func makeUDPListener(clusterName string, listenerName string, listenerPort uint3
 		},
 	}
 
-	pbst, err := ptypes.MarshalAny(udpProxy)
+	pbst, err := anypb.New(udpProxy)
 	if err != nil {
 		panic(err)
 	}
@@ -243,6 +233,6 @@ func makeUDPListener(clusterName string, listenerName string, listenerPort uint3
 				},
 			},
 		},
-		ReusePort: true,
+		EnableReusePort: &wrappers.BoolValue{Value: true},
 	}
 }

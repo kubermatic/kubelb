@@ -2,9 +2,6 @@ domain: k8c.io
 repo: kubelb
 resources:
 - group: kubelb.k8c.io
-  kind: TCPLoadBalancer
-  version: v1alpha1
-- group: kubelb.k8c.io
-  kind: HTTPLoadBalancer
+  kind: LoadBalancer
   version: v1alpha1
 version: "2"

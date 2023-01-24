@@ -17,21 +17,22 @@ limitations under the License.
 package kubelb
 
 import (
-	kubelbClient "k8c.io/kubelb/pkg/generated/clientset/versioned"
-	kubelbv1alpha1 "k8c.io/kubelb/pkg/generated/clientset/versioned/typed/kubelb.k8c.io/v1alpha1"
-	"k8s.io/client-go/tools/clientcmd"
 	"os"
 	"path/filepath"
+
+	kubelbClient "k8c.io/kubelb/pkg/generated/clientset/versioned"
+	kubelbv1alpha1 "k8c.io/kubelb/pkg/generated/clientset/versioned/typed/kubelb.k8c.io/v1alpha1"
+
+	"k8s.io/client-go/tools/clientcmd"
 )
 
 type Client struct {
-	TcpLbClient  kubelbv1alpha1.TCPLoadBalancerInterface
-	HttpLbClient kubelbv1alpha1.HTTPLoadBalancerInterface
-	Clientset    *kubelbClient.Clientset
-	Namespace    string
+	TcpLbClient kubelbv1alpha1.LoadBalancerInterface
+	Clientset   *kubelbClient.Clientset
+	Namespace   string
 }
 
-//Client for the KubeLb kubernetes Custer.
+// Client for the KubeLb kubernetes Custer.
 func NewClient(clusterName string, kubeConfPath string) (*Client, error) {
 
 	var kubeconfig string
@@ -55,14 +56,12 @@ func NewClient(clusterName string, kubeConfPath string) (*Client, error) {
 
 	kubeLbAlpha1Clientset := clientset.KubelbV1alpha1()
 
-	tcpLBClient := kubeLbAlpha1Clientset.TCPLoadBalancers(clusterName)
-	httpLBClient := kubeLbAlpha1Clientset.HTTPLoadBalancers(clusterName)
+	tcpLBClient := kubeLbAlpha1Clientset.LoadBalancers(clusterName)
 
 	return &Client{
-		TcpLbClient:  tcpLBClient,
-		HttpLbClient: httpLBClient,
-		Clientset:    clientset,
-		Namespace:    clusterName,
+		TcpLbClient: tcpLBClient,
+		Clientset:   clientset,
+		Namespace:   clusterName,
 	}, nil
 
 }
