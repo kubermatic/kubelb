@@ -69,6 +69,9 @@ check-dependencies: ## Verify go.mod.
 verify-boilerplate:  ## Run verify-boilerplate code.
 	./hack/verify-boilerplate.sh
 
+clean:  ## Clean binaries
+	rm -rf bin/*
+
 .PHONY: test
 test: manifests generate fmt vet envtest ## Run tests.
 	KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) --bin-dir $(LOCALBIN) -p path)" go test ./... -coverprofile cover.out

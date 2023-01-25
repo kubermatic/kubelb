@@ -44,9 +44,8 @@ type LoadBalancerPort struct {
 
 	// The IP protocol for this port. Supports "TCP", "UDP", and "SCTP".
 	// Default is TCP.
+	// +default="TCP"
 	// +optional
-	// +kubebuilder:default:=TCP
-	// +kubebuilder:validation:Enum=TCP;UDP;SCTP
 	Protocol corev1.Protocol `json:"protocol,omitempty" protobuf:"bytes,2,opt,name=protocol,casttype=Protocol"`
 
 	// The port that will be exposed by the LoadBalancer.
@@ -66,12 +65,10 @@ type EndpointPort struct {
 	// The port number of the endpoint.
 	Port int32 `json:"port" protobuf:"varint,2,opt,name=port"`
 
-	// The IP protocol for this port.
-	// Must be UDP, TCP, or SCTP.
+	// The IP protocol for this port. Supports "TCP", "UDP", and "SCTP".
 	// Default is TCP.
+	// +default="TCP"
 	// +optional
-	// +kubebuilder:default:=TCP
-	// +kubebuilder:validation:Enum=TCP;UDP;SCTP
 	Protocol corev1.Protocol `json:"protocol,omitempty" protobuf:"bytes,3,opt,name=protocol,casttype=Protocol"`
 }
 
@@ -147,7 +144,7 @@ type LoadBalancerSpec struct {
 
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
-// +kubebuilder:resource:shortName=tcplb
+// +kubebuilder:resource:shortName=lb
 // +genclient
 
 // LoadBalancer is the Schema for the LoadBalancers API
