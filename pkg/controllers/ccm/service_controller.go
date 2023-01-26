@@ -45,7 +45,7 @@ const TcpLbFinalizerName = "kubelb.k8c.io/tcplb-finalizer"
 // KubeLbServiceReconciler reconciles a Service object
 type KubeLbServiceReconciler struct {
 	client.Client
-	TcpLBClient          v1alpha1.LoadBalancerInterface
+	KubeLbClient         v1alpha1.LoadBalancerInterface
 	Log                  logr.Logger
 	Scheme               *runtime.Scheme
 	ClusterName          string
@@ -106,7 +106,7 @@ func (r *KubeLbServiceReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 			log.V(1).Info("deleting LoadBalancer", "name", kubelb.NamespacedName(&service.ObjectMeta))
 
 			// our finalizer is present, so lets handle any external dependency
-			err := r.TcpLBClient.Delete(ctx, kubelb.NamespacedName(&service.ObjectMeta), v1.DeleteOptions{})
+			err := r.KubeLbClient.Delete(ctx, kubelb.NamespacedName(&service.ObjectMeta), v1.DeleteOptions{})
 
 			if client.IgnoreNotFound(err) != nil {
 				// if fail to delete the external dependency here, return with error
@@ -133,7 +133,7 @@ func (r *KubeLbServiceReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 	desiredTcpLB := kubelb.MapLoadBalancer(&service, clusterEndpoints, r.ClusterName)
 	log.V(6).Info("desired", "LoadBalancer", desiredTcpLB)
 
-	actualTcpLB, err := r.TcpLBClient.Get(ctx, desiredTcpLB.Name, v1.GetOptions{})
+	actualTcpLB, err := r.KubeLbClient.Get(ctx, desiredTcpLB.Name, v1.GetOptions{})
 	log.V(6).Info("actual", "LoadBalancer", actualTcpLB)
 
 	if err != nil {
@@ -141,7 +141,7 @@ func (r *KubeLbServiceReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 			return ctrl.Result{}, err
 		}
 		log.V(1).Info("creating LoadBalancer", "name", desiredTcpLB.Name, "namespace", desiredTcpLB.Namespace)
-		_, err = r.TcpLBClient.Create(ctx, desiredTcpLB, v1.CreateOptions{})
+		_, err = r.KubeLbClient.Create(ctx, desiredTcpLB, v1.CreateOptions{})
 		return ctrl.Result{}, err
 	}
 
@@ -167,7 +167,7 @@ func (r *KubeLbServiceReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 
 	log.V(1).Info("updating LoadBalancer spec", "name", desiredTcpLB.Name, "namespace", desiredTcpLB.Namespace)
 	actualTcpLB.Spec = desiredTcpLB.Spec
-	_, err = r.TcpLBClient.Update(ctx, actualTcpLB, v1.UpdateOptions{})
+	_, err = r.KubeLbClient.Update(ctx, actualTcpLB, v1.UpdateOptions{})
 
 	if err != nil {
 		return ctrl.Result{}, err

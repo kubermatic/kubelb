@@ -29,6 +29,7 @@ import (
 	envoyFileAccessLog "github.com/envoyproxy/go-control-plane/envoy/extensions/access_loggers/file/v3"
 	envoyTcpProxy "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/network/tcp_proxy/v3"
 	envoyUdpProxy "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/udp/udp_proxy/v3"
+	envoytypev3 "github.com/envoyproxy/go-control-plane/envoy/type/v3"
 	"github.com/envoyproxy/go-control-plane/pkg/cache/types"
 	"github.com/envoyproxy/go-control-plane/pkg/cache/v3"
 	"github.com/envoyproxy/go-control-plane/pkg/resource/v3"
@@ -120,6 +121,9 @@ func makeCluster(clusterName string, lbEndpoints []*envoyEndpoint.LbEndpoint) *e
 					TcpHealthCheck: &envoyCore.HealthCheck_TcpHealthCheck{},
 				},
 			},
+		},
+		CommonLbConfig: &envoyCluster.Cluster_CommonLbConfig{
+			HealthyPanicThreshold: &envoytypev3.Percent{Value: 0},
 		},
 	}
 }

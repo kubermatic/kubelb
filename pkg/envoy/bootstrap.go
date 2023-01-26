@@ -42,7 +42,7 @@ func (s *Server) GenerateBootstrap() string {
 				Address: &envoyCore.Address_SocketAddress{SocketAddress: &envoyCore.SocketAddress{
 					Address: "0.0.0.0",
 					PortSpecifier: &envoyCore.SocketAddress_PortValue{
-						PortValue: 9001,
+						PortValue: 9901,
 					},
 				}},
 			},
@@ -119,9 +119,6 @@ func (s *Server) GenerateBootstrap() string {
 						},
 					},
 				},
-				LoadBalancingPolicy: &envoyCluster.LoadBalancingPolicy{Policies: []*envoyCluster.LoadBalancingPolicy_Policy{{
-					//					Name: "ROUND_ROBIN",
-				}}},
 				CircuitBreakers: &envoyCluster.CircuitBreakers{
 					Thresholds: []*envoyCluster.CircuitBreakers_Thresholds{
 						{

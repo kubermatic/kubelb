@@ -205,7 +205,7 @@ func (r *LoadBalancerReconciler) reconcileDeployment(ctx context.Context, LoadBa
 			currentContainer := deployment.Spec.Template.Spec.Containers[0]
 
 			currentContainer.Name = LoadBalancer.Name
-			currentContainer.Image = "envoyproxy/envoy-alpine:v1.16-latest"
+			currentContainer.Image = "envoyproxy/envoy-alpine:v1.21.6"
 			currentContainer.Args = []string{
 				"--config-yaml", r.EnvoyBootstrap,
 				"--service-node", LoadBalancer.Name,
@@ -218,7 +218,7 @@ func (r *LoadBalancerReconciler) reconcileDeployment(ctx context.Context, LoadBa
 			containers = []corev1.Container{
 				{
 					Name:  LoadBalancer.Name,
-					Image: "envoyproxy/envoy-alpine:v1.16-latest",
+					Image: "envoyproxy/envoy-alpine:v1.21.6",
 					Args: []string{
 						"--config-yaml", r.EnvoyBootstrap,
 						"--service-node", LoadBalancer.Name,

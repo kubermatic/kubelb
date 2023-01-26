@@ -83,7 +83,6 @@ func main() {
 
 	setupLog.V(1).Info("cluster", "name", clusterName)
 
-	//is there something better i could do=?
 	var endpointAddressType corev1.NodeAddressType
 	if endpointAddressTypeString == string(corev1.NodeInternalIP) {
 		endpointAddressType = corev1.NodeInternalIP
@@ -141,7 +140,7 @@ func main() {
 		Client:               mgr.GetClient(),
 		Log:                  ctrl.Log.WithName("kubelb.service.reconciler"),
 		Scheme:               mgr.GetScheme(),
-		TcpLBClient:          kubeLbClient.TcpLbClient,
+		KubeLbClient:         kubeLbClient.TcpLbClient,
 		CloudController:      enableCloudController,
 		Endpoints:            &sharedEndpoints,
 		ClusterName:          clusterName,
