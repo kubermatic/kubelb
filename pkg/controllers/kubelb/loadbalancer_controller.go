@@ -119,7 +119,7 @@ func (r *LoadBalancerReconciler) reconcileEnvoySnapshot(ctx context.Context, Loa
 		log.Info("init snapshot", "service-node", LoadBalancer.Name, "version", "0.0.1")
 		log.V(5).Info("serving", "snapshot", initSnapshot)
 
-		return r.EnvoyCache.SetSnapshot(ctx, LoadBalancer.Name, initSnapshot)
+		return r.EnvoyCache.SetSnapshot(LoadBalancer.Name, initSnapshot)
 	}
 
 	log.V(5).Info("actual", "snapshot", actualSnapshot)
@@ -146,7 +146,7 @@ func (r *LoadBalancerReconciler) reconcileEnvoySnapshot(ctx context.Context, Loa
 	}
 	log.Info("updating snapshot", "service-node", LoadBalancer.Name, "version", newVersion.String())
 
-	if err := r.EnvoyCache.SetSnapshot(ctx, LoadBalancer.Name, newSnapshot); err != nil {
+	if err := r.EnvoyCache.SetSnapshot(LoadBalancer.Name, newSnapshot); err != nil {
 		return errors.Wrap(err, "failed to set a new Envoy cache snapshot")
 	}
 

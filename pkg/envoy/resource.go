@@ -32,7 +32,6 @@ import (
 	envoytypev3 "github.com/envoyproxy/go-control-plane/envoy/type/v3"
 	"github.com/envoyproxy/go-control-plane/pkg/cache/types"
 	"github.com/envoyproxy/go-control-plane/pkg/cache/v3"
-	"github.com/envoyproxy/go-control-plane/pkg/resource/v3"
 	"github.com/envoyproxy/go-control-plane/pkg/wellknown"
 	"github.com/golang/protobuf/ptypes/duration"
 	"github.com/golang/protobuf/ptypes/wrappers"
@@ -45,7 +44,7 @@ import (
 
 const defaultPortName = "port"
 
-func MapSnapshot(LoadBalancer *kubelbiov1alpha1.LoadBalancer, version string) *cache.Snapshot {
+func MapSnapshot(LoadBalancer *kubelbiov1alpha1.LoadBalancer, version string) cache.Snapshot {
 
 	var listener []types.Resource
 	var cluster []types.Resource
@@ -87,13 +86,15 @@ func MapSnapshot(LoadBalancer *kubelbiov1alpha1.LoadBalancer, version string) *c
 		}
 	}
 
-	snapshot, _ := cache.NewSnapshot(version, map[resource.Type][]types.Resource{
-		resource.ClusterType:  cluster,
-		resource.ListenerType: listener,
-	})
-
-	return snapshot
-
+	return cache.NewSnapshot(
+		version,
+		[]types.Resource{}, // endpoints
+		cluster,            //cluster
+		[]types.Resource{}, //routes
+		listener,           //listener
+		[]types.Resource{}, // runtimes
+		[]types.Resource{}, // secrets
+	)
 }
 
 func makeCluster(clusterName string, lbEndpoints []*envoyEndpoint.LbEndpoint) *envoyCluster.Cluster {
@@ -237,6 +238,6 @@ func makeUDPListener(clusterName string, listenerName string, listenerPort uint3
 				},
 			},
 		},
-		EnableReusePort: &wrappers.BoolValue{Value: true},
+		ReusePort: true,
 	}
 }
