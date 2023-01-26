@@ -10,7 +10,7 @@ metadata:
     app.kubernetes.io/part-of: kubebuilder
     app.kubernetes.io/managed-by: kustomize
   name: kubelb-metrics-service
-  namespace: system
+  namespace: kubelb
 spec:
   ports:
   - name: https

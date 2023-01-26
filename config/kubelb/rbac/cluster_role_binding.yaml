@@ -16,12 +16,12 @@
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
-  name: agent-rolebinding
+  name: kubelb-clusterrolebinding
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
-  name: agent-role
+  name: kubelb-role
 subjects:
   - kind: ServiceAccount
-    name: default
-    namespace: system
+    name: kubelb
+    namespace: kubelb

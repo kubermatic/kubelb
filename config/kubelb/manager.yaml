@@ -9,13 +9,28 @@ metadata:
     app.kubernetes.io/created-by: kubebuilder
     app.kubernetes.io/part-of: kubebuilder
     app.kubernetes.io/managed-by: kustomize
-  name: system
+  name: kubelb
+---
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    control-plane: manager
+  name: envoycp
+  namespace: kubelb
+spec:
+  ports:
+    - port: 8001
+      targetPort: 8001
+  selector:
+    control-plane: manager
+  type: ClusterIP
 ---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: kubelb
-  namespace: system
+  namespace: kubelb
   labels:
     control-plane: kubelb
     app.kubernetes.io/name: deployment
@@ -58,22 +73,16 @@ spec:
       #               - linux
       securityContext:
         runAsNonRoot: true
-        # TODO(user): For common cases that do not require escalating privileges
-        # it is recommended to ensure that all your Pods/Containers are restrictive.
-        # More info: https://kubernetes.io/docs/concepts/security/pod-security-standards/#restricted
-        # Please uncomment the following code if your project does NOT have to work on old Kubernetes
-        # versions < 1.19 or on vendors versions which do NOT support this field by default (i.e. Openshift < 4.11 ).
-        # seccompProfile:
-        #   type: RuntimeDefault
+        seccompProfile:
+          type: RuntimeDefault
       containers:
-      - command:
-        - /manager
+      - name: manager
         args:
-        - --leader-elect
+        - --enable-leader-election
         image: controller:latest
-        name: manager
         securityContext:
           allowPrivilegeEscalation: false
+          runAsUser: 65532
           capabilities:
             drop:
               - "ALL"
@@ -89,12 +98,7 @@ spec:
             port: 8081
           initialDelaySeconds: 5
           periodSeconds: 10
-        # TODO(user): Configure the resources accordingly based on the project requirements.
-        # More info: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
         resources:
-          limits:
-            cpu: 500m
-            memory: 128Mi
           requests:
             cpu: 10m
             memory: 64Mi

@@ -12,7 +12,7 @@ metadata:
     app.kubernetes.io/part-of: kubebuilder
     app.kubernetes.io/managed-by: kustomize
   name: kubelb-metrics-monitor
-  namespace: system
+  namespace: kubelb
 spec:
   endpoints:
     - path: /metrics
