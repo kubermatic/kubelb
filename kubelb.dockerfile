@@ -19,6 +19,6 @@ WORKDIR /
 
 COPY bin/kubelb .
 
-USER nonroot:nonroot
+USER 65532:65532
 
 ENTRYPOINT ["/kubelb"]
