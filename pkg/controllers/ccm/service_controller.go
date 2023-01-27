@@ -40,7 +40,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/source"
 )
 
-const TcpLbFinalizerName = "kubelb.k8c.io/tcplb-finalizer"
+const LbFinalizerName = "kubelb.k8c.io/lb-finalizer"
 
 // KubeLbServiceReconciler reconciles a Service object
 type KubeLbServiceReconciler struct {
@@ -92,8 +92,8 @@ func (r *KubeLbServiceReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 		// The object is not being deleted, so if it does not have our finalizer,
 		// then lets add the finalizer and update the object. This is equivalent
 		// registering our finalizer.
-		if !utils.ContainsString(service.ObjectMeta.Finalizers, TcpLbFinalizerName) {
-			service.ObjectMeta.Finalizers = append(service.ObjectMeta.Finalizers, TcpLbFinalizerName)
+		if !utils.ContainsString(service.ObjectMeta.Finalizers, LbFinalizerName) {
+			service.ObjectMeta.Finalizers = append(service.ObjectMeta.Finalizers, LbFinalizerName)
 			log.V(4).Info("setting finalizer")
 			if err := r.Update(ctx, &service); err != nil {
 				return ctrl.Result{}, err
@@ -101,7 +101,7 @@ func (r *KubeLbServiceReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 		}
 	} else {
 		// The object is being deleted
-		if utils.ContainsString(service.ObjectMeta.Finalizers, TcpLbFinalizerName) {
+		if utils.ContainsString(service.ObjectMeta.Finalizers, LbFinalizerName) {
 
 			log.V(1).Info("deleting LoadBalancer", "name", kubelb.NamespacedName(&service.ObjectMeta))
 
@@ -117,7 +117,7 @@ func (r *KubeLbServiceReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 			}
 
 			// remove our finalizer from the list and update it.
-			service.ObjectMeta.Finalizers = utils.RemoveString(service.ObjectMeta.Finalizers, TcpLbFinalizerName)
+			service.ObjectMeta.Finalizers = utils.RemoveString(service.ObjectMeta.Finalizers, LbFinalizerName)
 			if err := r.Update(ctx, &service); err != nil {
 				return ctrl.Result{}, err
 			}

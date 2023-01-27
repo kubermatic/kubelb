@@ -8,9 +8,7 @@ metadata:
     app.kubernetes.io/name: servicemonitor
     app.kubernetes.io/instance: kubelb-metrics-monitor
     app.kubernetes.io/component: metrics
-    app.kubernetes.io/created-by: kubebuilder
-    app.kubernetes.io/part-of: kubebuilder
-    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/part-of: kubelb
   name: kubelb-metrics-monitor
   namespace: kubelb
 spec:

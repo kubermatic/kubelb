@@ -6,9 +6,7 @@ metadata:
     app.kubernetes.io/name: service
     app.kubernetes.io/instance: kubelb-metrics-service
     app.kubernetes.io/component: kube-rbac-proxy
-    app.kubernetes.io/created-by: kubebuilder
-    app.kubernetes.io/part-of: kubebuilder
-    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/part-of: kubelb
   name: kubelb-metrics-service
   namespace: kubelb
 spec:

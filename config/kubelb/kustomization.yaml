@@ -7,3 +7,5 @@ kind: Kustomization
 images:
 - name: controller
   newName: quay.io/kubermatic/kubelb
+
+namespace: kubelb

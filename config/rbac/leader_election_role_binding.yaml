@@ -5,10 +5,9 @@ metadata:
     app.kubernetes.io/name: rolebinding
     app.kubernetes.io/instance: leader-election-rolebinding
     app.kubernetes.io/component: rbac
-    app.kubernetes.io/created-by: kubebuilder
-    app.kubernetes.io/part-of: kubebuilder
-    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/part-of: kubelb
   name: leader-election-rolebinding
+  namespace: kubelb
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: Role

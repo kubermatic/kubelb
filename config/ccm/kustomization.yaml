@@ -22,3 +22,11 @@ kind: Kustomization
 images:
 - name: controller
   newName: quay.io/kubermatic/kubelb
+
+secretGenerator:
+- name: kubelb
+  namespace: kubelb
+  files:
+  - kubelb
+
+namespace: kubelb

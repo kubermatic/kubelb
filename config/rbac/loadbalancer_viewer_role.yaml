@@ -6,9 +6,7 @@ metadata:
     app.kubernetes.io/name: clusterrole
     app.kubernetes.io/instance: loadbalancer-viewer-role
     app.kubernetes.io/component: rbac
-    app.kubernetes.io/created-by: kubebuilder
-    app.kubernetes.io/part-of: kubebuilder
-    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/part-of: kubelb
   name: loadbalancer-viewer-role
 rules:
 - apiGroups:

@@ -1,7 +1,8 @@
 
 IMG_TAG ?= latest
 # Image URL to use all building/pushing image targets
-IMG ?= quay.io/kubermatic/kubelb
+KUBELB_IMG ?= quay.io/kubermatic/kubelb
+CCM_IMG ?= quay.io/kubermatic/kubelb-ccm
 # ENVTEST_K8S_VERSION refers to the version of kubebuilder assets to be downloaded by envtest binary.
 ENVTEST_K8S_VERSION = 1.25.0
 
@@ -42,8 +43,8 @@ help: ## Display this help.
 .PHONY: manifests
 manifests: controller-gen ## Generate WebhookConfiguration, ClusterRole and CustomResourceDefinition objects.
 	$(CONTROLLER_GEN) crd webhook paths="./..." output:crd:artifacts:config=config/crd/bases
-	$(CONTROLLER_GEN) rbac:roleName=kubelb-ccm-role paths="./pkg/controllers/ccm/..." output:artifacts:config=config/ccm/rbac
-	$(CONTROLLER_GEN) rbac:roleName=kubelb-role paths="./pkg/controllers/kubelb/..." output:artifacts:config=config/kubelb/rbac
+	$(CONTROLLER_GEN) rbac:roleName=kubelb-ccm paths="./pkg/controllers/ccm/..." output:artifacts:config=config/ccm/rbac
+	$(CONTROLLER_GEN) rbac:roleName=kubelb paths="./pkg/controllers/kubelb/..." output:artifacts:config=config/kubelb/rbac
 
 .PHONY: generate
 generate: controller-gen ## Generate code containing DeepCopy, DeepCopyInto, and DeepCopyObject method implementations.
@@ -91,11 +92,13 @@ run-%: manifests generate fmt vet ## Run a controller from your host.
 # More info: https://docs.docker.com/develop/develop-images/build_enhancements/
 .PHONY: docker-build
 docker-build: test ## Build docker image with the manager.
-	docker build -t ${IMG} .
+	docker build -t ${KUBELB_IMG} -f kubelb.dockerfile .
+	docker build -t ${CCM_IMG} -f ccm.dockerfile .
 
 .PHONY: docker-push
 docker-push: ## Push docker image with the manager.
-	docker push ${IMG}
+	docker push ${KUBELB_IMG}
+	docker push ${CCM_IMG}
 
 ##@ Deployment
 
@@ -113,7 +116,7 @@ uninstall: manifests kustomize ## Uninstall CRDs from the K8s cluster specified 
 
 .PHONY: deploy
 deploy-%: manifests kustomize ## Deploy controller to the K8s cluster specified in ~/.kube/config.
-	cd config/$* && $(KUSTOMIZE) edit set image controller=${IMG}
+#	cd config/$* && $(KUSTOMIZE) edit set image controller=${IMG}
 	$(KUSTOMIZE) build config/$*
 
 .PHONY: undeploy

@@ -6,10 +6,9 @@ metadata:
     app.kubernetes.io/name: role
     app.kubernetes.io/instance: leader-election-role
     app.kubernetes.io/component: rbac
-    app.kubernetes.io/created-by: kubebuilder
-    app.kubernetes.io/part-of: kubebuilder
-    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/part-of: kubelb
   name: leader-election-role
+  namespace: kubelb
 rules:
 - apiGroups:
   - ""

@@ -12,27 +12,16 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# permissions for end users to edit httploadbalancers.
+
 apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRole
+kind: ClusterRoleBinding
 metadata:
-  name: httploadbalancer-editor-role
-rules:
-  - apiGroups:
-      - kubelb.k8c.io
-    resources:
-      - httploadbalancers
-    verbs:
-      - create
-      - delete
-      - get
-      - list
-      - patch
-      - update
-      - watch
-  - apiGroups:
-      - kubelb.k8c.io
-    resources:
-      - httploadbalancers/status
-    verbs:
-      - get
+  name: kubelb-clusterrolebinding
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: kubelb
+subjects:
+  - kind: ServiceAccount
+    name: kubelb
+    namespace: kubelb
