@@ -29,7 +29,7 @@ import (
 type LoadBalancerLister interface {
 	// List lists all LoadBalancers in the indexer.
 	// Objects returned here must be treated as read-only.
-	List(selector labels.Selector) (ret []*v1alpha1.LoadBalancer, err error)
+	List(selector labels.Selector) (ret []*v1alpha1.TCPLoadBalancer, err error)
 	// LoadBalancers returns an object that can list and get LoadBalancers.
 	LoadBalancers(namespace string) LoadBalancerNamespaceLister
 	LoadBalancerListerExpansion
@@ -46,9 +46,9 @@ func NewLoadBalancerLister(indexer cache.Indexer) LoadBalancerLister {
 }
 
 // List lists all LoadBalancers in the indexer.
-func (s *loadBalancerLister) List(selector labels.Selector) (ret []*v1alpha1.LoadBalancer, err error) {
+func (s *loadBalancerLister) List(selector labels.Selector) (ret []*v1alpha1.TCPLoadBalancer, err error) {
 	err = cache.ListAll(s.indexer, selector, func(m interface{}) {
-		ret = append(ret, m.(*v1alpha1.LoadBalancer))
+		ret = append(ret, m.(*v1alpha1.TCPLoadBalancer))
 	})
 	return ret, err
 }
@@ -63,10 +63,10 @@ func (s *loadBalancerLister) LoadBalancers(namespace string) LoadBalancerNamespa
 type LoadBalancerNamespaceLister interface {
 	// List lists all LoadBalancers in the indexer for a given namespace.
 	// Objects returned here must be treated as read-only.
-	List(selector labels.Selector) (ret []*v1alpha1.LoadBalancer, err error)
+	List(selector labels.Selector) (ret []*v1alpha1.TCPLoadBalancer, err error)
 	// Get retrieves the LoadBalancer from the indexer for a given namespace and name.
 	// Objects returned here must be treated as read-only.
-	Get(name string) (*v1alpha1.LoadBalancer, error)
+	Get(name string) (*v1alpha1.TCPLoadBalancer, error)
 	LoadBalancerNamespaceListerExpansion
 }
 
@@ -78,15 +78,15 @@ type loadBalancerNamespaceLister struct {
 }
 
 // List lists all LoadBalancers in the indexer for a given namespace.
-func (s loadBalancerNamespaceLister) List(selector labels.Selector) (ret []*v1alpha1.LoadBalancer, err error) {
+func (s loadBalancerNamespaceLister) List(selector labels.Selector) (ret []*v1alpha1.TCPLoadBalancer, err error) {
 	err = cache.ListAllByNamespace(s.indexer, s.namespace, selector, func(m interface{}) {
-		ret = append(ret, m.(*v1alpha1.LoadBalancer))
+		ret = append(ret, m.(*v1alpha1.TCPLoadBalancer))
 	})
 	return ret, err
 }
 
 // Get retrieves the LoadBalancer from the indexer for a given namespace and name.
-func (s loadBalancerNamespaceLister) Get(name string) (*v1alpha1.LoadBalancer, error) {
+func (s loadBalancerNamespaceLister) Get(name string) (*v1alpha1.TCPLoadBalancer, error) {
 	obj, exists, err := s.indexer.GetByKey(s.namespace + "/" + name)
 	if err != nil {
 		return nil, err
@@ -94,5 +94,5 @@ func (s loadBalancerNamespaceLister) Get(name string) (*v1alpha1.LoadBalancer, e
 	if !exists {
 		return nil, errors.NewNotFound(v1alpha1.Resource("loadbalancer"), name)
 	}
-	return obj.(*v1alpha1.LoadBalancer), nil
+	return obj.(*v1alpha1.TCPLoadBalancer), nil
 }

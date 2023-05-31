@@ -70,7 +70,7 @@ func NewFilteredLoadBalancerInformer(client versioned.Interface, namespace strin
 				return client.KubelbV1alpha1().LoadBalancers(namespace).Watch(context.TODO(), options)
 			},
 		},
-		&kubelbk8ciov1alpha1.LoadBalancer{},
+		&kubelbk8ciov1alpha1.TCPLoadBalancer{},
 		resyncPeriod,
 		indexers,
 	)
@@ -81,7 +81,7 @@ func (f *loadBalancerInformer) defaultInformer(client versioned.Interface, resyn
 }
 
 func (f *loadBalancerInformer) Informer() cache.SharedIndexInformer {
-	return f.factory.InformerFor(&kubelbk8ciov1alpha1.LoadBalancer{}, f.defaultInformer)
+	return f.factory.InformerFor(&kubelbk8ciov1alpha1.TCPLoadBalancer{}, f.defaultInformer)
 }
 
 func (f *loadBalancerInformer) Lister() v1alpha1.LoadBalancerLister {

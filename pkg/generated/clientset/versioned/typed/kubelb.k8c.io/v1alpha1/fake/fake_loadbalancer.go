@@ -40,20 +40,20 @@ var loadbalancersResource = schema.GroupVersionResource{Group: "kubelb.k8c.io", 
 var loadbalancersKind = schema.GroupVersionKind{Group: "kubelb.k8c.io", Version: "v1alpha1", Kind: "LoadBalancer"}
 
 // Get takes name of the loadBalancer, and returns the corresponding loadBalancer object, and an error if there is any.
-func (c *FakeLoadBalancers) Get(ctx context.Context, name string, options v1.GetOptions) (result *v1alpha1.LoadBalancer, err error) {
+func (c *FakeLoadBalancers) Get(ctx context.Context, name string, options v1.GetOptions) (result *v1alpha1.TCPLoadBalancer, err error) {
 	obj, err := c.Fake.
-		Invokes(testing.NewGetAction(loadbalancersResource, c.ns, name), &v1alpha1.LoadBalancer{})
+		Invokes(testing.NewGetAction(loadbalancersResource, c.ns, name), &v1alpha1.TCPLoadBalancer{})
 
 	if obj == nil {
 		return nil, err
 	}
-	return obj.(*v1alpha1.LoadBalancer), err
+	return obj.(*v1alpha1.TCPLoadBalancer), err
 }
 
 // List takes label and field selectors, and returns the list of LoadBalancers that match those selectors.
-func (c *FakeLoadBalancers) List(ctx context.Context, opts v1.ListOptions) (result *v1alpha1.LoadBalancerList, err error) {
+func (c *FakeLoadBalancers) List(ctx context.Context, opts v1.ListOptions) (result *v1alpha1.TCPLoadBalancerList, err error) {
 	obj, err := c.Fake.
-		Invokes(testing.NewListAction(loadbalancersResource, loadbalancersKind, c.ns, opts), &v1alpha1.LoadBalancerList{})
+		Invokes(testing.NewListAction(loadbalancersResource, loadbalancersKind, c.ns, opts), &v1alpha1.TCPLoadBalancerList{})
 
 	if obj == nil {
 		return nil, err
@@ -63,8 +63,8 @@ func (c *FakeLoadBalancers) List(ctx context.Context, opts v1.ListOptions) (resu
 	if label == nil {
 		label = labels.Everything()
 	}
-	list := &v1alpha1.LoadBalancerList{ListMeta: obj.(*v1alpha1.LoadBalancerList).ListMeta}
-	for _, item := range obj.(*v1alpha1.LoadBalancerList).Items {
+	list := &v1alpha1.TCPLoadBalancerList{ListMeta: obj.(*v1alpha1.TCPLoadBalancerList).ListMeta}
+	for _, item := range obj.(*v1alpha1.TCPLoadBalancerList).Items {
 		if label.Matches(labels.Set(item.Labels)) {
 			list.Items = append(list.Items, item)
 		}
@@ -80,43 +80,43 @@ func (c *FakeLoadBalancers) Watch(ctx context.Context, opts v1.ListOptions) (wat
 }
 
 // Create takes the representation of a loadBalancer and creates it.  Returns the server's representation of the loadBalancer, and an error, if there is any.
-func (c *FakeLoadBalancers) Create(ctx context.Context, loadBalancer *v1alpha1.LoadBalancer, opts v1.CreateOptions) (result *v1alpha1.LoadBalancer, err error) {
+func (c *FakeLoadBalancers) Create(ctx context.Context, loadBalancer *v1alpha1.TCPLoadBalancer, opts v1.CreateOptions) (result *v1alpha1.TCPLoadBalancer, err error) {
 	obj, err := c.Fake.
-		Invokes(testing.NewCreateAction(loadbalancersResource, c.ns, loadBalancer), &v1alpha1.LoadBalancer{})
+		Invokes(testing.NewCreateAction(loadbalancersResource, c.ns, loadBalancer), &v1alpha1.TCPLoadBalancer{})
 
 	if obj == nil {
 		return nil, err
 	}
-	return obj.(*v1alpha1.LoadBalancer), err
+	return obj.(*v1alpha1.TCPLoadBalancer), err
 }
 
 // Update takes the representation of a loadBalancer and updates it. Returns the server's representation of the loadBalancer, and an error, if there is any.
-func (c *FakeLoadBalancers) Update(ctx context.Context, loadBalancer *v1alpha1.LoadBalancer, opts v1.UpdateOptions) (result *v1alpha1.LoadBalancer, err error) {
+func (c *FakeLoadBalancers) Update(ctx context.Context, loadBalancer *v1alpha1.TCPLoadBalancer, opts v1.UpdateOptions) (result *v1alpha1.TCPLoadBalancer, err error) {
 	obj, err := c.Fake.
-		Invokes(testing.NewUpdateAction(loadbalancersResource, c.ns, loadBalancer), &v1alpha1.LoadBalancer{})
+		Invokes(testing.NewUpdateAction(loadbalancersResource, c.ns, loadBalancer), &v1alpha1.TCPLoadBalancer{})
 
 	if obj == nil {
 		return nil, err
 	}
-	return obj.(*v1alpha1.LoadBalancer), err
+	return obj.(*v1alpha1.TCPLoadBalancer), err
 }
 
 // UpdateStatus was generated because the type contains a Status member.
 // Add a +genclient:noStatus comment above the type to avoid generating UpdateStatus().
-func (c *FakeLoadBalancers) UpdateStatus(ctx context.Context, loadBalancer *v1alpha1.LoadBalancer, opts v1.UpdateOptions) (*v1alpha1.LoadBalancer, error) {
+func (c *FakeLoadBalancers) UpdateStatus(ctx context.Context, loadBalancer *v1alpha1.TCPLoadBalancer, opts v1.UpdateOptions) (*v1alpha1.TCPLoadBalancer, error) {
 	obj, err := c.Fake.
-		Invokes(testing.NewUpdateSubresourceAction(loadbalancersResource, "status", c.ns, loadBalancer), &v1alpha1.LoadBalancer{})
+		Invokes(testing.NewUpdateSubresourceAction(loadbalancersResource, "status", c.ns, loadBalancer), &v1alpha1.TCPLoadBalancer{})
 
 	if obj == nil {
 		return nil, err
 	}
-	return obj.(*v1alpha1.LoadBalancer), err
+	return obj.(*v1alpha1.TCPLoadBalancer), err
 }
 
 // Delete takes name of the loadBalancer and deletes it. Returns an error if one occurs.
 func (c *FakeLoadBalancers) Delete(ctx context.Context, name string, opts v1.DeleteOptions) error {
 	_, err := c.Fake.
-		Invokes(testing.NewDeleteActionWithOptions(loadbalancersResource, c.ns, name, opts), &v1alpha1.LoadBalancer{})
+		Invokes(testing.NewDeleteActionWithOptions(loadbalancersResource, c.ns, name, opts), &v1alpha1.TCPLoadBalancer{})
 
 	return err
 }
@@ -125,17 +125,17 @@ func (c *FakeLoadBalancers) Delete(ctx context.Context, name string, opts v1.Del
 func (c *FakeLoadBalancers) DeleteCollection(ctx context.Context, opts v1.DeleteOptions, listOpts v1.ListOptions) error {
 	action := testing.NewDeleteCollectionAction(loadbalancersResource, c.ns, listOpts)
 
-	_, err := c.Fake.Invokes(action, &v1alpha1.LoadBalancerList{})
+	_, err := c.Fake.Invokes(action, &v1alpha1.TCPLoadBalancerList{})
 	return err
 }
 
 // Patch applies the patch and returns the patched loadBalancer.
-func (c *FakeLoadBalancers) Patch(ctx context.Context, name string, pt types.PatchType, data []byte, opts v1.PatchOptions, subresources ...string) (result *v1alpha1.LoadBalancer, err error) {
+func (c *FakeLoadBalancers) Patch(ctx context.Context, name string, pt types.PatchType, data []byte, opts v1.PatchOptions, subresources ...string) (result *v1alpha1.TCPLoadBalancer, err error) {
 	obj, err := c.Fake.
-		Invokes(testing.NewPatchSubresourceAction(loadbalancersResource, c.ns, name, pt, data, subresources...), &v1alpha1.LoadBalancer{})
+		Invokes(testing.NewPatchSubresourceAction(loadbalancersResource, c.ns, name, pt, data, subresources...), &v1alpha1.TCPLoadBalancer{})
 
 	if obj == nil {
 		return nil, err
 	}
-	return obj.(*v1alpha1.LoadBalancer), err
+	return obj.(*v1alpha1.TCPLoadBalancer), err
 }

@@ -23,15 +23,14 @@ import (
 	kubelbiov1alpha1 "k8c.io/kubelb/pkg/api/kubelb.k8c.io/v1alpha1"
 )
 
-func MapLoadBalancer(userService *corev1.Service, clusterEndpoints []string, clusterName string) *kubelbiov1alpha1.LoadBalancer {
-
-	var lbServicePorts []kubelbiov1alpha1.LoadBalancerPort
-	var lbEndpointSubsets []kubelbiov1alpha1.LoadBalancerEndpoints
+func MapLoadBalancer(userService *corev1.Service, clusterEndpoints []string, clusterName string) *kubelbiov1alpha1.TCPLoadBalancer {
+	var lbServicePorts []kubelbiov1alpha1.TCPLoadBalancerPort
+	var lbEndpointSubsets []kubelbiov1alpha1.TCPLoadBalancerEndpoints
 	var lbEndpointPorts []kubelbiov1alpha1.EndpointPort
 
-	//mapping into load balancing service and endpoint subset ports
+	// mapping into load balancing service and endpoint subset ports
 	for _, port := range userService.Spec.Ports {
-		lbServicePorts = append(lbServicePorts, kubelbiov1alpha1.LoadBalancerPort{
+		lbServicePorts = append(lbServicePorts, kubelbiov1alpha1.TCPLoadBalancerPort{
 			Name:     port.Name,
 			Port:     port.Port,
 			Protocol: port.Protocol,
@@ -51,12 +50,12 @@ func MapLoadBalancer(userService *corev1.Service, clusterEndpoints []string, clu
 		})
 	}
 
-	lbEndpointSubsets = append(lbEndpointSubsets, kubelbiov1alpha1.LoadBalancerEndpoints{
+	lbEndpointSubsets = append(lbEndpointSubsets, kubelbiov1alpha1.TCPLoadBalancerEndpoints{
 		Addresses: endpointAddresses,
 		Ports:     lbEndpointPorts,
 	})
 
-	return &kubelbiov1alpha1.LoadBalancer{
+	return &kubelbiov1alpha1.TCPLoadBalancer{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      NamespacedName(&userService.ObjectMeta),
 			Namespace: clusterName,
@@ -65,7 +64,7 @@ func MapLoadBalancer(userService *corev1.Service, clusterEndpoints []string, clu
 				LabelOriginName:      userService.Name,
 			},
 		},
-		Spec: kubelbiov1alpha1.LoadBalancerSpec{
+		Spec: kubelbiov1alpha1.TCPLoadBalancerSpec{
 			Ports:     lbServicePorts,
 			Endpoints: lbEndpointSubsets,
 			Type:      userService.Spec.Type,
@@ -73,8 +72,7 @@ func MapLoadBalancer(userService *corev1.Service, clusterEndpoints []string, clu
 	}
 }
 
-func LoadBalancerIsDesiredState(actual, desired *kubelbiov1alpha1.LoadBalancer) bool {
-
+func LoadBalancerIsDesiredState(actual, desired *kubelbiov1alpha1.TCPLoadBalancer) bool {
 	if actual.Spec.Type != desired.Spec.Type {
 		return false
 	}
@@ -83,7 +81,7 @@ func LoadBalancerIsDesiredState(actual, desired *kubelbiov1alpha1.LoadBalancer) 
 		return false
 	}
 
-	loadBalancerPortIsDesiredState := func(actual, desired kubelbiov1alpha1.LoadBalancerPort) bool {
+	loadBalancerPortIsDesiredState := func(actual, desired kubelbiov1alpha1.TCPLoadBalancerPort) bool {
 		return actual.Protocol == desired.Protocol &&
 			actual.Port == desired.Port
 	}
@@ -119,7 +117,6 @@ func LoadBalancerIsDesiredState(actual, desired *kubelbiov1alpha1.LoadBalancer) 
 		}
 
 		for a := 0; a < len(desired.Spec.Endpoints[i].Addresses); a++ {
-
 			if !endpointAddressIsDesiredState(desired.Spec.Endpoints[i].Addresses[a], actual.Spec.Endpoints[i].Addresses[a]) {
 				return false
 			}

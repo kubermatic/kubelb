@@ -1,8 +1,6 @@
-
-IMG_TAG ?= latest
 # Image URL to use all building/pushing image targets
 KUBELB_IMG ?= quay.io/kubermatic/kubelb
-CCM_IMG ?= quay.io/kubermatic/kubelb-ccm
+KUBELB_CCM_IMG ?= quay.io/kubermatic/kubelb-ccm
 # ENVTEST_K8S_VERSION refers to the version of kubebuilder assets to be downloaded by envtest binary.
 ENVTEST_K8S_VERSION = 1.25.0
 
@@ -81,7 +79,7 @@ test: manifests generate fmt vet envtest ## Run tests.
 
 .PHONY: build
 build-%: generate fmt vet ## Build manager binary.
-	CGO_ENABLED=0 go build -o bin/$* cmd/$*/main.go
+	CGO_ENABLED=0 go build -v -o bin/$* cmd/$*/main.go
 
 .PHONY: run
 run-%: manifests generate fmt vet ## Run a controller from your host.
@@ -91,14 +89,14 @@ run-%: manifests generate fmt vet ## Run a controller from your host.
 # (i.e. docker build --platform linux/arm64 ). However, you must enable docker buildKit for it.
 # More info: https://docs.docker.com/develop/develop-images/build_enhancements/
 .PHONY: docker-build
-docker-build: test ## Build docker image with the manager.
+docker-build: ## Build docker image with the manager.
 	docker build -t ${KUBELB_IMG} -f kubelb.dockerfile .
-	docker build -t ${CCM_IMG} -f ccm.dockerfile .
+	docker build -t ${KUBELB_CCM_IMG} -f ccm.dockerfile .
 
 .PHONY: docker-push
 docker-push: ## Push docker image with the manager.
 	docker push ${KUBELB_IMG}
-	docker push ${CCM_IMG}
+	docker push ${KUBELB_CCM_IMG}
 
 ##@ Deployment
 

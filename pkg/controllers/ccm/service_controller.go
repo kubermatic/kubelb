@@ -63,7 +63,6 @@ var AnnotationServiceClassMatcher = &utils.MatchingAnnotationPredicate{
 // +kubebuilder:rbac:groups="",resources=services/status,verbs=get;update;patch
 
 func (r *KubeLbServiceReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-
 	log := r.Log.WithValues("name", req.Name, "namespace", req.Namespace)
 	log.V(2).Info("reconciling service")
 
@@ -178,10 +177,8 @@ func (r *KubeLbServiceReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 }
 
 func (r *KubeLbServiceReconciler) SetupWithManager(mgr ctrl.Manager) error {
-
 	c, err := ctrl.NewControllerManagedBy(mgr).
 		For(&corev1.Service{}).Build(r)
-
 	if err != nil {
 		return err
 	}
@@ -189,12 +186,11 @@ func (r *KubeLbServiceReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	err = c.Watch(
 		&source.Informer{Informer: r.LoadBalancerInformer.Informer()},
 		handler.EnqueueRequestsFromMapFunc(func(a client.Object) []reconcile.Request {
-
 			if a.GetNamespace() != r.ClusterName {
 				return []reconcile.Request{}
 			}
 
-			tcpLb := a.(*kubelbk8ciov1alpha1.LoadBalancer)
+			tcpLb := a.(*kubelbk8ciov1alpha1.TCPLoadBalancer)
 
 			if tcpLb.Spec.Type != corev1.ServiceTypeLoadBalancer {
 				return []reconcile.Request{}
@@ -224,13 +220,12 @@ func (r *KubeLbServiceReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	)
 
 	return err
-
 }
 
 func (r *KubeLbServiceReconciler) getEndpoints(service *corev1.Service) []string {
 	var clusterEndpoints []string
 
-	//Use LB Endpoint if there is any non KubeLb load balancer implementation
+	// Use LB Endpoint if there is any non KubeLb load balancer implementation
 	if service.Spec.Type == corev1.ServiceTypeLoadBalancer && !r.CloudController {
 		for _, lbIngress := range service.Status.LoadBalancer.Ingress {
 			if lbIngress.IP != "" {
@@ -244,5 +239,4 @@ func (r *KubeLbServiceReconciler) getEndpoints(service *corev1.Service) []string
 	}
 
 	return clusterEndpoints
-
 }

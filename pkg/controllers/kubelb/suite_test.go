@@ -41,13 +41,17 @@ import (
 // These tests use Ginkgo (BDD-style Go testing framework). Refer to
 // http://onsi.github.io/ginkgo/ to learn more about Ginkgo.
 
-var cfg *rest.Config
-var k8sClient client.Client
-var testEnv *envtest.Environment
-var envoyServer *envoy.Server
+var (
+	cfg         *rest.Config
+	k8sClient   client.Client
+	testEnv     *envtest.Environment
+	envoyServer *envoy.Server
+)
 
-const APIVersion = "kubelb.k8c.io/v1alpha1"
-const Kind = "LoadBalancer"
+const (
+	APIVersion = "kubelb.k8c.io/v1alpha1"
+	Kind       = "LoadBalancer"
+)
 
 func TestLoadBalancerCustomResource(t *testing.T) {
 	RegisterFailHandler(Fail)
@@ -103,7 +107,6 @@ var _ = BeforeSuite(func() {
 		err = k8sManager.Start(ctx)
 		Expect(err).ToNot(HaveOccurred())
 	}()
-
 }, 60)
 
 var _ = AfterSuite(func() {
@@ -112,8 +115,8 @@ var _ = AfterSuite(func() {
 	Expect(err).ToNot(HaveOccurred())
 })
 
-func GetDefaultLoadBalancer(name string, namespace string) *v1alpha12.LoadBalancer {
-	return &v1alpha12.LoadBalancer{
+func GetDefaultLoadBalancer(name string, namespace string) *v1alpha12.TCPLoadBalancer {
+	return &v1alpha12.TCPLoadBalancer{
 		TypeMeta: v1.TypeMeta{
 			APIVersion: APIVersion,
 			Kind:       Kind,
@@ -122,8 +125,8 @@ func GetDefaultLoadBalancer(name string, namespace string) *v1alpha12.LoadBalanc
 			Name:      name,
 			Namespace: namespace,
 		},
-		Spec: v1alpha12.LoadBalancerSpec{
-			Endpoints: []v1alpha12.LoadBalancerEndpoints{
+		Spec: v1alpha12.TCPLoadBalancerSpec{
+			Endpoints: []v1alpha12.TCPLoadBalancerEndpoints{
 				{
 					Addresses: []v1alpha12.EndpointAddress{
 						{
@@ -134,9 +137,10 @@ func GetDefaultLoadBalancer(name string, namespace string) *v1alpha12.LoadBalanc
 						{
 							Port: 8080,
 						},
-					}},
+					},
+				},
 			},
-			Ports: []v1alpha12.LoadBalancerPort{
+			Ports: []v1alpha12.TCPLoadBalancerPort{
 				{
 					Port: 80,
 				},

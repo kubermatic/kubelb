@@ -61,7 +61,7 @@ func (r *LoadBalancerReconciler) Reconcile(ctx context.Context, req ctrl.Request
 
 	log.V(2).Info("reconciling LoadBalancer")
 
-	var LoadBalancer kubelbk8ciov1alpha1.LoadBalancer
+	var LoadBalancer kubelbk8ciov1alpha1.TCPLoadBalancer
 	err := r.Get(ctx, req.NamespacedName, &LoadBalancer)
 	if err != nil {
 		if client.IgnoreNotFound(err) != nil {
@@ -74,7 +74,7 @@ func (r *LoadBalancerReconciler) Reconcile(ctx context.Context, req ctrl.Request
 
 	log.V(5).Info("processing", "LoadBalancer", LoadBalancer)
 
-	//Todo: check validation webhook - ports must equal endpoint ports as well
+	// Todo: check validation webhook - ports must equal endpoint ports as well
 	if len(LoadBalancer.Spec.Endpoints) == 0 {
 		log.Error(errors.New("Invalid Spec"), "No Endpoints set")
 		return ctrl.Result{}, nil
@@ -102,11 +102,9 @@ func (r *LoadBalancerReconciler) Reconcile(ctx context.Context, req ctrl.Request
 	}
 
 	return ctrl.Result{}, nil
-
 }
 
-func (r *LoadBalancerReconciler) reconcileEnvoySnapshot(ctx context.Context, LoadBalancer *kubelbk8ciov1alpha1.LoadBalancer) error {
-
+func (r *LoadBalancerReconciler) reconcileEnvoySnapshot(ctx context.Context, LoadBalancer *kubelbk8ciov1alpha1.TCPLoadBalancer) error {
 	log := ctrl.LoggerFrom(ctx).WithValues("reconcile", "envoy")
 	log.V(2).Info("verify envoy snapshot")
 
@@ -114,12 +112,16 @@ func (r *LoadBalancerReconciler) reconcileEnvoySnapshot(ctx context.Context, Loa
 	actualSnapshot, err := r.EnvoyCache.GetSnapshot(LoadBalancer.Name)
 	if err != nil {
 		// Add the snapshot to the cache
-		//Todo: check namespace and node-id uniqueness
-		initSnapshot := envoycp.MapSnapshot(LoadBalancer, "0.0.1")
+		// Todo: check namespace and node-id uniqueness
+		initSnapshot, errSnapshor := envoycp.MapSnapshot(LoadBalancer, "0.0.1")
+		if errSnapshor != nil {
+			return errSnapshor
+		}
+
 		log.Info("init snapshot", "service-node", LoadBalancer.Name, "version", "0.0.1")
 		log.V(5).Info("serving", "snapshot", initSnapshot)
 
-		return r.EnvoyCache.SetSnapshot(LoadBalancer.Name, initSnapshot)
+		return r.EnvoyCache.SetSnapshot(ctx, LoadBalancer.Name, initSnapshot)
 	}
 
 	log.V(5).Info("actual", "snapshot", actualSnapshot)
@@ -129,7 +131,11 @@ func (r *LoadBalancerReconciler) reconcileEnvoySnapshot(ctx context.Context, Loa
 		return errors.Wrap(err, "failed to parse version from last snapshot")
 	}
 
-	desiredSnapshot := envoycp.MapSnapshot(LoadBalancer, lastUsedVersion.String())
+	desiredSnapshot, err := envoycp.MapSnapshot(LoadBalancer, lastUsedVersion.String())
+	if err != nil {
+		return err
+	}
+
 	log.V(5).Info("desired", "snapshot", desiredSnapshot)
 
 	// Generate a new snapshot using the old version to be able to do a DeepEqual comparison
@@ -139,22 +145,25 @@ func (r *LoadBalancerReconciler) reconcileEnvoySnapshot(ctx context.Context, Loa
 	}
 
 	newVersion := lastUsedVersion.IncMajor()
-	newSnapshot := envoycp.MapSnapshot(LoadBalancer, newVersion.String())
+	newSnapshot, err := envoycp.MapSnapshot(LoadBalancer, newVersion.String())
+	if err != nil {
+		return err
+	}
 
 	if err := newSnapshot.Consistent(); err != nil {
 		return errors.Wrap(err, "new Envoy config snapshot is not consistent")
 	}
+
 	log.Info("updating snapshot", "service-node", LoadBalancer.Name, "version", newVersion.String())
 
-	if err := r.EnvoyCache.SetSnapshot(LoadBalancer.Name, newSnapshot); err != nil {
+	if err := r.EnvoyCache.SetSnapshot(ctx, LoadBalancer.Name, newSnapshot); err != nil {
 		return errors.Wrap(err, "failed to set a new Envoy cache snapshot")
 	}
 
 	return nil
 }
 
-func (r *LoadBalancerReconciler) reconcileDeployment(ctx context.Context, LoadBalancer *kubelbk8ciov1alpha1.LoadBalancer) error {
-
+func (r *LoadBalancerReconciler) reconcileDeployment(ctx context.Context, LoadBalancer *kubelbk8ciov1alpha1.TCPLoadBalancer) error {
 	log := ctrl.LoggerFrom(ctx).WithValues("reconcile", "deployment")
 	log.V(2).Info("verify deployment")
 
@@ -176,14 +185,13 @@ func (r *LoadBalancerReconciler) reconcileDeployment(ctx context.Context, LoadBa
 	log.V(5).Info("actual", "deployment", deployment)
 
 	result, err := ctrl.CreateOrUpdate(ctx, r.Client, deployment, func() error {
-
 		var replicas int32 = 1
 		var envoyListenerPorts []corev1.ContainerPort
 
-		//use endpoint node port as internal envoy port
+		// use endpoint node port as internal envoy port
 		for _, epPort := range LoadBalancer.Spec.Endpoints[0].Ports {
 			envoyListenerPorts = append(envoyListenerPorts, corev1.ContainerPort{
-				//Name:          lbServicePort.Name,
+				// Name:          lbServicePort.Name,
 				ContainerPort: epPort.Port,
 			})
 		}
@@ -232,7 +240,6 @@ func (r *LoadBalancerReconciler) reconcileDeployment(ctx context.Context, LoadBa
 		deployment.Spec.Template.Spec.Containers = containers
 
 		return ctrl.SetControllerReference(LoadBalancer, deployment, r.Scheme)
-
 	})
 
 	log.V(5).Info("desired", "deployment", deployment)
@@ -240,10 +247,9 @@ func (r *LoadBalancerReconciler) reconcileDeployment(ctx context.Context, LoadBa
 	log.V(2).Info("operation fulfilled", "status", result)
 
 	return err
-
 }
 
-func (r *LoadBalancerReconciler) reconcileService(ctx context.Context, LoadBalancer *kubelbk8ciov1alpha1.LoadBalancer) error {
+func (r *LoadBalancerReconciler) reconcileService(ctx context.Context, LoadBalancer *kubelbk8ciov1alpha1.TCPLoadBalancer) error {
 	log := ctrl.LoggerFrom(ctx).WithValues("reconcile", "service")
 
 	log.V(2).Info("verify service")
@@ -269,13 +275,12 @@ func (r *LoadBalancerReconciler) reconcileService(ctx context.Context, LoadBalan
 	allocatedServicePorts := len(service.Spec.Ports)
 
 	result, err := ctrl.CreateOrUpdate(ctx, r.Client, service, func() error {
-
 		var ports []corev1.ServicePort
 		for currentLbPort, lbServicePort := range LoadBalancer.Spec.Ports {
 
 			var allocatedPort corev1.ServicePort
 
-			//Edit existing port
+			// Edit existing port
 			if currentLbPort < allocatedServicePorts {
 				allocatedPort = service.Spec.Ports[currentLbPort]
 
@@ -301,7 +306,6 @@ func (r *LoadBalancerReconciler) reconcileService(ctx context.Context, LoadBalan
 		service.Spec.Type = LoadBalancer.Spec.Type
 
 		return ctrl.SetControllerReference(LoadBalancer, service, r.Scheme)
-
 	})
 
 	log.V(5).Info("desired", "service", service)
@@ -312,7 +316,7 @@ func (r *LoadBalancerReconciler) reconcileService(ctx context.Context, LoadBalan
 		return err
 	}
 
-	//Status changes
+	// Status changes
 	log.V(5).Info("load balancer status", "LoadBalancer", LoadBalancer.Status.LoadBalancer.Ingress, "service", service.Status.LoadBalancer.Ingress)
 
 	if LoadBalancer.Spec.Type != corev1.ServiceTypeLoadBalancer || len(LoadBalancer.Status.LoadBalancer.Ingress) == len(service.Status.LoadBalancer.Ingress) {
@@ -326,21 +330,19 @@ func (r *LoadBalancerReconciler) reconcileService(ctx context.Context, LoadBalan
 	log.V(4).Info("updating to", "LoadBalancer status", LoadBalancer.Status.LoadBalancer)
 
 	return r.Status().Update(ctx, LoadBalancer)
-
 }
 
 func (r *LoadBalancerReconciler) SetupWithManager(mgr ctrl.Manager, ctx context.Context) error {
 	c, err := ctrl.NewControllerManagedBy(mgr).
-		For(&kubelbk8ciov1alpha1.LoadBalancer{}).
+		For(&kubelbk8ciov1alpha1.TCPLoadBalancer{}).
 		Owns(&corev1.Service{}).
 		Owns(&appsv1.Deployment{}).
 		Build(r)
-
 	if err != nil {
 		return err
 	}
 
-	//Todo: same as owns? can be removed : leave it
+	// Todo: same as owns? can be removed : leave it
 	serviceInformer, err := r.Cache.GetInformer(ctx, &corev1.Service{})
 	if err != nil {
 		return err
@@ -349,7 +351,7 @@ func (r *LoadBalancerReconciler) SetupWithManager(mgr ctrl.Manager, ctx context.
 	err = c.Watch(
 		&source.Informer{Informer: serviceInformer},
 		&handler.EnqueueRequestForOwner{
-			OwnerType:    &kubelbk8ciov1alpha1.LoadBalancer{},
+			OwnerType:    &kubelbk8ciov1alpha1.TCPLoadBalancer{},
 			IsController: true,
 		},
 	)

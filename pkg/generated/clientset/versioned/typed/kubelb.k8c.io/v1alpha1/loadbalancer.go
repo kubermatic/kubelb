@@ -37,15 +37,15 @@ type LoadBalancersGetter interface {
 
 // LoadBalancerInterface has methods to work with LoadBalancer resources.
 type LoadBalancerInterface interface {
-	Create(ctx context.Context, loadBalancer *v1alpha1.LoadBalancer, opts v1.CreateOptions) (*v1alpha1.LoadBalancer, error)
-	Update(ctx context.Context, loadBalancer *v1alpha1.LoadBalancer, opts v1.UpdateOptions) (*v1alpha1.LoadBalancer, error)
-	UpdateStatus(ctx context.Context, loadBalancer *v1alpha1.LoadBalancer, opts v1.UpdateOptions) (*v1alpha1.LoadBalancer, error)
+	Create(ctx context.Context, loadBalancer *v1alpha1.TCPLoadBalancer, opts v1.CreateOptions) (*v1alpha1.TCPLoadBalancer, error)
+	Update(ctx context.Context, loadBalancer *v1alpha1.TCPLoadBalancer, opts v1.UpdateOptions) (*v1alpha1.TCPLoadBalancer, error)
+	UpdateStatus(ctx context.Context, loadBalancer *v1alpha1.TCPLoadBalancer, opts v1.UpdateOptions) (*v1alpha1.TCPLoadBalancer, error)
 	Delete(ctx context.Context, name string, opts v1.DeleteOptions) error
 	DeleteCollection(ctx context.Context, opts v1.DeleteOptions, listOpts v1.ListOptions) error
-	Get(ctx context.Context, name string, opts v1.GetOptions) (*v1alpha1.LoadBalancer, error)
-	List(ctx context.Context, opts v1.ListOptions) (*v1alpha1.LoadBalancerList, error)
+	Get(ctx context.Context, name string, opts v1.GetOptions) (*v1alpha1.TCPLoadBalancer, error)
+	List(ctx context.Context, opts v1.ListOptions) (*v1alpha1.TCPLoadBalancerList, error)
 	Watch(ctx context.Context, opts v1.ListOptions) (watch.Interface, error)
-	Patch(ctx context.Context, name string, pt types.PatchType, data []byte, opts v1.PatchOptions, subresources ...string) (result *v1alpha1.LoadBalancer, err error)
+	Patch(ctx context.Context, name string, pt types.PatchType, data []byte, opts v1.PatchOptions, subresources ...string) (result *v1alpha1.TCPLoadBalancer, err error)
 	LoadBalancerExpansion
 }
 
@@ -64,8 +64,8 @@ func newLoadBalancers(c *KubelbV1alpha1Client, namespace string) *loadBalancers 
 }
 
 // Get takes name of the loadBalancer, and returns the corresponding loadBalancer object, and an error if there is any.
-func (c *loadBalancers) Get(ctx context.Context, name string, options v1.GetOptions) (result *v1alpha1.LoadBalancer, err error) {
-	result = &v1alpha1.LoadBalancer{}
+func (c *loadBalancers) Get(ctx context.Context, name string, options v1.GetOptions) (result *v1alpha1.TCPLoadBalancer, err error) {
+	result = &v1alpha1.TCPLoadBalancer{}
 	err = c.client.Get().
 		Namespace(c.ns).
 		Resource("loadbalancers").
@@ -77,12 +77,12 @@ func (c *loadBalancers) Get(ctx context.Context, name string, options v1.GetOpti
 }
 
 // List takes label and field selectors, and returns the list of LoadBalancers that match those selectors.
-func (c *loadBalancers) List(ctx context.Context, opts v1.ListOptions) (result *v1alpha1.LoadBalancerList, err error) {
+func (c *loadBalancers) List(ctx context.Context, opts v1.ListOptions) (result *v1alpha1.TCPLoadBalancerList, err error) {
 	var timeout time.Duration
 	if opts.TimeoutSeconds != nil {
 		timeout = time.Duration(*opts.TimeoutSeconds) * time.Second
 	}
-	result = &v1alpha1.LoadBalancerList{}
+	result = &v1alpha1.TCPLoadBalancerList{}
 	err = c.client.Get().
 		Namespace(c.ns).
 		Resource("loadbalancers").
@@ -109,8 +109,8 @@ func (c *loadBalancers) Watch(ctx context.Context, opts v1.ListOptions) (watch.I
 }
 
 // Create takes the representation of a loadBalancer and creates it.  Returns the server's representation of the loadBalancer, and an error, if there is any.
-func (c *loadBalancers) Create(ctx context.Context, loadBalancer *v1alpha1.LoadBalancer, opts v1.CreateOptions) (result *v1alpha1.LoadBalancer, err error) {
-	result = &v1alpha1.LoadBalancer{}
+func (c *loadBalancers) Create(ctx context.Context, loadBalancer *v1alpha1.TCPLoadBalancer, opts v1.CreateOptions) (result *v1alpha1.TCPLoadBalancer, err error) {
+	result = &v1alpha1.TCPLoadBalancer{}
 	err = c.client.Post().
 		Namespace(c.ns).
 		Resource("loadbalancers").
@@ -122,8 +122,8 @@ func (c *loadBalancers) Create(ctx context.Context, loadBalancer *v1alpha1.LoadB
 }
 
 // Update takes the representation of a loadBalancer and updates it. Returns the server's representation of the loadBalancer, and an error, if there is any.
-func (c *loadBalancers) Update(ctx context.Context, loadBalancer *v1alpha1.LoadBalancer, opts v1.UpdateOptions) (result *v1alpha1.LoadBalancer, err error) {
-	result = &v1alpha1.LoadBalancer{}
+func (c *loadBalancers) Update(ctx context.Context, loadBalancer *v1alpha1.TCPLoadBalancer, opts v1.UpdateOptions) (result *v1alpha1.TCPLoadBalancer, err error) {
+	result = &v1alpha1.TCPLoadBalancer{}
 	err = c.client.Put().
 		Namespace(c.ns).
 		Resource("loadbalancers").
@@ -137,8 +137,8 @@ func (c *loadBalancers) Update(ctx context.Context, loadBalancer *v1alpha1.LoadB
 
 // UpdateStatus was generated because the type contains a Status member.
 // Add a +genclient:noStatus comment above the type to avoid generating UpdateStatus().
-func (c *loadBalancers) UpdateStatus(ctx context.Context, loadBalancer *v1alpha1.LoadBalancer, opts v1.UpdateOptions) (result *v1alpha1.LoadBalancer, err error) {
-	result = &v1alpha1.LoadBalancer{}
+func (c *loadBalancers) UpdateStatus(ctx context.Context, loadBalancer *v1alpha1.TCPLoadBalancer, opts v1.UpdateOptions) (result *v1alpha1.TCPLoadBalancer, err error) {
+	result = &v1alpha1.TCPLoadBalancer{}
 	err = c.client.Put().
 		Namespace(c.ns).
 		Resource("loadbalancers").
@@ -179,8 +179,8 @@ func (c *loadBalancers) DeleteCollection(ctx context.Context, opts v1.DeleteOpti
 }
 
 // Patch applies the patch and returns the patched loadBalancer.
-func (c *loadBalancers) Patch(ctx context.Context, name string, pt types.PatchType, data []byte, opts v1.PatchOptions, subresources ...string) (result *v1alpha1.LoadBalancer, err error) {
-	result = &v1alpha1.LoadBalancer{}
+func (c *loadBalancers) Patch(ctx context.Context, name string, pt types.PatchType, data []byte, opts v1.PatchOptions, subresources ...string) (result *v1alpha1.TCPLoadBalancer, err error) {
+	result = &v1alpha1.TCPLoadBalancer{}
 	err = c.client.Patch(pt).
 		Namespace(c.ns).
 		Resource("loadbalancers").
