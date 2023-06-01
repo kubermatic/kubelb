@@ -12,21 +12,19 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
 
 resources:
 - ccm.yaml
 - rbac
 - ../rbac
-apiVersion: kustomize.config.k8s.io/v1beta1
-kind: Kustomization
 images:
 - name: controller
-  newName: quay.io/kubermatic/kubelb
-
-secretGenerator:
-- name: kubelb
-  namespace: kubelb
-  files:
-  - kubelb
-
+  newName: quay.io/kubermatic/kubelb-ccm
+# secretGenerator:
+# - name: kubelb
+#   namespace: kubelb
+#   files:
+#   - kubelb
 namespace: kubelb

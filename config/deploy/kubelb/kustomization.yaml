@@ -1,0 +1,8 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+- ../../kubelb
+images:
+- name: quay.io/kubermatic/kubelb
+  newTag: v0.3.2
