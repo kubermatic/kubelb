@@ -4,5 +4,6 @@ kind: Kustomization
 resources:
 - ../../ccm
 images:
-- name: quay.io/kubermatic/kubelb-ccm
+- name: controller
+  newName: quay.io/kubermatic/kubelb-ccm
   newTag: v0.3.2

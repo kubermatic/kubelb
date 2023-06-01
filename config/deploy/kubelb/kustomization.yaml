@@ -4,5 +4,6 @@ kind: Kustomization
 resources:
 - ../../kubelb
 images:
-- name: quay.io/kubermatic/kubelb
+- name: controller
+  newName: quay.io/kubermatic/kubelb
   newTag: v0.3.2
