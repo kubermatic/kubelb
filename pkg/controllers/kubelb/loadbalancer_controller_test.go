@@ -102,7 +102,7 @@ var _ = Describe("TcpLb deployment and service creation", func() {
 			existingTcpLb.Spec.Ports[0].Name = "port-a"
 			existingTcpLb.Spec.Endpoints[0].Ports[0].Name = "port-a"
 
-			existingTcpLb.Spec.Ports = append(existingTcpLb.Spec.Ports, kubelbk8ciov1alpha1.TCPLoadBalancerPort{
+			existingTcpLb.Spec.Ports = append(existingTcpLb.Spec.Ports, kubelbk8ciov1alpha1.LoadBalancerPort{
 				Name: "port-b",
 				Port: 81,
 			})

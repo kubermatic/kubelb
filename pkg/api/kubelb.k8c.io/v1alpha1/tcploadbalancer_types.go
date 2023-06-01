@@ -23,7 +23,7 @@ import (
 
 // NOTE: json tags are required.  Any new fields you add must have json tags for the fields to be serialized.
 
-// TCPLoadBalancerStatus defines the observed state of LoadBalancer
+// TCPLoadBalancerStatus defines the observed state of TCPLoadBalancer
 type TCPLoadBalancerStatus struct {
 	// LoadBalancer contains the current status of the load-balancer,
 	// if one is present.
@@ -31,8 +31,8 @@ type TCPLoadBalancerStatus struct {
 	LoadBalancer corev1.LoadBalancerStatus `json:"loadBalancer,omitempty" protobuf:"bytes,1,opt,name=loadBalancer"`
 }
 
-// TCPLoadBalancerPort contains information on service's port.
-type TCPLoadBalancerPort struct {
+// LoadBalancerPort contains information on service's port.
+type LoadBalancerPort struct {
 	// The name of this port within the service. This must be a DNS_LABEL.
 	// All ports within a Spec must have unique names. When considering
 	// the endpoints for a Service, this must match the 'name' field in the
@@ -41,10 +41,11 @@ type TCPLoadBalancerPort struct {
 	// +optional
 	Name string `json:"name,omitempty" protobuf:"bytes,1,opt,name=name"`
 
-	// The IP protocol for this port. Supports "TCP", "UDP", and "SCTP".
+	// The IP protocol for this port. Supports "TCP".
 	// Default is TCP.
-	// +default="TCP"
 	// +optional
+	// +kubebuilder:default=TCP
+	// +kubebuilder:validation:Enum=TCP
 	Protocol corev1.Protocol `json:"protocol,omitempty" protobuf:"bytes,2,opt,name=protocol,casttype=Protocol"`
 
 	// The port that will be exposed by the LoadBalancer.
@@ -63,10 +64,12 @@ type EndpointPort struct {
 	// The port number of the endpoint.
 	Port int32 `json:"port" protobuf:"varint,2,opt,name=port"`
 
-	// The IP protocol for this port. Supports "TCP", "UDP", and "SCTP".
+	// The IP protocol for this port.
+	// Must be TCP.
 	// Default is TCP.
-	// +default="TCP"
 	// +optional
+	// +kubebuilder:default=TCP
+	// +kubebuilder:validation:Enum=TCP
 	Protocol corev1.Protocol `json:"protocol,omitempty" protobuf:"bytes,3,opt,name=protocol,casttype=Protocol"`
 }
 
@@ -82,7 +85,7 @@ type EndpointAddress struct {
 	Hostname string `json:"hostname,omitempty" protobuf:"bytes,3,opt,name=hostname"`
 }
 
-// TCPLoadBalancerEndpoints is a group of addresses with a common set of ports. The
+// LoadBalancerEndpoints is a group of addresses with a common set of ports. The
 // expanded set of endpoints is the Cartesian product of Addresses x Ports.
 // For example, given:
 //
@@ -95,30 +98,30 @@ type EndpointAddress struct {
 //
 //	a: [ 10.10.1.1:8675, 10.10.2.2:8675 ],
 //	b: [ 10.10.1.1:309, 10.10.2.2:309 ]
-type TCPLoadBalancerEndpoints struct {
+type LoadBalancerEndpoints struct {
 	// IP addresses which offer the related ports that are marked as ready. These endpoints
 	// should be considered safe for load balancers and clients to utilize.
 	//+kubebuilder:validation:MinItems:=1
 	Addresses []EndpointAddress `json:"addresses,omitempty" protobuf:"bytes,1,rep,name=addresses"`
 
 	// Port numbers available on the related IP addresses.
-	//+kubebuilder:validation:MinItems:=1
+	//+kubebuilder:validation:MinItems=1
 	Ports []EndpointPort `json:"ports,omitempty" protobuf:"bytes,3,rep,name=ports"`
 }
 
-// TCPLoadBalancerSpec defines the desired state of LoadBalancer
+// TCPLoadBalancerSpec defines the desired state of TCPLoadBalancer
 type TCPLoadBalancerSpec struct {
 	// Important: Run "make" to regenerate code after modifying this file
 
 	// Sets of addresses and ports that comprise an exposed user service on a cluster.
 	// +required
-	//+kubebuilder:validation:MinItems:=1
-	Endpoints []TCPLoadBalancerEndpoints `json:"endpoints,omitempty"`
+	//+kubebuilder:validation:MinItems=1
+	Endpoints []LoadBalancerEndpoints `json:"endpoints,omitempty"`
 
 	// The list of ports that are exposed by the load balancer service.
 	// only needed for layer 4
 	// +optional
-	Ports []TCPLoadBalancerPort `json:"ports,omitempty"`
+	Ports []LoadBalancerPort `json:"ports,omitempty"`
 
 	// type determines how the Service is exposed. Defaults to ClusterIP. Valid
 	// options are ExternalName, ClusterIP, NodePort, and LoadBalancer.
@@ -135,7 +138,7 @@ type TCPLoadBalancerSpec struct {
 	// to the clusterIP.
 	// More info: https://kubernetes.io/docs/concepts/services-networking/service/#publishing-services-service-types
 	// +optional
-	// +kubebuilder:default:=ClusterIP
+	// +kubebuilder:default=ClusterIP
 	Type corev1.ServiceType `json:"type,omitempty" protobuf:"bytes,4,opt,name=type,casttype=ServiceType"`
 }
 
@@ -144,7 +147,7 @@ type TCPLoadBalancerSpec struct {
 // +kubebuilder:resource:shortName=tcplb
 // +genclient
 
-// TCPLoadBalancer is the Schema for the LoadBalancers API
+// TCPLoadBalancer is the Schema for the tcploadbalancers API
 type TCPLoadBalancer struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
@@ -155,7 +158,7 @@ type TCPLoadBalancer struct {
 
 // +kubebuilder:object:root=true
 
-// TCPLoadBalancerList contains a list of LoadBalancer
+// TCPLoadBalancerList contains a list of TCPLoadBalancer
 type TCPLoadBalancerList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`

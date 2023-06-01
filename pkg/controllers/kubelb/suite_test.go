@@ -126,7 +126,7 @@ func GetDefaultLoadBalancer(name string, namespace string) *v1alpha12.TCPLoadBal
 			Namespace: namespace,
 		},
 		Spec: v1alpha12.TCPLoadBalancerSpec{
-			Endpoints: []v1alpha12.TCPLoadBalancerEndpoints{
+			Endpoints: []v1alpha12.LoadBalancerEndpoints{
 				{
 					Addresses: []v1alpha12.EndpointAddress{
 						{
@@ -140,7 +140,7 @@ func GetDefaultLoadBalancer(name string, namespace string) *v1alpha12.TCPLoadBal
 					},
 				},
 			},
-			Ports: []v1alpha12.TCPLoadBalancerPort{
+			Ports: []v1alpha12.LoadBalancerPort{
 				{
 					Port: 80,
 				},

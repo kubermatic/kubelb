@@ -20,7 +20,7 @@ spec:
   - name: v1alpha1
     schema:
       openAPIV3Schema:
-        description: TCPLoadBalancer is the Schema for the LoadBalancers API
+        description: TCPLoadBalancer is the Schema for the tcploadbalancers API
         properties:
           apiVersion:
             description: 'APIVersion defines the versioned schema of this representation
@@ -35,13 +35,13 @@ spec:
           metadata:
             type: object
           spec:
-            description: TCPLoadBalancerSpec defines the desired state of LoadBalancer
+            description: TCPLoadBalancerSpec defines the desired state of TCPLoadBalancer
             properties:
               endpoints:
                 description: Sets of addresses and ports that comprise an exposed
                   user service on a cluster.
                 items:
-                  description: "TCPLoadBalancerEndpoints is a group of addresses with
+                  description: "LoadBalancerEndpoints is a group of addresses with
                     a common set of ports. The expanded set of endpoints is the Cartesian
                     product of Addresses x Ports. For example, given: \n { Addresses:
                     [{\"ip\": \"10.10.1.1\"}, {\"ip\": \"10.10.2.2\"}], Ports:     [{\"name\":
@@ -87,9 +87,13 @@ spec:
                             format: int32
                             type: integer
                           protocol:
-                            default: TCP
-                            description: The IP protocol for this port. Supports "TCP",
-                              "UDP", and "SCTP". Default is TCP.
+                            allOf:
+                            - default: TCP
+                            - default: TCP
+                            description: The IP protocol for this port. Must be TCP.
+                              Default is TCP.
+                            enum:
+                            - TCP
                             type: string
                         required:
                         - port
@@ -103,7 +107,7 @@ spec:
                 description: The list of ports that are exposed by the load balancer
                   service. only needed for layer 4
                 items:
-                  description: TCPLoadBalancerPort contains information on service's
+                  description: LoadBalancerPort contains information on service's
                     port.
                   properties:
                     name:
@@ -118,9 +122,13 @@ spec:
                       format: int32
                       type: integer
                     protocol:
-                      default: TCP
-                      description: The IP protocol for this port. Supports "TCP",
-                        "UDP", and "SCTP". Default is TCP.
+                      allOf:
+                      - default: TCP
+                      - default: TCP
+                      description: The IP protocol for this port. Supports "TCP".
+                        Default is TCP.
+                      enum:
+                      - TCP
                       type: string
                   required:
                   - port
@@ -143,7 +151,7 @@ spec:
                 type: string
             type: object
           status:
-            description: TCPLoadBalancerStatus defines the observed state of LoadBalancer
+            description: TCPLoadBalancerStatus defines the observed state of TCPLoadBalancer
             properties:
               loadBalancer:
                 description: LoadBalancer contains the current status of the load-balancer,
