@@ -3,6 +3,7 @@ kind: Kustomization
 
 namespace: kubelb
 resources:
-- manager.yaml
-- rbac
-- ../rbac
+  - ../crd
+  - ../rbac
+  - rbac
+  - manager.yaml
