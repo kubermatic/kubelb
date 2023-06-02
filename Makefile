@@ -79,7 +79,7 @@ test: manifests generate fmt vet envtest ## Run tests.
 
 .PHONY: build
 build-%: generate fmt vet ## Build manager binary.
-	CGO_ENABLED=0 go build -v -o bin/$* cmd/$*/main.go
+	CGO_ENABLED=0 go build -v -trimpath -o bin/$* cmd/$*/main.go
 
 .PHONY: run
 run-%: manifests generate fmt vet ## Run a controller from your host.
