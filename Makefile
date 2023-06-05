@@ -3,6 +3,10 @@ KUBELB_IMG ?= quay.io/kubermatic/kubelb
 KUBELB_CCM_IMG ?= quay.io/kubermatic/kubelb-ccm
 # ENVTEST_K8S_VERSION refers to the version of kubebuilder assets to be downloaded by envtest binary.
 ENVTEST_K8S_VERSION = 1.25.0
+GITTAG=$(shell git describe --tags --always)
+
+export GOFLAGS?=-mod=readonly -trimpath
+export CGO_ENABLED=0
 
 # Get the currently used golang install path (in GOPATH/bin, unless GOBIN is set)
 ifeq (,$(shell go env GOBIN))
@@ -79,7 +83,7 @@ test: manifests generate fmt vet envtest ## Run tests.
 
 .PHONY: build
 build-%: generate fmt vet ## Build manager binary.
-	CGO_ENABLED=0 go build -v -trimpath -o bin/$* cmd/$*/main.go
+	CGO_ENABLED=0 go build -v -o bin/$* cmd/$*/main.go
 
 .PHONY: run
 run-%: manifests generate fmt vet ## Run a controller from your host.
@@ -91,12 +95,16 @@ run-%: manifests generate fmt vet ## Run a controller from your host.
 .PHONY: docker-build
 docker-build: ## Build docker image with the manager.
 	docker build -t ${KUBELB_IMG} -f kubelb.dockerfile .
+	docker tag ${KUBELB_IMG} ${KUBELB_IMG}:${GITTAG}
 	docker build -t ${KUBELB_CCM_IMG} -f ccm.dockerfile .
+	docker tag ${KUBELB_CCM_IMG} ${KUBELB_CCM_IMG}:${GITTAG}
 
 .PHONY: docker-push
 docker-push: ## Push docker image with the manager.
 	docker push ${KUBELB_IMG}
+	docker push ${KUBELB_IMG}:${GITTAG}
 	docker push ${KUBELB_CCM_IMG}
+	docker push ${KUBELB_CCM_IMG}:${GITTAG}
 
 ##@ Deployment
 

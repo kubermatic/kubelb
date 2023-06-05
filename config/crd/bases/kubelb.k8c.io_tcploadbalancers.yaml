@@ -87,9 +87,7 @@ spec:
                             format: int32
                             type: integer
                           protocol:
-                            allOf:
-                            - default: TCP
-                            - default: TCP
+                            default: TCP
                             description: The IP protocol for this port. Must be TCP.
                               Default is TCP.
                             enum:
@@ -122,9 +120,7 @@ spec:
                       format: int32
                       type: integer
                     protocol:
-                      allOf:
-                      - default: TCP
-                      - default: TCP
+                      default: TCP
                       description: The IP protocol for this port. Supports "TCP".
                         Default is TCP.
                       enum:

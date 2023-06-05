@@ -44,7 +44,6 @@ type LoadBalancerPort struct {
 	// The IP protocol for this port. Supports "TCP".
 	// Default is TCP.
 	// +optional
-	// +kubebuilder:default=TCP
 	// +kubebuilder:validation:Enum=TCP
 	Protocol corev1.Protocol `json:"protocol,omitempty" protobuf:"bytes,2,opt,name=protocol,casttype=Protocol"`
 
@@ -68,7 +67,6 @@ type EndpointPort struct {
 	// Must be TCP.
 	// Default is TCP.
 	// +optional
-	// +kubebuilder:default=TCP
 	// +kubebuilder:validation:Enum=TCP
 	Protocol corev1.Protocol `json:"protocol,omitempty" protobuf:"bytes,3,opt,name=protocol,casttype=Protocol"`
 }
