@@ -1,18 +1,18 @@
-# permissions for end users to edit loadbalancers.
+# permissions for end users to edit tcploadbalancers.
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
   labels:
     app.kubernetes.io/name: clusterrole
-    app.kubernetes.io/instance: loadbalancer-editor-role
+    app.kubernetes.io/instance: tcploadbalancer-editor-role
     app.kubernetes.io/component: rbac
     app.kubernetes.io/part-of: kubelb
-  name: loadbalancer-editor-role
+  name: tcploadbalancer-editor-role
 rules:
 - apiGroups:
   - kubelb.k8c.io
   resources:
-  - loadbalancers
+  - tcploadbalancers
   verbs:
   - create
   - delete
@@ -24,6 +24,6 @@ rules:
 - apiGroups:
   - kubelb.k8c.io
   resources:
-  - loadbalancers/status
+  - tcploadbalancers/status
   verbs:
   - get
