@@ -39,8 +39,8 @@ var (
 
 func init() {
 	_ = clientgoscheme.AddToScheme(scheme)
-
 	_ = kubelbk8ciov1alpha1.AddToScheme(scheme)
+
 	// +kubebuilder:scaffold:scheme
 }
 
@@ -55,8 +55,7 @@ func main() {
 	flag.StringVar(&metricsAddr, "metrics-addr", ":0", "The address the metric endpoint binds to.")
 	flag.StringVar(&probeAddr, "health-probe-bind-address", ":8081", "The address the probe endpoint binds to.")
 	flag.BoolVar(&enableLeaderElection, "enable-leader-election", false,
-		"Enable leader election for controller kubelb. "+
-			"Enabling this will ensure there is only one active controller kubelb.")
+		"Enable leader election for controller kubelb. Enabling this will ensure there is only one active controller kubelb.")
 	flag.BoolVar(&enableDebugMode, "debug", false, "Enables debug mode")
 
 	opts := zap.Options{
@@ -76,14 +75,12 @@ func main() {
 		LeaderElectionID:              "19f32e7b.kubelb.k8c.io",
 		LeaderElectionReleaseOnCancel: true,
 	})
-
 	if err != nil {
 		setupLog.Error(err, "unable to start kubelb")
 		os.Exit(1)
 	}
 
 	envoyServer, err := envoy.NewServer(envoyListenAddress, enableDebugMode)
-
 	if err != nil {
 		setupLog.Error(err, "unable to create envoy server")
 		os.Exit(1)

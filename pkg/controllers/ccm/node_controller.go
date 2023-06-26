@@ -19,38 +19,35 @@ package ccm
 import (
 	"context"
 
-	"k8c.io/kubelb/pkg/generated/clientset/versioned/typed/kubelb.k8c.io/v1alpha1"
-
 	kubelbiov1alpha1 "k8c.io/kubelb/pkg/api/kubelb.k8c.io/v1alpha1"
 	"k8c.io/kubelb/pkg/kubelb"
 
 	"github.com/go-logr/logr"
 	corev1 "k8s.io/api/core/v1"
-	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
-	"sigs.k8s.io/controller-runtime/pkg/client"
+	ctrlclient "sigs.k8s.io/controller-runtime/pkg/client"
 )
 
-// KubeLbNodeReconciler reconciles a Service object
-type KubeLbNodeReconciler struct {
-	client.Client
-	KlbClient v1alpha1.LoadBalancerInterface
-	Log       logr.Logger
-	Scheme    *runtime.Scheme
-	Endpoints *kubelb.Endpoints
+// KubeLBNodeReconciler reconciles a Service object
+type KubeLBNodeReconciler struct {
+	ctrlclient.Client
+
+	KubeLBClient ctrlclient.Client
+	Log          logr.Logger
+	Scheme       *runtime.Scheme
+	Endpoints    *kubelb.Endpoints
 }
 
 // +kubebuilder:rbac:groups="",resources=nodes,verbs=list;get;watch
 
-func (r *KubeLbNodeReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+func (r *KubeLBNodeReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	log := r.Log.WithValues("name", req.Name)
 
 	log.V(2).Info("reconciling node")
 
 	nodeList := &corev1.NodeList{}
 	err := r.List(ctx, nodeList)
-
 	if err != nil {
 		log.Error(err, "unable to list nodeList")
 		return ctrl.Result{}, err
@@ -69,9 +66,9 @@ func (r *KubeLbNodeReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 	r.Endpoints.ClusterEndpoints = r.Endpoints.GetEndpoints(nodeList)
 	log.V(5).Info("proceeding with", "endpoints", r.Endpoints.ClusterEndpoints)
 
-	//patch endpoints
-	tcpLbList, err := r.KlbClient.List(ctx, v1.ListOptions{})
-	if err != nil {
+	// patch endpoints
+	var tcpLbList kubelbiov1alpha1.TCPLoadBalancerList
+	if err = r.KubeLBClient.List(ctx, &tcpLbList); err != nil {
 		log.Error(err, "unable to list LoadBalancer")
 		return ctrl.Result{}, err
 	}
@@ -90,10 +87,10 @@ func (r *KubeLbNodeReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 			endpoints.Addresses = endpointAddresses
 		}
 
-		_, err = r.KlbClient.Update(ctx, &tcpLb, v1.UpdateOptions{})
-		if err != nil {
+		if err = r.KubeLBClient.Update(ctx, &tcpLb); err != nil {
 			log.Error(err, "unable to update", "LoadBalancer", tcpLb.Name)
 		}
+
 		log.V(2).Info("updated", "LoadBalancer", tcpLb.Name)
 		log.V(7).Info("updated to", "LoadBalancer", tcpLb)
 
@@ -102,7 +99,7 @@ func (r *KubeLbNodeReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 	return ctrl.Result{}, nil
 }
 
-func (r *KubeLbNodeReconciler) SetupWithManager(mgr ctrl.Manager) error {
+func (r *KubeLBNodeReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&corev1.Node{}).
 		Complete(r)

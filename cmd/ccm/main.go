@@ -24,10 +24,8 @@ import (
 	"os/signal"
 	"path/filepath"
 	"syscall"
-	"time"
 
-	informers "k8c.io/kubelb/pkg/generated/informers/externalversions"
-
+	kubelbk8ciov1alpha1 "k8c.io/kubelb/pkg/api/kubelb.k8c.io/v1alpha1"
 	"k8c.io/kubelb/pkg/controllers/ccm"
 	"k8c.io/kubelb/pkg/kubelb"
 
@@ -35,6 +33,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	_ "k8s.io/client-go/plugin/pkg/client/auth/gcp"
+	"k8s.io/client-go/tools/clientcmd"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
@@ -50,7 +49,7 @@ var (
 
 func init() {
 	_ = clientgoscheme.AddToScheme(scheme)
-	//_ = kubelbk8ciov1alpha1.SchemeBuilder.AddToScheme(scheme)
+	_ = kubelbk8ciov1alpha1.AddToScheme(scheme)
 
 	// +kubebuilder:scaffold:scheme
 }
@@ -95,7 +94,7 @@ func main() {
 
 	setupLog.V(1).Info("using endpoint address", "type", endpointAddressType)
 
-	var sharedEndpoints = kubelb.Endpoints{
+	sharedEndpoints := kubelb.Endpoints{
 		ClusterEndpoints:    []string{},
 		EndpointAddressType: endpointAddressType,
 	}
@@ -103,14 +102,16 @@ func main() {
 	// setup signal handler
 	ctx := ctrl.SetupSignalHandler()
 
-	kubeLbClient, err := kubelb.NewClient(clusterName, kubeLbKubeconf)
+	kubeLBRestConfig, err := clientcmd.NewNonInteractiveDeferredLoadingClientConfig(
+		&clientcmd.ClientConfigLoadingRules{ExplicitPath: kubeLbKubeconf},
+		&clientcmd.ConfigOverrides{},
+	).ClientConfig()
 	if err != nil {
-		setupLog.Error(err, "unable to create client for kubelb cluster")
+		setupLog.Error(err, "unable to create rest config for kubelb cluster")
 		os.Exit(1)
 	}
 
-	//verify update status in user cluster
-	loadBalancerInformerFactory := informers.NewSharedInformerFactoryWithOptions(kubeLbClient.Clientset, time.Second*120, informers.WithNamespace(clusterName))
+	kubeLBMgr, err := ctrl.NewManager(kubeLBRestConfig, ctrl.Options{})
 
 	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
 		Scheme:                 scheme,
@@ -121,47 +122,49 @@ func main() {
 		LeaderElectionID:       "19f32e7b.ccm.kubelb.k8c.io",
 	})
 	if err != nil {
-		setupLog.Error(err, "unable to start ccm")
+		setupLog.Error(err, "unable to start ccm manager")
 		os.Exit(1)
 	}
 
-	if err = (&ccm.KubeLbNodeReconciler{
-		Client:    mgr.GetClient(),
-		Log:       ctrl.Log.WithName("kubelb.node.reconciler"),
-		Scheme:    mgr.GetScheme(),
-		KlbClient: kubeLbClient.TcpLbClient,
-		Endpoints: &sharedEndpoints,
+	if err := mgr.Add(kubeLBMgr); err != nil {
+		setupLog.Error(err, "unable to start kubelb manager")
+		os.Exit(1)
+	}
+
+	if err = (&ccm.KubeLBNodeReconciler{
+		Client:       mgr.GetClient(),
+		Log:          ctrl.Log.WithName("kubelb.node.reconciler"),
+		Scheme:       mgr.GetScheme(),
+		KubeLBClient: kubeLBMgr.GetClient(),
+		Endpoints:    &sharedEndpoints,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "reconciler", "kubelb.node.reconciler")
 		os.Exit(1)
 	}
 
-	if err = (&ccm.KubeLbServiceReconciler{
-		Client:               mgr.GetClient(),
-		Log:                  ctrl.Log.WithName("kubelb.service.reconciler"),
-		Scheme:               mgr.GetScheme(),
-		KubeLbClient:         kubeLbClient.TcpLbClient,
-		CloudController:      enableCloudController,
-		Endpoints:            &sharedEndpoints,
-		ClusterName:          clusterName,
-		LoadBalancerInformer: loadBalancerInformerFactory.Kubelb().V1alpha1().LoadBalancers(),
+	if err = (&ccm.KubeLBServiceReconciler{
+		Client:          mgr.GetClient(),
+		KubeLBMananger:  kubeLBMgr,
+		Log:             ctrl.Log.WithName("kubelb.service.reconciler"),
+		Scheme:          mgr.GetScheme(),
+		CloudController: enableCloudController,
+		Endpoints:       &sharedEndpoints,
+		ClusterName:     clusterName,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "reconciler", "kubelb.service.reconciler")
 		os.Exit(1)
 	}
 
-	//this is a copy and paste of SetupSignalHandler which only returns a context
-	tcplbInformerChannel := make(chan struct{})
+	// this is a copy and paste of SetupSignalHandler which only returns a context
+	signals := make(chan struct{})
 	c := make(chan os.Signal, 2)
 	signal.Notify(c, []os.Signal{os.Interrupt, syscall.SIGTERM}...)
 	go func() {
 		<-c
-		close(tcplbInformerChannel)
+		close(signals)
 		<-c
 		os.Exit(1) // second signal. Exit directly.
 	}()
-
-	loadBalancerInformerFactory.Start(tcplbInformerChannel)
 
 	//+kubebuilder:scaffold:builder
 

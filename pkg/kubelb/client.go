@@ -20,21 +20,12 @@ import (
 	"os"
 	"path/filepath"
 
-	kubelbClient "k8c.io/kubelb/pkg/generated/clientset/versioned"
-	kubelbv1alpha1 "k8c.io/kubelb/pkg/generated/clientset/versioned/typed/kubelb.k8c.io/v1alpha1"
-
 	"k8s.io/client-go/tools/clientcmd"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
-type Client struct {
-	TcpLbClient kubelbv1alpha1.LoadBalancerInterface
-	Clientset   *kubelbClient.Clientset
-	Namespace   string
-}
-
 // Client for the KubeLb kubernetes Custer.
-func NewClient(clusterName string, kubeConfPath string) (*Client, error) {
-
+func NewClient(clusterName string, kubeConfPath string) (client.Client, error) {
 	var kubeconfig string
 	if kubeConfPath == "" {
 		kubeconfig = filepath.Join(
@@ -44,24 +35,10 @@ func NewClient(clusterName string, kubeConfPath string) (*Client, error) {
 		kubeconfig = kubeConfPath
 	}
 
-	config, err := clientcmd.BuildConfigFromFlags("", kubeconfig)
+	restConfig, err := clientcmd.BuildConfigFromFlags("", kubeconfig)
 	if err != nil {
 		return nil, err
 	}
 
-	clientset, err := kubelbClient.NewForConfig(config)
-	if err != nil {
-		return nil, err
-	}
-
-	kubeLbAlpha1Clientset := clientset.KubelbV1alpha1()
-
-	tcpLBClient := kubeLbAlpha1Clientset.LoadBalancers(clusterName)
-
-	return &Client{
-		TcpLbClient: tcpLBClient,
-		Clientset:   clientset,
-		Namespace:   clusterName,
-	}, nil
-
+	return client.New(restConfig, client.Options{})
 }
