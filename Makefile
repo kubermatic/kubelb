@@ -131,6 +131,11 @@ deploy-%: manifests kustomize ## Deploy controller to the K8s cluster specified 
 undeploy-%: ## Undeploy controller from the K8s cluster specified in ~/.kube/config. Call with ignore-not-found=true to ignore resource not found errors during deletion.
 	$(KUSTOMIZE) build config/$* | kubectl delete --ignore-not-found=$(ignore-not-found) -f -
 
+.PHONY: bump
+bump: kustomize
+	cd config/deploy/kubelb && $(KUSTOMIZE) edit set image controller=quay.io/kubermatic/kubelb:$(IMAGE_TAG)
+	cd config/deploy/ccm && $(KUSTOMIZE) edit set image controller=quay.io/kubermatic/kubelb-ccm:$(IMAGE_TAG)
+
 ##@ Build Dependencies
 
 ## Location to install dependencies to
