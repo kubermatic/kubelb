@@ -111,7 +111,9 @@ func main() {
 		os.Exit(1)
 	}
 
-	kubeLBMgr, err := ctrl.NewManager(kubeLBRestConfig, ctrl.Options{})
+	kubeLBMgr, err := ctrl.NewManager(kubeLBRestConfig, ctrl.Options{
+		Scheme: scheme,
+	})
 
 	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
 		Scheme:                 scheme,
