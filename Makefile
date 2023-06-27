@@ -82,6 +82,8 @@ test: manifests generate fmt vet envtest ## Run tests.
 ##@ Build
 
 .PHONY: build
+build: build-ccm build-kubelb
+
 build-%: generate fmt vet ## Build manager binary.
 	CGO_ENABLED=0 go build -v -o bin/$* cmd/$*/main.go
 

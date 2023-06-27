@@ -102,17 +102,23 @@ func main() {
 	// setup signal handler
 	ctx := ctrl.SetupSignalHandler()
 
-	kubeLBRestConfig, err := clientcmd.NewNonInteractiveDeferredLoadingClientConfig(
-		&clientcmd.ClientConfigLoadingRules{ExplicitPath: kubeLbKubeconf},
+	kubeLBClientConfig := clientcmd.NewNonInteractiveDeferredLoadingClientConfig(
+		&clientcmd.ClientConfigLoadingRules{
+			ExplicitPath: kubeLbKubeconf,
+		},
 		&clientcmd.ConfigOverrides{},
-	).ClientConfig()
+	)
+
+	kubeLBRestConfig, err := kubeLBClientConfig.ClientConfig()
 	if err != nil {
 		setupLog.Error(err, "unable to create rest config for kubelb cluster")
 		os.Exit(1)
 	}
 
+	kubeLBNamespace, _, _ := kubeLBClientConfig.Namespace()
 	kubeLBMgr, err := ctrl.NewManager(kubeLBRestConfig, ctrl.Options{
-		Scheme: scheme,
+		Scheme:    scheme,
+		Namespace: kubeLBNamespace,
 	})
 
 	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
