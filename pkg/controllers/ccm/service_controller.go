@@ -37,7 +37,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/source"
 )
 
-const LbFinalizerName = "kubelb.k8c.io/lb-finalizer"
+const LBFinalizerName = "kubelb.k8c.io/tcplb-finalizer"
 
 // KubeLBServiceReconciler reconciles a Service object
 type KubeLBServiceReconciler struct {
@@ -86,43 +86,26 @@ func (r *KubeLBServiceReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 	kubelbClient := r.KubeLBMananger.GetClient()
 
 	// examine DeletionTimestamp to determine if object is under deletion
-	if service.ObjectMeta.DeletionTimestamp.IsZero() {
-		// The object is not being deleted, so if it does not have our finalizer,
-		// then lets add the finalizer and update the object. This is equivalent
-		// registering our finalizer.
-		if !utils.ContainsString(service.ObjectMeta.Finalizers, LbFinalizerName) {
-			service.ObjectMeta.Finalizers = append(service.ObjectMeta.Finalizers, LbFinalizerName)
-			log.V(4).Info("setting finalizer")
-			if err := r.Update(ctx, &service); err != nil {
-				return ctrl.Result{}, err
-			}
-		}
-	} else {
+	if !service.ObjectMeta.DeletionTimestamp.IsZero() {
 		// The object is being deleted
-		if utils.ContainsString(service.ObjectMeta.Finalizers, LbFinalizerName) {
-
-			log.V(1).Info("deleting LoadBalancer", "name", kubelb.NamespacedName(&service.ObjectMeta))
-
-			// our finalizer is present, so lets handle any external dependency
-			err := kubelbClient.Delete(ctx, &service)
-			if ctrlclient.IgnoreNotFound(err) != nil {
-				// if fail to delete the external dependency here, return with error
-				// so that it can be retried
-				return ctrl.Result{}, err
-			} else {
-				log.V(3).Info("LoadBalancer not found")
-			}
-
-			// remove our finalizer from the list and update it.
-			service.ObjectMeta.Finalizers = utils.RemoveString(service.ObjectMeta.Finalizers, LbFinalizerName)
-			if err := r.Update(ctx, &service); err != nil {
-				return ctrl.Result{}, err
-			}
-			log.V(4).Info("removed finalizer")
-		}
-
+		// our finalizer is present, so lets handle any external dependency
+		// if fail to delete the external dependency here, return with error
+		// so that it can be retried
+		// remove our finalizer from the list and update it.
 		// Stop reconciliation as the item is being deleted
-		return ctrl.Result{}, nil
+		return r.cleanupService(ctx, log, &service)
+	}
+
+	// The object is not being deleted, so if it does not have our finalizer,
+	// then lets add the finalizer and update the object. This is equivalent
+	// registering our finalizer.
+	if !utils.ContainsString(service.ObjectMeta.Finalizers, LBFinalizerName) {
+		service.ObjectMeta.Finalizers = append(service.ObjectMeta.Finalizers, LBFinalizerName)
+		log.V(4).Info("setting finalizer")
+
+		if err := r.Update(ctx, &service); err != nil {
+			return ctrl.Result{}, err
+		}
 	}
 
 	log.V(5).Info("proceeding with", "endpoints", clusterEndpoints)
@@ -173,6 +156,30 @@ func (r *KubeLBServiceReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 	log.V(7).Info("updated to", "LoadBalancer", actualTcpLB)
 
 	return ctrl.Result{}, err
+}
+
+func (r *KubeLBServiceReconciler) cleanupService(ctx context.Context, log logr.Logger, service *corev1.Service) (reconcile.Result, error) {
+	kubelbClient := r.KubeLBMananger.GetClient()
+
+	if utils.ContainsString(service.ObjectMeta.Finalizers, LBFinalizerName) {
+		log.V(1).Info("deleting LoadBalancer", "name", kubelb.NamespacedName(&service.ObjectMeta))
+
+		err := kubelbClient.Delete(ctx, service)
+		if ctrlclient.IgnoreNotFound(err) != nil {
+			return ctrl.Result{}, err
+		} else {
+			log.V(3).Info("LoadBalancer not found")
+		}
+
+		service.ObjectMeta.Finalizers = utils.RemoveString(service.ObjectMeta.Finalizers, LBFinalizerName)
+		if err := r.Update(ctx, service); err != nil {
+			return ctrl.Result{}, err
+		}
+
+		log.V(4).Info("removed finalizer")
+	}
+
+	return ctrl.Result{}, nil
 }
 
 func (r *KubeLBServiceReconciler) enqueueTCPLoadBalancer(a ctrlclient.Object) []reconcile.Request {
