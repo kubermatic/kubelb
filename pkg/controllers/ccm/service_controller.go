@@ -64,17 +64,20 @@ func (r *KubeLBServiceReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 	log.V(2).Info("reconciling service")
 
 	var service corev1.Service
+
 	err := r.Get(ctx, req.NamespacedName, &service)
 	if err != nil {
 		if ctrlclient.IgnoreNotFound(err) != nil {
 			log.Error(err, "unable to fetch service")
 		}
 		log.V(3).Info("service not found")
+
 		return ctrl.Result{}, nil
 	}
 
 	if service.Spec.Type != corev1.ServiceTypeNodePort && service.Spec.Type != corev1.ServiceTypeLoadBalancer ||
 		(!r.CloudController || service.Spec.Type == corev1.ServiceTypeNodePort) && !AnnotationServiceClassMatcher.Match(service.GetAnnotations()) {
+
 		return ctrl.Result{}, nil
 	}
 
@@ -82,8 +85,6 @@ func (r *KubeLBServiceReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 
 	log.V(6).Info("processing", "service", service)
 	log.V(5).Info("proceeding with", "endpoints", clusterEndpoints)
-
-	kubelbClient := r.KubeLBMananger.GetClient()
 
 	// examine DeletionTimestamp to determine if object is under deletion
 	if !service.ObjectMeta.DeletionTimestamp.IsZero() {
@@ -93,11 +94,10 @@ func (r *KubeLBServiceReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 		// so that it can be retried
 		// remove our finalizer from the list and update it.
 		// Stop reconciliation as the item is being deleted
-		return r.cleanupService(ctx, log, &service)
+		return r.cleanupService(ctx, log, clusterEndpoints, &service)
 	}
 
-	// The object is not being deleted, so if it does not have our finalizer,
-	// then lets add the finalizer and update the object. This is equivalent
+	// If it does not have our finalizer, then lets add the finalizer and update the object. This is equivalent
 	// registering our finalizer.
 	if !utils.ContainsString(service.ObjectMeta.Finalizers, LBFinalizerName) {
 		service.ObjectMeta.Finalizers = append(service.ObjectMeta.Finalizers, LBFinalizerName)
@@ -113,7 +113,10 @@ func (r *KubeLBServiceReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 	desiredTcpLB := kubelb.MapLoadBalancer(&service, clusterEndpoints, r.ClusterName)
 	log.V(6).Info("desired", "LoadBalancer", desiredTcpLB)
 
+	kubelbClient := r.KubeLBMananger.GetClient()
+
 	var actualTcpLB kubelbk8ciov1alpha1.TCPLoadBalancer
+
 	err = kubelbClient.Get(ctx, ctrlclient.ObjectKeyFromObject(desiredTcpLB), &actualTcpLB)
 	log.V(6).Info("actual", "LoadBalancer", actualTcpLB)
 
@@ -158,26 +161,33 @@ func (r *KubeLBServiceReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 	return ctrl.Result{}, err
 }
 
-func (r *KubeLBServiceReconciler) cleanupService(ctx context.Context, log logr.Logger, service *corev1.Service) (reconcile.Result, error) {
-	kubelbClient := r.KubeLBMananger.GetClient()
-
-	if utils.ContainsString(service.ObjectMeta.Finalizers, LBFinalizerName) {
-		log.V(1).Info("deleting LoadBalancer", "name", kubelb.NamespacedName(&service.ObjectMeta))
-
-		err := kubelbClient.Delete(ctx, service)
-		if ctrlclient.IgnoreNotFound(err) != nil {
-			return ctrl.Result{}, err
-		} else {
-			log.V(3).Info("LoadBalancer not found")
-		}
-
-		service.ObjectMeta.Finalizers = utils.RemoveString(service.ObjectMeta.Finalizers, LBFinalizerName)
-		if err := r.Update(ctx, service); err != nil {
-			return ctrl.Result{}, err
-		}
-
-		log.V(4).Info("removed finalizer")
+func (r *KubeLBServiceReconciler) cleanupService(ctx context.Context, log logr.Logger, clusterEndpoints []string, service *corev1.Service) (reconcile.Result, error) {
+	if !utils.ContainsString(service.ObjectMeta.Finalizers, LBFinalizerName) {
+		return ctrl.Result{}, nil
 	}
+
+	kubelbClient := r.KubeLBMananger.GetClient()
+	desiredTcpLB := kubelb.MapLoadBalancer(service, clusterEndpoints, r.ClusterName)
+	log.V(1).Info("deleting TCPLoadBalancer", "name", desiredTcpLB)
+
+	err := kubelbClient.Delete(ctx, desiredTcpLB)
+	switch {
+	case apierrors.IsNotFound(err):
+		return ctrl.Result{}, nil
+	case err != nil:
+		return ctrl.Result{}, fmt.Errorf("deleting TCPLoadBalancer: %w", err)
+	default:
+		// proceed
+	}
+
+	log.V(1).Info("deleting Service LoadBalancer finalizer", "name", kubelb.NamespacedName(&service.ObjectMeta))
+
+	service.ObjectMeta.Finalizers = utils.RemoveString(service.ObjectMeta.Finalizers, LBFinalizerName)
+	if err := r.Update(ctx, service); err != nil {
+		return ctrl.Result{}, err
+	}
+
+	log.V(4).Info("removed finalizer")
 
 	return ctrl.Result{}, nil
 }
