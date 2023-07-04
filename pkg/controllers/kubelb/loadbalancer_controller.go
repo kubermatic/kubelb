@@ -25,7 +25,7 @@ import (
 	"k8c.io/kubelb/pkg/kubelb"
 
 	"github.com/Masterminds/semver/v3"
-	cachev3 "github.com/envoyproxy/go-control-plane/pkg/cache/v3"
+	envoycachev3 "github.com/envoyproxy/go-control-plane/pkg/cache/v3"
 	envoyresource "github.com/envoyproxy/go-control-plane/pkg/resource/v3"
 	"github.com/pkg/errors"
 	appsv1 "k8s.io/api/apps/v1"
@@ -42,12 +42,14 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/source"
 )
 
+const EnvoyImage = "envoyproxy/envoy:distroless-v1.26.2"
+
 // LoadBalancerReconciler reconciles a LoadBalancer object
 type LoadBalancerReconciler struct {
 	client.Client
 	Scheme         *runtime.Scheme
 	Cache          cache.Cache
-	EnvoyCache     cachev3.SnapshotCache
+	EnvoyCache     envoycachev3.SnapshotCache
 	EnvoyBootstrap string
 }
 
@@ -196,6 +198,19 @@ func (r *LoadBalancerReconciler) reconcileDeployment(ctx context.Context, LoadBa
 			})
 		}
 
+		updateContainer := func(cnt corev1.Container) corev1.Container {
+			cnt.Name = LoadBalancer.Name
+			cnt.Image = EnvoyImage
+			cnt.Args = []string{
+				"--config-yaml", r.EnvoyBootstrap,
+				"--service-node", LoadBalancer.Name,
+				"--service-cluster", LoadBalancer.Namespace,
+			}
+			cnt.Ports = envoyListenerPorts
+
+			return cnt
+		}
+
 		deployment.Spec.Replicas = &replicas
 		deployment.Spec.Selector = &v1.LabelSelector{
 			MatchLabels: map[string]string{kubelb.LabelAppKubernetesName: LoadBalancer.Name},
@@ -207,37 +222,14 @@ func (r *LoadBalancerReconciler) reconcileDeployment(ctx context.Context, LoadBa
 			Labels:    map[string]string{kubelb.LabelAppKubernetesName: LoadBalancer.Name},
 		}
 
-		var containers []corev1.Container
+		envoyContainer := updateContainer(corev1.Container{})
 
 		if len(deployment.Spec.Template.Spec.Containers) == 1 {
 			currentContainer := deployment.Spec.Template.Spec.Containers[0]
-
-			currentContainer.Name = LoadBalancer.Name
-			currentContainer.Image = "envoyproxy/envoy-alpine:v1.21.6"
-			currentContainer.Args = []string{
-				"--config-yaml", r.EnvoyBootstrap,
-				"--service-node", LoadBalancer.Name,
-				"--service-cluster", LoadBalancer.Namespace,
-			}
-			currentContainer.Ports = envoyListenerPorts
-
-			containers = append(containers, currentContainer)
-		} else {
-			containers = []corev1.Container{
-				{
-					Name:  LoadBalancer.Name,
-					Image: "envoyproxy/envoy-alpine:v1.21.6",
-					Args: []string{
-						"--config-yaml", r.EnvoyBootstrap,
-						"--service-node", LoadBalancer.Name,
-						"--service-cluster", LoadBalancer.Namespace,
-					},
-					Ports: envoyListenerPorts,
-				},
-			}
+			envoyContainer = updateContainer(currentContainer)
 		}
 
-		deployment.Spec.Template.Spec.Containers = containers
+		deployment.Spec.Template.Spec.Containers = []corev1.Container{envoyContainer}
 
 		return ctrl.SetControllerReference(LoadBalancer, deployment, r.Scheme)
 	})
