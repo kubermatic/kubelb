@@ -37,7 +37,7 @@ Make sure your current cluster configuration for kubectl points to the correct c
 
 You probably want to change the default configuration of the agent or manager.
 
-To do so, you can edit the deployment with your parameters in the config/agent/deployment or config/manager/deployment
+To do so, you can edit the deployment with your parameters in the [ccm](./config/ccm/) or [kubelb](./config/kubelb/).
 directory.
 
 **Manager**
@@ -46,7 +46,7 @@ Deploy the manager to the load balancer cluster
 
 Install the LoadBalancers CRD: `make install`
 
-Deploy to load balancer cluster: `make deploy-manager`
+Deploy to load balancer cluster: `make deploy-kubelb`
 
 **Agent**
 
@@ -55,11 +55,11 @@ Deploy the agent to every user cluster where you want to use KubeLB
 Inside the deployment you need to change the ClusterName parameter to its actual name. Also make sure that a namespace
 is created inside the kubelb cluster, so the agent can create the CRDs inside its cluster namespace.
 
-The agent expects a configmap with a kubeconf file named `kubelb` to access the load balancer cluster.
+The agent expects a `Secret` with a kubeconf file named `kubelb` to access the load balancer cluster.
 
 To create such run: `kubectl --namespace kubelb create secret generic kubelb --from-file=<path to kubelb kubeconf file>`
 
-Deploy to user cluster: `make deploy-agent`
+Deploy to user cluster: `make deploy-ccm`
 
 ## Troubleshooting
 
