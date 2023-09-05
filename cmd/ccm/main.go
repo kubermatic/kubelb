@@ -115,11 +115,14 @@ func main() {
 		os.Exit(1)
 	}
 
-	kubeLBNamespace, _, _ := kubeLBClientConfig.Namespace()
 	kubeLBMgr, err := ctrl.NewManager(kubeLBRestConfig, ctrl.Options{
 		Scheme:    scheme,
-		Namespace: kubeLBNamespace,
+		Namespace: clusterName,
 	})
+	if err != nil {
+		setupLog.Error(err, "failed to create manager for kubelb cluster")
+		os.Exit(1)
+	}
 
 	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
 		Scheme:                 scheme,
