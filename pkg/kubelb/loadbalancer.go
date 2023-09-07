@@ -17,6 +17,8 @@ limitations under the License.
 package kubelb
 
 import (
+	"reflect"
+
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
@@ -63,6 +65,7 @@ func MapLoadBalancer(userService *corev1.Service, clusterEndpoints []string, clu
 				LabelOriginNamespace: userService.Namespace,
 				LabelOriginName:      userService.Name,
 			},
+			Annotations: userService.Annotations,
 		},
 		Spec: kubelbiov1alpha1.TCPLoadBalancerSpec{
 			Ports:     lbServicePorts,
@@ -128,5 +131,5 @@ func LoadBalancerIsDesiredState(actual, desired *kubelbiov1alpha1.TCPLoadBalance
 		}
 	}
 
-	return true
+	return reflect.DeepEqual(actual.Annotations, desired.Annotations)
 }

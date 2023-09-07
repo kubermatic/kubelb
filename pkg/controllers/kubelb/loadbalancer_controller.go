@@ -19,6 +19,7 @@ package kubelb
 import (
 	"context"
 	"reflect"
+	"strings"
 
 	kubelbk8ciov1alpha1 "k8c.io/kubelb/pkg/api/kubelb.k8c.io/v1alpha1"
 	envoycp "k8c.io/kubelb/pkg/envoy"
@@ -56,6 +57,7 @@ type LoadBalancerReconciler struct {
 // +kubebuilder:rbac:groups=kubelb.k8c.io,resources=tcploadbalancers,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=kubelb.k8c.io,resources=tcploadbalancers/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups="",resources=services,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups="",resources=namespaces,verbs=get;list;watch
 // +kubebuilder:rbac:groups="apps",resources=deployments,verbs=get;list;watch;create;update;patch;delete
 
 func (r *LoadBalancerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
@@ -246,11 +248,17 @@ func (r *LoadBalancerReconciler) reconcileService(ctx context.Context, LoadBalan
 
 	log.V(2).Info("verify service")
 
+	ns := &corev1.Namespace{}
+	if err := r.Get(ctx, types.NamespacedName{Name: LoadBalancer.Namespace}, ns); err != nil {
+		return err
+	}
+
 	service := &corev1.Service{
 		ObjectMeta: v1.ObjectMeta{
-			Name:      LoadBalancer.Name,
-			Namespace: LoadBalancer.Namespace,
-			Labels:    map[string]string{kubelb.LabelAppKubernetesName: LoadBalancer.Name},
+			Name:        LoadBalancer.Name,
+			Namespace:   LoadBalancer.Namespace,
+			Labels:      map[string]string{kubelb.LabelAppKubernetesName: LoadBalancer.Name},
+			Annotations: propagateAnnotations(ns.Annotations, LoadBalancer.Annotations),
 		},
 	}
 	err := r.Get(ctx, types.NamespacedName{
@@ -292,6 +300,7 @@ func (r *LoadBalancerReconciler) reconcileService(ctx context.Context, LoadBalan
 			ports = append(ports, allocatedPort)
 		}
 
+		service.Annotations = propagateAnnotations(ns.Annotations, LoadBalancer.Annotations)
 		service.Spec.Ports = ports
 
 		service.Spec.Selector = map[string]string{kubelb.LabelAppKubernetesName: LoadBalancer.Name}
@@ -339,6 +348,10 @@ func (r *LoadBalancerReconciler) SetupWithManager(mgr ctrl.Manager, ctx context.
 	if err != nil {
 		return err
 	}
+	_, err = r.Cache.GetInformer(ctx, &corev1.Namespace{})
+	if err != nil {
+		return err
+	}
 
 	err = c.Watch(
 		&source.Informer{Informer: serviceInformer},
@@ -349,4 +362,39 @@ func (r *LoadBalancerReconciler) SetupWithManager(mgr ctrl.Manager, ctx context.
 	)
 
 	return err
+}
+
+func propagateAnnotations(permitted map[string]string, loadbalancer map[string]string) map[string]string {
+	a := make(map[string]string)
+	permittedMap := make(map[string][]string)
+	for k, v := range permitted {
+		if strings.HasPrefix(k, kubelbk8ciov1alpha1.PropagateAnnotation) {
+			filter := strings.SplitN(k, "=", 2)
+			if len(filter) <= 1 {
+				permittedMap[v] = []string{}
+			} else {
+				// optional value filter provided
+				filterValues := strings.Split(filter[1], ",")
+				for i, v := range filterValues {
+					filterValues[i] = strings.TrimSpace(v)
+				}
+				permittedMap[filter[0]] = filterValues
+			}
+		}
+	}
+	for k, v := range loadbalancer {
+		if valuesFilter, ok := permittedMap[k]; ok {
+			if len(valuesFilter) == 0 {
+				a[k] = v
+			} else {
+				for _, vf := range valuesFilter {
+					if v == vf {
+						a[k] = v
+						break
+					}
+				}
+			}
+		}
+	}
+	return a
 }

@@ -151,6 +151,7 @@ func (r *KubeLBServiceReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 
 	log.V(1).Info("updating LoadBalancer spec", "name", desiredTcpLB.Name, "namespace", desiredTcpLB.Namespace)
 	actualTcpLB.Spec = desiredTcpLB.Spec
+	actualTcpLB.Annotations = desiredTcpLB.Annotations
 
 	err = kubelbClient.Update(ctx, &actualTcpLB)
 	if err != nil {

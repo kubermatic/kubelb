@@ -21,6 +21,11 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
+// PropagateAnnotation controls the annotations propagation. It is possible to provide optional list of comma separated
+// values after '=', other annotations not reppresented by any key or not matching the optional values are dropped.
+// To configure multiple different annotations, you can provide unique suffix e.g. "kubelb.k8c.io/propagate-annotation-1"
+var PropagateAnnotation = "kubelb.k8c.io/propagate-annotation"
+
 // NOTE: json tags are required.  Any new fields you add must have json tags for the fields to be serialized.
 
 // TCPLoadBalancerStatus defines the observed state of TCPLoadBalancer
