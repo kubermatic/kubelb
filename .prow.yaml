@@ -120,9 +120,9 @@ postsubmits:
           command:
             - /bin/bash
             - -c
-            - >-
+            - |
               set -euo pipefail &&
-              /usr/local/bin/entrypoint.sh &&
+              start-docker.sh
               docker login -u $QUAY_IO_USERNAME -p $QUAY_IO_PASSWORD quay.io &&
               make download-gocache docker-image-publish
           # docker-in-docker needs privileged mode
