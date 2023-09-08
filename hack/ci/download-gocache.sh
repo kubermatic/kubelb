@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-# Copyright 2021 The Operating System Manager contributors.
+# Copyright 2023 The KubeLB Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -14,14 +14,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-### This script is used when building Go binaries to download a prewarmed
-### cache for `$GOCACHE`. This is an uncompressed tar archive in a local
-### S3-compatible storage, which is just downloaded and extracted. This
-### significantly speeds up CI jobs, as much fewer packages have to be
-### compiled.
-###
-### A dedicated postsubmit job that runs after every change to the main
-### branch is keeping the cache up-to-date.
 
 set -euo pipefail
 
@@ -31,8 +23,7 @@ set -euo pipefail
 set -o monitor
 
 # The gocache needs a matching go version to work, so append that to the name
-GO_VERSION="$(go version | awk '{ print $3 }' | sed 's/go//g')"
-GOARCH="$(go env GOARCH)"
+GO_VERSION="$(go version|awk '{ print $3 }'|sed 's/go//g')"
 
 # Make sure we never error, this is always best-effort only
 exit_gracefully() {
@@ -43,10 +34,8 @@ exit_gracefully() {
 }
 trap exit_gracefully EXIT
 
-source $(dirname $0)/../lib.sh
-
 if [ -z "${GOCACHE_MINIO_ADDRESS:-}" ]; then
-  echodate "env var GOCACHE_MINIO_ADDRESS unset, can not download gocache"
+  echo "env var GOCACHE_MINIO_ADDRESS unset, can not download gocache"
   exit 0
 fi
 
@@ -54,52 +43,29 @@ GOCACHE="$(go env GOCACHE)"
 # Make sure it actually exists
 mkdir -p "${GOCACHE}"
 
-# PULL_BASE_REF is the name of the current branch in case of a post-submit
-# or the name of the base branch in case of a PR.
-GIT_BRANCH="${PULL_BASE_REF:-}"
-CACHE_VERSION="${PULL_BASE_SHA:-}"
+export CACHE_VERSION="${PULL_BASE_SHA:-}"
 
 # Periodics just use their head ref
 if [[ -z "${CACHE_VERSION}" ]]; then
   CACHE_VERSION="$(git rev-parse HEAD)"
-  GIT_BRANCH="main"
 fi
 
 if [ -z "${PULL_NUMBER:-}" ]; then
-  # Special case: This is called in a Postsubmit. Go one revision back,
+  # Special case: This is called in a Postubmit. Go one revision back,
   # as there can't be a cache for the current revision
   CACHE_VERSION="$(git rev-parse ${CACHE_VERSION}~1)"
 fi
 
-# normalize branch name to prevent accidental directories being created
-GIT_BRANCH="$(echo "$GIT_BRANCH" | sed 's#/#-#g')"
+ARCHIVE_NAME="kubelb-${CACHE_VERSION}-${GO_VERSION}.tar"
+URL="${GOCACHE_MINIO_ADDRESS}/${ARCHIVE_NAME}"
 
-ARCHIVE_NAME="${CACHE_VERSION}-${GO_VERSION}-${GOARCH}.tar"
-URL="${GOCACHE_MINIO_ADDRESS}/operating-system-manager/${GIT_BRANCH}/${ARCHIVE_NAME}"
-
-# Do not go through the retry loop when there is nothing, but do try the
-# first parent if no cache was found. This is helpful for retests happening
-# quickly after something got merged to main and no gocache for the most
-# recent commit exists yet. In this case, taking the previous commit's
-# cache is better than nothing.
+# Do not go through the retry loop when there is nothing
 if ! curl --head --silent --fail "${URL}" > /dev/null; then
-  echodate "Remote has no gocache ${ARCHIVE_NAME}, trying previous commit as a fallback..."
-
-  CACHE_VERSION="$(git rev-parse ${CACHE_VERSION}~1)"
-  ARCHIVE_NAME="${CACHE_VERSION}-${GO_VERSION}-${GOARCH}.tar"
-  URL="${GOCACHE_MINIO_ADDRESS}/operating-system-manager/${GIT_BRANCH}/${ARCHIVE_NAME}"
-
-  if ! curl --head --silent --fail "${URL}" > /dev/null; then
-    echodate "Remote has no gocache ${ARCHIVE_NAME}, giving up."
-    exit 0
-  fi
+  echo "Remote has no gocache ${ARCHIVE_NAME}, exiting"
+  exit 0
 fi
 
-echodate "Downloading and extracting gocache"
-TEST_NAME="Download and extract gocache"
-# Passing the Headers as space-separated literals doesn't seem to work
-# in conjunction with the retry func, so we just put them in a file instead
-echo 'Content-Type: application/octet-stream' > /tmp/headers
-retry 5 curl --fail -H @/tmp/headers "${URL}" | tar -C $GOCACHE -xf -
+echo "Downloading and extracting gocache"
+curl --fail --header "Content-Type: application/octet-stream" "${URL}" | tar -C $GOCACHE -xf -
 
-echodate "Successfully fetched gocache into $GOCACHE"
+echo "Successfully fetched gocache into $GOCACHE"
