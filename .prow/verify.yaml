@@ -1,4 +1,4 @@
-# Copyright 2020 The KubeLB Authors.
+# Copyright 2023 The KubeLB Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -22,7 +22,7 @@ presubmits:
       preset-goproxy: "true"
     spec:
       containers:
-        - image: golang:1.19
+        - image: golang:1.21
           command:
             - make
           args:
@@ -39,7 +39,7 @@ presubmits:
       preset-goproxy: "true"
     spec:
       containers:
-        - image: golangci/golangci-lint:v1.50
+        - image: golangci/golangci-lint:v1.54.1
           command:
             - make
           args:
@@ -57,7 +57,7 @@ presubmits:
       preset-goproxy: "true"
     spec:
       containers:
-        - image: quay.io/kubermatic/build:go-1.19-node-18-kind-0.16-2
+        - image: quay.io/kubermatic/build:go-1.21-node-18-kind-0.20-1
           command:
             - make
           args:
@@ -72,7 +72,7 @@ presubmits:
     clone_uri: "ssh://git@github.com/kubermatic/kubelb.git"
     spec:
       containers:
-        - image: quay.io/kubermatic/build:go-1.19-node-18-kind-0.16-2
+        - image: quay.io/kubermatic/build:go-1.21-node-18-kind-0.20-1
           command:
             - make
           args:
@@ -86,11 +86,11 @@ presubmits:
       preset-goproxy: "true"
     spec:
       containers:
-        - image: golang:1.19
+        - image: golang:1.21
           command:
             - make
           args:
-            - all
+            - build
           resources:
             requests:
               memory: 1Gi
@@ -98,58 +98,3 @@ presubmits:
             limits:
               memory: 2Gi
               cpu: 2
-
-postsubmits:
-  - name: ci-push-kubelb
-    always_run: true
-    decorate: true
-    clone_uri: "ssh://git@github.com/kubermatic/kubelb.git"
-    branches:
-      - ^main
-      # Match on tags
-      - ^v\d+\.\d+\.\d+.*
-    reporter_config:
-      slack:
-        channel: dev-kubelb
-    labels:
-      preset-docker-push: "true"
-      preset-goproxy: "true"
-    spec:
-      containers:
-        - image: quay.io/kubermatic/build:go-1.19-node-18-kind-0.16-2
-          command:
-            - /bin/bash
-            - -c
-            - |
-              set -euo pipefail &&
-              start-docker.sh
-              docker login -u $QUAY_IO_USERNAME -p $QUAY_IO_PASSWORD quay.io &&
-              make download-gocache docker-build docker-push
-          # docker-in-docker needs privileged mode
-          securityContext:
-            privileged: true
-          resources:
-            requests:
-              cpu: 100m
-              memory: 500m
-
-  - name: ci-push-kubelb-upload-gocache
-    always_run: true
-    decorate: true
-    clone_uri: "ssh://git@github.com/kubermatic/kubelb.git"
-    branches:
-      - ^main$
-    reporter_config:
-      slack:
-        channel: dev-kubelb
-    labels:
-      preset-goproxy: "true"
-    spec:
-      containers:
-        - image: quay.io/kubermatic/build:go-1.19-node-18-kind-0.16-2
-          command:
-            - "./hack/ci/upload-gocache.sh"
-          resources:
-            requests:
-              cpu: 100m
-              memory: 1Gi
