@@ -1,13 +1,19 @@
+SHELL = /bin/bash -eu -o pipefail
+
 # Image URL to use all building/pushing image targets
 KUBELB_IMG ?= quay.io/kubermatic/kubelb
 KUBELB_CCM_IMG ?= quay.io/kubermatic/kubelb-ccm
 # ENVTEST_K8S_VERSION refers to the version of kubebuilder assets to be downloaded by envtest binary.
 ENVTEST_K8S_VERSION = 1.25.0
-GITTAG=$(shell git describe --tags --always)
 
-export GOFLAGS?=-mod=readonly -trimpath
+export GOPATH?=$(shell go env GOPATH)
 export CGO_ENABLED=0
-GO_VERSION = 1.19.0
+export GOPROXY?=https://proxy.golang.org
+export GO111MODULE=on
+export GOFLAGS?=-mod=readonly -trimpath
+export GIT_TAG ?= $(shell git tag --points-at HEAD)
+
+GO_VERSION = 1.21.0
 
 # Get the currently used golang install path (in GOPATH/bin, unless GOBIN is set)
 ifeq (,$(shell go env GOBIN))
@@ -76,10 +82,6 @@ verify-boilerplate:  ## Run verify-boilerplate code.
 clean:  ## Clean binaries
 	rm -rf bin/*
 
-.PHONY: download-gocache
-download-gocache:
-	@./hack/ci/download-gocache.sh
-
 .PHONY: test
 test: manifests generate fmt vet envtest ## Run tests.
 	KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) --bin-dir $(LOCALBIN) -p path)" go test ./... -coverprofile cover.out
@@ -95,6 +97,10 @@ build-%: generate fmt vet ## Build manager binary.
 .PHONY: run
 run-%: manifests generate fmt vet ## Run a controller from your host.
 	go run cmd/$*/main.go
+
+.PHONY: download-gocache
+download-gocache:
+	@./hack/ci/download-gocache.sh
 
 # If you wish built the manager image targeting other platforms you can use the --platform flag.
 # (i.e. docker build --platform linux/arm64 ). However, you must enable docker buildKit for it.
@@ -154,8 +160,8 @@ CONTROLLER_GEN ?= $(LOCALBIN)/controller-gen
 ENVTEST ?= $(LOCALBIN)/setup-envtest
 
 ## Tool Versions
-KUSTOMIZE_VERSION ?= v3.8.7
-CONTROLLER_TOOLS_VERSION ?= v0.9.2
+KUSTOMIZE_VERSION ?= v4.5.7
+CONTROLLER_TOOLS_VERSION ?= v0.11.3
 
 KUSTOMIZE_INSTALL_SCRIPT ?= "https://raw.githubusercontent.com/kubernetes-sigs/kustomize/master/hack/install_kustomize.sh"
 .PHONY: kustomize
