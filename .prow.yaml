@@ -124,7 +124,7 @@ postsubmits:
               set -euo pipefail &&
               start-docker.sh
               docker login -u $QUAY_IO_USERNAME -p $QUAY_IO_PASSWORD quay.io &&
-              make download-gocache docker-image-publish
+              make download-gocache docker-build docker-push
           # docker-in-docker needs privileged mode
           securityContext:
             privileged: true
@@ -148,7 +148,7 @@ postsubmits:
       containers:
         - image: quay.io/kubermatic/build:go-1.19-node-18-kind-0.16-2
           command:
-            - "./hack/ci-upload-gocache.sh"
+            - "./hack/ci/upload-gocache.sh"
           resources:
             requests:
               cpu: 100m
