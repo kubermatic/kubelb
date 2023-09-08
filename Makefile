@@ -15,6 +15,11 @@ export GIT_TAG ?= $(shell git tag --points-at HEAD)
 
 GO_VERSION = 1.21.0
 
+IMAGE_TAG = \
+		$(shell echo $$(git rev-parse HEAD && if [[ -n $$(git status --porcelain) ]]; then echo '-dirty'; fi)|tr -d ' ')
+CCM_IMAGE_NAME ?= $(KUBELB_CCM_IMG):$(IMAGE_TAG)
+KUBELB_IMAGE_NAME ?= $(KUBELB_IMG):$(IMAGE_TAG)
+
 # Get the currently used golang install path (in GOPATH/bin, unless GOBIN is set)
 ifeq (,$(shell go env GOBIN))
 GOBIN=$(shell go env GOPATH)/bin
@@ -105,19 +110,27 @@ download-gocache:
 # If you wish built the manager image targeting other platforms you can use the --platform flag.
 # (i.e. docker build --platform linux/arm64 ). However, you must enable docker buildKit for it.
 # More info: https://docs.docker.com/develop/develop-images/build_enhancements/
-.PHONY: docker-build
-docker-build: ## Build docker image with the manager.
-	docker build -t ${KUBELB_IMG} -f kubelb.dockerfile .
-	docker tag ${KUBELB_IMG} ${KUBELB_IMG}:${GITTAG}
-	docker build -t ${KUBELB_CCM_IMG} -f ccm.dockerfile .
-	docker tag ${KUBELB_CCM_IMG} ${KUBELB_CCM_IMG}:${GITTAG}
+.PHONY: docker-image
+docker-image:
+	docker build --build-arg GO_VERSION=$(GO_VERSION) -t ${KUBELB_IMAGE_NAME} -f kubelb.dockerfile .
+	docker build --build-arg GO_VERSION=$(GO_VERSION) -t ${CCM_IMAGE_NAME} -f ccm.dockerfile .
 
-.PHONY: docker-push
-docker-push: ## Push docker image with the manager.
-	docker push ${KUBELB_IMG}
-	docker push ${KUBELB_IMG}:${GITTAG}
-	docker push ${KUBELB_CCM_IMG}
-	docker push ${KUBELB_CCM_IMG}:${GITTAG}
+.PHONY: docker-image-publish
+docker-image-publish: docker-image
+	docker push $(KUBELB_IMAGE_NAME)
+	docker push $(CCM_IMAGE_NAME)
+	if [[ -n "$(GIT_TAG)" ]]; then \
+		$(eval IMAGE_TAG = $(GIT_TAG)) \
+		docker build -t $(KUBELB_IMAGE_NAME) -f kubelb.dockerfile . && \
+		docker push $(KUBELB_IMAGE_NAME) && \
+		docker build -t $(CCM_IMAGE_NAME) . && \
+		docker push $(CCM_IMAGE_NAME) && \
+		$(eval IMAGE_TAG = latest) \
+		docker build -t $(KUBELB_IMAGE_NAME) -f kubelb.dockerfile . ;\
+		docker push $(KUBELB_IMAGE_NAME) ;\
+		docker build -t $(CCM_IMAGE_NAME) -f ccm.dockerfile . ;\
+		docker push $(CCM_IMAGE_NAME) ;\
+	fi
 
 ##@ Deployment
 
