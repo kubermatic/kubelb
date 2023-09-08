@@ -12,12 +12,20 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+ARG GO_VERSION=1.21.0
+FROM golang:${GO_VERSION} AS builder
+WORKDIR /go/src/k8c.io/kubelb
+COPY . .
+RUN make all
+
 FROM gcr.io/distroless/static:nonroot
 
 WORKDIR /
 
-COPY bin/ccm .
+COPY --from=builder \
+    /go/src/k8c.io/kubelb/bin/ccm \
+    /usr/local/bin/
 
 USER 65532:65532
 
-ENTRYPOINT ["/ccm"]
+ENTRYPOINT ["/usr/local/bin/ccm"]
