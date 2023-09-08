@@ -7,6 +7,7 @@ GITTAG=$(shell git describe --tags --always)
 
 export GOFLAGS?=-mod=readonly -trimpath
 export CGO_ENABLED=0
+GO_VERSION = 1.19.0
 
 # Get the currently used golang install path (in GOPATH/bin, unless GOBIN is set)
 ifeq (,$(shell go env GOBIN))
@@ -74,6 +75,10 @@ verify-boilerplate:  ## Run verify-boilerplate code.
 
 clean:  ## Clean binaries
 	rm -rf bin/*
+
+.PHONY: download-gocache
+download-gocache:
+	@./hack/ci/download-gocache.sh
 
 .PHONY: test
 test: manifests generate fmt vet envtest ## Run tests.
