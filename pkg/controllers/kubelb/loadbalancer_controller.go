@@ -300,7 +300,9 @@ func (r *LoadBalancerReconciler) reconcileService(ctx context.Context, LoadBalan
 			ports = append(ports, allocatedPort)
 		}
 
-		service.Annotations = propagateAnnotations(ns.Annotations, LoadBalancer.Annotations)
+		for k, v := range propagateAnnotations(ns.Annotations, LoadBalancer.Annotations) {
+			service.Annotations[k] = v
+		}
 		service.Spec.Ports = ports
 
 		service.Spec.Selector = map[string]string{kubelb.LabelAppKubernetesName: LoadBalancer.Name}
