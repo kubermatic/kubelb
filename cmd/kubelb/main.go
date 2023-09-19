@@ -25,6 +25,7 @@ import (
 	"k8c.io/kubelb/pkg/envoy"
 
 	"k8s.io/apimachinery/pkg/runtime"
+	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	_ "k8s.io/client-go/plugin/pkg/client/auth/gcp"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -32,31 +33,39 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 )
 
+type options struct {
+	metricsAddr          string
+	envoyListenAddress   string
+	enableLeaderElection bool
+	probeAddr            string
+	enableDebugMode      bool
+
+	// Envoy configuration
+	envoyProxyTopology string
+	envoyProxyReplicas int
+}
+
 var (
 	scheme   = runtime.NewScheme()
 	setupLog = ctrl.Log.WithName("init")
 )
 
 func init() {
-	_ = clientgoscheme.AddToScheme(scheme)
-	_ = kubelbk8ciov1alpha1.AddToScheme(scheme)
-
+	utilruntime.Must(clientgoscheme.AddToScheme(scheme))
+	utilruntime.Must(kubelbk8ciov1alpha1.AddToScheme(scheme))
 	// +kubebuilder:scaffold:scheme
 }
 
 func main() {
-	var metricsAddr string
-	var envoyListenAddress string
-	var enableLeaderElection bool
-	var probeAddr string
-	var enableDebugMode bool
-
-	flag.StringVar(&envoyListenAddress, "listen-address", ":8001", "Address to serve envoy control-plane on")
-	flag.StringVar(&metricsAddr, "metrics-addr", ":0", "The address the metric endpoint binds to.")
-	flag.StringVar(&probeAddr, "health-probe-bind-address", ":8081", "The address the probe endpoint binds to.")
-	flag.BoolVar(&enableLeaderElection, "enable-leader-election", false,
+	opt := &options{}
+	flag.StringVar(&opt.envoyListenAddress, "listen-address", ":8001", "Address to serve envoy control-plane on")
+	flag.StringVar(&opt.metricsAddr, "metrics-addr", ":0", "The address the metric endpoint binds to.")
+	flag.StringVar(&opt.probeAddr, "health-probe-bind-address", ":8081", "The address the probe endpoint binds to.")
+	flag.BoolVar(&opt.enableLeaderElection, "enable-leader-election", false,
 		"Enable leader election for controller kubelb. Enabling this will ensure there is only one active controller kubelb.")
-	flag.BoolVar(&enableDebugMode, "debug", false, "Enables debug mode")
+	flag.BoolVar(&opt.enableDebugMode, "debug", false, "Enables debug mode")
+	flag.StringVar(&opt.envoyProxyTopology, "envoy-proxy-topology", "shared", "The deployment topology for Envoy Proxy. Valid values are: shared, dedicated.")
+	flag.IntVar(&opt.envoyProxyReplicas, "envoy-proxy-replicas", 1, "Number of replicas for envoy proxy.")
 
 	opts := zap.Options{
 		Development: true,
@@ -64,14 +73,19 @@ func main() {
 	opts.BindFlags(flag.CommandLine)
 	flag.Parse()
 
+	if opt.envoyProxyTopology != "shared" && opt.envoyProxyTopology != "dedicated" {
+		setupLog.Error(nil, "invalid value for --envoy-proxy-topology. Valid values are: shared, dedicated")
+		os.Exit(1)
+	}
+
 	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&opts)))
 
 	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
 		Scheme:                        scheme,
-		MetricsBindAddress:            metricsAddr,
+		MetricsBindAddress:            opt.metricsAddr,
 		Port:                          9443,
-		HealthProbeBindAddress:        probeAddr,
-		LeaderElection:                enableLeaderElection,
+		HealthProbeBindAddress:        opt.probeAddr,
+		LeaderElection:                opt.enableLeaderElection,
 		LeaderElectionID:              "19f32e7b.kubelb.k8c.io",
 		LeaderElectionReleaseOnCancel: true,
 	})
@@ -80,7 +94,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	envoyServer, err := envoy.NewServer(envoyListenAddress, enableDebugMode)
+	envoyServer, err := envoy.NewServer(opt.envoyListenAddress, opt.enableDebugMode)
 	if err != nil {
 		setupLog.Error(err, "unable to create envoy server")
 		os.Exit(1)
@@ -95,11 +109,13 @@ func main() {
 	ctx := ctrl.SetupSignalHandler()
 
 	if err = (&kubelb.LoadBalancerReconciler{
-		Client:         mgr.GetClient(),
-		Cache:          mgr.GetCache(),
-		Scheme:         mgr.GetScheme(),
-		EnvoyCache:     envoyServer.Cache,
-		EnvoyBootstrap: envoyServer.GenerateBootstrap(),
+		Client:             mgr.GetClient(),
+		Cache:              mgr.GetCache(),
+		Scheme:             mgr.GetScheme(),
+		EnvoyCache:         envoyServer.Cache,
+		EnvoyBootstrap:     envoyServer.GenerateBootstrap(),
+		EnvoyProxyTopology: kubelb.EnvoyProxyTopology(opt.envoyProxyTopology),
+		EnvoyProxyReplicas: opt.envoyProxyReplicas,
 	}).SetupWithManager(mgr, ctx); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "LoadBalancer")
 		os.Exit(1)

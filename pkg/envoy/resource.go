@@ -17,8 +17,7 @@ limitations under the License.
 package envoy
 
 import (
-	"strconv"
-	"strings"
+	"fmt"
 	"time"
 
 	envoyAccessLog "github.com/envoyproxy/go-control-plane/envoy/config/accesslog/v3"
@@ -46,43 +45,30 @@ import (
 
 const defaultPortName = "port"
 
-func MapSnapshot(LoadBalancer *kubelbiov1alpha1.TCPLoadBalancer, version string) (*envoycache.Snapshot, error) {
+func MapSnapshot(LoadBalancer kubelbiov1alpha1.TCPLoadBalancerList, version string) (*envoycache.Snapshot, error) {
 	var listener []types.Resource
 	var cluster []types.Resource
 
-	for currentLbPort, lbServicePort := range LoadBalancer.Spec.Ports {
+	for _, lb := range LoadBalancer.Items {
+		// multiple endpoints represent multiple clusters
+		for i, lbEndpoint := range lb.Spec.Endpoints {
+			for _, lbEndpointPort := range lbEndpoint.Ports {
+				var lbEndpoints []*envoyEndpoint.LbEndpoint
+				listenerName := fmt.Sprintf("%s-%s-ep-%d-%s-%d", lb.Namespace, lb.Name, i, defaultPortName, lbEndpointPort.Port)
+				envoyClusterName := fmt.Sprintf("%s-%s-ep-%d-%s-%d", lb.Namespace, lb.Name, i, defaultPortName, lbEndpointPort.Port)
 
-		envoyClusterName := LoadBalancer.Namespace
-		if lbServicePort.Name == "" {
-			lbServicePort.Name = defaultPortName + strconv.Itoa(currentLbPort)
-		}
-		envoyClusterName = strings.Join([]string{envoyClusterName, lbServicePort.Name}, "-")
+				// each address -> one port
+				for _, lbEndpointAddress := range lbEndpoint.Addresses {
+					lbEndpoints = append(lbEndpoints, makeEndpoint(lbEndpointAddress.IP, uint32(lbEndpointPort.Port)))
+				}
 
-		if lbServicePort.Protocol == corev1.ProtocolTCP {
-			listener = append(listener, makeTCPListener(envoyClusterName, lbServicePort.Name, uint32(LoadBalancer.Spec.Endpoints[0].Ports[currentLbPort].Port)))
-		} else if lbServicePort.Protocol == corev1.ProtocolUDP {
-			listener = append(listener, makeUDPListener(envoyClusterName, lbServicePort.Name, uint32(LoadBalancer.Spec.Endpoints[0].Ports[currentLbPort].Port)))
-		}
-
-	}
-
-	// multiple endpoints represent multiple clusters
-	for _, lbEndpoint := range LoadBalancer.Spec.Endpoints {
-		for i, lbEndpointPorts := range lbEndpoint.Ports {
-
-			var lbEndpoints []*envoyEndpoint.LbEndpoint
-			envoyClusterName := LoadBalancer.Namespace
-
-			if lbEndpointPorts.Name == "" {
-				lbEndpointPorts.Name = defaultPortName + strconv.Itoa(i)
+				if lbEndpointPort.Protocol == corev1.ProtocolTCP {
+					listener = append(listener, makeTCPListener(envoyClusterName, listenerName, uint32(lbEndpointPort.Port)))
+				} else if lbEndpointPort.Protocol == corev1.ProtocolUDP {
+					listener = append(listener, makeUDPListener(envoyClusterName, listenerName, uint32(lbEndpointPort.Port)))
+				}
+				cluster = append(cluster, makeCluster(envoyClusterName, lbEndpoints))
 			}
-			envoyClusterName = strings.Join([]string{envoyClusterName, lbEndpointPorts.Name}, "-")
-
-			// each address -> one port
-			for _, lbEndpointAddress := range lbEndpoint.Addresses {
-				lbEndpoints = append(lbEndpoints, makeEndpoint(lbEndpointAddress.IP, uint32(lbEndpointPorts.Port)))
-			}
-			cluster = append(cluster, makeCluster(envoyClusterName, lbEndpoints))
 		}
 	}
 
