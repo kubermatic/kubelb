@@ -43,7 +43,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/source"
 )
 
-const EnvoyImage = "envoyproxy/envoy:distroless-v1.26.2"
+const EnvoyImage = "envoyproxy/envoy:distroless-v1.27.0"
 
 // LoadBalancerReconciler reconciles a LoadBalancer object
 type LoadBalancerReconciler struct {
