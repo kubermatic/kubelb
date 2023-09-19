@@ -59,6 +59,7 @@ func main() {
 	var probeAddr string
 	var enableCloudController bool
 	var enableLeaderElection bool
+	var leaderElectionNamespace string
 	var endpointAddressTypeString string
 	var clusterName string
 	var kubeLbKubeconf string
@@ -71,6 +72,7 @@ func main() {
 	flag.BoolVar(&enableCloudController, "enable-cloud-provider", true, "Enables cloud controller like behavior. This will set the status of TCP LoadBalancer")
 	flag.BoolVar(&enableLeaderElection, "enable-leader-election", false,
 		"Enable leader election for controller ccm. Enabling this will ensure there is only one active controller ccm.")
+	flag.StringVar(&leaderElectionNamespace, "leader-election-namespace", "", "Optionally configure leader election namespace.")
 
 	opts := zap.Options{
 		Development: true,
@@ -125,12 +127,13 @@ func main() {
 	}
 
 	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
-		Scheme:                 scheme,
-		MetricsBindAddress:     metricsAddr,
-		Port:                   9443,
-		HealthProbeBindAddress: probeAddr,
-		LeaderElection:         enableLeaderElection,
-		LeaderElectionID:       "19f32e7b.ccm.kubelb.k8c.io",
+		Scheme:                  scheme,
+		MetricsBindAddress:      metricsAddr,
+		Port:                    9443,
+		HealthProbeBindAddress:  probeAddr,
+		LeaderElection:          enableLeaderElection,
+		LeaderElectionID:        "19f32e7b.ccm.kubelb.k8c.io",
+		LeaderElectionNamespace: leaderElectionNamespace,
 	})
 	if err != nil {
 		setupLog.Error(err, "unable to start ccm manager")
