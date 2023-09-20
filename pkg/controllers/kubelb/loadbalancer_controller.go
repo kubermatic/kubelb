@@ -232,7 +232,7 @@ func (r *LoadBalancerReconciler) reconcileDeployment(ctx context.Context, loadBa
 		},
 	}
 	err := r.Get(ctx, types.NamespacedName{
-		Name:      appName,
+		Name:      fmt.Sprintf(envoyResourcePattern, appName),
 		Namespace: namespace,
 	}, deployment)
 
