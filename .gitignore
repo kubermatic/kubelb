@@ -7,3 +7,4 @@ _build
 .local
 .DS_Store
 /bin
+cover.out

@@ -18,6 +18,7 @@ package kubelb
 
 import (
 	"context"
+	"fmt"
 	"reflect"
 	"time"
 
@@ -30,6 +31,7 @@ import (
 	. "github.com/onsi/gomega"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 )
 
@@ -43,7 +45,7 @@ var _ = Describe("TcpLb deployment and service creation", func() {
 		interval = time.Millisecond * 250
 	)
 
-	lookupKey := types.NamespacedName{Name: tcpLbName, Namespace: tcpLbNamespace}
+	lookupKey := types.NamespacedName{Name: fmt.Sprintf(envoyResourcePattern, tcpLbName), Namespace: tcpLbNamespace}
 	ctx := context.Background()
 
 	Context("When creating a LoadBalancer", func() {
@@ -80,7 +82,7 @@ var _ = Describe("TcpLb deployment and service creation", func() {
 			snapshot, err := envoyServer.Cache.GetSnapshot(tcpLbName)
 			Expect(err).ToNot(HaveOccurred())
 
-			testSnapshot, err := envoycp.MapSnapshot(tcpLb, "0.0.1")
+			testSnapshot, err := envoycp.MapSnapshot(getLoadBalancerList(*tcpLb), "0.0.1")
 			Expect(err).ToNot(HaveOccurred())
 
 			Expect(reflect.DeepEqual(snapshot, testSnapshot)).To(BeTrue())
@@ -144,7 +146,7 @@ var _ = Describe("TcpLb deployment and service creation", func() {
 			snapshot, err := envoyServer.Cache.GetSnapshot(tcpLbName)
 			Expect(err).ToNot(HaveOccurred())
 
-			testSnapshot, err := envoycp.MapSnapshot(existingTcpLb, "1.0.0")
+			testSnapshot, err := envoycp.MapSnapshot(getLoadBalancerList(*existingTcpLb), "1.0.0")
 			Expect(err).ToNot(HaveOccurred())
 			Expect(reflect.DeepEqual(snapshot, testSnapshot)).To(BeTrue())
 
@@ -204,3 +206,13 @@ var _ = Describe("TcpLb deployment and service creation", func() {
 		})
 	})
 })
+
+func getLoadBalancerList(lb kubelbk8ciov1alpha1.TCPLoadBalancer) kubelbk8ciov1alpha1.TCPLoadBalancerList {
+	return kubelbk8ciov1alpha1.TCPLoadBalancerList{
+		Items: []kubelbk8ciov1alpha1.TCPLoadBalancer{lb},
+		TypeMeta: metav1.TypeMeta{
+			Kind:       "TCPLoadBalancerList",
+			APIVersion: "kubelb.k8c.io/v1alpha1",
+		},
+	}
+}

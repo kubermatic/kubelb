@@ -55,6 +55,8 @@ spec:
       - name: kubelb
         args:
         - --enable-leader-election
+        - --envoy-proxy-topology=shared
+        - --envoy-proxy-replicas=3
         image: controller:latest
         securityContext:
           allowPrivilegeEscalation: false

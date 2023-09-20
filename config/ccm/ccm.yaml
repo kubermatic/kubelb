@@ -70,4 +70,4 @@ spec:
       volumes:
         - name: kubelb-cluster
           secret:
-            secretName: kubeconfig
+            secretName: kubelb-cluster
