@@ -305,7 +305,7 @@ func (r *LoadBalancerReconciler) reconcileService(ctx context.Context, loadBalan
 		},
 	}
 	err := r.Get(ctx, types.NamespacedName{
-		Name:      loadBalancer.Name,
+		Name:      fmt.Sprintf(envoyResourcePattern, loadBalancer.Name),
 		Namespace: loadBalancer.Namespace,
 	}, service)
 
