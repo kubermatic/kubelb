@@ -382,7 +382,7 @@ func (r *LoadBalancerReconciler) handleEnvoyProxyCleanup(ctx context.Context, lb
 
 	log.V(2).Info("Cleaning up TCP LoadBalancer", "name", lb.Name, "namespace", lb.Namespace)
 
-	// We can deployment the envoy proxy deployment if there are no other load balancers.
+	// We can delete the envoy proxy deployment if there are no other load balancers.
 	if lbCount == 1 {
 		deployment := &appsv1.Deployment{
 			ObjectMeta: v1.ObjectMeta{
