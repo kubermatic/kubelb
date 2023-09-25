@@ -26,6 +26,7 @@ import (
 	envoycp "k8c.io/kubelb/pkg/envoy"
 	"k8c.io/kubelb/pkg/kubelb"
 	kuberneteshelper "k8c.io/kubelb/pkg/kubernetes"
+	portlookup "k8c.io/kubelb/pkg/port-lookup"
 
 	"github.com/Masterminds/semver/v3"
 	envoycachev3 "github.com/envoyproxy/go-control-plane/pkg/cache/v3"
@@ -41,8 +42,10 @@ import (
 	"k8s.io/apimachinery/pkg/util/intstr"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/cache"
-	"sigs.k8s.io/controller-runtime/pkg/client"
+	ctrlruntimeclient "sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
+	"sigs.k8s.io/controller-runtime/pkg/predicate"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 	"sigs.k8s.io/controller-runtime/pkg/source"
 )
@@ -52,6 +55,7 @@ const (
 	envoyProxyContainerName              = "envoy-proxy"
 	envoyResourcePattern                 = "envoy-%s"
 	envoyProxyDeploymentCleanupFinalizer = "kubelb.k8c.io/cleanup-envoy-proxy-deployment"
+	envoyGlobalCache                     = "global"
 )
 
 type EnvoyProxyTopology string
@@ -59,13 +63,18 @@ type EnvoyProxyTopology string
 const (
 	EnvoyProxyTopologyShared    EnvoyProxyTopology = "shared"
 	EnvoyProxyTopologyDedicated EnvoyProxyTopology = "dedicated"
+	EnvoyProxyTopologyGlobal    EnvoyProxyTopology = "global"
 )
 
 // LoadBalancerReconciler reconciles a LoadBalancer object
 type LoadBalancerReconciler struct {
-	client.Client
-	Scheme             *runtime.Scheme
-	Cache              cache.Cache
+	ctrlruntimeclient.Client
+	Scheme    *runtime.Scheme
+	Cache     cache.Cache
+	Namespace string
+
+	PortAllocator *portlookup.PortAllocator
+
 	EnvoyCache         envoycachev3.SnapshotCache
 	EnvoyBootstrap     string
 	EnvoyProxyTopology EnvoyProxyTopology
@@ -75,6 +84,7 @@ type LoadBalancerReconciler struct {
 // +kubebuilder:rbac:groups=kubelb.k8c.io,resources=tcploadbalancers,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=kubelb.k8c.io,resources=tcploadbalancers/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups="",resources=services,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups="",resources=configmaps,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups="",resources=namespaces,verbs=get;list;watch
 // +kubebuilder:rbac:groups="apps",resources=deployments,verbs=get;list;watch;create;update;patch;delete
 
@@ -86,7 +96,7 @@ func (r *LoadBalancerReconciler) Reconcile(ctx context.Context, req ctrl.Request
 	var LoadBalancer kubelbk8ciov1alpha1.TCPLoadBalancer
 	err := r.Get(ctx, req.NamespacedName, &LoadBalancer)
 	if err != nil {
-		if client.IgnoreNotFound(err) != nil {
+		if ctrlruntimeclient.IgnoreNotFound(err) != nil {
 			log.Error(err, "unable to fetch LoadBalancer")
 		}
 		log.V(3).Info("LoadBalancer not found")
@@ -111,14 +121,24 @@ func (r *LoadBalancerReconciler) Reconcile(ctx context.Context, req ctrl.Request
 	)
 
 	if r.EnvoyProxyTopology == EnvoyProxyTopologyShared {
-		err = r.List(ctx, &loadBalancers, client.InNamespace(req.Namespace))
+		err = r.List(ctx, &loadBalancers, ctrlruntimeclient.InNamespace(req.Namespace))
 		if err != nil {
 			log.Error(err, "unable to fetch LoadBalancer list")
 			return ctrl.Result{}, err
 		}
 		appName = req.Namespace
 		snapshotName = req.Namespace
-	} else {
+	} else if r.EnvoyProxyTopology == EnvoyProxyTopologyGlobal {
+		// List all loadbalancers. We don't care about the namespace here.
+		// TODO: ideally we should only process the load balancer that is being reconciled.
+		err = r.List(ctx, &loadBalancers)
+		if err != nil {
+			log.Error(err, "unable to fetch LoadBalancer list")
+			return ctrl.Result{}, err
+		}
+		appName = envoyGlobalCache
+		snapshotName = envoyGlobalCache
+	} else if r.EnvoyProxyTopology == EnvoyProxyTopologyDedicated {
 		loadBalancers.Items = []kubelbk8ciov1alpha1.TCPLoadBalancer{LoadBalancer}
 		appName = LoadBalancer.Name
 		snapshotName = fmt.Sprintf("%s-%s", LoadBalancer.Namespace, LoadBalancer.Name)
@@ -141,7 +161,14 @@ func (r *LoadBalancerReconciler) Reconcile(ctx context.Context, req ctrl.Request
 		}
 	}
 
-	err = r.reconcileEnvoySnapshot(ctx, loadBalancers, req.Namespace, snapshotName)
+	if r.EnvoyProxyTopology == EnvoyProxyTopologyGlobal {
+		// For Global topology, we need to ensure that an arbitrary port has been assigned to the endpoint ports of the LoadBalancer.
+		if err := r.PortAllocator.AllocatePortsForLoadBalancers(ctx, loadBalancers); err != nil {
+			return ctrl.Result{}, err
+		}
+	}
+
+	err = r.reconcileEnvoySnapshot(ctx, loadBalancers, snapshotName, r.PortAllocator)
 	if err != nil {
 		log.Error(err, "Unable to reconcile envoy snapshot")
 		return ctrl.Result{}, err
@@ -153,7 +180,7 @@ func (r *LoadBalancerReconciler) Reconcile(ctx context.Context, req ctrl.Request
 		return ctrl.Result{}, err
 	}
 
-	err = r.reconcileService(ctx, &LoadBalancer, appName)
+	err = r.reconcileService(ctx, &LoadBalancer, appName, r.PortAllocator)
 	if err != nil {
 		log.Error(err, "Unable to reconcile service")
 		return ctrl.Result{}, err
@@ -162,7 +189,7 @@ func (r *LoadBalancerReconciler) Reconcile(ctx context.Context, req ctrl.Request
 	return ctrl.Result{}, nil
 }
 
-func (r *LoadBalancerReconciler) reconcileEnvoySnapshot(ctx context.Context, loadBalancers kubelbk8ciov1alpha1.TCPLoadBalancerList, namespace, snapshotName string) error {
+func (r *LoadBalancerReconciler) reconcileEnvoySnapshot(ctx context.Context, loadBalancers kubelbk8ciov1alpha1.TCPLoadBalancerList, snapshotName string, portAllocator *portlookup.PortAllocator) error {
 	log := ctrl.LoggerFrom(ctx).WithValues("reconcile", "envoy")
 	log.V(2).Info("verify envoy snapshot")
 
@@ -171,7 +198,7 @@ func (r *LoadBalancerReconciler) reconcileEnvoySnapshot(ctx context.Context, loa
 	if err != nil {
 		// Add the snapshot to the cache
 		// Todo: check namespace and node-id uniqueness
-		initSnapshot, errSnapshor := envoycp.MapSnapshot(loadBalancers, "0.0.1")
+		initSnapshot, errSnapshor := envoycp.MapSnapshot(loadBalancers, "0.0.1", portAllocator)
 		if errSnapshor != nil {
 			return errSnapshor
 		}
@@ -189,7 +216,7 @@ func (r *LoadBalancerReconciler) reconcileEnvoySnapshot(ctx context.Context, loa
 		return errors.Wrap(err, "failed to parse version from last snapshot")
 	}
 
-	desiredSnapshot, err := envoycp.MapSnapshot(loadBalancers, lastUsedVersion.String())
+	desiredSnapshot, err := envoycp.MapSnapshot(loadBalancers, lastUsedVersion.String(), portAllocator)
 	if err != nil {
 		return err
 	}
@@ -203,7 +230,7 @@ func (r *LoadBalancerReconciler) reconcileEnvoySnapshot(ctx context.Context, loa
 	}
 
 	newVersion := lastUsedVersion.IncMajor()
-	newSnapshot, err := envoycp.MapSnapshot(loadBalancers, newVersion.String())
+	newSnapshot, err := envoycp.MapSnapshot(loadBalancers, newVersion.String(), portAllocator)
 	if err != nil {
 		return err
 	}
@@ -225,15 +252,20 @@ func (r *LoadBalancerReconciler) reconcileDeployment(ctx context.Context, loadBa
 	log := ctrl.LoggerFrom(ctx).WithValues("reconcile", "deployment")
 	log.V(2).Info("verify deployment")
 
+	ns := namespace
+	if r.EnvoyProxyTopology == EnvoyProxyTopologyGlobal {
+		ns = r.Namespace
+	}
+
 	deployment := &appsv1.Deployment{
 		ObjectMeta: v1.ObjectMeta{
 			Name:      fmt.Sprintf(envoyResourcePattern, appName),
-			Namespace: namespace,
+			Namespace: ns,
 		},
 	}
 	err := r.Get(ctx, types.NamespacedName{
 		Name:      fmt.Sprintf(envoyResourcePattern, appName),
-		Namespace: namespace,
+		Namespace: ns,
 	}, deployment)
 
 	if err != nil && !apierrors.IsNotFound(err) {
@@ -244,16 +276,14 @@ func (r *LoadBalancerReconciler) reconcileDeployment(ctx context.Context, loadBa
 
 	result, err := ctrl.CreateOrUpdate(ctx, r.Client, deployment, func() error {
 		var replicas int32 = int32(r.EnvoyProxyReplicas)
-		var envoyListenerPorts []corev1.ContainerPort
 		updateContainer := func(cnt corev1.Container) corev1.Container {
 			cnt.Name = envoyProxyContainerName
 			cnt.Image = envoyImage
 			cnt.Args = []string{
 				"--config-yaml", r.EnvoyBootstrap,
 				"--service-node", snapshotName,
-				"--service-cluster", namespace,
+				"--service-cluster", ns,
 			}
-			cnt.Ports = envoyListenerPorts
 			return cnt
 		}
 
@@ -264,7 +294,7 @@ func (r *LoadBalancerReconciler) reconcileDeployment(ctx context.Context, loadBa
 
 		deployment.Spec.Template.ObjectMeta = v1.ObjectMeta{
 			Name:      appName,
-			Namespace: namespace,
+			Namespace: ns,
 			Labels:    map[string]string{kubelb.LabelAppKubernetesName: appName},
 		}
 
@@ -286,27 +316,38 @@ func (r *LoadBalancerReconciler) reconcileDeployment(ctx context.Context, loadBa
 	return err
 }
 
-func (r *LoadBalancerReconciler) reconcileService(ctx context.Context, loadBalancer *kubelbk8ciov1alpha1.TCPLoadBalancer, appName string) error {
+func (r *LoadBalancerReconciler) reconcileService(ctx context.Context, loadBalancer *kubelbk8ciov1alpha1.TCPLoadBalancer, appName string, portAllocator *portlookup.PortAllocator) error {
 	log := ctrl.LoggerFrom(ctx).WithValues("reconcile", "service")
 
 	log.V(2).Info("verify service")
+
+	svcNamespace := loadBalancer.Namespace
+	if r.EnvoyProxyTopology == EnvoyProxyTopologyGlobal {
+		svcNamespace = r.Namespace
+	}
 
 	ns := &corev1.Namespace{}
 	if err := r.Get(ctx, types.NamespacedName{Name: loadBalancer.Namespace}, ns); err != nil {
 		return err
 	}
 
+	labels := map[string]string{
+		kubelb.LabelAppKubernetesName:     appName,
+		kubelb.LabelLoadBalancerName:      loadBalancer.Name,
+		kubelb.LabelLoadBalancerNamespace: loadBalancer.Namespace,
+	}
+
 	service := &corev1.Service{
 		ObjectMeta: v1.ObjectMeta{
 			Name:        fmt.Sprintf(envoyResourcePattern, loadBalancer.Name),
-			Namespace:   loadBalancer.Namespace,
-			Labels:      map[string]string{kubelb.LabelAppKubernetesName: appName},
+			Namespace:   svcNamespace,
+			Labels:      labels,
 			Annotations: propagateAnnotations(ns.Annotations, loadBalancer.Annotations),
 		},
 	}
 	err := r.Get(ctx, types.NamespacedName{
 		Name:      fmt.Sprintf(envoyResourcePattern, loadBalancer.Name),
-		Namespace: loadBalancer.Namespace,
+		Namespace: svcNamespace,
 	}, service)
 
 	if err != nil && !apierrors.IsNotFound(err) {
@@ -321,6 +362,16 @@ func (r *LoadBalancerReconciler) reconcileService(ctx context.Context, loadBalan
 		var ports []corev1.ServicePort
 		for currentLbPort, lbServicePort := range loadBalancer.Spec.Ports {
 			var allocatedPort corev1.ServicePort
+			targetPort := loadBalancer.Spec.Endpoints[0].Ports[currentLbPort].Port
+
+			// if portAllocator is not nil, it means that envoy topology is set to global.
+			if portAllocator != nil {
+				endpointKey := fmt.Sprintf(kubelb.EnvoyEndpointPattern, loadBalancer.Namespace, loadBalancer.Name, currentLbPort)
+				portKey := fmt.Sprintf(kubelb.EnvoyListenerPattern, targetPort, lbServicePort.Protocol)
+				if value, exists := portAllocator.Lookup(endpointKey, portKey); exists {
+					targetPort = int32(value)
+				}
+			}
 
 			// Edit existing port
 			if currentLbPort < allocatedServicePorts {
@@ -328,14 +379,14 @@ func (r *LoadBalancerReconciler) reconcileService(ctx context.Context, loadBalan
 
 				allocatedPort.Name = lbServicePort.Name
 				allocatedPort.Port = lbServicePort.Port
-				allocatedPort.TargetPort = intstr.FromInt(int(loadBalancer.Spec.Endpoints[0].Ports[currentLbPort].Port))
+				allocatedPort.TargetPort = intstr.FromInt(int(targetPort))
 				allocatedPort.Protocol = lbServicePort.Protocol
 
 			} else {
 				allocatedPort = corev1.ServicePort{
 					Name:       lbServicePort.Name,
 					Port:       lbServicePort.Port,
-					TargetPort: intstr.FromInt(int(loadBalancer.Spec.Endpoints[0].Ports[currentLbPort].Port)),
+					TargetPort: intstr.FromInt(int(targetPort)),
 					Protocol:   lbServicePort.Protocol,
 				}
 			}
@@ -349,8 +400,7 @@ func (r *LoadBalancerReconciler) reconcileService(ctx context.Context, loadBalan
 
 		service.Spec.Selector = map[string]string{kubelb.LabelAppKubernetesName: appName}
 		service.Spec.Type = loadBalancer.Spec.Type
-
-		return ctrl.SetControllerReference(loadBalancer, service, r.Scheme)
+		return nil
 	})
 
 	log.V(5).Info("desired", "service", service)
@@ -399,6 +449,29 @@ func (r *LoadBalancerReconciler) handleEnvoyProxyCleanup(ctx context.Context, lb
 		r.EnvoyCache.ClearSnapshot(appName)
 	}
 
+	// Deallocate ports if we are using global envoy proxy topology.
+	if r.EnvoyProxyTopology == EnvoyProxyTopologyGlobal {
+		if err := r.PortAllocator.DeallocatePortsForLoadBalancer(ctx, lb); err != nil {
+			return err
+		}
+	}
+
+	// Remove corresponding service.
+	svcNamespace := lb.Namespace
+	if r.EnvoyProxyTopology == EnvoyProxyTopologyGlobal {
+		svcNamespace = r.Namespace
+	}
+	svc := &corev1.Service{
+		ObjectMeta: v1.ObjectMeta{
+			Name:      fmt.Sprintf(envoyResourcePattern, lb.Name),
+			Namespace: svcNamespace,
+		},
+	}
+	log.V(2).Info("Deleting service", "name", svc.Name, "namespace", svc.Namespace)
+	if err := r.Delete(ctx, svc); err != nil && !kerrors.IsNotFound(err) {
+		return fmt.Errorf("failed to delete service %s: %v against LoadBalancer %w", svc.Name, fmt.Sprintf("%s/%s", lb.Name, lb.Namespace), err)
+	}
+
 	// Remove finalizer
 	kuberneteshelper.RemoveFinalizer(&lb, envoyProxyDeploymentCleanupFinalizer)
 
@@ -433,13 +506,74 @@ func (r *LoadBalancerReconciler) SetupWithManager(mgr ctrl.Manager, ctx context.
 
 	err = c.Watch(
 		&source.Informer{Informer: serviceInformer},
-		&handler.EnqueueRequestForOwner{
-			OwnerType:    &kubelbk8ciov1alpha1.TCPLoadBalancer{},
-			IsController: true,
-		},
+		handler.EnqueueRequestsFromMapFunc(r.enqueueLoadBalancers),
+		filterServicesPredicate(),
 	)
-
 	return err
+}
+
+// enqueueLoadBalancers is a handler.MapFunc to be used to enqeue requests for reconciliation
+// for TCPLoadBalancers against the correpsonding service.
+func (r *LoadBalancerReconciler) enqueueLoadBalancers(o ctrlruntimeclient.Object) []reconcile.Request {
+	result := []reconcile.Request{}
+
+	// Find the TCPLoadBalancer that corresponds to this service.
+	labels := o.GetLabels()
+	if labels == nil {
+		return result
+	}
+
+	name, ok := labels[kubelb.LabelLoadBalancerName]
+	if !ok {
+		return result
+	}
+	namespace, ok := labels[kubelb.LabelLoadBalancerNamespace]
+	if !ok {
+		return result
+	}
+
+	result = append(result, reconcile.Request{
+		NamespacedName: types.NamespacedName{
+			Name:      name,
+			Namespace: namespace,
+		},
+	})
+
+	return result
+}
+
+// filterServicesPredicate filters out services that need to be propagated to the event handlers.
+// We only want to handle services that are managed by kubelb and queued against updation events.
+func filterServicesPredicate() predicate.Predicate {
+	return predicate.Funcs{
+		CreateFunc: func(e event.CreateEvent) bool {
+			return false
+		},
+		DeleteFunc: func(e event.DeleteEvent) bool {
+			return false
+		},
+		UpdateFunc: func(e event.UpdateEvent) bool {
+			// Ensure that this service is managed by kubelb
+			newSvc := e.ObjectNew.(*corev1.Service)
+			oldSvc := e.ObjectOld.(*corev1.Service)
+			labels := newSvc.GetLabels()
+
+			if labels != nil {
+				if _, ok := labels[kubelb.LabelLoadBalancerName]; ok {
+					// Service is managed by KubeLB.
+					// Save reconciliation cost here and only queue up LBs when the status has changed.
+					if reflect.DeepEqual(newSvc.Status, oldSvc.Status) {
+						return true
+					}
+				}
+			}
+			return false
+
+		},
+		GenericFunc: func(e event.GenericEvent) bool {
+			return false
+		},
+	}
 }
 
 func propagateAnnotations(permitted map[string]string, loadbalancer map[string]string) map[string]string {

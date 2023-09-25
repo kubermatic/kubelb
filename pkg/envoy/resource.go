@@ -41,11 +41,11 @@ import (
 	corev1 "k8s.io/api/core/v1"
 
 	kubelbiov1alpha1 "k8c.io/kubelb/pkg/api/kubelb.k8c.io/v1alpha1"
+	"k8c.io/kubelb/pkg/kubelb"
+	portlookup "k8c.io/kubelb/pkg/port-lookup"
 )
 
-const defaultPortName = "port"
-
-func MapSnapshot(LoadBalancer kubelbiov1alpha1.TCPLoadBalancerList, version string) (*envoycache.Snapshot, error) {
+func MapSnapshot(LoadBalancer kubelbiov1alpha1.TCPLoadBalancerList, version string, portAllocator *portlookup.PortAllocator) (*envoycache.Snapshot, error) {
 	var listener []types.Resource
 	var cluster []types.Resource
 
@@ -54,20 +54,29 @@ func MapSnapshot(LoadBalancer kubelbiov1alpha1.TCPLoadBalancerList, version stri
 		for i, lbEndpoint := range lb.Spec.Endpoints {
 			for _, lbEndpointPort := range lbEndpoint.Ports {
 				var lbEndpoints []*envoyEndpoint.LbEndpoint
-				listenerName := fmt.Sprintf("%s-%s-ep-%d-%s-%d", lb.Namespace, lb.Name, i, defaultPortName, lbEndpointPort.Port)
-				envoyClusterName := fmt.Sprintf("%s-%s-ep-%d-%s-%d", lb.Namespace, lb.Name, i, defaultPortName, lbEndpointPort.Port)
+				key := fmt.Sprintf(kubelb.EnvoyResourceIdentifierPattern, lb.Namespace, lb.Name, i, lbEndpointPort.Port, lbEndpointPort.Protocol)
 
 				// each address -> one port
 				for _, lbEndpointAddress := range lbEndpoint.Addresses {
 					lbEndpoints = append(lbEndpoints, makeEndpoint(lbEndpointAddress.IP, uint32(lbEndpointPort.Port)))
 				}
 
-				if lbEndpointPort.Protocol == corev1.ProtocolTCP {
-					listener = append(listener, makeTCPListener(envoyClusterName, listenerName, uint32(lbEndpointPort.Port)))
-				} else if lbEndpointPort.Protocol == corev1.ProtocolUDP {
-					listener = append(listener, makeUDPListener(envoyClusterName, listenerName, uint32(lbEndpointPort.Port)))
+				port := uint32(lbEndpointPort.Port)
+				// if portAllocator is not nil, it means that envoy topology is set to global.
+				if portAllocator != nil {
+					endpointKey := fmt.Sprintf(kubelb.EnvoyEndpointPattern, lb.Namespace, lb.Name, i)
+					portKey := fmt.Sprintf(kubelb.EnvoyListenerPattern, lbEndpointPort.Port, lbEndpointPort.Protocol)
+					if value, exists := portAllocator.Lookup(endpointKey, portKey); exists {
+						port = uint32(value)
+					}
 				}
-				cluster = append(cluster, makeCluster(envoyClusterName, lbEndpoints))
+
+				if lbEndpointPort.Protocol == corev1.ProtocolTCP {
+					listener = append(listener, makeTCPListener(key, key, uint32(port)))
+				} else if lbEndpointPort.Protocol == corev1.ProtocolUDP {
+					listener = append(listener, makeUDPListener(key, key, uint32(port)))
+				}
+				cluster = append(cluster, makeCluster(key, lbEndpoints))
 			}
 		}
 	}

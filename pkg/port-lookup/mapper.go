@@ -1,0 +1,61 @@
+/*
+Copyright 2023 The KubeLB Authors.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
+package portlookup
+
+import (
+	"context"
+	"fmt"
+
+	kubelbk8ciov1alpha1 "k8c.io/kubelb/pkg/api/kubelb.k8c.io/v1alpha1"
+	"k8c.io/kubelb/pkg/kubelb"
+)
+
+// AllocatePortsForLoadBalancers allocates ports to the given load balancers. If a port is already allocated, it will be skipped.
+func (pa *PortAllocator) AllocatePortsForLoadBalancers(ctx context.Context, loadBalancers kubelbk8ciov1alpha1.TCPLoadBalancerList) error {
+	updateRequired := false
+	for _, lb := range loadBalancers.Items {
+		for i, lbEndpoint := range lb.Spec.Endpoints {
+			endpointKey := fmt.Sprintf(kubelb.EnvoyEndpointPattern, lb.Namespace, lb.Name, i)
+
+			var keys []string
+			for _, lbEndpointPort := range lbEndpoint.Ports {
+				keys = append(keys, fmt.Sprintf(kubelb.EnvoyListenerPattern, lbEndpointPort.Port, lbEndpointPort.Protocol))
+			}
+			// If a port is already allocated, it will be skipped.
+			if pa.AllocatePorts(endpointKey, keys) {
+				updateRequired = true
+			}
+		}
+	}
+
+	if updateRequired {
+		return pa.UpdateState(ctx)
+	}
+	return nil
+}
+
+// DeallocatePortsForLoadBalancer deallocates ports against the given load balancer.
+func (pa *PortAllocator) DeallocatePortsForLoadBalancer(ctx context.Context, loadBalancer kubelbk8ciov1alpha1.TCPLoadBalancer) error {
+	var endpointKeys []string
+
+	for i := range loadBalancer.Spec.Endpoints {
+		endpointKeys = append(endpointKeys, fmt.Sprintf(kubelb.EnvoyEndpointPattern, loadBalancer.Namespace, loadBalancer.Name, i))
+	}
+
+	pa.DeallocateEndpoints(endpointKeys)
+	return pa.UpdateState(ctx)
+}

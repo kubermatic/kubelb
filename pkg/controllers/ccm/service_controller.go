@@ -43,7 +43,7 @@ const LBFinalizerName = "kubelb.k8c.io/tcplb-finalizer"
 type KubeLBServiceReconciler struct {
 	ctrlclient.Client
 
-	KubeLBMananger  ctrl.Manager
+	KubeLBManager   ctrl.Manager
 	Log             logr.Logger
 	Scheme          *runtime.Scheme
 	ClusterName     string
@@ -113,7 +113,7 @@ func (r *KubeLBServiceReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 	desiredTcpLB := kubelb.MapLoadBalancer(&service, clusterEndpoints, r.ClusterName)
 	log.V(6).Info("desired", "LoadBalancer", desiredTcpLB)
 
-	kubelbClient := r.KubeLBMananger.GetClient()
+	kubelbClient := r.KubeLBManager.GetClient()
 
 	var actualTcpLB kubelbk8ciov1alpha1.TCPLoadBalancer
 
@@ -167,7 +167,7 @@ func (r *KubeLBServiceReconciler) cleanupService(ctx context.Context, log logr.L
 		return ctrl.Result{}, nil
 	}
 
-	kubelbClient := r.KubeLBMananger.GetClient()
+	kubelbClient := r.KubeLBManager.GetClient()
 	desiredTcpLB := kubelb.MapLoadBalancer(service, clusterEndpoints, r.ClusterName)
 	log.V(1).Info("deleting TCPLoadBalancer", "name", desiredTcpLB)
 
@@ -242,7 +242,7 @@ func (r *KubeLBServiceReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	}
 
 	kubeLBWatch := &source.Kind{Type: &kubelbk8ciov1alpha1.TCPLoadBalancer{}}
-	if err = kubeLBWatch.InjectCache(r.KubeLBMananger.GetCache()); err != nil {
+	if err = kubeLBWatch.InjectCache(r.KubeLBManager.GetCache()); err != nil {
 		return fmt.Errorf("failed to inject cache: %w", err)
 	}
 

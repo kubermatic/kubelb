@@ -82,7 +82,7 @@ var _ = Describe("TcpLb deployment and service creation", func() {
 			snapshot, err := envoyServer.Cache.GetSnapshot(tcpLbName)
 			Expect(err).ToNot(HaveOccurred())
 
-			testSnapshot, err := envoycp.MapSnapshot(getLoadBalancerList(*tcpLb), "0.0.1")
+			testSnapshot, err := envoycp.MapSnapshot(getLoadBalancerList(*tcpLb), "0.0.1", nil)
 			Expect(err).ToNot(HaveOccurred())
 
 			Expect(reflect.DeepEqual(snapshot, testSnapshot)).To(BeTrue())
@@ -146,7 +146,7 @@ var _ = Describe("TcpLb deployment and service creation", func() {
 			snapshot, err := envoyServer.Cache.GetSnapshot(tcpLbName)
 			Expect(err).ToNot(HaveOccurred())
 
-			testSnapshot, err := envoycp.MapSnapshot(getLoadBalancerList(*existingTcpLb), "1.0.0")
+			testSnapshot, err := envoycp.MapSnapshot(getLoadBalancerList(*existingTcpLb), "1.0.0", nil)
 			Expect(err).ToNot(HaveOccurred())
 			Expect(reflect.DeepEqual(snapshot, testSnapshot)).To(BeTrue())
 

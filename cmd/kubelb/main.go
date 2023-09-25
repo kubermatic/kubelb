@@ -24,6 +24,7 @@ import (
 	kubelbk8ciov1alpha1 "k8c.io/kubelb/pkg/api/kubelb.k8c.io/v1alpha1"
 	"k8c.io/kubelb/pkg/controllers/kubelb"
 	"k8c.io/kubelb/pkg/envoy"
+	portlookup "k8c.io/kubelb/pkg/port-lookup"
 
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
@@ -40,6 +41,7 @@ type options struct {
 	enableLeaderElection bool
 	probeAddr            string
 	enableDebugMode      bool
+	namespace            string
 
 	// Envoy configuration
 	envoyProxyTopology string
@@ -65,8 +67,19 @@ func main() {
 	flag.BoolVar(&opt.enableLeaderElection, "enable-leader-election", false,
 		"Enable leader election for controller kubelb. Enabling this will ensure there is only one active controller kubelb.")
 	flag.BoolVar(&opt.enableDebugMode, "debug", false, "Enables debug mode")
-	flag.StringVar(&opt.envoyProxyTopology, "envoy-proxy-topology", "shared", "The deployment topology for Envoy Proxy. Valid values are: shared, dedicated.")
+	flag.StringVar(&opt.envoyProxyTopology, "envoy-proxy-topology", "shared", "The deployment topology for Envoy Proxy. Valid values are: shared, dedicated, and global.")
 	flag.IntVar(&opt.envoyProxyReplicas, "envoy-proxy-replicas", 1, "Number of replicas for envoy proxy.")
+	flag.StringVar(&opt.namespace, "namespace", "", "The namespace where the controller will run.")
+
+	if len(opt.namespace) == 0 {
+		// Retrieve controller namespace
+		ns, _ := os.LookupEnv("NAMESPACE")
+		if len(ns) == 0 {
+			setupLog.Error(nil, "invalid value for --envoy-proxy-topology. Valid values are: shared, dedicated, and global")
+			os.Exit(1)
+		}
+		opt.namespace = ns
+	}
 
 	opts := zap.Options{
 		Development: true,
@@ -75,8 +88,9 @@ func main() {
 	opts.BindFlags(flag.CommandLine)
 	flag.Parse()
 
-	if opt.envoyProxyTopology != "shared" && opt.envoyProxyTopology != "dedicated" {
-		setupLog.Error(nil, "invalid value for --envoy-proxy-topology. Valid values are: shared, dedicated")
+	envoyProxyTopology := kubelb.EnvoyProxyTopology(opt.envoyProxyTopology)
+	if envoyProxyTopology != kubelb.EnvoyProxyTopologyDedicated && envoyProxyTopology != kubelb.EnvoyProxyTopologyShared && envoyProxyTopology != kubelb.EnvoyProxyTopologyGlobal {
+		setupLog.Error(nil, "invalid value for --envoy-proxy-topology. Valid values are: shared, dedicated, and global")
 		os.Exit(1)
 	}
 
@@ -90,6 +104,7 @@ func main() {
 		LeaderElection:                opt.enableLeaderElection,
 		LeaderElectionID:              "19f32e7b.kubelb.k8c.io",
 		LeaderElectionReleaseOnCancel: true,
+		LeaderElectionNamespace:       opt.namespace,
 	})
 	if err != nil {
 		setupLog.Error(err, "unable to start kubelb")
@@ -110,14 +125,26 @@ func main() {
 	// setup signal handler
 	ctx := ctrl.SetupSignalHandler()
 
+	// For Global topology, we need to ensure that the port lookup configmap exists. If it doesn't, we create it since it's managed by this controller.
+	var portAllocator *portlookup.PortAllocator
+	if envoyProxyTopology == kubelb.EnvoyProxyTopologyGlobal {
+		portAllocator = portlookup.NewPortAllocator(mgr.GetClient(), opt.namespace)
+		if err := portAllocator.LoadState(ctx, mgr.GetAPIReader()); err != nil {
+			setupLog.Error(err, ("unable to load port lookup state"))
+			os.Exit(1)
+		}
+	}
+
 	if err = (&kubelb.LoadBalancerReconciler{
 		Client:             mgr.GetClient(),
 		Cache:              mgr.GetCache(),
 		Scheme:             mgr.GetScheme(),
 		EnvoyCache:         envoyServer.Cache,
 		EnvoyBootstrap:     envoyServer.GenerateBootstrap(),
-		EnvoyProxyTopology: kubelb.EnvoyProxyTopology(opt.envoyProxyTopology),
+		EnvoyProxyTopology: envoyProxyTopology,
 		EnvoyProxyReplicas: opt.envoyProxyReplicas,
+		Namespace:          opt.namespace,
+		PortAllocator:      portAllocator,
 	}).SetupWithManager(mgr, ctx); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "LoadBalancer")
 		os.Exit(1)

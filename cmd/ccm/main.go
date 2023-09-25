@@ -160,7 +160,7 @@ func main() {
 
 	if err = (&ccm.KubeLBServiceReconciler{
 		Client:          mgr.GetClient(),
-		KubeLBMananger:  kubeLBMgr,
+		KubeLBManager:   kubeLBMgr,
 		Log:             ctrl.Log.WithName("kubelb.service.reconciler"),
 		Scheme:          mgr.GetScheme(),
 		CloudController: enableCloudController,
