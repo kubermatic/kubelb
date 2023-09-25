@@ -20,11 +20,12 @@ import (
 	"path/filepath"
 	"testing"
 
+	. "github.com/onsi/ginkgo"
+	. "github.com/onsi/gomega"
+
 	v1alpha12 "k8c.io/kubelb/pkg/api/kubelb.k8c.io/v1alpha1"
 	"k8c.io/kubelb/pkg/envoy"
 
-	. "github.com/onsi/ginkgo"
-	. "github.com/onsi/gomega"
 	corev1 "k8s.io/api/core/v1"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes/scheme"
@@ -33,7 +34,6 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/envtest"
-	"sigs.k8s.io/controller-runtime/pkg/envtest/printer"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 )
@@ -56,9 +56,7 @@ const (
 func TestLoadBalancerCustomResource(t *testing.T) {
 	RegisterFailHandler(Fail)
 
-	RunSpecsWithDefaultAndCustomReporters(t,
-		"LoadBalancer controller Suite",
-		[]Reporter{printer.NewlineReporter{}})
+	RunSpecs(t, "LoadBalancer controller Suite")
 }
 
 var _ = BeforeSuite(func() {
@@ -97,7 +95,7 @@ var _ = BeforeSuite(func() {
 		Scheme:         k8sManager.GetScheme(),
 		EnvoyCache:     envoyServer.Cache,
 		EnvoyBootstrap: envoyServer.GenerateBootstrap(),
-	}).SetupWithManager(k8sManager, ctx)
+	}).SetupWithManager(ctx, k8sManager)
 	Expect(err).ToNot(HaveOccurred())
 
 	k8sClient = k8sManager.GetClient()

@@ -28,12 +28,12 @@ const LabelOriginName = "kubelb.k8c.io/origin-name"
 const LabelLoadBalancerNamespace = "kubelb.k8c.io/lb-namespace"
 const LabelLoadBalancerName = "kubelb.k8c.io/lb-name"
 
-const LabelAppKubernetesName = "app.kubernetes.io/name"            //mysql
-const LabelAppKubernetesInstance = "app.kubernetes.io/instance"    //mysql-abcxzy"
-const LabelAppKubernetesVersion = "app.kubernetes.io/version"      //5.7.21
+const LabelAppKubernetesName = "app.kubernetes.io/name"            // mysql
+const LabelAppKubernetesInstance = "app.kubernetes.io/instance"    // mysql-abcxzy"
+const LabelAppKubernetesVersion = "app.kubernetes.io/version"      // 5.7.21
 const LabelAppKubernetesComponent = "app.kubernetes.io/component"  // database
-const LabelAppKubernetesPartOf = "app.kubernetes.io/part-of"       //wordpress
-const LabelAppKubernetesManagedBy = "app.kubernetes.io/managed-by" //helm
+const LabelAppKubernetesPartOf = "app.kubernetes.io/part-of"       // wordpress
+const LabelAppKubernetesManagedBy = "app.kubernetes.io/managed-by" // helm
 
 const EnvoyResourceIdentifierPattern = "%s-%s-ep-%d-port-%d-%s"
 const EnvoyEndpointPattern = "%s-%s-ep-%d"

@@ -26,6 +26,7 @@ import (
 	"syscall"
 
 	"go.uber.org/zap/zapcore"
+
 	kubelbk8ciov1alpha1 "k8c.io/kubelb/pkg/api/kubelb.k8c.io/v1alpha1"
 	"k8c.io/kubelb/pkg/controllers/ccm"
 	"k8c.io/kubelb/pkg/kubelb"
@@ -36,8 +37,10 @@ import (
 	_ "k8s.io/client-go/plugin/pkg/client/auth/gcp"
 	"k8s.io/client-go/tools/clientcmd"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/cache"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
+	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 )
 
 var (
@@ -87,11 +90,12 @@ func main() {
 	setupLog.V(1).Info("cluster", "name", clusterName)
 
 	var endpointAddressType corev1.NodeAddressType
-	if endpointAddressTypeString == string(corev1.NodeInternalIP) {
+	switch endpointAddressTypeString {
+	case string(corev1.NodeInternalIP):
 		endpointAddressType = corev1.NodeInternalIP
-	} else if endpointAddressTypeString == string(corev1.NodeExternalIP) {
+	case string(corev1.NodeExternalIP):
 		endpointAddressType = corev1.NodeExternalIP
-	} else {
+	default:
 		setupLog.Error(errors.New("invalid node address type"), fmt.Sprintf("Expected: %s or %s, got: %s", corev1.NodeInternalIP, corev1.NodeExternalIP, endpointAddressTypeString))
 		os.Exit(1)
 	}
@@ -120,8 +124,12 @@ func main() {
 	}
 
 	kubeLBMgr, err := ctrl.NewManager(kubeLBRestConfig, ctrl.Options{
-		Scheme:    scheme,
-		Namespace: clusterName,
+		Scheme: scheme,
+		Cache: cache.Options{
+			DefaultNamespaces: map[string]cache.Config{
+				clusterName: {},
+			},
+		},
 	})
 	if err != nil {
 		setupLog.Error(err, "failed to create manager for kubelb cluster")
@@ -130,8 +138,7 @@ func main() {
 
 	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
 		Scheme:                  scheme,
-		MetricsBindAddress:      metricsAddr,
-		Port:                    9443,
+		Metrics:                 metricsserver.Options{BindAddress: metricsAddr},
 		HealthProbeBindAddress:  probeAddr,
 		LeaderElection:          enableLeaderElection,
 		LeaderElectionID:        "19f32e7b.ccm.kubelb.k8c.io",

@@ -25,7 +25,7 @@ import (
 )
 
 // Client for the KubeLb kubernetes Custer.
-func NewClient(clusterName string, kubeConfPath string) (client.Client, error) {
+func NewClient(kubeConfPath string) (client.Client, error) {
 	var kubeconfig string
 	if kubeConfPath == "" {
 		kubeconfig = filepath.Join(

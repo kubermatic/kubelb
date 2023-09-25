@@ -4,7 +4,7 @@ SHELL = /bin/bash -eu -o pipefail
 KUBELB_IMG ?= quay.io/kubermatic/kubelb
 KUBELB_CCM_IMG ?= quay.io/kubermatic/kubelb-ccm
 # ENVTEST_K8S_VERSION refers to the version of kubebuilder assets to be downloaded by envtest binary.
-ENVTEST_K8S_VERSION = 1.25.0
+ENVTEST_K8S_VERSION = 1.28.2
 
 export GOPATH?=$(shell go env GOPATH)
 export CGO_ENABLED=0
@@ -83,6 +83,9 @@ check-dependencies: ## Verify go.mod.
 
 verify-boilerplate:  ## Run verify-boilerplate code.
 	./hack/verify-boilerplate.sh
+
+verify-imports:  ## Run verify-imports code.
+	./hack/verify-import-order.sh
 
 clean:  ## Clean binaries
 	rm -rf bin/*

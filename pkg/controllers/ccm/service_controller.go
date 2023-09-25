@@ -20,16 +20,18 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/go-logr/logr"
+
 	kubelbk8ciov1alpha1 "k8c.io/kubelb/pkg/api/kubelb.k8c.io/v1alpha1"
 	utils "k8c.io/kubelb/pkg/controllers"
 	"k8c.io/kubelb/pkg/kubelb"
 
-	"github.com/go-logr/logr"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	ctrlclient "sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
@@ -77,7 +79,6 @@ func (r *KubeLBServiceReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 
 	if service.Spec.Type != corev1.ServiceTypeNodePort && service.Spec.Type != corev1.ServiceTypeLoadBalancer ||
 		(!r.CloudController || service.Spec.Type == corev1.ServiceTypeNodePort) && !AnnotationServiceClassMatcher.Match(service.GetAnnotations()) {
-
 		return ctrl.Result{}, nil
 	}
 
@@ -110,32 +111,32 @@ func (r *KubeLBServiceReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 
 	log.V(5).Info("proceeding with", "endpoints", clusterEndpoints)
 
-	desiredTcpLB := kubelb.MapLoadBalancer(&service, clusterEndpoints, r.ClusterName)
-	log.V(6).Info("desired", "LoadBalancer", desiredTcpLB)
+	desiredTCPLB := kubelb.MapLoadBalancer(&service, clusterEndpoints, r.ClusterName)
+	log.V(6).Info("desired", "LoadBalancer", desiredTCPLB)
 
 	kubelbClient := r.KubeLBManager.GetClient()
 
-	var actualTcpLB kubelbk8ciov1alpha1.TCPLoadBalancer
+	var actualTCPLB kubelbk8ciov1alpha1.TCPLoadBalancer
 
-	err = kubelbClient.Get(ctx, ctrlclient.ObjectKeyFromObject(desiredTcpLB), &actualTcpLB)
-	log.V(6).Info("actual", "LoadBalancer", actualTcpLB)
+	err = kubelbClient.Get(ctx, ctrlclient.ObjectKeyFromObject(desiredTCPLB), &actualTCPLB)
+	log.V(6).Info("actual", "LoadBalancer", actualTCPLB)
 
 	if err != nil {
 		if !apierrors.IsNotFound(err) {
 			return ctrl.Result{}, err
 		}
-		log.V(1).Info("creating LoadBalancer", "name", desiredTcpLB.Name, "namespace", desiredTcpLB.Namespace)
+		log.V(1).Info("creating LoadBalancer", "name", desiredTCPLB.Name, "namespace", desiredTCPLB.Namespace)
 
-		return ctrl.Result{}, kubelbClient.Create(ctx, desiredTcpLB)
+		return ctrl.Result{}, kubelbClient.Create(ctx, desiredTCPLB)
 	}
 
-	log.V(6).Info("load balancer status", "LoadBalancer", actualTcpLB.Status.LoadBalancer.Ingress, "service", service.Status.LoadBalancer.Ingress)
+	log.V(6).Info("load balancer status", "LoadBalancer", actualTCPLB.Status.LoadBalancer.Ingress, "service", service.Status.LoadBalancer.Ingress)
 
-	if service.Spec.Type != corev1.ServiceTypeLoadBalancer || len(actualTcpLB.Status.LoadBalancer.Ingress) == len(service.Status.LoadBalancer.Ingress) {
+	if service.Spec.Type != corev1.ServiceTypeLoadBalancer || len(actualTCPLB.Status.LoadBalancer.Ingress) == len(service.Status.LoadBalancer.Ingress) {
 		log.V(2).Info("service status is in desired state")
 	} else {
-		log.V(1).Info("updating service status", "name", desiredTcpLB.Name, "namespace", desiredTcpLB.Namespace)
-		service.Status.LoadBalancer = actualTcpLB.Status.LoadBalancer
+		log.V(1).Info("updating service status", "name", desiredTCPLB.Name, "namespace", desiredTCPLB.Namespace)
+		service.Status.LoadBalancer = actualTCPLB.Status.LoadBalancer
 		log.V(7).Info("updating to", "service status", service.Status.LoadBalancer)
 
 		err = r.Client.Status().Update(ctx, &service)
@@ -144,20 +145,20 @@ func (r *KubeLBServiceReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 		}
 	}
 
-	if kubelb.LoadBalancerIsDesiredState(&actualTcpLB, desiredTcpLB) {
+	if kubelb.LoadBalancerIsDesiredState(&actualTCPLB, desiredTCPLB) {
 		log.V(2).Info("LoadBalancer is in desired state")
 		return ctrl.Result{}, nil
 	}
 
-	log.V(1).Info("updating LoadBalancer spec", "name", desiredTcpLB.Name, "namespace", desiredTcpLB.Namespace)
-	actualTcpLB.Spec = desiredTcpLB.Spec
-	actualTcpLB.Annotations = desiredTcpLB.Annotations
+	log.V(1).Info("updating LoadBalancer spec", "name", desiredTCPLB.Name, "namespace", desiredTCPLB.Namespace)
+	actualTCPLB.Spec = desiredTCPLB.Spec
+	actualTCPLB.Annotations = desiredTCPLB.Annotations
 
-	err = kubelbClient.Update(ctx, &actualTcpLB)
+	err = kubelbClient.Update(ctx, &actualTCPLB)
 	if err != nil {
 		return ctrl.Result{}, err
 	}
-	log.V(7).Info("updated to", "LoadBalancer", actualTcpLB)
+	log.V(7).Info("updated to", "LoadBalancer", actualTCPLB)
 
 	return ctrl.Result{}, err
 }
@@ -168,10 +169,10 @@ func (r *KubeLBServiceReconciler) cleanupService(ctx context.Context, log logr.L
 	}
 
 	kubelbClient := r.KubeLBManager.GetClient()
-	desiredTcpLB := kubelb.MapLoadBalancer(service, clusterEndpoints, r.ClusterName)
-	log.V(1).Info("deleting TCPLoadBalancer", "name", desiredTcpLB)
+	desiredTCPLB := kubelb.MapLoadBalancer(service, clusterEndpoints, r.ClusterName)
+	log.V(1).Info("deleting TCPLoadBalancer", "name", desiredTCPLB)
 
-	err := kubelbClient.Delete(ctx, desiredTcpLB)
+	err := kubelbClient.Delete(ctx, desiredTCPLB)
 	switch {
 	case apierrors.IsNotFound(err):
 		return ctrl.Result{}, nil
@@ -193,37 +194,39 @@ func (r *KubeLBServiceReconciler) cleanupService(ctx context.Context, log logr.L
 	return ctrl.Result{}, nil
 }
 
-func (r *KubeLBServiceReconciler) enqueueTCPLoadBalancer(a ctrlclient.Object) []reconcile.Request {
-	if a.GetNamespace() != r.ClusterName {
-		return []reconcile.Request{}
-	}
+func (r *KubeLBServiceReconciler) enqueueTCPLoadBalancer() handler.MapFunc {
+	return func(ctx context.Context, a client.Object) []ctrl.Request {
+		if a.GetNamespace() != r.ClusterName {
+			return []reconcile.Request{}
+		}
 
-	tcpLb := a.(*kubelbk8ciov1alpha1.TCPLoadBalancer)
-	if tcpLb.Spec.Type != corev1.ServiceTypeLoadBalancer {
-		return []reconcile.Request{}
-	}
+		tcpLb := a.(*kubelbk8ciov1alpha1.TCPLoadBalancer)
+		if tcpLb.Spec.Type != corev1.ServiceTypeLoadBalancer {
+			return []reconcile.Request{}
+		}
 
-	originalNamespace, ok := a.GetLabels()[kubelb.LabelOriginNamespace]
-	if !ok || originalNamespace == "" {
-		r.Log.Error(fmt.Errorf("required label \"%s\" not found", kubelb.LabelOriginNamespace), fmt.Sprintf("failed to queue service for LoadBalacner: %s, could not determine origin namespace", a.GetName()))
+		originalNamespace, ok := a.GetLabels()[kubelb.LabelOriginNamespace]
+		if !ok || originalNamespace == "" {
+			r.Log.Error(fmt.Errorf("required label \"%s\" not found", kubelb.LabelOriginNamespace), fmt.Sprintf("failed to queue service for LoadBalacner: %s, could not determine origin namespace", a.GetName()))
 
-		return []reconcile.Request{}
-	}
+			return []reconcile.Request{}
+		}
 
-	originalName, ok := a.GetLabels()[kubelb.LabelOriginName]
-	if !ok || originalName == "" {
-		r.Log.Error(fmt.Errorf("required label \"%s\" not found", kubelb.LabelOriginName), fmt.Sprintf("failed to queue service for LoadBalacner: %s, could not determine origin name", a.GetName()))
+		originalName, ok := a.GetLabels()[kubelb.LabelOriginName]
+		if !ok || originalName == "" {
+			r.Log.Error(fmt.Errorf("required label \"%s\" not found", kubelb.LabelOriginName), fmt.Sprintf("failed to queue service for LoadBalacner: %s, could not determine origin name", a.GetName()))
 
-		return []reconcile.Request{}
-	}
+			return []reconcile.Request{}
+		}
 
-	return []reconcile.Request{
-		{
-			NamespacedName: types.NamespacedName{
-				Name:      originalName,
-				Namespace: originalNamespace,
+		return []reconcile.Request{
+			{
+				NamespacedName: types.NamespacedName{
+					Name:      originalName,
+					Namespace: originalNamespace,
+				},
 			},
-		},
+		}
 	}
 }
 
@@ -234,19 +237,15 @@ func (r *KubeLBServiceReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	}
 
 	err = ctr.Watch(
-		&source.Kind{Type: &corev1.Service{}},
+		source.Kind(mgr.GetCache(), &corev1.Service{}),
 		&handler.EnqueueRequestForObject{},
 	)
 	if err != nil {
 		return fmt.Errorf("failed to watch for service: %w", err)
 	}
 
-	kubeLBWatch := &source.Kind{Type: &kubelbk8ciov1alpha1.TCPLoadBalancer{}}
-	if err = kubeLBWatch.InjectCache(r.KubeLBManager.GetCache()); err != nil {
-		return fmt.Errorf("failed to inject cache: %w", err)
-	}
-
-	if err = ctr.Watch(kubeLBWatch, handler.EnqueueRequestsFromMapFunc(r.enqueueTCPLoadBalancer)); err != nil {
+	kubeLBWatch := source.Kind(mgr.GetCache(), &kubelbk8ciov1alpha1.TCPLoadBalancer{})
+	if err = ctr.Watch(kubeLBWatch, handler.EnqueueRequestsFromMapFunc(r.enqueueTCPLoadBalancer())); err != nil {
 		return fmt.Errorf("failed to watch for TCPLoadBalancer %w", err)
 	}
 

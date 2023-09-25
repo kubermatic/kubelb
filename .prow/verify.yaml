@@ -78,6 +78,18 @@ presubmits:
           args:
             - verify-boilerplate
 
+  - name: pull-kubelb-verify-imports
+    always_run: true
+    decorate: true
+    clone_uri: "ssh://git@github.com/kubermatic/kubelb.git"
+    spec:
+      containers:
+        - image: quay.io/kubermatic/build:go-1.21-node-18-kind-0.20-1
+          command:
+            - make
+          args:
+            - verify-imports
+
   - name: pull-kubelb-build
     always_run: true
     decorate: true

@@ -22,13 +22,14 @@ import (
 	"reflect"
 	"time"
 
+	"github.com/envoyproxy/go-control-plane/pkg/resource/v3"
+	. "github.com/onsi/ginkgo"
+	. "github.com/onsi/gomega"
+
 	kubelbk8ciov1alpha1 "k8c.io/kubelb/pkg/api/kubelb.k8c.io/v1alpha1"
 	envoycp "k8c.io/kubelb/pkg/envoy"
 	"k8c.io/kubelb/pkg/kubelb"
 
-	"github.com/envoyproxy/go-control-plane/pkg/resource/v3"
-	. "github.com/onsi/ginkgo"
-	. "github.com/onsi/gomega"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -91,32 +92,32 @@ var _ = Describe("TcpLb deployment and service creation", func() {
 
 	Context("When updating an existing LoadBalancers Ports", func() {
 		It("Should update the load balancer service and envoy snapshot", func() {
-			existingTcpLb := &kubelbk8ciov1alpha1.TCPLoadBalancer{}
+			existingTCPLb := &kubelbk8ciov1alpha1.TCPLoadBalancer{}
 
 			Eventually(func() bool {
-				err := k8sClient.Get(ctx, lookupKey, existingTcpLb)
+				err := k8sClient.Get(ctx, lookupKey, existingTCPLb)
 				return err == nil
 			}, timeout, interval).Should(BeTrue())
 
 			// Make sure we have only 1 port in the existing LoadBalancer
-			Expect(len(existingTcpLb.Spec.Ports)).To(BeEquivalentTo(1))
+			Expect(len(existingTCPLb.Spec.Ports)).To(BeEquivalentTo(1))
 
-			existingTcpLb.Spec.Ports[0].Name = "port-a"
-			existingTcpLb.Spec.Endpoints[0].Ports[0].Name = "port-a"
+			existingTCPLb.Spec.Ports[0].Name = "port-a"
+			existingTCPLb.Spec.Endpoints[0].Ports[0].Name = "port-a"
 
-			existingTcpLb.Spec.Ports = append(existingTcpLb.Spec.Ports, kubelbk8ciov1alpha1.LoadBalancerPort{
+			existingTCPLb.Spec.Ports = append(existingTCPLb.Spec.Ports, kubelbk8ciov1alpha1.LoadBalancerPort{
 				Name: "port-b",
 				Port: 81,
 			})
 
-			existingTcpLb.Spec.Endpoints[0].Ports = append(existingTcpLb.Spec.Endpoints[0].Ports, kubelbk8ciov1alpha1.EndpointPort{
+			existingTCPLb.Spec.Endpoints[0].Ports = append(existingTCPLb.Spec.Endpoints[0].Ports, kubelbk8ciov1alpha1.EndpointPort{
 				Name: "port-b",
 				Port: 8081,
 			})
 
 			// Todo: this should actually fail on update if there is no corresponding endpoint port set,
 			// as well as a name to map those. Go ahead with admission webhooks
-			Expect(k8sClient.Update(ctx, existingTcpLb)).Should(Succeed())
+			Expect(k8sClient.Update(ctx, existingTCPLb)).Should(Succeed())
 
 			By("updating the service ports")
 
@@ -146,7 +147,7 @@ var _ = Describe("TcpLb deployment and service creation", func() {
 			snapshot, err := envoyServer.Cache.GetSnapshot(tcpLbName)
 			Expect(err).ToNot(HaveOccurred())
 
-			testSnapshot, err := envoycp.MapSnapshot(getLoadBalancerList(*existingTcpLb), "1.0.0", nil)
+			testSnapshot, err := envoycp.MapSnapshot(getLoadBalancerList(*existingTCPLb), "1.0.0", nil)
 			Expect(err).ToNot(HaveOccurred())
 			Expect(reflect.DeepEqual(snapshot, testSnapshot)).To(BeTrue())
 

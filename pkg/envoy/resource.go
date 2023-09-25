@@ -38,18 +38,18 @@ import (
 	"google.golang.org/protobuf/types/known/anypb"
 	"google.golang.org/protobuf/types/known/durationpb"
 
-	corev1 "k8s.io/api/core/v1"
-
 	kubelbiov1alpha1 "k8c.io/kubelb/pkg/api/kubelb.k8c.io/v1alpha1"
 	"k8c.io/kubelb/pkg/kubelb"
 	portlookup "k8c.io/kubelb/pkg/port-lookup"
+
+	corev1 "k8s.io/api/core/v1"
 )
 
-func MapSnapshot(LoadBalancer kubelbiov1alpha1.TCPLoadBalancerList, version string, portAllocator *portlookup.PortAllocator) (*envoycache.Snapshot, error) {
+func MapSnapshot(loadBalancer kubelbiov1alpha1.TCPLoadBalancerList, version string, portAllocator *portlookup.PortAllocator) (*envoycache.Snapshot, error) {
 	var listener []types.Resource
 	var cluster []types.Resource
 
-	for _, lb := range LoadBalancer.Items {
+	for _, lb := range loadBalancer.Items {
 		// multiple endpoints represent multiple clusters
 		for i, lbEndpoint := range lb.Spec.Endpoints {
 			for _, lbEndpointPort := range lbEndpoint.Ports {
@@ -72,9 +72,9 @@ func MapSnapshot(LoadBalancer kubelbiov1alpha1.TCPLoadBalancerList, version stri
 				}
 
 				if lbEndpointPort.Protocol == corev1.ProtocolTCP {
-					listener = append(listener, makeTCPListener(key, key, uint32(port)))
+					listener = append(listener, makeTCPListener(key, key, port))
 				} else if lbEndpointPort.Protocol == corev1.ProtocolUDP {
-					listener = append(listener, makeUDPListener(key, key, uint32(port)))
+					listener = append(listener, makeUDPListener(key, key, port))
 				}
 				cluster = append(cluster, makeCluster(key, lbEndpoints))
 			}

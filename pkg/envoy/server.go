@@ -58,7 +58,6 @@ type Server struct {
 }
 
 func NewServer(listenAddress string, enableDebug bool) (*Server, error) {
-
 	portString := strings.Split(listenAddress, ":")[1]
 	port, err := strconv.ParseUint(portString, 10, 32)
 	if err != nil {
@@ -71,7 +70,6 @@ func NewServer(listenAddress string, enableDebug bool) (*Server, error) {
 		Cache:         cachev3.NewSnapshotCache(false, cachev3.IDHash{}, Logger{enableDebug}),
 		enableAdmin:   enableDebug,
 	}, nil
-
 }
 
 // Start the Envoy control plane server.
@@ -94,7 +92,7 @@ func (s *Server) Start(ctx context.Context) error {
 
 	registerServer(grpcServer, srv3)
 
-	//s.Log.Infow("starting management service", "listen-address", s.listenAddress)
+	// s.Log.Infow("starting management service", "listen-address", s.listenAddress)
 	if err = grpcServer.Serve(lis); err != nil {
 		return errors.Wrap(err, "envoy control plane server failed while start serving incoming connections")
 	}

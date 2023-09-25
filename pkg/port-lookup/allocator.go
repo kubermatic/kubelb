@@ -36,22 +36,22 @@ const (
 	endPort                   int    = 65535
 )
 
-// PortLookupTable is a lookup table for ports. It maps endpoint keys to port keys to the actual allocated ports.
-type PortLookupTable map[string]map[string]int
+// LookupTable is a lookup table for ports. It maps endpoint keys to port keys to the actual allocated ports.
+type LookupTable map[string]map[string]int
 
 type PortAllocator struct {
 	mu sync.Mutex
 
 	client     client.Client
 	namespace  string
-	portLookup PortLookupTable
+	portLookup LookupTable
 	// portLookupReverse is a reverse lookup table for available ports. It is used to quickly determine if a port is available.
 	portLookupReverse map[int]bool
 }
 
 func NewPortAllocator(client client.Client, namespace string) *PortAllocator {
 	pa := &PortAllocator{
-		portLookup:        make(PortLookupTable),
+		portLookup:        make(LookupTable),
 		portLookupReverse: make(map[int]bool),
 		client:            client,
 		namespace:         namespace,
@@ -59,7 +59,7 @@ func NewPortAllocator(client client.Client, namespace string) *PortAllocator {
 	return pa
 }
 
-func (pa *PortAllocator) GetPortLookupTable() PortLookupTable {
+func (pa *PortAllocator) GetPortLookupTable() LookupTable {
 	return pa.portLookup
 }
 
@@ -155,7 +155,7 @@ func (pa *PortAllocator) recomputeAvailablePorts() {
 
 // LoadState loads the port lookup table from the global configmap.
 func (pa *PortAllocator) LoadState(ctx context.Context, apiReader client.Reader) error {
-	lookupTable := make(PortLookupTable)
+	lookupTable := make(LookupTable)
 	lookupConfigmap := &corev1.ConfigMap{}
 
 	// We use the API reader here because the cache may not be fully synced yet.

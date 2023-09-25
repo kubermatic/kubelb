@@ -21,6 +21,7 @@ import (
 	"os"
 
 	"go.uber.org/zap/zapcore"
+
 	kubelbk8ciov1alpha1 "k8c.io/kubelb/pkg/api/kubelb.k8c.io/v1alpha1"
 	"k8c.io/kubelb/pkg/controllers/kubelb"
 	"k8c.io/kubelb/pkg/envoy"
@@ -33,6 +34,7 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
+	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 )
 
 type options struct {
@@ -98,8 +100,7 @@ func main() {
 
 	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
 		Scheme:                        scheme,
-		MetricsBindAddress:            opt.metricsAddr,
-		Port:                          9443,
+		Metrics:                       metricsserver.Options{BindAddress: opt.metricsAddr},
 		HealthProbeBindAddress:        opt.probeAddr,
 		LeaderElection:                opt.enableLeaderElection,
 		LeaderElectionID:              "19f32e7b.kubelb.k8c.io",
@@ -145,7 +146,7 @@ func main() {
 		EnvoyProxyReplicas: opt.envoyProxyReplicas,
 		Namespace:          opt.namespace,
 		PortAllocator:      portAllocator,
-	}).SetupWithManager(mgr, ctx); err != nil {
+	}).SetupWithManager(ctx, mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "LoadBalancer")
 		os.Exit(1)
 	}

@@ -26,21 +26,19 @@ type Endpoints struct {
 func (r *Endpoints) GetEndpoints(nodes *corev1.NodeList) []string {
 	var clusterEndpoints []string
 	for _, node := range nodes.Items {
-		var internalIp string
+		var internalIP string
 		for _, address := range node.Status.Addresses {
 			if address.Type == r.EndpointAddressType {
-				internalIp = address.Address
+				internalIP = address.Address
 			}
 		}
-		clusterEndpoints = append(clusterEndpoints, internalIp)
+		clusterEndpoints = append(clusterEndpoints, internalIP)
 	}
 	return clusterEndpoints
 }
 
 func (r *Endpoints) EndpointIsDesiredState(desired *corev1.NodeList) bool {
-
 	desiredEndpoints := r.GetEndpoints(desired)
-
 	if len(r.ClusterEndpoints) != len(desiredEndpoints) {
 		return false
 	}

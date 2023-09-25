@@ -19,10 +19,11 @@ package ccm
 import (
 	"context"
 
+	"github.com/go-logr/logr"
+
 	kubelbiov1alpha1 "k8c.io/kubelb/pkg/api/kubelb.k8c.io/v1alpha1"
 	"k8c.io/kubelb/pkg/kubelb"
 
-	"github.com/go-logr/logr"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -93,7 +94,6 @@ func (r *KubeLBNodeReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 
 		log.V(2).Info("updated", "LoadBalancer", tcpLb.Name)
 		log.V(7).Info("updated to", "LoadBalancer", tcpLb)
-
 	}
 
 	return ctrl.Result{}, nil

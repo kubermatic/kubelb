@@ -19,10 +19,10 @@ package kubelb
 import (
 	"reflect"
 
+	kubelbiov1alpha1 "k8c.io/kubelb/pkg/api/kubelb.k8c.io/v1alpha1"
+
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-
-	kubelbiov1alpha1 "k8c.io/kubelb/pkg/api/kubelb.k8c.io/v1alpha1"
 )
 
 func MapLoadBalancer(userService *corev1.Service, clusterEndpoints []string, clusterName string) *kubelbiov1alpha1.TCPLoadBalancer {
@@ -110,7 +110,6 @@ func LoadBalancerIsDesiredState(actual, desired *kubelbiov1alpha1.TCPLoadBalance
 	}
 
 	for i := 0; i < len(desired.Spec.Endpoints); i++ {
-
 		if len(desired.Spec.Endpoints[i].Addresses) != len(actual.Spec.Endpoints[i].Addresses) {
 			return false
 		}
