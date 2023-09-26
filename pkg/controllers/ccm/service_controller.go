@@ -244,7 +244,8 @@ func (r *KubeLBServiceReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		return fmt.Errorf("failed to watch for service: %w", err)
 	}
 
-	kubeLBWatch := source.Kind(mgr.GetCache(), &kubelbk8ciov1alpha1.TCPLoadBalancer{})
+	// Watch for changes to TCPLoadBalancer in the KubeLB management cluster.
+	kubeLBWatch := source.Kind(r.KubeLBManager.GetCache(), &kubelbk8ciov1alpha1.TCPLoadBalancer{})
 	if err = ctr.Watch(kubeLBWatch, handler.EnqueueRequestsFromMapFunc(r.enqueueTCPLoadBalancer())); err != nil {
 		return fmt.Errorf("failed to watch for TCPLoadBalancer %w", err)
 	}
