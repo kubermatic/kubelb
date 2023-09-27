@@ -76,7 +76,7 @@ func main() {
 	flag.StringVar(&clusterName, "cluster-name", "default", "Cluster name where the ccm is running. Resources inside the KubeLb cluster will get deployed to the namespace named by cluster name, must be unique.")
 	flag.StringVar(&kubeLbKubeconf, "kubelb-kubeconfig", defaultKubeLbConf, "The path to the kubelb cluster kubeconfig.")
 	flag.BoolVar(&enableCloudController, "enable-cloud-provider", true, "Enables cloud controller like behavior. This will set the status of TCP LoadBalancer")
-	flag.BoolVar(&enableLeaderElection, "enable-leader-election", false,
+	flag.BoolVar(&enableLeaderElection, "enable-leader-election", true,
 		"Enable leader election for controller ccm. Enabling this will ensure there is only one active controller ccm.")
 	flag.StringVar(&leaderElectionNamespace, "leader-election-namespace", "", "Optionally configure leader election namespace.")
 

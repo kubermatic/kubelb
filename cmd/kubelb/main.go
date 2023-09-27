@@ -66,7 +66,7 @@ func main() {
 	flag.StringVar(&opt.envoyListenAddress, "listen-address", ":8001", "Address to serve envoy control-plane on")
 	flag.StringVar(&opt.metricsAddr, "metrics-addr", ":0", "The address the metric endpoint binds to.")
 	flag.StringVar(&opt.probeAddr, "health-probe-bind-address", ":8081", "The address the probe endpoint binds to.")
-	flag.BoolVar(&opt.enableLeaderElection, "enable-leader-election", false,
+	flag.BoolVar(&opt.enableLeaderElection, "enable-leader-election", true,
 		"Enable leader election for controller kubelb. Enabling this will ensure there is only one active controller kubelb.")
 	flag.BoolVar(&opt.enableDebugMode, "debug", false, "Enables debug mode")
 	flag.StringVar(&opt.envoyProxyTopology, "envoy-proxy-topology", "shared", "The deployment topology for Envoy Proxy. Valid values are: shared, dedicated, and global.")
