@@ -39,6 +39,7 @@ import (
 
 type options struct {
 	metricsAddr          string
+	envoyCPMetricsAddr   string
 	envoyListenAddress   string
 	enableLeaderElection bool
 	probeAddr            string
@@ -64,7 +65,8 @@ func init() {
 func main() {
 	opt := &options{}
 	flag.StringVar(&opt.envoyListenAddress, "listen-address", ":8001", "Address to serve envoy control-plane on")
-	flag.StringVar(&opt.metricsAddr, "metrics-addr", ":0", "The address the metric endpoint binds to.")
+	flag.StringVar(&opt.metricsAddr, "metrics-addr", ":9443", "The address the metric endpoint for the default controller manager binds to.")
+	flag.StringVar(&opt.envoyCPMetricsAddr, "envoy-cp-metrics-addr", ":9444", "The address the metric endpoint for the envoy control-plane manager binds to.")
 	flag.StringVar(&opt.probeAddr, "health-probe-bind-address", ":8081", "The address the probe endpoint binds to.")
 	flag.BoolVar(&opt.enableLeaderElection, "enable-leader-election", true,
 		"Enable leader election for controller kubelb. Enabling this will ensure there is only one active controller kubelb.")
@@ -108,7 +110,17 @@ func main() {
 		LeaderElectionNamespace:       opt.namespace,
 	})
 	if err != nil {
-		setupLog.Error(err, "unable to start kubelb")
+		setupLog.Error(err, "unable to start kubelb controller manager")
+		os.Exit(1)
+	}
+
+	envoyMgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
+		Scheme:         scheme,
+		Metrics:        metricsserver.Options{BindAddress: opt.envoyCPMetricsAddr},
+		LeaderElection: false,
+	})
+	if err != nil {
+		setupLog.Error(err, "unable to start kubelb envoy cache manager")
 		os.Exit(1)
 	}
 
@@ -118,7 +130,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	if err := mgr.Add(envoyServer); err != nil {
+	if err := envoyMgr.Add(envoyServer); err != nil {
 		setupLog.Error(err, "failed to register envoy config server with controller-runtime kubelb")
 		os.Exit(1)
 	}
@@ -140,7 +152,6 @@ func main() {
 		Client:             mgr.GetClient(),
 		Cache:              mgr.GetCache(),
 		Scheme:             mgr.GetScheme(),
-		EnvoyCache:         envoyServer.Cache,
 		EnvoyBootstrap:     envoyServer.GenerateBootstrap(),
 		EnvoyProxyTopology: envoyProxyTopology,
 		EnvoyProxyReplicas: opt.envoyProxyReplicas,
@@ -160,7 +171,25 @@ func main() {
 		os.Exit(1)
 	}
 
-	setupLog.Info("starting kubelb")
+	if err = (&kubelb.EnvoyCPReconciler{
+		Client:             envoyMgr.GetClient(),
+		EnvoyCache:         envoyServer.Cache,
+		EnvoyProxyTopology: envoyProxyTopology,
+		PortAllocator:      portAllocator,
+	}).SetupWithManager(envoyMgr); err != nil {
+		setupLog.Error(err, "unable to create envoy control-plane controller", "controller", "LoadBalancer")
+		os.Exit(1)
+	}
+
+	go func() {
+		setupLog.Info("starting kubelb envoy manager")
+
+		if err := envoyMgr.Start(ctx); err != nil {
+			setupLog.Error(err, "problem running kubelb envoy manager")
+			os.Exit(1)
+		}
+	}()
+	setupLog.Info("starting kubelb manager")
 	if err := mgr.Start(ctx); err != nil {
 		setupLog.Error(err, "problem running kubelb")
 		os.Exit(1)

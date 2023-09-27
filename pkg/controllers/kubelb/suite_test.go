@@ -93,7 +93,6 @@ var _ = BeforeSuite(func() {
 		Client:         k8sManager.GetClient(),
 		Cache:          k8sManager.GetCache(),
 		Scheme:         k8sManager.GetScheme(),
-		EnvoyCache:     envoyServer.Cache,
 		EnvoyBootstrap: envoyServer.GenerateBootstrap(),
 	}).SetupWithManager(ctx, k8sManager)
 	Expect(err).ToNot(HaveOccurred())

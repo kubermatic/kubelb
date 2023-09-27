@@ -22,13 +22,7 @@ import (
 	"reflect"
 	"strings"
 
-	"github.com/Masterminds/semver/v3"
-	envoycachev3 "github.com/envoyproxy/go-control-plane/pkg/cache/v3"
-	envoyresource "github.com/envoyproxy/go-control-plane/pkg/resource/v3"
-	"github.com/pkg/errors"
-
 	kubelbk8ciov1alpha1 "k8c.io/kubelb/pkg/api/kubelb.k8c.io/v1alpha1"
-	envoycp "k8c.io/kubelb/pkg/envoy"
 	"k8c.io/kubelb/pkg/kubelb"
 	kuberneteshelper "k8c.io/kubelb/pkg/kubernetes"
 	portlookup "k8c.io/kubelb/pkg/port-lookup"
@@ -36,7 +30,6 @@ import (
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
-	kerrors "k8s.io/apimachinery/pkg/api/errors"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
@@ -76,7 +69,6 @@ type LoadBalancerReconciler struct {
 
 	PortAllocator *portlookup.PortAllocator
 
-	EnvoyCache         envoycachev3.SnapshotCache
 	EnvoyBootstrap     string
 	EnvoyProxyTopology EnvoyProxyTopology
 	EnvoyProxyReplicas int
@@ -101,7 +93,6 @@ func (r *LoadBalancerReconciler) Reconcile(ctx context.Context, req ctrl.Request
 			log.Error(err, "unable to fetch LoadBalancer")
 		}
 		log.V(3).Info("LoadBalancer not found")
-		r.EnvoyCache.ClearSnapshot(req.Name)
 		return ctrl.Result{}, nil
 	}
 
@@ -109,7 +100,7 @@ func (r *LoadBalancerReconciler) Reconcile(ctx context.Context, req ctrl.Request
 
 	// Todo: check validation webhook - ports must equal endpoint ports as well
 	if len(LoadBalancer.Spec.Endpoints) == 0 {
-		log.Error(errors.New("Invalid Spec"), "No Endpoints set")
+		log.Error(fmt.Errorf("Invalid Spec"), "No Endpoints set")
 		return ctrl.Result{}, nil
 	}
 
@@ -118,7 +109,6 @@ func (r *LoadBalancerReconciler) Reconcile(ctx context.Context, req ctrl.Request
 	var (
 		loadBalancers kubelbk8ciov1alpha1.TCPLoadBalancerList
 		appName       string
-		snapshotName  string
 	)
 
 	switch r.EnvoyProxyTopology {
@@ -129,7 +119,6 @@ func (r *LoadBalancerReconciler) Reconcile(ctx context.Context, req ctrl.Request
 			return ctrl.Result{}, err
 		}
 		appName = req.Namespace
-		snapshotName = req.Namespace
 	case EnvoyProxyTopologyGlobal:
 		// List all loadbalancers. We don't care about the namespace here.
 		// TODO: ideally we should only process the load balancer that is being reconciled.
@@ -139,11 +128,9 @@ func (r *LoadBalancerReconciler) Reconcile(ctx context.Context, req ctrl.Request
 			return ctrl.Result{}, err
 		}
 		appName = envoyGlobalCache
-		snapshotName = envoyGlobalCache
 	case EnvoyProxyTopologyDedicated:
 		loadBalancers.Items = []kubelbk8ciov1alpha1.TCPLoadBalancer{LoadBalancer}
 		appName = LoadBalancer.Name
-		snapshotName = fmt.Sprintf("%s-%s", LoadBalancer.Namespace, LoadBalancer.Name)
 	}
 
 	// Resource is marked for deletion.
@@ -170,13 +157,8 @@ func (r *LoadBalancerReconciler) Reconcile(ctx context.Context, req ctrl.Request
 		}
 	}
 
-	err = r.reconcileEnvoySnapshot(ctx, loadBalancers, snapshotName, r.PortAllocator)
-	if err != nil {
-		log.Error(err, "Unable to reconcile envoy snapshot")
-		return ctrl.Result{}, err
-	}
-
-	err = r.reconcileDeployment(ctx, loadBalancers, req.Namespace, appName, snapshotName)
+	snapshotName := envoySnapshotName(r.EnvoyProxyTopology, req)
+	err = r.reconcileDeployment(ctx, req.Namespace, appName, snapshotName)
 	if err != nil {
 		log.Error(err, "Unable to reconcile deployment")
 		return ctrl.Result{}, err
@@ -191,66 +173,7 @@ func (r *LoadBalancerReconciler) Reconcile(ctx context.Context, req ctrl.Request
 	return ctrl.Result{}, nil
 }
 
-func (r *LoadBalancerReconciler) reconcileEnvoySnapshot(ctx context.Context, loadBalancers kubelbk8ciov1alpha1.TCPLoadBalancerList, snapshotName string, portAllocator *portlookup.PortAllocator) error {
-	log := ctrl.LoggerFrom(ctx).WithValues("reconcile", "envoy")
-	log.V(2).Info("verify envoy snapshot")
-
-	// Get current snapshot
-	actualSnapshot, err := r.EnvoyCache.GetSnapshot(snapshotName)
-	if err != nil {
-		// Add the snapshot to the cache
-		// Todo: check namespace and node-id uniqueness
-		initSnapshot, errSnapshor := envoycp.MapSnapshot(loadBalancers, "0.0.1", portAllocator)
-		if errSnapshor != nil {
-			return errSnapshor
-		}
-
-		log.Info("init snapshot", "service-node", snapshotName, "version", "0.0.1")
-		log.V(5).Info("serving", "snapshot", initSnapshot)
-
-		return r.EnvoyCache.SetSnapshot(ctx, snapshotName, initSnapshot)
-	}
-
-	log.V(5).Info("actual", "snapshot", actualSnapshot)
-
-	lastUsedVersion, err := semver.NewVersion(actualSnapshot.GetVersion(envoyresource.ClusterType))
-	if err != nil {
-		return errors.Wrap(err, "failed to parse version from last snapshot")
-	}
-
-	desiredSnapshot, err := envoycp.MapSnapshot(loadBalancers, lastUsedVersion.String(), portAllocator)
-	if err != nil {
-		return err
-	}
-
-	log.V(5).Info("desired", "snapshot", desiredSnapshot)
-
-	// Generate a new snapshot using the old version to be able to do a DeepEqual comparison
-	if reflect.DeepEqual(actualSnapshot, desiredSnapshot) {
-		log.V(2).Info("snapshot is in desired state")
-		return nil
-	}
-
-	newVersion := lastUsedVersion.IncMajor()
-	newSnapshot, err := envoycp.MapSnapshot(loadBalancers, newVersion.String(), portAllocator)
-	if err != nil {
-		return err
-	}
-
-	if err := newSnapshot.Consistent(); err != nil {
-		return errors.Wrap(err, "new Envoy config snapshot is not consistent")
-	}
-
-	log.Info("updating snapshot", "service-node", snapshotName, "version", newVersion.String())
-
-	if err := r.EnvoyCache.SetSnapshot(ctx, snapshotName, newSnapshot); err != nil {
-		return errors.Wrap(err, "failed to set a new Envoy cache snapshot")
-	}
-
-	return nil
-}
-
-func (r *LoadBalancerReconciler) reconcileDeployment(ctx context.Context, _ kubelbk8ciov1alpha1.TCPLoadBalancerList, namespace string, appName string, snapshotName string) error {
+func (r *LoadBalancerReconciler) reconcileDeployment(ctx context.Context, namespace, appName, snapshotName string) error {
 	log := ctrl.LoggerFrom(ctx).WithValues("reconcile", "deployment")
 	log.V(2).Info("verify deployment")
 
@@ -442,12 +365,9 @@ func (r *LoadBalancerReconciler) handleEnvoyProxyCleanup(ctx context.Context, lb
 			},
 		}
 		log.V(2).Info("Deleting deployment", "name", deployment.Name, "namespace", deployment.Namespace)
-		if err := r.Delete(ctx, deployment); err != nil && !kerrors.IsNotFound(err) {
+		if err := r.Delete(ctx, deployment); err != nil && !apierrors.IsNotFound(err) {
 			return fmt.Errorf("failed to delete envoy proxy deployment %s: %v against LoadBalancer %w", deployment.Name, fmt.Sprintf("%s/%s", lb.Name, lb.Namespace), err)
 		}
-
-		// Since we are deleting the envoy proxy deployment, we need to clear the snapshot cache.
-		r.EnvoyCache.ClearSnapshot(appName)
 	}
 
 	// Deallocate ports if we are using global envoy proxy topology.
@@ -469,7 +389,7 @@ func (r *LoadBalancerReconciler) handleEnvoyProxyCleanup(ctx context.Context, lb
 		},
 	}
 	log.V(2).Info("Deleting service", "name", svc.Name, "namespace", svc.Namespace)
-	if err := r.Delete(ctx, svc); err != nil && !kerrors.IsNotFound(err) {
+	if err := r.Delete(ctx, svc); err != nil && !apierrors.IsNotFound(err) {
 		return fmt.Errorf("failed to delete service %s: %v against LoadBalancer %w", svc.Name, fmt.Sprintf("%s/%s", lb.Name, lb.Namespace), err)
 	}
 

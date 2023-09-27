@@ -45,11 +45,11 @@ import (
 	corev1 "k8s.io/api/core/v1"
 )
 
-func MapSnapshot(loadBalancer kubelbiov1alpha1.TCPLoadBalancerList, version string, portAllocator *portlookup.PortAllocator) (*envoycache.Snapshot, error) {
+func MapSnapshot(loadBalancers []kubelbiov1alpha1.TCPLoadBalancer, portAllocator *portlookup.PortAllocator) (*envoycache.Snapshot, error) {
 	var listener []types.Resource
 	var cluster []types.Resource
 
-	for _, lb := range loadBalancer.Items {
+	for _, lb := range loadBalancers {
 		// multiple endpoints represent multiple clusters
 		for i, lbEndpoint := range lb.Spec.Endpoints {
 			for _, lbEndpointPort := range lbEndpoint.Ports {
@@ -80,6 +80,19 @@ func MapSnapshot(loadBalancer kubelbiov1alpha1.TCPLoadBalancerList, version stri
 			}
 		}
 	}
+
+	var content []byte
+	var resources []types.Resource
+	resources = append(resources, cluster...)
+	resources = append(resources, listener...)
+	for _, r := range resources {
+		mr, err := envoycache.MarshalResource(r)
+		if err != nil {
+			return nil, fmt.Errorf("failed to marshal resource: %w", err)
+		}
+		content = append(content, mr...)
+	}
+	version := envoycache.HashResource(content)
 
 	return envoycache.NewSnapshot(
 		version,

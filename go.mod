@@ -3,13 +3,13 @@ module k8c.io/kubelb
 go 1.21
 
 require (
-	github.com/Masterminds/semver/v3 v3.2.1
 	github.com/envoyproxy/go-control-plane v0.11.1
 	github.com/go-logr/logr v1.2.4
 	github.com/golang/protobuf v1.5.3
 	github.com/onsi/ginkgo v1.16.5
 	github.com/onsi/gomega v1.27.10
 	github.com/pkg/errors v0.9.1
+	go.uber.org/zap v1.26.0
 	google.golang.org/grpc v1.58.2
 	google.golang.org/protobuf v1.31.0
 	k8s.io/api v0.28.2
@@ -17,6 +17,7 @@ require (
 	k8s.io/client-go v0.28.2
 	k8s.io/code-generator v0.28.2
 	k8s.io/klog/v2 v2.100.1
+	k8s.io/utils v0.0.0-20230726121419-3b25d923346b
 	sigs.k8s.io/controller-runtime v0.16.2
 )
 
@@ -55,7 +56,6 @@ require (
 	github.com/prometheus/procfs v0.12.0 // indirect
 	github.com/spf13/pflag v1.0.5 // indirect
 	go.uber.org/multierr v1.11.0 // indirect
-	go.uber.org/zap v1.26.0 // indirect
 	golang.org/x/exp v0.0.0-20230905200255-921286631fa9 // indirect
 	golang.org/x/mod v0.12.0 // indirect
 	golang.org/x/net v0.15.0 // indirect
@@ -78,7 +78,6 @@ require (
 	k8s.io/component-base v0.28.2 // indirect
 	k8s.io/gengo v0.0.0-20230829151522-9cce18d56c01 // indirect
 	k8s.io/kube-openapi v0.0.0-20230918164632-68afd615200d // indirect
-	k8s.io/utils v0.0.0-20230726121419-3b25d923346b // indirect
 	sigs.k8s.io/json v0.0.0-20221116044647-bc3834ca7abd // indirect
 	sigs.k8s.io/structured-merge-diff/v4 v4.3.0 // indirect
 	sigs.k8s.io/yaml v1.3.0 // indirect
