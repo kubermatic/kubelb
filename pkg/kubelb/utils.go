@@ -16,17 +16,13 @@ limitations under the License.
 
 package kubelb
 
-import (
-	"strings"
-
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-)
-
 const LabelOriginNamespace = "kubelb.k8c.io/origin-ns"
 const LabelOriginName = "kubelb.k8c.io/origin-name"
 
 const LabelLoadBalancerNamespace = "kubelb.k8c.io/lb-namespace"
 const LabelLoadBalancerName = "kubelb.k8c.io/lb-name"
+const LabelTenantName = "kubelb.k8c.io/tenant"
+const LabelControllerName = "kubelb"
 
 const LabelAppKubernetesName = "app.kubernetes.io/name"            // mysql
 const LabelAppKubernetesInstance = "app.kubernetes.io/instance"    // mysql-abcxzy"
@@ -38,7 +34,3 @@ const LabelAppKubernetesManagedBy = "app.kubernetes.io/managed-by" // helm
 const EnvoyResourceIdentifierPattern = "%s-%s-ep-%d-port-%d-%s"
 const EnvoyEndpointPattern = "%s-%s-ep-%d"
 const EnvoyListenerPattern = "%d-%s"
-
-func NamespacedName(obj *metav1.ObjectMeta) string {
-	return strings.Join([]string{obj.Namespace, obj.Name}, "-")
-}

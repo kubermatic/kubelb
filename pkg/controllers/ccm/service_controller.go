@@ -28,6 +28,7 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -95,7 +96,7 @@ func (r *KubeLBServiceReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 		// so that it can be retried
 		// remove our finalizer from the list and update it.
 		// Stop reconciliation as the item is being deleted
-		return r.cleanupService(ctx, log, clusterEndpoints, &service)
+		return r.cleanupService(ctx, log, &service)
 	}
 
 	// If it does not have our finalizer, then lets add the finalizer and update the object. This is equivalent
@@ -163,16 +164,18 @@ func (r *KubeLBServiceReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 	return ctrl.Result{}, err
 }
 
-func (r *KubeLBServiceReconciler) cleanupService(ctx context.Context, log logr.Logger, clusterEndpoints []string, service *corev1.Service) (reconcile.Result, error) {
+func (r *KubeLBServiceReconciler) cleanupService(ctx context.Context, log logr.Logger, service *corev1.Service) (reconcile.Result, error) {
 	if !utils.ContainsString(service.ObjectMeta.Finalizers, LBFinalizerName) {
 		return ctrl.Result{}, nil
 	}
 
-	kubelbClient := r.KubeLBManager.GetClient()
-	desiredTCPLB := kubelb.MapLoadBalancer(service, clusterEndpoints, r.ClusterName)
-	log.V(1).Info("deleting TCPLoadBalancer", "name", desiredTCPLB)
-
-	err := kubelbClient.Delete(ctx, desiredTCPLB)
+	lb := &kubelbk8ciov1alpha1.TCPLoadBalancer{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      string(service.UID),
+			Namespace: r.ClusterName,
+		},
+	}
+	err := r.KubeLBManager.GetClient().Delete(ctx, lb)
 	switch {
 	case apierrors.IsNotFound(err):
 		return ctrl.Result{}, nil
@@ -182,7 +185,7 @@ func (r *KubeLBServiceReconciler) cleanupService(ctx context.Context, log logr.L
 		// proceed
 	}
 
-	log.V(1).Info("deleting Service LoadBalancer finalizer", "name", kubelb.NamespacedName(&service.ObjectMeta))
+	log.V(1).Info("deleting Service LoadBalancer finalizer", "name", lb.Name)
 
 	service.ObjectMeta.Finalizers = utils.RemoveString(service.ObjectMeta.Finalizers, LBFinalizerName)
 	if err := r.Update(ctx, service); err != nil {

@@ -59,11 +59,12 @@ func MapLoadBalancer(userService *corev1.Service, clusterEndpoints []string, clu
 
 	return &kubelbiov1alpha1.TCPLoadBalancer{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      NamespacedName(&userService.ObjectMeta),
+			Name:      string(userService.UID),
 			Namespace: clusterName,
 			Labels: map[string]string{
 				LabelOriginNamespace: userService.Namespace,
 				LabelOriginName:      userService.Name,
+				LabelTenantName:      clusterName,
 			},
 			Annotations: userService.Annotations,
 		},
