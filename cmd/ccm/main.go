@@ -69,6 +69,11 @@ func main() {
 	var endpointAddressTypeString string
 	var clusterName string
 	var kubeLbKubeconf string
+	var kubeconfig string
+
+	if flag.Lookup("kubeconfig") == nil {
+		flag.StringVar(&kubeconfig, "kubeconfig", "", "Path to a kubeconfig. Only required if out-of-cluster.")
+	}
 
 	flag.StringVar(&metricsAddr, "metrics-addr", ":0", "The address the metric endpoint binds to.")
 	flag.StringVar(&probeAddr, "health-probe-bind-address", ":8081", "The address the probe endpoint binds to.")
@@ -86,6 +91,8 @@ func main() {
 	}
 	opts.BindFlags(flag.CommandLine)
 	flag.Parse()
+
+	kubeconfig = flag.Lookup("kubeconfig").Value.(flag.Getter).Get().(string)
 
 	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&opts)))
 
