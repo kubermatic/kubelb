@@ -38,7 +38,7 @@ rules:
   - apiGroups:
       - kubelb.k8c.io
     resources:
-      - tcploadbalancers
+      - loadbalancers
     verbs:
       - create
       - delete
@@ -50,7 +50,7 @@ rules:
   - apiGroups:
       - kubelb.k8c.io
     resources:
-      - tcploadbalancers/status
+      - loadbalancers/status
     verbs:
       - get
       - patch

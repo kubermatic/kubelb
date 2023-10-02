@@ -68,13 +68,13 @@ func (r *KubeLBNodeReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 	log.V(5).Info("proceeding with", "endpoints", r.Endpoints.ClusterEndpoints)
 
 	// patch endpoints
-	var tcpLbList kubelbiov1alpha1.TCPLoadBalancerList
-	if err = r.KubeLBClient.List(ctx, &tcpLbList); err != nil {
+	var lbList kubelbiov1alpha1.LoadBalancerList
+	if err = r.KubeLBClient.List(ctx, &lbList); err != nil {
 		log.Error(err, "unable to list LoadBalancer")
 		return ctrl.Result{}, err
 	}
 
-	log.V(6).Info("patching", "LoadBalancers", tcpLbList)
+	log.V(6).Info("patching", "LoadBalancers", lbList)
 
 	var endpointAddresses []kubelbiov1alpha1.EndpointAddress
 	for _, endpoint := range r.Endpoints.ClusterEndpoints {
@@ -83,17 +83,17 @@ func (r *KubeLBNodeReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 		})
 	}
 
-	for _, tcpLb := range tcpLbList.Items {
-		for _, endpoints := range tcpLb.Spec.Endpoints {
+	for _, lb := range lbList.Items {
+		for _, endpoints := range lb.Spec.Endpoints {
 			endpoints.Addresses = endpointAddresses
 		}
 
-		if err = r.KubeLBClient.Update(ctx, &tcpLb); err != nil {
-			log.Error(err, "unable to update", "LoadBalancer", tcpLb.Name)
+		if err = r.KubeLBClient.Update(ctx, &lb); err != nil {
+			log.Error(err, "unable to update", "LoadBalancer", lb.Name)
 		}
 
-		log.V(2).Info("updated", "LoadBalancer", tcpLb.Name)
-		log.V(7).Info("updated to", "LoadBalancer", tcpLb)
+		log.V(2).Info("updated", "LoadBalancer", lb.Name)
+		log.V(7).Info("updated to", "LoadBalancer", lb)
 	}
 
 	return ctrl.Result{}, nil

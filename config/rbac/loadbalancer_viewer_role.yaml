@@ -1,18 +1,18 @@
-# permissions for end users to view tcploadbalancers.
+# permissions for end users to view loadbalancers.
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
   labels:
     app.kubernetes.io/name: clusterrole
-    app.kubernetes.io/instance: tcploadbalancer-viewer-role
+    app.kubernetes.io/instance: loadbalancer-viewer-role
     app.kubernetes.io/component: rbac
     app.kubernetes.io/part-of: kubelb
-  name: tcploadbalancer-viewer-role
+  name: loadbalancer-viewer-role
 rules:
 - apiGroups:
   - kubelb.k8c.io
   resources:
-  - tcploadbalancers
+  - loadbalancers
   verbs:
   - get
   - list
@@ -20,6 +20,6 @@ rules:
 - apiGroups:
   - kubelb.k8c.io
   resources:
-  - tcploadbalancers/status
+  - loadbalancers/status
   verbs:
   - get

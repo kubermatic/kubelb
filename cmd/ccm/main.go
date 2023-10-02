@@ -80,7 +80,7 @@ func main() {
 	flag.StringVar(&endpointAddressTypeString, "node-address-type", "ExternalIP", "The default address type used as an endpoint address.")
 	flag.StringVar(&clusterName, "cluster-name", "default", "Cluster name where the ccm is running. Resources inside the KubeLb cluster will get deployed to the namespace named by cluster name, must be unique.")
 	flag.StringVar(&kubeLbKubeconf, "kubelb-kubeconfig", defaultKubeLbConf, "The path to the kubelb cluster kubeconfig.")
-	flag.BoolVar(&enableCloudController, "enable-cloud-provider", true, "Enables cloud controller like behavior. This will set the status of TCP LoadBalancer")
+	flag.BoolVar(&enableCloudController, "enable-cloud-provider", true, "Enables cloud controller like behavior. This will set the status of LoadBalancer")
 	flag.BoolVar(&enableLeaderElection, "enable-leader-election", true,
 		"Enable leader election for controller ccm. Enabling this will ensure there is only one active controller ccm.")
 	flag.StringVar(&leaderElectionNamespace, "leader-election-namespace", "", "Optionally configure leader election namespace.")
@@ -136,7 +136,7 @@ func main() {
 		Scheme: scheme,
 		Cache: cache.Options{
 			ByObject: map[client.Object]cache.ByObject{
-				&kubelbk8ciov1alpha1.TCPLoadBalancer{}: {
+				&kubelbk8ciov1alpha1.LoadBalancer{}: {
 					Namespaces: map[string]cache.Config{
 						clusterName: {},
 					},

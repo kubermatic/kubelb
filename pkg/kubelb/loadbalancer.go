@@ -25,7 +25,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-func MapLoadBalancer(userService *corev1.Service, clusterEndpoints []string, clusterName string) *kubelbiov1alpha1.TCPLoadBalancer {
+func MapLoadBalancer(userService *corev1.Service, clusterEndpoints []string, clusterName string) *kubelbiov1alpha1.LoadBalancer {
 	var lbServicePorts []kubelbiov1alpha1.LoadBalancerPort
 	var lbEndpointSubsets []kubelbiov1alpha1.LoadBalancerEndpoints
 	var lbEndpointPorts []kubelbiov1alpha1.EndpointPort
@@ -57,7 +57,7 @@ func MapLoadBalancer(userService *corev1.Service, clusterEndpoints []string, clu
 		Ports:     lbEndpointPorts,
 	})
 
-	return &kubelbiov1alpha1.TCPLoadBalancer{
+	return &kubelbiov1alpha1.LoadBalancer{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      string(userService.UID),
 			Namespace: clusterName,
@@ -68,7 +68,7 @@ func MapLoadBalancer(userService *corev1.Service, clusterEndpoints []string, clu
 			},
 			Annotations: userService.Annotations,
 		},
-		Spec: kubelbiov1alpha1.TCPLoadBalancerSpec{
+		Spec: kubelbiov1alpha1.LoadBalancerSpec{
 			Ports:     lbServicePorts,
 			Endpoints: lbEndpointSubsets,
 			Type:      userService.Spec.Type,
@@ -76,7 +76,7 @@ func MapLoadBalancer(userService *corev1.Service, clusterEndpoints []string, clu
 	}
 }
 
-func LoadBalancerIsDesiredState(actual, desired *kubelbiov1alpha1.TCPLoadBalancer) bool {
+func LoadBalancerIsDesiredState(actual, desired *kubelbiov1alpha1.LoadBalancer) bool {
 	if actual.Spec.Type != desired.Spec.Type {
 		return false
 	}

@@ -25,7 +25,7 @@ import (
 )
 
 // AllocatePortsForLoadBalancers allocates ports to the given load balancers. If a port is already allocated, it will be skipped.
-func (pa *PortAllocator) AllocatePortsForLoadBalancers(ctx context.Context, loadBalancers kubelbk8ciov1alpha1.TCPLoadBalancerList) error {
+func (pa *PortAllocator) AllocatePortsForLoadBalancers(ctx context.Context, loadBalancers kubelbk8ciov1alpha1.LoadBalancerList) error {
 	updateRequired := false
 	for _, lb := range loadBalancers.Items {
 		for i, lbEndpoint := range lb.Spec.Endpoints {
@@ -49,7 +49,7 @@ func (pa *PortAllocator) AllocatePortsForLoadBalancers(ctx context.Context, load
 }
 
 // DeallocatePortsForLoadBalancer deallocates ports against the given load balancer.
-func (pa *PortAllocator) DeallocatePortsForLoadBalancer(ctx context.Context, loadBalancer kubelbk8ciov1alpha1.TCPLoadBalancer) error {
+func (pa *PortAllocator) DeallocatePortsForLoadBalancer(ctx context.Context, loadBalancer kubelbk8ciov1alpha1.LoadBalancer) error {
 	var endpointKeys []string
 
 	for i := range loadBalancer.Spec.Endpoints {

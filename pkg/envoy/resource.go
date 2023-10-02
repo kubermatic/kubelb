@@ -45,7 +45,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 )
 
-func MapSnapshot(loadBalancers []kubelbiov1alpha1.TCPLoadBalancer, portAllocator *portlookup.PortAllocator) (*envoycache.Snapshot, error) {
+func MapSnapshot(loadBalancers []kubelbiov1alpha1.LoadBalancer, portAllocator *portlookup.PortAllocator) (*envoycache.Snapshot, error) {
 	var listener []types.Resource
 	var cluster []types.Resource
 

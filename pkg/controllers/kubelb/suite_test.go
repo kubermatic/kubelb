@@ -112,8 +112,8 @@ var _ = AfterSuite(func() {
 	Expect(err).ToNot(HaveOccurred())
 })
 
-func GetDefaultLoadBalancer(name string, namespace string) *v1alpha12.TCPLoadBalancer {
-	return &v1alpha12.TCPLoadBalancer{
+func GetDefaultLoadBalancer(name string, namespace string) *v1alpha12.LoadBalancer {
+	return &v1alpha12.LoadBalancer{
 		TypeMeta: v1.TypeMeta{
 			APIVersion: APIVersion,
 			Kind:       Kind,
@@ -122,7 +122,7 @@ func GetDefaultLoadBalancer(name string, namespace string) *v1alpha12.TCPLoadBal
 			Name:      name,
 			Namespace: namespace,
 		},
-		Spec: v1alpha12.TCPLoadBalancerSpec{
+		Spec: v1alpha12.LoadBalancerSpec{
 			Endpoints: []v1alpha12.LoadBalancerEndpoints{
 				{
 					Addresses: []v1alpha12.EndpointAddress{

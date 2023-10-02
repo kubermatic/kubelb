@@ -5,22 +5,22 @@ metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.9.2
   creationTimestamp: null
-  name: tcploadbalancers.kubelb.k8c.io
+  name: loadbalancers.kubelb.k8c.io
 spec:
   group: kubelb.k8c.io
   names:
-    kind: TCPLoadBalancer
-    listKind: TCPLoadBalancerList
-    plural: tcploadbalancers
+    kind: LoadBalancer
+    listKind: LoadBalancerList
+    plural: loadbalancers
     shortNames:
-    - tcplb
-    singular: tcploadbalancer
+    - lb
+    singular: loadbalancer
   scope: Namespaced
   versions:
   - name: v1alpha1
     schema:
       openAPIV3Schema:
-        description: TCPLoadBalancer is the Schema for the tcploadbalancers API
+        description: LoadBalancer is the Schema for the loadbalancers API
         properties:
           apiVersion:
             description: 'APIVersion defines the versioned schema of this representation
@@ -35,7 +35,7 @@ spec:
           metadata:
             type: object
           spec:
-            description: TCPLoadBalancerSpec defines the desired state of TCPLoadBalancer
+            description: LoadBalancerSpec defines the desired state of LoadBalancer
             properties:
               endpoints:
                 description: Sets of addresses and ports that comprise an exposed
@@ -147,7 +147,7 @@ spec:
                 type: string
             type: object
           status:
-            description: TCPLoadBalancerStatus defines the observed state of TCPLoadBalancer
+            description: LoadBalancerStatus defines the observed state of LoadBalancer
             properties:
               loadBalancer:
                 description: LoadBalancer contains the current status of the load-balancer,

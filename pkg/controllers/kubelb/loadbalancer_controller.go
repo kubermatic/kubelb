@@ -75,8 +75,8 @@ type LoadBalancerReconciler struct {
 	EnvoyProxyReplicas int
 }
 
-// +kubebuilder:rbac:groups=kubelb.k8c.io,resources=tcploadbalancers,verbs=get;list;watch;create;update;patch;delete
-// +kubebuilder:rbac:groups=kubelb.k8c.io,resources=tcploadbalancers/status,verbs=get;update;patch
+// +kubebuilder:rbac:groups=kubelb.k8c.io,resources=loadbalancers,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=kubelb.k8c.io,resources=loadbalancers/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups="",resources=services,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups="",resources=configmaps,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups="",resources=namespaces,verbs=get;list;watch
@@ -87,7 +87,7 @@ func (r *LoadBalancerReconciler) Reconcile(ctx context.Context, req ctrl.Request
 
 	log.V(2).Info("reconciling LoadBalancer")
 
-	var LoadBalancer kubelbk8ciov1alpha1.TCPLoadBalancer
+	var LoadBalancer kubelbk8ciov1alpha1.LoadBalancer
 	err := r.Get(ctx, req.NamespacedName, &LoadBalancer)
 	if err != nil {
 		if ctrlruntimeclient.IgnoreNotFound(err) != nil {
@@ -108,7 +108,7 @@ func (r *LoadBalancerReconciler) Reconcile(ctx context.Context, req ctrl.Request
 	// In case of shared envoy proxy topology, we need to fetch all load balancers. Otherwise, we only need to fetch the current one.
 	// To keep things generic, we always propagate a list of load balancers here.
 	var (
-		loadBalancers     kubelbk8ciov1alpha1.TCPLoadBalancerList
+		loadBalancers     kubelbk8ciov1alpha1.LoadBalancerList
 		appName           string
 		resourceNamespace string
 	)
@@ -133,7 +133,7 @@ func (r *LoadBalancerReconciler) Reconcile(ctx context.Context, req ctrl.Request
 		appName = envoyGlobalCache
 		resourceNamespace = r.Namespace
 	case EnvoyProxyTopologyDedicated:
-		loadBalancers.Items = []kubelbk8ciov1alpha1.TCPLoadBalancer{LoadBalancer}
+		loadBalancers.Items = []kubelbk8ciov1alpha1.LoadBalancer{LoadBalancer}
 		appName = LoadBalancer.Name
 		resourceNamespace = req.Namespace
 	}
@@ -241,7 +241,7 @@ func (r *LoadBalancerReconciler) reconcileDeployment(ctx context.Context, namesp
 	return err
 }
 
-func (r *LoadBalancerReconciler) reconcileService(ctx context.Context, loadBalancer *kubelbk8ciov1alpha1.TCPLoadBalancer, appName, namespace string, portAllocator *portlookup.PortAllocator) error {
+func (r *LoadBalancerReconciler) reconcileService(ctx context.Context, loadBalancer *kubelbk8ciov1alpha1.LoadBalancer, appName, namespace string, portAllocator *portlookup.PortAllocator) error {
 	log := ctrl.LoggerFrom(ctx).WithValues("reconcile", "service")
 
 	log.V(2).Info("verify service")
@@ -355,10 +355,10 @@ func (r *LoadBalancerReconciler) reconcileService(ctx context.Context, loadBalan
 	return r.Status().Update(ctx, loadBalancer)
 }
 
-func (r *LoadBalancerReconciler) handleEnvoyProxyCleanup(ctx context.Context, lb kubelbk8ciov1alpha1.TCPLoadBalancer, lbCount int, appName, resourceNamespace string) error {
+func (r *LoadBalancerReconciler) handleEnvoyProxyCleanup(ctx context.Context, lb kubelbk8ciov1alpha1.LoadBalancer, lbCount int, appName, resourceNamespace string) error {
 	log := ctrl.LoggerFrom(ctx).WithValues("cleanup", "LoadBalancer")
 
-	log.V(2).Info("Cleaning up TCP LoadBalancer", "name", lb.Name, "namespace", lb.Namespace)
+	log.V(2).Info("Cleaning up LoadBalancer", "name", lb.Name, "namespace", lb.Namespace)
 
 	// We can delete the envoy proxy deployment if there are no other load balancers.
 	if lbCount == 1 {
@@ -412,7 +412,7 @@ func (r *LoadBalancerReconciler) handleEnvoyProxyCleanup(ctx context.Context, lb
 
 func (r *LoadBalancerReconciler) SetupWithManager(ctx context.Context, mgr ctrl.Manager) error {
 	c, err := ctrl.NewControllerManagedBy(mgr).
-		For(&kubelbk8ciov1alpha1.TCPLoadBalancer{}).
+		For(&kubelbk8ciov1alpha1.LoadBalancer{}).
 		Owns(&corev1.Service{}).
 		Owns(&appsv1.Deployment{}).
 		Build(r)
@@ -439,12 +439,12 @@ func (r *LoadBalancerReconciler) SetupWithManager(ctx context.Context, mgr ctrl.
 }
 
 // enqueueLoadBalancers is a handler.MapFunc to be used to enqeue requests for reconciliation
-// for TCPLoadBalancers against the corresponding service.
+// for LoadBalancers against the corresponding service.
 func (r *LoadBalancerReconciler) enqueueLoadBalancers() handler.MapFunc {
 	return func(ctx context.Context, o ctrlruntimeclient.Object) []ctrl.Request {
 		result := []reconcile.Request{}
 
-		// Find the TCPLoadBalancer that corresponds to this service.
+		// Find the LoadBalancer that corresponds to this service.
 		labels := o.GetLabels()
 		if labels == nil {
 			return result

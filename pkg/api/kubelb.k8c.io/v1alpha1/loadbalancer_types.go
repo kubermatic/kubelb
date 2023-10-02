@@ -28,8 +28,8 @@ var PropagateAnnotation = "kubelb.k8c.io/propagate-annotation"
 
 // NOTE: json tags are required.  Any new fields you add must have json tags for the fields to be serialized.
 
-// TCPLoadBalancerStatus defines the observed state of TCPLoadBalancer
-type TCPLoadBalancerStatus struct {
+// LoadBalancerStatus defines the observed state of LoadBalancer
+type LoadBalancerStatus struct {
 	// LoadBalancer contains the current status of the load-balancer,
 	// if one is present.
 	// +optional
@@ -112,8 +112,8 @@ type LoadBalancerEndpoints struct {
 	Ports []EndpointPort `json:"ports,omitempty" protobuf:"bytes,3,rep,name=ports"`
 }
 
-// TCPLoadBalancerSpec defines the desired state of TCPLoadBalancer
-type TCPLoadBalancerSpec struct {
+// LoadBalancerSpec defines the desired state of LoadBalancer
+type LoadBalancerSpec struct {
 	// Important: Run "make" to regenerate code after modifying this file
 
 	// Sets of addresses and ports that comprise an exposed user service on a cluster.
@@ -147,27 +147,27 @@ type TCPLoadBalancerSpec struct {
 
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
-// +kubebuilder:resource:shortName=tcplb
+// +kubebuilder:resource:shortName=lb
 // +genclient
 
-// TCPLoadBalancer is the Schema for the tcploadbalancers API
-type TCPLoadBalancer struct {
+// LoadBalancer is the Schema for the loadbalancers API
+type LoadBalancer struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 
-	Spec   TCPLoadBalancerSpec   `json:"spec,omitempty"`
-	Status TCPLoadBalancerStatus `json:"status,omitempty"`
+	Spec   LoadBalancerSpec   `json:"spec,omitempty"`
+	Status LoadBalancerStatus `json:"status,omitempty"`
 }
 
 // +kubebuilder:object:root=true
 
-// TCPLoadBalancerList contains a list of TCPLoadBalancer
-type TCPLoadBalancerList struct {
+// LoadBalancerList contains a list of LoadBalancer
+type LoadBalancerList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`
-	Items           []TCPLoadBalancer `json:"items"`
+	Items           []LoadBalancer `json:"items"`
 }
 
 func init() {
-	SchemeBuilder.Register(&TCPLoadBalancer{}, &TCPLoadBalancerList{})
+	SchemeBuilder.Register(&LoadBalancer{}, &LoadBalancerList{})
 }

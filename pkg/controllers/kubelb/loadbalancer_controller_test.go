@@ -35,23 +35,23 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 )
 
-var _ = Describe("TcpLb deployment and service creation", func() {
+var _ = Describe("Lb deployment and service creation", func() {
 	// Define utility constants for object names and testing timeouts/durations and intervals.
 	const (
-		tcpLbName      = "serious-application"
-		tcpLbNamespace = "default"
+		lbName      = "serious-application"
+		lbNamespace = "default"
 
 		timeout  = time.Second * 10
 		interval = time.Millisecond * 250
 	)
 
-	lookupKey := types.NamespacedName{Name: fmt.Sprintf(envoyResourcePattern, tcpLbName), Namespace: tcpLbNamespace}
+	lookupKey := types.NamespacedName{Name: fmt.Sprintf(envoyResourcePattern, lbName), Namespace: lbNamespace}
 	ctx := context.Background()
 
 	Context("When creating a LoadBalancer", func() {
-		tcpLb := GetDefaultLoadBalancer(tcpLbName, tcpLbNamespace)
+		lb := GetDefaultLoadBalancer(lbName, lbNamespace)
 		It("Should create an envoy deployment", func() {
-			Expect(k8sClient.Create(ctx, tcpLb)).Should(Succeed())
+			Expect(k8sClient.Create(ctx, lb)).Should(Succeed())
 
 			By("creating a new deployment")
 
@@ -63,7 +63,7 @@ var _ = Describe("TcpLb deployment and service creation", func() {
 			}, timeout, interval).Should(BeTrue())
 
 			Expect(createdDeployment.Spec.Template.Spec.Containers[0].Args[1]).Should(Equal(envoyServer.GenerateBootstrap()))
-			Expect(createdDeployment.OwnerReferences[0].Name).Should(Equal(tcpLbName))
+			Expect(createdDeployment.OwnerReferences[0].Name).Should(Equal(lbName))
 
 			By("creating a corresponding service")
 
@@ -75,14 +75,14 @@ var _ = Describe("TcpLb deployment and service creation", func() {
 			}, timeout, interval).Should(BeTrue())
 
 			Expect(createdDeployment.Spec.Template.Labels[kubelb.LabelAppKubernetesName]).Should(Equal(createdService.Spec.Selector[kubelb.LabelAppKubernetesName]))
-			Expect(createdService.OwnerReferences[0].Name).Should(Equal(tcpLbName))
+			Expect(createdService.OwnerReferences[0].Name).Should(Equal(lbName))
 
 			By("creating an envoy snapshot")
 
-			snapshot, err := envoyServer.Cache.GetSnapshot(tcpLbName)
+			snapshot, err := envoyServer.Cache.GetSnapshot(lbName)
 			Expect(err).ToNot(HaveOccurred())
 
-			testSnapshot, err := envoycp.MapSnapshot(getLoadBalancerList(*tcpLb), nil)
+			testSnapshot, err := envoycp.MapSnapshot(getLoadBalancerList(*lb), nil)
 			Expect(err).ToNot(HaveOccurred())
 
 			// TODO: match test snapshot with sha
@@ -92,32 +92,32 @@ var _ = Describe("TcpLb deployment and service creation", func() {
 
 	Context("When updating an existing LoadBalancers Ports", func() {
 		It("Should update the load balancer service and envoy snapshot", func() {
-			existingTCPLb := &kubelbk8ciov1alpha1.TCPLoadBalancer{}
+			existingLb := &kubelbk8ciov1alpha1.LoadBalancer{}
 
 			Eventually(func() bool {
-				err := k8sClient.Get(ctx, lookupKey, existingTCPLb)
+				err := k8sClient.Get(ctx, lookupKey, existingLb)
 				return err == nil
 			}, timeout, interval).Should(BeTrue())
 
 			// Make sure we have only 1 port in the existing LoadBalancer
-			Expect(len(existingTCPLb.Spec.Ports)).To(BeEquivalentTo(1))
+			Expect(len(existingLb.Spec.Ports)).To(BeEquivalentTo(1))
 
-			existingTCPLb.Spec.Ports[0].Name = "port-a"
-			existingTCPLb.Spec.Endpoints[0].Ports[0].Name = "port-a"
+			existingLb.Spec.Ports[0].Name = "port-a"
+			existingLb.Spec.Endpoints[0].Ports[0].Name = "port-a"
 
-			existingTCPLb.Spec.Ports = append(existingTCPLb.Spec.Ports, kubelbk8ciov1alpha1.LoadBalancerPort{
+			existingLb.Spec.Ports = append(existingLb.Spec.Ports, kubelbk8ciov1alpha1.LoadBalancerPort{
 				Name: "port-b",
 				Port: 81,
 			})
 
-			existingTCPLb.Spec.Endpoints[0].Ports = append(existingTCPLb.Spec.Endpoints[0].Ports, kubelbk8ciov1alpha1.EndpointPort{
+			existingLb.Spec.Endpoints[0].Ports = append(existingLb.Spec.Endpoints[0].Ports, kubelbk8ciov1alpha1.EndpointPort{
 				Name: "port-b",
 				Port: 8081,
 			})
 
 			// Todo: this should actually fail on update if there is no corresponding endpoint port set,
 			// as well as a name to map those. Go ahead with admission webhooks
-			Expect(k8sClient.Update(ctx, existingTCPLb)).Should(Succeed())
+			Expect(k8sClient.Update(ctx, existingLb)).Should(Succeed())
 
 			By("updating the service ports")
 
@@ -144,10 +144,10 @@ var _ = Describe("TcpLb deployment and service creation", func() {
 
 			By("updating the envoy listener")
 
-			snapshot, err := envoyServer.Cache.GetSnapshot(tcpLbName)
+			snapshot, err := envoyServer.Cache.GetSnapshot(lbName)
 			Expect(err).ToNot(HaveOccurred())
 
-			testSnapshot, err := envoycp.MapSnapshot(getLoadBalancerList(*existingTCPLb), nil)
+			testSnapshot, err := envoycp.MapSnapshot(getLoadBalancerList(*existingLb), nil)
 			Expect(err).ToNot(HaveOccurred())
 			Expect(reflect.DeepEqual(snapshot, testSnapshot)).To(BeTrue())
 
@@ -208,6 +208,6 @@ var _ = Describe("TcpLb deployment and service creation", func() {
 	})
 })
 
-func getLoadBalancerList(lb kubelbk8ciov1alpha1.TCPLoadBalancer) []kubelbk8ciov1alpha1.TCPLoadBalancer {
-	return []kubelbk8ciov1alpha1.TCPLoadBalancer{lb}
+func getLoadBalancerList(lb kubelbk8ciov1alpha1.LoadBalancer) []kubelbk8ciov1alpha1.LoadBalancer {
+	return []kubelbk8ciov1alpha1.LoadBalancer{lb}
 }
