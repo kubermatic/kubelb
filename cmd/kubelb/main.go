@@ -47,9 +47,10 @@ type options struct {
 	namespace            string
 
 	// Envoy configuration
-	envoyProxyTopology     string
-	envoyProxyUseDaemonset bool
-	envoyProxyReplicas     int
+	envoyProxyTopology         string
+	envoyProxyUseDaemonset     bool
+	envoyProxySinglePodPerNode bool
+	envoyProxyReplicas         int
 }
 
 var (
@@ -74,6 +75,7 @@ func main() {
 	flag.BoolVar(&opt.enableDebugMode, "debug", false, "Enables debug mode")
 	flag.StringVar(&opt.envoyProxyTopology, "envoy-proxy-topology", "shared", "The deployment topology for Envoy Proxy. Valid values are: shared, dedicated, and global.")
 	flag.BoolVar(&opt.envoyProxyUseDaemonset, "envoy-proxy-use-daemonset", false, "Envoy Proxy will run as daemonset. If set to true, --envoy-proxy-replicas will be ignored. If set to false, deployment will be used instead.")
+	flag.BoolVar(&opt.envoyProxySinglePodPerNode, "envoy-proxy-single-pod-per-node", true, "Envoy proxy pods will be spread across nodes. This ensures that multiple replicas are not running on the same node.")
 	flag.IntVar(&opt.envoyProxyReplicas, "envoy-proxy-replicas", 1, "Number of replicas for envoy proxy.")
 	flag.StringVar(&opt.namespace, "namespace", "", "The namespace where the controller will run.")
 
@@ -97,6 +99,11 @@ func main() {
 	envoyProxyTopology := kubelb.EnvoyProxyTopology(opt.envoyProxyTopology)
 	if envoyProxyTopology != kubelb.EnvoyProxyTopologyDedicated && envoyProxyTopology != kubelb.EnvoyProxyTopologyShared && envoyProxyTopology != kubelb.EnvoyProxyTopologyGlobal {
 		setupLog.Error(nil, "invalid value for --envoy-proxy-topology. Valid values are: shared, dedicated, and global")
+		os.Exit(1)
+	}
+
+	if opt.envoyProxyUseDaemonset && opt.envoyProxySinglePodPerNode {
+		setupLog.Error(nil, "invalid value for --envoy-proxy-use-daemonset and --envoy-proxy-single-pod-per-node. Both cannot be set to true")
 		os.Exit(1)
 	}
 
@@ -151,15 +158,16 @@ func main() {
 	}
 
 	if err = (&kubelb.LoadBalancerReconciler{
-		Client:                 mgr.GetClient(),
-		Cache:                  mgr.GetCache(),
-		Scheme:                 mgr.GetScheme(),
-		EnvoyBootstrap:         envoyServer.GenerateBootstrap(),
-		EnvoyProxyTopology:     envoyProxyTopology,
-		EnvoyProxyReplicas:     opt.envoyProxyReplicas,
-		EnvoyProxyUseDaemonset: opt.envoyProxyUseDaemonset,
-		Namespace:              opt.namespace,
-		PortAllocator:          portAllocator,
+		Client:                     mgr.GetClient(),
+		Cache:                      mgr.GetCache(),
+		Scheme:                     mgr.GetScheme(),
+		EnvoyBootstrap:             envoyServer.GenerateBootstrap(),
+		EnvoyProxyTopology:         envoyProxyTopology,
+		EnvoyProxyReplicas:         opt.envoyProxyReplicas,
+		EnvoyProxyUseDaemonset:     opt.envoyProxyUseDaemonset,
+		EnvoyProxySinglePodPerNode: opt.envoyProxySinglePodPerNode,
+		Namespace:                  opt.namespace,
+		PortAllocator:              portAllocator,
 	}).SetupWithManager(ctx, mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "LoadBalancer")
 		os.Exit(1)

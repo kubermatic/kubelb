@@ -70,10 +70,11 @@ type LoadBalancerReconciler struct {
 
 	PortAllocator *portlookup.PortAllocator
 
-	EnvoyBootstrap         string
-	EnvoyProxyTopology     EnvoyProxyTopology
-	EnvoyProxyReplicas     int
-	EnvoyProxyUseDaemonset bool
+	EnvoyBootstrap             string
+	EnvoyProxyTopology         EnvoyProxyTopology
+	EnvoyProxyReplicas         int
+	EnvoyProxyUseDaemonset     bool
+	EnvoyProxySinglePodPerNode bool
 }
 
 // +kubebuilder:rbac:groups=kubelb.k8c.io,resources=loadbalancers,verbs=get;list;watch;create;update;patch;delete
@@ -442,7 +443,7 @@ func (r *LoadBalancerReconciler) SetupWithManager(ctx context.Context, mgr ctrl.
 }
 
 func (r *LoadBalancerReconciler) getEnvoyProxyPodSpec(namespace, appName, snapshotName string) corev1.PodTemplateSpec {
-	return corev1.PodTemplateSpec{
+	template := corev1.PodTemplateSpec{
 		ObjectMeta: v1.ObjectMeta{
 			Name:      appName,
 			Namespace: namespace,
@@ -462,6 +463,20 @@ func (r *LoadBalancerReconciler) getEnvoyProxyPodSpec(namespace, appName, snapsh
 			},
 		},
 	}
+
+	if r.EnvoyProxySinglePodPerNode {
+		template.Spec.TopologySpreadConstraints = []corev1.TopologySpreadConstraint{
+			{
+				MaxSkew:           1,
+				TopologyKey:       "kubernetes.io/hostname",
+				WhenUnsatisfiable: corev1.ScheduleAnyway,
+				LabelSelector: &v1.LabelSelector{
+					MatchLabels: map[string]string{kubelb.LabelAppKubernetesName: appName},
+				},
+			},
+		}
+	}
+	return template
 }
 
 // enqueueLoadBalancers is a handler.MapFunc to be used to enqeue requests for reconciliation
