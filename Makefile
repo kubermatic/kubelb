@@ -1,8 +1,8 @@
 SHELL = /bin/bash -eu -o pipefail
 
 # Image URL to use all building/pushing image targets
-KUBELB_IMG ?= quay.io/kubermatic/kubelb
-KUBELB_CCM_IMG ?= quay.io/kubermatic/kubelb-ccm
+KUBELB_IMG ?= quay.io/kubermatic/kubelb-manager-ee
+KUBELB_CCM_IMG ?= quay.io/kubermatic/kubelb-ccm-ee
 # ENVTEST_K8S_VERSION refers to the version of kubebuilder assets to be downloaded by envtest binary.
 ENVTEST_K8S_VERSION = 1.28.2
 
@@ -160,8 +160,8 @@ undeploy-%: ## Undeploy controller from the K8s cluster specified in ~/.kube/con
 
 .PHONY: bump
 bump: kustomize
-	cd config/deploy/kubelb && $(KUSTOMIZE) edit set image controller=quay.io/kubermatic/kubelb:$(IMAGE_TAG)
-	cd config/deploy/ccm && $(KUSTOMIZE) edit set image controller=quay.io/kubermatic/kubelb-ccm:$(IMAGE_TAG)
+	cd config/deploy/kubelb && $(KUSTOMIZE) edit set image controller=quay.io/kubermatic/kubelb-manager-ee:$(IMAGE_TAG)
+	cd config/deploy/ccm && $(KUSTOMIZE) edit set image controller=quay.io/kubermatic/kubelb-ccm-ee:$(IMAGE_TAG)
 
 ##@ Build Dependencies
 
