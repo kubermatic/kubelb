@@ -47,8 +47,9 @@ type options struct {
 	namespace            string
 
 	// Envoy configuration
-	envoyProxyTopology string
-	envoyProxyReplicas int
+	envoyProxyTopology     string
+	envoyProxyUseDaemonset bool
+	envoyProxyReplicas     int
 }
 
 var (
@@ -72,6 +73,7 @@ func main() {
 		"Enable leader election for controller kubelb. Enabling this will ensure there is only one active controller kubelb.")
 	flag.BoolVar(&opt.enableDebugMode, "debug", false, "Enables debug mode")
 	flag.StringVar(&opt.envoyProxyTopology, "envoy-proxy-topology", "shared", "The deployment topology for Envoy Proxy. Valid values are: shared, dedicated, and global.")
+	flag.BoolVar(&opt.envoyProxyUseDaemonset, "envoy-proxy-use-daemonset", false, "Envoy Proxy will run as daemonset. If set to true, --envoy-proxy-replicas will be ignored. If set to false, deployment will be used instead.")
 	flag.IntVar(&opt.envoyProxyReplicas, "envoy-proxy-replicas", 1, "Number of replicas for envoy proxy.")
 	flag.StringVar(&opt.namespace, "namespace", "", "The namespace where the controller will run.")
 
@@ -79,7 +81,7 @@ func main() {
 		// Retrieve controller namespace
 		ns, _ := os.LookupEnv("NAMESPACE")
 		if len(ns) == 0 {
-			setupLog.Error(nil, "invalid value for --envoy-proxy-topology. Valid values are: shared, dedicated, and global")
+			setupLog.Error(nil, "unable to determine controller namespace. Please set NAMESPACE environment variable or use --namespace flag.")
 			os.Exit(1)
 		}
 		opt.namespace = ns
@@ -149,14 +151,15 @@ func main() {
 	}
 
 	if err = (&kubelb.LoadBalancerReconciler{
-		Client:             mgr.GetClient(),
-		Cache:              mgr.GetCache(),
-		Scheme:             mgr.GetScheme(),
-		EnvoyBootstrap:     envoyServer.GenerateBootstrap(),
-		EnvoyProxyTopology: envoyProxyTopology,
-		EnvoyProxyReplicas: opt.envoyProxyReplicas,
-		Namespace:          opt.namespace,
-		PortAllocator:      portAllocator,
+		Client:                 mgr.GetClient(),
+		Cache:                  mgr.GetCache(),
+		Scheme:                 mgr.GetScheme(),
+		EnvoyBootstrap:         envoyServer.GenerateBootstrap(),
+		EnvoyProxyTopology:     envoyProxyTopology,
+		EnvoyProxyReplicas:     opt.envoyProxyReplicas,
+		EnvoyProxyUseDaemonset: opt.envoyProxyUseDaemonset,
+		Namespace:              opt.namespace,
+		PortAllocator:          portAllocator,
 	}).SetupWithManager(ctx, mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "LoadBalancer")
 		os.Exit(1)

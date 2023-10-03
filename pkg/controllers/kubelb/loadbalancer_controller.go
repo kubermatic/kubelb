@@ -70,9 +70,10 @@ type LoadBalancerReconciler struct {
 
 	PortAllocator *portlookup.PortAllocator
 
-	EnvoyBootstrap     string
-	EnvoyProxyTopology EnvoyProxyTopology
-	EnvoyProxyReplicas int
+	EnvoyBootstrap         string
+	EnvoyProxyTopology     EnvoyProxyTopology
+	EnvoyProxyReplicas     int
+	EnvoyProxyUseDaemonset bool
 }
 
 // +kubebuilder:rbac:groups=kubelb.k8c.io,resources=loadbalancers,verbs=get;list;watch;create;update;patch;delete
@@ -81,6 +82,7 @@ type LoadBalancerReconciler struct {
 // +kubebuilder:rbac:groups="",resources=configmaps,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups="",resources=namespaces,verbs=get;list;watch
 // +kubebuilder:rbac:groups="apps",resources=deployments,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups="apps",resources=daemonsets,verbs=get;list;watch;create;update;patch;delete
 
 func (r *LoadBalancerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	log := ctrl.LoggerFrom(ctx)
@@ -163,9 +165,9 @@ func (r *LoadBalancerReconciler) Reconcile(ctx context.Context, req ctrl.Request
 	}
 
 	snapshotName := envoySnapshotName(r.EnvoyProxyTopology, req)
-	err = r.reconcileDeployment(ctx, resourceNamespace, appName, snapshotName)
+	err = r.reconcileEnvoyProxy(ctx, resourceNamespace, appName, snapshotName)
 	if err != nil {
-		log.Error(err, "Unable to reconcile deployment")
+		log.Error(err, "Unable to reconcile envoy proxy")
 		return ctrl.Result{}, err
 	}
 
@@ -178,63 +180,57 @@ func (r *LoadBalancerReconciler) Reconcile(ctx context.Context, req ctrl.Request
 	return ctrl.Result{}, nil
 }
 
-func (r *LoadBalancerReconciler) reconcileDeployment(ctx context.Context, namespace, appName, snapshotName string) error {
-	log := ctrl.LoggerFrom(ctx).WithValues("reconcile", "deployment")
-	log.V(2).Info("verify deployment")
+func (r *LoadBalancerReconciler) reconcileEnvoyProxy(ctx context.Context, namespace, appName, snapshotName string) error {
+	log := ctrl.LoggerFrom(ctx).WithValues("reconcile", "envoy-proxy")
+	log.V(2).Info("verify envoy-proxy")
 
-	deployment := &appsv1.Deployment{
-		ObjectMeta: v1.ObjectMeta{
-			Name:      fmt.Sprintf(envoyResourcePattern, appName),
-			Namespace: namespace,
-		},
+	var envoyProxy ctrlruntimeclient.Object
+	objMeta := v1.ObjectMeta{
+		Name:      fmt.Sprintf(envoyResourcePattern, appName),
+		Namespace: namespace,
 	}
+	if r.EnvoyProxyUseDaemonset {
+		envoyProxy = &appsv1.DaemonSet{
+			ObjectMeta: objMeta,
+		}
+	} else {
+		envoyProxy = &appsv1.Deployment{
+			ObjectMeta: objMeta,
+		}
+	}
+
 	err := r.Get(ctx, types.NamespacedName{
 		Name:      fmt.Sprintf(envoyResourcePattern, appName),
 		Namespace: namespace,
-	}, deployment)
+	}, envoyProxy)
 
 	if err != nil && !apierrors.IsNotFound(err) {
 		return err
 	}
 
-	log.V(5).Info("actual", "deployment", deployment)
-
-	result, err := ctrl.CreateOrUpdate(ctx, r.Client, deployment, func() error {
-		var replicas = int32(r.EnvoyProxyReplicas)
-		updateContainer := func(cnt corev1.Container) corev1.Container {
-			cnt.Name = envoyProxyContainerName
-			cnt.Image = envoyImage
-			cnt.Args = []string{
-				"--config-yaml", r.EnvoyBootstrap,
-				"--service-node", snapshotName,
-				"--service-cluster", namespace,
+	result, err := ctrl.CreateOrUpdate(ctx, r.Client, envoyProxy, func() error {
+		if r.EnvoyProxyUseDaemonset {
+			daemonset := envoyProxy.(*appsv1.DaemonSet)
+			daemonset.Spec.Selector = &v1.LabelSelector{
+				MatchLabels: map[string]string{kubelb.LabelAppKubernetesName: appName},
 			}
-			return cnt
+			daemonset.Spec.Template = r.getEnvoyProxyPodSpec(namespace, appName, snapshotName)
+			envoyProxy = daemonset
+		} else {
+			deployment := envoyProxy.(*appsv1.Deployment)
+			var replicas = int32(r.EnvoyProxyReplicas)
+			deployment.Spec.Replicas = &replicas
+			deployment.Spec.Selector = &v1.LabelSelector{
+				MatchLabels: map[string]string{kubelb.LabelAppKubernetesName: appName},
+			}
+			deployment.Spec.Template = r.getEnvoyProxyPodSpec(namespace, appName, snapshotName)
+			envoyProxy = deployment
 		}
 
-		deployment.Spec.Replicas = &replicas
-		deployment.Spec.Selector = &v1.LabelSelector{
-			MatchLabels: map[string]string{kubelb.LabelAppKubernetesName: appName},
-		}
-
-		deployment.Spec.Template.ObjectMeta = v1.ObjectMeta{
-			Name:      appName,
-			Namespace: namespace,
-			Labels:    map[string]string{kubelb.LabelAppKubernetesName: appName},
-		}
-
-		envoyContainer := updateContainer(corev1.Container{})
-
-		if len(deployment.Spec.Template.Spec.Containers) == 1 {
-			currentContainer := deployment.Spec.Template.Spec.Containers[0]
-			envoyContainer = updateContainer(currentContainer)
-		}
-
-		deployment.Spec.Template.Spec.Containers = []corev1.Container{envoyContainer}
 		return nil
 	})
 
-	log.V(5).Info("desired", "deployment", deployment)
+	log.V(5).Info("desired", "envoy-proxy", envoyProxy)
 
 	log.V(2).Info("operation fulfilled", "status", result)
 
@@ -362,15 +358,24 @@ func (r *LoadBalancerReconciler) handleEnvoyProxyCleanup(ctx context.Context, lb
 
 	// We can delete the envoy proxy deployment if there are no other load balancers.
 	if lbCount == 1 {
-		deployment := &appsv1.Deployment{
-			ObjectMeta: v1.ObjectMeta{
-				Name:      fmt.Sprintf(envoyResourcePattern, appName),
-				Namespace: resourceNamespace,
-			},
+		objMeta := v1.ObjectMeta{
+			Name:      fmt.Sprintf(envoyResourcePattern, appName),
+			Namespace: resourceNamespace,
 		}
-		log.V(2).Info("Deleting deployment", "name", deployment.Name, "namespace", deployment.Namespace)
-		if err := r.Delete(ctx, deployment); err != nil && !apierrors.IsNotFound(err) {
-			return fmt.Errorf("failed to delete envoy proxy deployment %s: %v against LoadBalancer %w", deployment.Name, fmt.Sprintf("%s/%s", lb.Name, lb.Namespace), err)
+		var envoyProxy ctrlruntimeclient.Object
+		if r.EnvoyProxyUseDaemonset {
+			envoyProxy = &appsv1.DaemonSet{
+				ObjectMeta: objMeta,
+			}
+		} else {
+			envoyProxy = &appsv1.Deployment{
+				ObjectMeta: objMeta,
+			}
+		}
+
+		log.V(2).Info("Deleting envoy proxy", "name", envoyProxy.GetName(), "namespace", envoyProxy.GetNamespace())
+		if err := r.Delete(ctx, envoyProxy); err != nil && !apierrors.IsNotFound(err) {
+			return fmt.Errorf("failed to delete envoy proxy %s: %v against LoadBalancer %w", envoyProxy.GetName(), fmt.Sprintf("%s/%s", lb.Name, lb.Namespace), err)
 		}
 	}
 
@@ -413,8 +418,6 @@ func (r *LoadBalancerReconciler) handleEnvoyProxyCleanup(ctx context.Context, lb
 func (r *LoadBalancerReconciler) SetupWithManager(ctx context.Context, mgr ctrl.Manager) error {
 	c, err := ctrl.NewControllerManagedBy(mgr).
 		For(&kubelbk8ciov1alpha1.LoadBalancer{}).
-		Owns(&corev1.Service{}).
-		Owns(&appsv1.Deployment{}).
 		Build(r)
 	if err != nil {
 		return err
@@ -436,6 +439,29 @@ func (r *LoadBalancerReconciler) SetupWithManager(ctx context.Context, mgr ctrl.
 		filterServicesPredicate(),
 	)
 	return err
+}
+
+func (r *LoadBalancerReconciler) getEnvoyProxyPodSpec(namespace, appName, snapshotName string) corev1.PodTemplateSpec {
+	return corev1.PodTemplateSpec{
+		ObjectMeta: v1.ObjectMeta{
+			Name:      appName,
+			Namespace: namespace,
+			Labels:    map[string]string{kubelb.LabelAppKubernetesName: appName},
+		},
+		Spec: corev1.PodSpec{
+			Containers: []corev1.Container{
+				{
+					Name:  envoyProxyContainerName,
+					Image: envoyImage,
+					Args: []string{
+						"--config-yaml", r.EnvoyBootstrap,
+						"--service-node", snapshotName,
+						"--service-cluster", namespace,
+					},
+				},
+			},
+		},
+	}
 }
 
 // enqueueLoadBalancers is a handler.MapFunc to be used to enqeue requests for reconciliation
