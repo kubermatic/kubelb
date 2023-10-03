@@ -4,7 +4,7 @@ SHELL = /bin/bash -eu -o pipefail
 KUBELB_IMG ?= quay.io/kubermatic/kubelb
 KUBELB_CCM_IMG ?= quay.io/kubermatic/kubelb-ccm
 # ENVTEST_K8S_VERSION refers to the version of kubebuilder assets to be downloaded by envtest binary.
-ENVTEST_K8S_VERSION = 1.28.2
+ENVTEST_K8S_VERSION = 1.28.0
 
 export GOPATH?=$(shell go env GOPATH)
 export CGO_ENABLED=0
@@ -91,7 +91,7 @@ clean:  ## Clean binaries
 	rm -rf bin/*
 
 .PHONY: test
-test: manifests generate fmt vet envtest ## Run tests.
+test: envtest ## Run tests.
 	KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) --bin-dir $(LOCALBIN) -p path)" go test ./... -coverprofile cover.out
 
 ##@ Build

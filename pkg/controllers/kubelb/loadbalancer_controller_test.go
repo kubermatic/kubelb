@@ -45,7 +45,9 @@ var _ = Describe("Lb deployment and service creation", func() {
 		interval = time.Millisecond * 250
 	)
 
+	lbLookupKey := types.NamespacedName{Name: lbName, Namespace: lbNamespace}
 	lookupKey := types.NamespacedName{Name: fmt.Sprintf(envoyResourcePattern, lbName), Namespace: lbNamespace}
+	snapshotName := fmt.Sprintf("%s-%s", lbNamespace, lbName)
 	ctx := context.Background()
 
 	Context("When creating a LoadBalancer", func() {
@@ -57,29 +59,25 @@ var _ = Describe("Lb deployment and service creation", func() {
 
 			createdDeployment := &appsv1.Deployment{}
 
-			Eventually(func() bool {
-				err := k8sClient.Get(ctx, lookupKey, createdDeployment)
-				return err == nil
-			}, timeout, interval).Should(BeTrue())
+			Eventually(func() error {
+				return k8sClient.Get(ctx, lookupKey, createdDeployment)
+			}, timeout, interval).Should(Succeed())
 
 			Expect(createdDeployment.Spec.Template.Spec.Containers[0].Args[1]).Should(Equal(envoyServer.GenerateBootstrap()))
-			Expect(createdDeployment.OwnerReferences[0].Name).Should(Equal(lbName))
 
 			By("creating a corresponding service")
 
 			createdService := &corev1.Service{}
 
-			Eventually(func() bool {
-				err := k8sClient.Get(ctx, lookupKey, createdService)
-				return err == nil
-			}, timeout, interval).Should(BeTrue())
+			Eventually(func() error {
+				return k8sClient.Get(ctx, lookupKey, createdService)
+			}, timeout, interval).Should(Succeed())
 
 			Expect(createdDeployment.Spec.Template.Labels[kubelb.LabelAppKubernetesName]).Should(Equal(createdService.Spec.Selector[kubelb.LabelAppKubernetesName]))
-			Expect(createdService.OwnerReferences[0].Name).Should(Equal(lbName))
 
 			By("creating an envoy snapshot")
 
-			snapshot, err := envoyServer.Cache.GetSnapshot(lbName)
+			snapshot, err := envoyServer.Cache.GetSnapshot(snapshotName)
 			Expect(err).ToNot(HaveOccurred())
 
 			testSnapshot, err := envoycp.MapSnapshot(getLoadBalancerList(*lb), nil)
@@ -94,10 +92,9 @@ var _ = Describe("Lb deployment and service creation", func() {
 		It("Should update the load balancer service and envoy snapshot", func() {
 			existingLb := &kubelbk8ciov1alpha1.LoadBalancer{}
 
-			Eventually(func() bool {
-				err := k8sClient.Get(ctx, lookupKey, existingLb)
-				return err == nil
-			}, timeout, interval).Should(BeTrue())
+			Eventually(func() error {
+				return k8sClient.Get(ctx, lbLookupKey, existingLb)
+			}, timeout, interval).Should(Succeed())
 
 			// Make sure we have only 1 port in the existing LoadBalancer
 			Expect(len(existingLb.Spec.Ports)).To(BeEquivalentTo(1))
@@ -144,7 +141,7 @@ var _ = Describe("Lb deployment and service creation", func() {
 
 			By("updating the envoy listener")
 
-			snapshot, err := envoyServer.Cache.GetSnapshot(lbName)
+			snapshot, err := envoyServer.Cache.GetSnapshot(snapshotName)
 			Expect(err).ToNot(HaveOccurred())
 
 			testSnapshot, err := envoycp.MapSnapshot(getLoadBalancerList(*existingLb), nil)

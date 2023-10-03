@@ -17,6 +17,7 @@ limitations under the License.
 package kubelb
 
 import (
+	"context"
 	"path/filepath"
 	"testing"
 
@@ -44,6 +45,8 @@ import (
 var (
 	cfg         *rest.Config
 	k8sClient   client.Client
+	ctx         context.Context
+	cancel      context.CancelFunc
 	testEnv     *envtest.Environment
 	envoyServer *envoy.Server
 )
@@ -76,7 +79,8 @@ var _ = BeforeSuite(func() {
 	Expect(err).NotTo(HaveOccurred())
 
 	ctrl.SetLogger(klogr.New())
-	ctx := ctrl.SetupSignalHandler()
+	sigCtx := ctrl.SetupSignalHandler()
+	ctx, cancel = context.WithCancel(sigCtx)
 
 	envoyServer, err = envoy.NewServer(":8001", true)
 
@@ -90,11 +94,19 @@ var _ = BeforeSuite(func() {
 	Expect(err).ToNot(HaveOccurred())
 
 	err = (&LoadBalancerReconciler{
-		Client:         k8sManager.GetClient(),
-		Cache:          k8sManager.GetCache(),
-		Scheme:         k8sManager.GetScheme(),
-		EnvoyBootstrap: envoyServer.GenerateBootstrap(),
+		Client:             k8sManager.GetClient(),
+		Cache:              k8sManager.GetCache(),
+		Scheme:             k8sManager.GetScheme(),
+		EnvoyBootstrap:     envoyServer.GenerateBootstrap(),
+		EnvoyProxyTopology: EnvoyProxyTopologyDedicated,
 	}).SetupWithManager(ctx, k8sManager)
+	Expect(err).ToNot(HaveOccurred())
+
+	err = (&EnvoyCPReconciler{
+		Client:             k8sManager.GetClient(),
+		EnvoyCache:         envoyServer.Cache,
+		EnvoyProxyTopology: EnvoyProxyTopologyDedicated,
+	}).SetupWithManager(k8sManager)
 	Expect(err).ToNot(HaveOccurred())
 
 	k8sClient = k8sManager.GetClient()
@@ -108,6 +120,7 @@ var _ = BeforeSuite(func() {
 
 var _ = AfterSuite(func() {
 	By("tearing down the test environment")
+	cancel()
 	err := testEnv.Stop()
 	Expect(err).ToNot(HaveOccurred())
 })
