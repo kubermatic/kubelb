@@ -49,6 +49,8 @@ var (
 	cancel      context.CancelFunc
 	testEnv     *envtest.Environment
 	envoyServer *envoy.Server
+	lbr         *LoadBalancerReconciler
+	ecpr        *EnvoyCPReconciler
 )
 
 const (
@@ -93,20 +95,23 @@ var _ = BeforeSuite(func() {
 	})
 	Expect(err).ToNot(HaveOccurred())
 
-	err = (&LoadBalancerReconciler{
+	lbr = &LoadBalancerReconciler{
 		Client:             k8sManager.GetClient(),
 		Cache:              k8sManager.GetCache(),
 		Scheme:             k8sManager.GetScheme(),
 		EnvoyBootstrap:     envoyServer.GenerateBootstrap(),
 		EnvoyProxyTopology: EnvoyProxyTopologyDedicated,
-	}).SetupWithManager(ctx, k8sManager)
+		Namespace:          "default",
+	}
+	err = lbr.SetupWithManager(ctx, k8sManager)
 	Expect(err).ToNot(HaveOccurred())
 
-	err = (&EnvoyCPReconciler{
+	ecpr = &EnvoyCPReconciler{
 		Client:             k8sManager.GetClient(),
 		EnvoyCache:         envoyServer.Cache,
 		EnvoyProxyTopology: EnvoyProxyTopologyDedicated,
-	}).SetupWithManager(k8sManager)
+	}
+	err = ecpr.SetupWithManager(k8sManager)
 	Expect(err).ToNot(HaveOccurred())
 
 	k8sClient = k8sManager.GetClient()
@@ -116,6 +121,7 @@ var _ = BeforeSuite(func() {
 		err = k8sManager.Start(ctx)
 		Expect(err).ToNot(HaveOccurred())
 	}()
+	Expect(k8sManager.GetCache().WaitForCacheSync(ctx)).To(BeTrue())
 }, 60)
 
 var _ = AfterSuite(func() {
