@@ -17,7 +17,6 @@ limitations under the License.
 package portlookup
 
 import (
-	"context"
 	"fmt"
 
 	kubelbk8ciov1alpha1 "k8c.io/kubelb/pkg/api/kubelb.k8c.io/v1alpha1"
@@ -25,8 +24,7 @@ import (
 )
 
 // AllocatePortsForLoadBalancers allocates ports to the given load balancers. If a port is already allocated, it will be skipped.
-func (pa *PortAllocator) AllocatePortsForLoadBalancers(ctx context.Context, loadBalancers kubelbk8ciov1alpha1.LoadBalancerList) error {
-	updateRequired := false
+func (pa *PortAllocator) AllocatePortsForLoadBalancers(loadBalancers kubelbk8ciov1alpha1.LoadBalancerList) error {
 	for _, lb := range loadBalancers.Items {
 		for i, lbEndpoint := range lb.Spec.Endpoints {
 			endpointKey := fmt.Sprintf(kubelb.EnvoyEndpointPattern, lb.Namespace, lb.Name, i)
@@ -36,20 +34,14 @@ func (pa *PortAllocator) AllocatePortsForLoadBalancers(ctx context.Context, load
 				keys = append(keys, fmt.Sprintf(kubelb.EnvoyListenerPattern, lbEndpointPort.Port, lbEndpointPort.Protocol))
 			}
 			// If a port is already allocated, it will be skipped.
-			if pa.AllocatePorts(endpointKey, keys) {
-				updateRequired = true
-			}
+			pa.AllocatePorts(endpointKey, keys)
 		}
-	}
-
-	if updateRequired {
-		return pa.UpdateState(ctx)
 	}
 	return nil
 }
 
 // DeallocatePortsForLoadBalancer deallocates ports against the given load balancer.
-func (pa *PortAllocator) DeallocatePortsForLoadBalancer(ctx context.Context, loadBalancer kubelbk8ciov1alpha1.LoadBalancer) error {
+func (pa *PortAllocator) DeallocatePortsForLoadBalancer(loadBalancer kubelbk8ciov1alpha1.LoadBalancer) error {
 	var endpointKeys []string
 
 	for i := range loadBalancer.Spec.Endpoints {
@@ -57,5 +49,5 @@ func (pa *PortAllocator) DeallocatePortsForLoadBalancer(ctx context.Context, loa
 	}
 
 	pa.DeallocateEndpoints(endpointKeys)
-	return pa.UpdateState(ctx)
+	return nil
 }

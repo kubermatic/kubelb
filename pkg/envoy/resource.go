@@ -45,7 +45,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 )
 
-func MapSnapshot(loadBalancers []kubelbiov1alpha1.LoadBalancer, portAllocator *portlookup.PortAllocator) (*envoycache.Snapshot, error) {
+func MapSnapshot(loadBalancers []kubelbiov1alpha1.LoadBalancer, portAllocator *portlookup.PortAllocator, globalEnvoyProxyTopology bool) (*envoycache.Snapshot, error) {
 	var listener []types.Resource
 	var cluster []types.Resource
 
@@ -62,8 +62,7 @@ func MapSnapshot(loadBalancers []kubelbiov1alpha1.LoadBalancer, portAllocator *p
 				}
 
 				port := uint32(lbEndpointPort.Port)
-				// if portAllocator is not nil, it means that envoy topology is set to global.
-				if portAllocator != nil {
+				if globalEnvoyProxyTopology && portAllocator != nil {
 					endpointKey := fmt.Sprintf(kubelb.EnvoyEndpointPattern, lb.Namespace, lb.Name, i)
 					portKey := fmt.Sprintf(kubelb.EnvoyListenerPattern, lbEndpointPort.Port, lbEndpointPort.Protocol)
 					if value, exists := portAllocator.Lookup(endpointKey, portKey); exists {

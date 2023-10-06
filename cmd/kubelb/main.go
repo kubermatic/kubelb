@@ -147,10 +147,10 @@ func main() {
 	// setup signal handler
 	ctx := ctrl.SetupSignalHandler()
 
-	// For Global topology, we need to ensure that the port lookup configmap exists. If it doesn't, we create it since it's managed by this controller.
+	// For Global topology, we need to ensure that the port lookup table exists. If it doesn't, we create it since it's managed by this controller.
 	var portAllocator *portlookup.PortAllocator
 	if envoyProxyTopology == kubelb.EnvoyProxyTopologyGlobal {
-		portAllocator = portlookup.NewPortAllocator(mgr.GetClient(), opt.namespace)
+		portAllocator = portlookup.NewPortAllocator()
 		if err := portAllocator.LoadState(ctx, mgr.GetAPIReader()); err != nil {
 			setupLog.Error(err, ("unable to load port lookup state"))
 			os.Exit(1)

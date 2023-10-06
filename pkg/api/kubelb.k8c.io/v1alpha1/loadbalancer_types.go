@@ -34,6 +34,20 @@ type LoadBalancerStatus struct {
 	// if one is present.
 	// +optional
 	LoadBalancer corev1.LoadBalancerStatus `json:"loadBalancer,omitempty" protobuf:"bytes,1,opt,name=loadBalancer"`
+
+	// Service contains the current status of the LB service.
+	// +optional
+	Service ServiceStatus `json:"service,omitempty" protobuf:"bytes,2,opt,name=service"`
+}
+
+type ServiceStatus struct {
+	Ports []ServicePort `json:"ports,omitempty" protobuf:"bytes,1,rep,name=ports"`
+}
+
+// ServicePort contains information on service's port.
+type ServicePort struct {
+	corev1.ServicePort `json:",inline"`
+	UpstreamTargetPort int32 `json:"upstreamTargetPort" protobuf:"bytes,4,opt,name=port"`
 }
 
 // LoadBalancerPort contains information on service's port.

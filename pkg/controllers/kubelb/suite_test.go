@@ -26,6 +26,7 @@ import (
 
 	v1alpha12 "k8c.io/kubelb/pkg/api/kubelb.k8c.io/v1alpha1"
 	"k8c.io/kubelb/pkg/envoy"
+	portlookup "k8c.io/kubelb/pkg/port-lookup"
 
 	corev1 "k8s.io/api/core/v1"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -95,6 +96,10 @@ var _ = BeforeSuite(func() {
 	})
 	Expect(err).ToNot(HaveOccurred())
 
+	portAllocator := portlookup.NewPortAllocator()
+	err = portAllocator.LoadState(ctx, k8sManager.GetAPIReader())
+	Expect(err).ToNot(HaveOccurred())
+
 	lbr = &LoadBalancerReconciler{
 		Client:             k8sManager.GetClient(),
 		Cache:              k8sManager.GetCache(),
@@ -102,6 +107,7 @@ var _ = BeforeSuite(func() {
 		EnvoyBootstrap:     envoyServer.GenerateBootstrap(),
 		EnvoyProxyTopology: EnvoyProxyTopologyDedicated,
 		Namespace:          "default",
+		PortAllocator:      portAllocator,
 	}
 	err = lbr.SetupWithManager(ctx, k8sManager)
 	Expect(err).ToNot(HaveOccurred())
@@ -110,6 +116,7 @@ var _ = BeforeSuite(func() {
 		Client:             k8sManager.GetClient(),
 		EnvoyCache:         envoyServer.Cache,
 		EnvoyProxyTopology: EnvoyProxyTopologyDedicated,
+		PortAllocator:      portAllocator,
 	}
 	err = ecpr.SetupWithManager(k8sManager)
 	Expect(err).ToNot(HaveOccurred())
@@ -147,6 +154,9 @@ func GetDefaultLoadBalancer(name string, namespace string) *v1alpha12.LoadBalanc
 					Addresses: []v1alpha12.EndpointAddress{
 						{
 							IP: "123.123.123.123",
+						},
+						{
+							IP: "123.123.123.124",
 						},
 					},
 					Ports: []v1alpha12.EndpointPort{

@@ -5,6 +5,7 @@ go 1.21
 require (
 	github.com/envoyproxy/go-control-plane v0.11.1
 	github.com/go-logr/logr v1.2.4
+	github.com/go-test/deep v1.1.0
 	github.com/golang/protobuf v1.5.3
 	github.com/onsi/ginkgo v1.16.5
 	github.com/onsi/gomega v1.27.10

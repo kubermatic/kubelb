@@ -80,7 +80,6 @@ type LoadBalancerReconciler struct {
 // +kubebuilder:rbac:groups=kubelb.k8c.io,resources=loadbalancers,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=kubelb.k8c.io,resources=loadbalancers/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups="",resources=services,verbs=get;list;watch;create;update;patch;delete
-// +kubebuilder:rbac:groups="",resources=configmaps,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups="",resources=namespaces,verbs=get;list;watch
 // +kubebuilder:rbac:groups="apps",resources=deployments,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups="apps",resources=daemonsets,verbs=get;list;watch;create;update;patch;delete
@@ -160,7 +159,7 @@ func (r *LoadBalancerReconciler) Reconcile(ctx context.Context, req ctrl.Request
 
 	if r.EnvoyProxyTopology == EnvoyProxyTopologyGlobal {
 		// For Global topology, we need to ensure that an arbitrary port has been assigned to the endpoint ports of the LoadBalancer.
-		if err := r.PortAllocator.AllocatePortsForLoadBalancers(ctx, loadBalancers); err != nil {
+		if err := r.PortAllocator.AllocatePortsForLoadBalancers(loadBalancers); err != nil {
 			return ctrl.Result{}, err
 		}
 	}
@@ -290,9 +289,8 @@ func (r *LoadBalancerReconciler) reconcileService(ctx context.Context, loadBalan
 			var allocatedPort corev1.ServicePort
 			targetPort := loadBalancer.Spec.Endpoints[0].Ports[currentLbPort].Port
 
-			// if portAllocator is not nil, it means that envoy topology is set to global.
-			if portAllocator != nil {
-				endpointKey := fmt.Sprintf(kubelb.EnvoyEndpointPattern, loadBalancer.Namespace, loadBalancer.Name, currentLbPort)
+			if r.EnvoyProxyTopology == EnvoyProxyTopologyGlobal {
+				endpointKey := fmt.Sprintf(kubelb.EnvoyEndpointPattern, loadBalancer.Namespace, loadBalancer.Name, 0)
 				portKey := fmt.Sprintf(kubelb.EnvoyListenerPattern, targetPort, lbServicePort.Protocol)
 				if value, exists := portAllocator.Lookup(endpointKey, portKey); exists {
 					targetPort = int32(value)
@@ -339,16 +337,36 @@ func (r *LoadBalancerReconciler) reconcileService(ctx context.Context, loadBalan
 	// Status changes
 	log.V(5).Info("load balancer status", "LoadBalancer", loadBalancer.Status.LoadBalancer.Ingress, "service", service.Status.LoadBalancer.Ingress)
 
-	if loadBalancer.Spec.Type != corev1.ServiceTypeLoadBalancer || len(loadBalancer.Status.LoadBalancer.Ingress) == len(service.Status.LoadBalancer.Ingress) {
-		log.V(2).Info("LoadBalancer status is in desired state")
+	updatedPorts := []kubelbk8ciov1alpha1.ServicePort{}
+	for i, port := range service.Spec.Ports {
+		targetPort := loadBalancer.Spec.Endpoints[0].Ports[i].Port
+		updatedPorts = append(updatedPorts, kubelbk8ciov1alpha1.ServicePort{
+			ServicePort: port,
+			// In case of global topology, this will be different from the targetPort. Otherwise it will be the same.
+			UpstreamTargetPort: targetPort,
+		})
+	}
+
+	// Update status if needed
+	updateStatus := false
+	if !reflect.DeepEqual(loadBalancer.Status.Service.Ports, updatedPorts) {
+		loadBalancer.Status.Service.Ports = updatedPorts
+		updateStatus = true
+	}
+
+	if loadBalancer.Spec.Type == corev1.ServiceTypeLoadBalancer {
+		if !reflect.DeepEqual(loadBalancer.Status.LoadBalancer.Ingress, service.Status.LoadBalancer.Ingress) {
+			loadBalancer.Status.LoadBalancer = service.Status.LoadBalancer
+			updateStatus = true
+		}
+	}
+
+	if !updateStatus {
+		log.V(3).Info("LoadBalancer status is in desired state")
 		return nil
 	}
 
 	log.V(3).Info("updating LoadBalancer status", "name", loadBalancer.Name, "namespace", loadBalancer.Namespace)
-
-	loadBalancer.Status.LoadBalancer = service.Status.LoadBalancer
-	log.V(4).Info("updating to", "LoadBalancer status", loadBalancer.Status.LoadBalancer)
-
 	return r.Status().Update(ctx, loadBalancer)
 }
 
@@ -382,7 +400,7 @@ func (r *LoadBalancerReconciler) handleEnvoyProxyCleanup(ctx context.Context, lb
 
 	// Deallocate ports if we are using global envoy proxy topology.
 	if r.EnvoyProxyTopology == EnvoyProxyTopologyGlobal {
-		if err := r.PortAllocator.DeallocatePortsForLoadBalancer(ctx, lb); err != nil {
+		if err := r.PortAllocator.DeallocatePortsForLoadBalancer(lb); err != nil {
 			return err
 		}
 	}

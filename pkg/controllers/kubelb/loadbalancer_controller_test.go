@@ -19,28 +19,25 @@ package kubelb
 import (
 	"context"
 	"fmt"
-	"reflect"
 	"time"
 
 	"github.com/envoyproxy/go-control-plane/pkg/resource/v3"
+	"github.com/go-test/deep"
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 
 	kubelbk8ciov1alpha1 "k8c.io/kubelb/pkg/api/kubelb.k8c.io/v1alpha1"
 	envoycp "k8c.io/kubelb/pkg/envoy"
 	"k8c.io/kubelb/pkg/kubelb"
-	portlookup "k8c.io/kubelb/pkg/port-lookup"
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	kerrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/types"
-	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 var testMatrix = []struct {
 	topology                 EnvoyProxyTopology
-	portAllocator            func(client client.Client, namespace string) *portlookup.PortAllocator
 	envoyProxyDeploymentName func(lb types.NamespacedName) types.NamespacedName
 	envoyProxyServiceName    func(lb types.NamespacedName) types.NamespacedName
 	envoySnapshotName        func(lb types.NamespacedName) string
@@ -66,8 +63,7 @@ var testMatrix = []struct {
 		envoySnapshotName: func(lb types.NamespacedName) string { return fmt.Sprintf("%s-%s", lb.Namespace, lb.Name) },
 	},
 	{
-		topology:      EnvoyProxyTopologyGlobal,
-		portAllocator: portlookup.NewPortAllocator,
+		topology: EnvoyProxyTopologyGlobal,
 		envoyProxyDeploymentName: func(lb types.NamespacedName) types.NamespacedName {
 			return types.NamespacedName{Name: "envoy-global", Namespace: "default"}
 		},
@@ -102,10 +98,6 @@ var _ = Describe("Lb deployment and service creation", func() {
 			It("Configures the reconcilers", func() {
 				lbr.EnvoyProxyTopology = t.topology
 				ecpr.EnvoyProxyTopology = t.topology
-				if t.portAllocator != nil {
-					lbr.PortAllocator = t.portAllocator(k8sClient, "default")
-					Expect(lbr.PortAllocator.LoadState(context.TODO(), k8sClient)).To(Succeed())
-				}
 				deploymentLookupKey = t.envoyProxyDeploymentName(lbLookupKey)
 				serviceLookupKey = t.envoyProxyServiceName(lbLookupKey)
 				snapshotName = t.envoySnapshotName(lbLookupKey)
@@ -139,9 +131,13 @@ var _ = Describe("Lb deployment and service creation", func() {
 				snapshot, err := envoyServer.Cache.GetSnapshot(snapshotName)
 				Expect(err).ToNot(HaveOccurred())
 
-				testSnapshot, err := envoycp.MapSnapshot(getLoadBalancerList(*lb), nil)
+				testSnapshot, err := envoycp.MapSnapshot(getLoadBalancerList(*lb), ecpr.PortAllocator, t.topology == EnvoyProxyTopologyGlobal)
 				Expect(err).ToNot(HaveOccurred())
-				Expect(reflect.DeepEqual(snapshot, testSnapshot)).To(BeTrue())
+				diff := deep.Equal(snapshot, testSnapshot)
+				if len(diff) > 0 {
+					fmt.Printf("expected snapshot didn't match generated snapshot, diff: %+v", diff)
+				}
+				Expect(len(diff)).To(Equal(0))
 			})
 		})
 
@@ -201,9 +197,13 @@ var _ = Describe("Lb deployment and service creation", func() {
 				snapshot, err := envoyServer.Cache.GetSnapshot(snapshotName)
 				Expect(err).ToNot(HaveOccurred())
 
-				testSnapshot, err := envoycp.MapSnapshot(getLoadBalancerList(*existingLb), nil)
+				testSnapshot, err := envoycp.MapSnapshot(getLoadBalancerList(*existingLb), ecpr.PortAllocator, t.topology == EnvoyProxyTopologyGlobal)
 				Expect(err).ToNot(HaveOccurred())
-				Expect(reflect.DeepEqual(snapshot, testSnapshot)).To(BeTrue())
+				diff := deep.Equal(snapshot, testSnapshot)
+				if len(diff) > 0 {
+					fmt.Printf("expected snapshot didn't match generated snapshot, diff: %+v", diff)
+				}
+				Expect(len(diff)).To(Equal(0))
 
 				listener := snapshot.GetResources(resource.ListenerType)
 				Expect(len(listener)).To(BeEquivalentTo(2))

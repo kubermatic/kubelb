@@ -97,5 +97,3 @@ See [the list of releases][3] to find out about feature changes.
 [12]: https://kubermatic.slack.com/messages/kubelb
 
 [15]: http://slack.kubermatic.io/
-
-[21]: https://kubermatic.github.io/KubeLB/

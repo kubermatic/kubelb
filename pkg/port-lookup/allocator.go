@@ -18,22 +18,20 @@ package portlookup
 
 import (
 	"context"
-	"encoding/json"
+	"fmt"
 	"math/rand"
 	"sync"
 
-	corev1 "k8s.io/api/core/v1"
-	kerrors "k8s.io/apimachinery/pkg/api/errors"
-	"k8s.io/apimachinery/pkg/types"
+	kubelbk8ciov1alpha1 "k8c.io/kubelb/pkg/api/kubelb.k8c.io/v1alpha1"
+	"k8c.io/kubelb/pkg/kubelb"
+
 	"k8s.io/utils/strings/slices"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 const (
-	GlobalLookupConfigmapName string = "kubelb-port-lookup"
-	GlobalLookupConfigmapKey  string = "LOOKUP_TABLE"
-	startPort                 int    = 10000
-	endPort                   int    = 65535
+	startPort int = 10000
+	endPort   int = 65535
 )
 
 // LookupTable is a lookup table for ports. It maps endpoint keys to port keys to the actual allocated ports.
@@ -42,19 +40,15 @@ type LookupTable map[string]map[string]int
 type PortAllocator struct {
 	mu sync.Mutex
 
-	client     client.Client
-	namespace  string
 	portLookup LookupTable
 	// portLookupReverse is a reverse lookup table for available ports. It is used to quickly determine if a port is available.
 	portLookupReverse map[int]bool
 }
 
-func NewPortAllocator(client client.Client, namespace string) *PortAllocator {
+func NewPortAllocator() *PortAllocator {
 	pa := &PortAllocator{
 		portLookup:        make(LookupTable),
 		portLookupReverse: make(map[int]bool),
-		client:            client,
-		namespace:         namespace,
 	}
 	return pa
 }
@@ -134,7 +128,6 @@ func (pa *PortAllocator) DeallocateEndpoints(endpointKeys []string) {
 }
 
 func (pa *PortAllocator) allocatePort() int {
-	// TODO: We should probably do something smarter here. The infinite loop is a bit scary.
 	for {
 		port := rand.Intn(endPort-startPort) + startPort
 		if _, exists := pa.portLookupReverse[port]; !exists {
@@ -153,61 +146,38 @@ func (pa *PortAllocator) recomputeAvailablePorts() {
 	}
 }
 
-// LoadState loads the port lookup table from the global configmap.
+// LoadState loads the port lookup table from the existing loadbalancers.
 func (pa *PortAllocator) LoadState(ctx context.Context, apiReader client.Reader) error {
 	lookupTable := make(LookupTable)
-	lookupConfigmap := &corev1.ConfigMap{}
 
 	// We use the API reader here because the cache may not be fully synced yet.
-	err := apiReader.Get(ctx, types.NamespacedName{
-		Namespace: pa.namespace,
-		Name:      GlobalLookupConfigmapName,
-	}, lookupConfigmap)
+	loadBalancers := &kubelbk8ciov1alpha1.LoadBalancerList{}
+	err := apiReader.List(ctx, loadBalancers)
 	if err != nil {
-		if !kerrors.IsNotFound(err) {
-			return err
-		}
-		lookupConfigmap.Name = GlobalLookupConfigmapName
-		lookupConfigmap.Namespace = pa.namespace
-		lookupConfigmap.Data = map[string]string{
-			GlobalLookupConfigmapKey: "{}",
-		}
-		err = pa.client.Create(ctx, lookupConfigmap)
-		if err != nil {
-			return err
-		}
-	} else {
-		err = json.Unmarshal([]byte(lookupConfigmap.Data[GlobalLookupConfigmapKey]), &lookupTable)
-		if err != nil {
-			return err
+		return err
+	}
+
+	for _, lb := range loadBalancers.Items {
+		for i, lbEndpoint := range lb.Spec.Endpoints {
+			endpointKey := fmt.Sprintf(kubelb.EnvoyEndpointPattern, lb.Namespace, lb.Name, i)
+			if _, exists := lookupTable[endpointKey]; !exists {
+				lookupTable[endpointKey] = make(map[string]int)
+			}
+
+			for _, lbEndpointPort := range lbEndpoint.Ports {
+				portKey := fmt.Sprintf(kubelb.EnvoyListenerPattern, lbEndpointPort.Port, lbEndpointPort.Protocol)
+				for _, port := range lb.Status.Service.Ports {
+					// Name is not guaranteed to be set, so we need to check for port and protocol as well.
+					if port.UpstreamTargetPort == lbEndpointPort.Port && port.Protocol == lbEndpointPort.Protocol && port.Name == lbEndpointPort.Name {
+						lookupTable[endpointKey][portKey] = port.TargetPort.IntValue()
+						break
+					}
+				}
+			}
 		}
 	}
 
 	pa.portLookup = lookupTable
 	pa.recomputeAvailablePorts()
-	return nil
-}
-
-// UpdateState updates the global configmap with the current port lookup table.
-func (pa *PortAllocator) UpdateState(ctx context.Context) error {
-	lookupConfigmap := &corev1.ConfigMap{}
-	err := pa.client.Get(ctx, types.NamespacedName{
-		Namespace: pa.namespace,
-		Name:      GlobalLookupConfigmapName,
-	}, lookupConfigmap)
-	if err != nil {
-		return err
-	}
-
-	lookupBytes, err := json.Marshal(pa.portLookup)
-	if err != nil {
-		return err
-	}
-
-	lookupConfigmap.Data[GlobalLookupConfigmapKey] = string(lookupBytes)
-	err = pa.client.Update(ctx, lookupConfigmap)
-	if err != nil {
-		return err
-	}
 	return nil
 }

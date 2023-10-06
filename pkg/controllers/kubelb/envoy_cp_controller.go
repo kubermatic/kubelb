@@ -83,6 +83,15 @@ func (r *EnvoyCPReconciler) reconcile(ctx context.Context, req ctrl.Request) err
 			r.EnvoyCache.ClearSnapshot(snapshotName)
 			return nil
 		}
+
+		// For Global topology, we need to ensure that an arbitrary port has been assigned to the endpoint ports of the LoadBalancer.
+		lbList := kubelbk8ciov1alpha1.LoadBalancerList{
+			Items: lbs,
+		}
+		if err := r.PortAllocator.AllocatePortsForLoadBalancers(lbList); err != nil {
+			return err
+		}
+
 		return r.updateCache(ctx, snapshotName, lbs)
 	}
 	return fmt.Errorf("unknown envoy proxy topology: %v", r.EnvoyProxyTopology)
@@ -92,7 +101,7 @@ func (r *EnvoyCPReconciler) updateCache(ctx context.Context, snapshotName string
 	log := ctrl.LoggerFrom(ctx)
 	currentSnapshot, err := r.EnvoyCache.GetSnapshot(snapshotName)
 	if err != nil {
-		initSnapshot, err := envoycp.MapSnapshot(lbs, r.PortAllocator)
+		initSnapshot, err := envoycp.MapSnapshot(lbs, r.PortAllocator, r.EnvoyProxyTopology == EnvoyProxyTopologyGlobal)
 		if err != nil {
 			return fmt.Errorf("failed to init snapshot %q: %w", snapshotName, err)
 		}
@@ -100,7 +109,7 @@ func (r *EnvoyCPReconciler) updateCache(ctx context.Context, snapshotName string
 		return r.EnvoyCache.SetSnapshot(ctx, snapshotName, initSnapshot)
 	}
 
-	desiredSnapshot, err := envoycp.MapSnapshot(lbs, r.PortAllocator)
+	desiredSnapshot, err := envoycp.MapSnapshot(lbs, r.PortAllocator, r.EnvoyProxyTopology == EnvoyProxyTopologyGlobal)
 	if err != nil {
 		return err
 	}
