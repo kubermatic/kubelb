@@ -22,6 +22,7 @@ const LabelOriginName = "kubelb.k8c.io/origin-name"
 const LabelLoadBalancerNamespace = "kubelb.k8c.io/lb-namespace"
 const LabelLoadBalancerName = "kubelb.k8c.io/lb-name"
 const LabelTenantName = "kubelb.k8c.io/tenant"
+const LabelManagedBy = "kubelb.k8c.io/managed-by"
 const LabelControllerName = "kubelb"
 
 const LabelAppKubernetesName = "app.kubernetes.io/name"            // mysql

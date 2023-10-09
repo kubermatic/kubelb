@@ -24,6 +24,7 @@ import (
 	envoyresource "github.com/envoyproxy/go-control-plane/pkg/resource/v3"
 
 	kubelbk8ciov1alpha1 "k8c.io/kubelb/pkg/api/kubelb.k8c.io/v1alpha1"
+	utils "k8c.io/kubelb/pkg/controllers"
 	envoycp "k8c.io/kubelb/pkg/envoy"
 	portlookup "k8c.io/kubelb/pkg/port-lookup"
 
@@ -160,8 +161,9 @@ func envoySnapshotName(topology EnvoyProxyTopology, req ctrl.Request) string {
 	return ""
 }
 
-func (r *EnvoyCPReconciler) SetupWithManager(mgr ctrl.Manager) error {
+func (r *EnvoyCPReconciler) SetupWithManager(ctx context.Context, mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&kubelbk8ciov1alpha1.LoadBalancer{}).
+		WithEventFilter(utils.ByLabelExistsOnNamespace(ctx, mgr.GetClient())).
 		Complete(r)
 }

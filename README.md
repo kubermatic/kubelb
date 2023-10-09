@@ -36,7 +36,7 @@ Deploy to load balancer cluster: `make deploy-kubelb`
 Deploy the agent to every user cluster where you want to use KubeLB
 
 Inside the deployment you need to change the ClusterName parameter to its actual name. Also make sure that a namespace
-is created inside the kubelb cluster, so the agent can create the CRDs inside its cluster namespace.
+is created inside the kubelb cluster and has the label `kubelb.k8c.io/managed-by: kubelb`, so the agent can create the CRDs inside its cluster namespace.
 
 The agent expects a `Secret` with a kubeconf file named `kubelb` to access the load balancer cluster.
 

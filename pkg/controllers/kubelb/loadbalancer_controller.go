@@ -23,6 +23,7 @@ import (
 	"strings"
 
 	kubelbk8ciov1alpha1 "k8c.io/kubelb/pkg/api/kubelb.k8c.io/v1alpha1"
+	utils "k8c.io/kubelb/pkg/controllers"
 	"k8c.io/kubelb/pkg/kubelb"
 	kuberneteshelper "k8c.io/kubelb/pkg/kubernetes"
 	portlookup "k8c.io/kubelb/pkg/port-lookup"
@@ -89,8 +90,8 @@ func (r *LoadBalancerReconciler) Reconcile(ctx context.Context, req ctrl.Request
 
 	log.V(2).Info("reconciling LoadBalancer")
 
-	var LoadBalancer kubelbk8ciov1alpha1.LoadBalancer
-	err := r.Get(ctx, req.NamespacedName, &LoadBalancer)
+	var loadBalancer kubelbk8ciov1alpha1.LoadBalancer
+	err := r.Get(ctx, req.NamespacedName, &loadBalancer)
 	if err != nil {
 		if ctrlruntimeclient.IgnoreNotFound(err) != nil {
 			log.Error(err, "unable to fetch LoadBalancer")
@@ -99,10 +100,10 @@ func (r *LoadBalancerReconciler) Reconcile(ctx context.Context, req ctrl.Request
 		return ctrl.Result{}, nil
 	}
 
-	log.V(5).Info("processing", "LoadBalancer", LoadBalancer)
+	log.V(5).Info("processing", "LoadBalancer", loadBalancer)
 
 	// Todo: check validation webhook - ports must equal endpoint ports as well
-	if len(LoadBalancer.Spec.Endpoints) == 0 {
+	if len(loadBalancer.Spec.Endpoints) == 0 {
 		log.Error(fmt.Errorf("Invalid Spec"), "No Endpoints set")
 		return ctrl.Result{}, nil
 	}
@@ -135,24 +136,24 @@ func (r *LoadBalancerReconciler) Reconcile(ctx context.Context, req ctrl.Request
 		appName = envoyGlobalCache
 		resourceNamespace = r.Namespace
 	case EnvoyProxyTopologyDedicated:
-		loadBalancers.Items = []kubelbk8ciov1alpha1.LoadBalancer{LoadBalancer}
-		appName = LoadBalancer.Name
+		loadBalancers.Items = []kubelbk8ciov1alpha1.LoadBalancer{loadBalancer}
+		appName = loadBalancer.Name
 		resourceNamespace = req.Namespace
 	}
 
 	// Resource is marked for deletion.
-	if LoadBalancer.DeletionTimestamp != nil {
-		if kuberneteshelper.HasFinalizer(&LoadBalancer, envoyProxyCleanupFinalizer) {
-			return reconcile.Result{}, r.handleEnvoyProxyCleanup(ctx, LoadBalancer, len(loadBalancers.Items), appName, resourceNamespace)
+	if loadBalancer.DeletionTimestamp != nil {
+		if kuberneteshelper.HasFinalizer(&loadBalancer, envoyProxyCleanupFinalizer) {
+			return reconcile.Result{}, r.handleEnvoyProxyCleanup(ctx, loadBalancer, len(loadBalancers.Items), appName, resourceNamespace)
 		}
 		// Finalizer doesn't exist so clean up is already done
 		return reconcile.Result{}, nil
 	}
 
 	// Add finalizer if it doesn't exist
-	if !kuberneteshelper.HasFinalizer(&LoadBalancer, envoyProxyCleanupFinalizer) {
-		kuberneteshelper.AddFinalizer(&LoadBalancer, envoyProxyCleanupFinalizer)
-		if err := r.Update(ctx, &LoadBalancer); err != nil {
+	if !kuberneteshelper.HasFinalizer(&loadBalancer, envoyProxyCleanupFinalizer) {
+		kuberneteshelper.AddFinalizer(&loadBalancer, envoyProxyCleanupFinalizer)
+		if err := r.Update(ctx, &loadBalancer); err != nil {
 			return reconcile.Result{}, fmt.Errorf("failed to add finalizer: %w", err)
 		}
 	}
@@ -171,7 +172,7 @@ func (r *LoadBalancerReconciler) Reconcile(ctx context.Context, req ctrl.Request
 		return ctrl.Result{}, err
 	}
 
-	err = r.reconcileService(ctx, &LoadBalancer, appName, resourceNamespace, r.PortAllocator)
+	err = r.reconcileService(ctx, &loadBalancer, appName, resourceNamespace, r.PortAllocator)
 	if err != nil {
 		log.Error(err, "Unable to reconcile service")
 		return ctrl.Result{}, err
@@ -437,6 +438,7 @@ func (r *LoadBalancerReconciler) handleEnvoyProxyCleanup(ctx context.Context, lb
 func (r *LoadBalancerReconciler) SetupWithManager(ctx context.Context, mgr ctrl.Manager) error {
 	c, err := ctrl.NewControllerManagedBy(mgr).
 		For(&kubelbk8ciov1alpha1.LoadBalancer{}).
+		WithEventFilter(utils.ByLabelExistsOnNamespace(ctx, mgr.GetClient())).
 		Build(r)
 	if err != nil {
 		return err

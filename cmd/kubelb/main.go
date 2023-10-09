@@ -187,7 +187,7 @@ func main() {
 		EnvoyCache:         envoyServer.Cache,
 		EnvoyProxyTopology: envoyProxyTopology,
 		PortAllocator:      portAllocator,
-	}).SetupWithManager(envoyMgr); err != nil {
+	}).SetupWithManager(ctx, envoyMgr); err != nil {
 		setupLog.Error(err, "unable to create envoy control-plane controller", "controller", "LoadBalancer")
 		os.Exit(1)
 	}

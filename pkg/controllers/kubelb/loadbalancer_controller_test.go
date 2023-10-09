@@ -45,10 +45,10 @@ var testMatrix = []struct {
 	{
 		topology: EnvoyProxyTopologyShared,
 		envoyProxyDeploymentName: func(lb types.NamespacedName) types.NamespacedName {
-			return types.NamespacedName{Name: fmt.Sprintf(envoyResourcePattern, lb.Name), Namespace: "default"}
+			return types.NamespacedName{Name: fmt.Sprintf(envoyResourcePattern, lb.Name), Namespace: LBNamespace}
 		},
 		envoyProxyServiceName: func(lb types.NamespacedName) types.NamespacedName {
-			return types.NamespacedName{Name: fmt.Sprintf(envoyResourcePattern, lb.Name), Namespace: "default"}
+			return types.NamespacedName{Name: fmt.Sprintf(envoyResourcePattern, lb.Name), Namespace: LBNamespace}
 		},
 		envoySnapshotName: func(lb types.NamespacedName) string { return lb.Namespace },
 	},
@@ -65,10 +65,10 @@ var testMatrix = []struct {
 	{
 		topology: EnvoyProxyTopologyGlobal,
 		envoyProxyDeploymentName: func(lb types.NamespacedName) types.NamespacedName {
-			return types.NamespacedName{Name: "envoy-global", Namespace: "default"}
+			return types.NamespacedName{Name: "envoy-global", Namespace: LBNamespace}
 		},
 		envoyProxyServiceName: func(lb types.NamespacedName) types.NamespacedName {
-			return types.NamespacedName{Name: fmt.Sprintf(envoyGlobalTopologyServicePattern, lb.Namespace, lb.Name), Namespace: "default"}
+			return types.NamespacedName{Name: fmt.Sprintf(envoyGlobalTopologyServicePattern, lb.Namespace, lb.Name), Namespace: LBNamespace}
 		},
 		envoySnapshotName: func(lb types.NamespacedName) string { return "global" },
 	},
@@ -79,7 +79,7 @@ var _ = Describe("Lb deployment and service creation", func() {
 		// Define utility constants for object names and testing timeouts/durations and intervals.
 		const (
 			lbName      = "serious-application"
-			lbNamespace = "default"
+			lbNamespace = LBNamespace
 
 			timeout  = time.Second * 10
 			interval = time.Millisecond * 250

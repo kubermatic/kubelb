@@ -46,6 +46,7 @@ EOF
 
 echodate "Set up kubelb pre-requisites"
 kubectl create ns cluster-tenant1
+kubectl label ns cluster-tenant1 kubelb.k8c.io/managed-by=kubelb
 kubectl config set-context $(kubectl config current-context) --namespace="cluster-tenant1"
 kubectl create secret generic kubelb-cluster --from-file=kubelb="${TMPDIR}"/kubelb.kubeconfig --from-file=tenant="${TMPDIR}"/tenant1.kubeconfig
 kubectl config set-context $(kubectl config current-context) --namespace=kubelb
@@ -54,12 +55,12 @@ kubectl config set-context $(kubectl config current-context) --namespace=kubelb
     echodate "Build kubelb binaries"
     make build-kubelb
     make build-ccm
-    
+
     echodate "Build kubelb images"
     KUBELB_IMAGE_NAME="kubermatic.io/kubelb:e2e" CCM_IMAGE_NAME="kubermatic.io/ccm:e2e" make docker-image
     kind load docker-image --name=kubelb kubermatic.io/kubelb:e2e
     kind load docker-image --name=kubelb kubermatic.io/ccm:e2e
-    
+
     echodate "Build kubelb images"
     make install
     make e2e-deploy-kubelb

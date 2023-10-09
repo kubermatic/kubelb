@@ -17,6 +17,14 @@ limitations under the License.
 package controllers
 
 import (
+	"context"
+
+	"k8c.io/kubelb/pkg/kubelb"
+
+	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/types"
+	"sigs.k8s.io/controller-runtime/pkg/client"
+	ctrlruntimeclient "sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 )
@@ -71,4 +79,36 @@ func RemoveString(slice []string, s string) (result []string) {
 		result = append(result, item)
 	}
 	return
+}
+
+// We only process LoadBalancers that have the kubelb.k8c.io/managed-by label set on the load balancer namespace.
+func ByLabelExistsOnNamespace(ctx context.Context, client client.Client) predicate.Funcs {
+	return workqueueFilter(func(o ctrlruntimeclient.Object) bool {
+		ns := &corev1.Namespace{}
+		if err := client.Get(ctx, types.NamespacedName{Name: o.GetNamespace()}, ns); err != nil {
+			return false
+		}
+		if ns.Labels[kubelb.LabelManagedBy] == kubelb.LabelControllerName {
+			return true
+		}
+		return false
+	})
+}
+
+func workqueueFilter(filter func(o ctrlruntimeclient.Object) bool) predicate.Funcs {
+	if filter == nil {
+		return predicate.Funcs{}
+	}
+
+	return predicate.Funcs{
+		CreateFunc: func(e event.CreateEvent) bool {
+			return filter(e.Object)
+		},
+		UpdateFunc: func(e event.UpdateEvent) bool {
+			return filter(e.ObjectOld) || filter(e.ObjectNew)
+		},
+		DeleteFunc: func(e event.DeleteEvent) bool {
+			return filter(e.Object)
+		},
+	}
 }

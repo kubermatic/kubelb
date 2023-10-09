@@ -26,6 +26,7 @@ import (
 
 	v1alpha12 "k8c.io/kubelb/pkg/api/kubelb.k8c.io/v1alpha1"
 	"k8c.io/kubelb/pkg/envoy"
+	"k8c.io/kubelb/pkg/kubelb"
 	portlookup "k8c.io/kubelb/pkg/port-lookup"
 
 	corev1 "k8s.io/api/core/v1"
@@ -55,8 +56,9 @@ var (
 )
 
 const (
-	APIVersion = "kubelb.k8c.io/v1alpha1"
-	Kind       = "LoadBalancer"
+	APIVersion  = "kubelb.k8c.io/v1alpha1"
+	Kind        = "LoadBalancer"
+	LBNamespace = "tenant-uno"
 )
 
 func TestLoadBalancerCustomResource(t *testing.T) {
@@ -100,13 +102,24 @@ var _ = BeforeSuite(func() {
 	err = portAllocator.LoadState(ctx, k8sManager.GetAPIReader())
 	Expect(err).ToNot(HaveOccurred())
 
+	ns := &corev1.Namespace{
+		ObjectMeta: v1.ObjectMeta{
+			Name: LBNamespace,
+			Labels: map[string]string{
+				kubelb.LabelManagedBy: kubelb.LabelControllerName,
+			},
+		},
+	}
+	err = k8sManager.GetClient().Create(ctx, ns)
+	Expect(err).ToNot(HaveOccurred())
+
 	lbr = &LoadBalancerReconciler{
 		Client:             k8sManager.GetClient(),
 		Cache:              k8sManager.GetCache(),
 		Scheme:             k8sManager.GetScheme(),
 		EnvoyBootstrap:     envoyServer.GenerateBootstrap(),
 		EnvoyProxyTopology: EnvoyProxyTopologyDedicated,
-		Namespace:          "default",
+		Namespace:          LBNamespace,
 		PortAllocator:      portAllocator,
 	}
 	err = lbr.SetupWithManager(ctx, k8sManager)
@@ -118,7 +131,7 @@ var _ = BeforeSuite(func() {
 		EnvoyProxyTopology: EnvoyProxyTopologyDedicated,
 		PortAllocator:      portAllocator,
 	}
-	err = ecpr.SetupWithManager(k8sManager)
+	err = ecpr.SetupWithManager(ctx, k8sManager)
 	Expect(err).ToNot(HaveOccurred())
 
 	k8sClient = k8sManager.GetClient()
