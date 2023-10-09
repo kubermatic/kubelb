@@ -10,7 +10,7 @@ KubeLB comprises two main components:
 
 The `KubeLB CCM` is deployed in the consumer clusters that require load balancer services. Its main responsibility is to propagate the load balancer configurations to the manager.
 
-It watches for changes in Kubernetes services, ingresses, and nodes, and then generates the load balancer configuration for the manager. It then sends the configuration to the manager in the form of the `LoadBalancer` CRD.
+It watches for changes in Kubernetes services, and nodes, and then generates the load balancer configuration for the manager. It then sends the configuration to the manager in the form of the `LoadBalancer` CRD.
 
 ### Manager
 
@@ -24,7 +24,7 @@ KubeLB manager supports three different deployment topologies for envoy proxy:
 
 #### Dedicated
 
-In this topology, the envoy proxy is deployer per load balancer service.
+In this topology, the envoy proxy is deployed per load balancer service.
 
 #### Shared
 
@@ -43,8 +43,7 @@ In this topology, a single envoy proxy is deployed per KubeLB manager. All the l
 
 ### Load balancer cluster
 
-* Service type "LoadBalancer" implementation. This can be a cloud solution, or some single cluster implementations like [MetalLB][3].
-
+* Service type "LoadBalancer" implementation. This can be a cloud solution or a self-managed implementation like [MetalLB][3].
 * Network access to the consumer cluster nodes with node port range (default: 30000-32767). This is required for the envoy proxy to be able to connect to the consumer cluster nodes.
 
 [1]: https://github.com/envoyproxy/go-control-plane
