@@ -27,6 +27,12 @@ else
 GOBIN=$(shell go env GOBIN)
 endif
 
+# SED is used to allow the Makefile to be used on both Linux and macOS.
+SED ?= sed
+ifeq ($(shell uname), Darwin)
+	SED = gsed
+endif
+
 # Setting SHELL to bash allows bash commands to be executed by recipes.
 # Options are set to exit when a recipe line exits non-zero or a piped command fails.
 SHELL = /usr/bin/env bash -o pipefail
@@ -59,6 +65,7 @@ manifests: controller-gen ## Generate WebhookConfiguration, ClusterRole and Cust
 	$(CONTROLLER_GEN) crd webhook paths="./..." output:crd:artifacts:config=config/crd/bases
 	$(CONTROLLER_GEN) rbac:roleName=kubelb-ccm paths="./pkg/controllers/ccm/..." output:artifacts:config=config/ccm/rbac
 	$(CONTROLLER_GEN) rbac:roleName=kubelb paths="./pkg/controllers/kubelb/..." output:artifacts:config=config/kubelb/rbac
+	$(CONTROLLER_GEN) crd webhook paths="./..." output:crd:artifacts:config=charts/kubelb-manager/crds
 
 .PHONY: generate
 generate: controller-gen ## Generate code containing DeepCopy, DeepCopyInto, and DeepCopyObject method implementations.
@@ -198,3 +205,23 @@ $(CONTROLLER_GEN): $(LOCALBIN)
 envtest: $(ENVTEST) ## Download envtest-setup locally if necessary.
 $(ENVTEST): $(LOCALBIN)
 	test -s $(LOCALBIN)/setup-envtest || GOBIN=$(LOCALBIN) go install sigs.k8s.io/controller-runtime/tools/setup-envtest@latest
+
+HELM_DOCS ?= $(LOCALBIN)/helm-docs
+
+.PHONY: helm-docs
+helm-docs: $(HELM_DOCS) ## Download helm-docs locally if necessary.
+$(HELM_DOCS): $(LOCALBIN)
+	test -s $(LOCALBIN)/helm-docs || GOBIN=$(LOCALBIN) go install github.com/norwoodj/helm-docs/cmd/helm-docs@v1.11.2
+
+generate-helm-docs: helm-docs
+	$(LOCALBIN)/helm-docs charts/
+
+.PHONY: bump-chart
+bump-chart:
+	$(SED) -i "s/^version:.*/version: $(IMAGE_TAG)/" charts/*/Chart.yaml
+	$(SED) -i "s/^appVersion:.*/appVersion: $(IMAGE_TAG)/" charts/*/Chart.yaml
+	$(SED) -i "s/tag:.*/tag: $(IMAGE_TAG)/" charts/*/values.yaml
+
+.PHONY: release-charts helm-docs generate-helm-docs
+release-charts: bump-chart
+	CHART_VERSION=$(IMAGE_TAG) ./hack/release-helm-charts.sh

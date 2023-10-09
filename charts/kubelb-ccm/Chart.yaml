@@ -1,0 +1,12 @@
+apiVersion: v2
+name: kubelb-ccm
+description: Helm chart for KubeLB CCM
+type: application
+maintainers:
+  - name: Kubermatic
+    email: support@kubermatic.com
+
+# Helm chart Version.
+version: v1.0.0-beta.0
+# Application version to be deployed.
+appVersion: v1.0.0-beta.0

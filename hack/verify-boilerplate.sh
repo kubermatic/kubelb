@@ -21,4 +21,5 @@ cd $(dirname $0)/..
 boilerplate \
   -boilerplates hack/boilerplate/ \
   -exclude config \
+  -exclude charts \
   -exclude Makefile

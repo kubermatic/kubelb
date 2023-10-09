@@ -8,3 +8,5 @@ _build
 .DS_Store
 /bin
 cover.out
+charts/*/Chart.lock
+kubelb-*.tgz

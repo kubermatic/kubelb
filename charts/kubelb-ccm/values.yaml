@@ -1,0 +1,75 @@
+replicaCount: 1
+
+image:
+  repository: quay.io/kubermatic/kubelb-manager-ee
+  pullPolicy: IfNotPresent
+  tag: v1.0.0-beta.0
+imagePullSecrets: []
+
+kubelb:
+  tenantName: null
+  enableLeaderElection: true
+  nodeAddressType: InternalIP
+  clusterSecretName: kubelb-cluster
+
+extraVolumes: []
+extraVolumeMounts: []
+
+nameOverride: ""
+fullnameOverride: ""
+podAnnotations: {}
+podLabels: {}
+
+## RBAC
+serviceAccount:
+  create: true
+  annotations: {}
+  name: ""
+
+rbac:
+  enabled: true
+  allowProxyRole: true
+  allowMetricsReaderRole: true
+  allowLeaderElectionRole: true
+
+# Monitoring Configuration
+serviceMonitor:
+  enabled: false
+
+podSecurityContext:
+  runAsNonRoot: true
+  seccompProfile:
+    type: RuntimeDefault
+
+securityContext:
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop:
+      - ALL
+  runAsUser: 65532
+
+service:
+  type: ClusterIP
+  port: 8443
+  protocol: TCP
+
+resources:
+  limits:
+    cpu: 100m
+    memory: 128Mi
+  requests:
+    cpu: 100m
+    memory: 128Mi
+
+autoscaling:
+  enabled: false
+  minReplicas: 1
+  maxReplicas: 10
+  targetCPUUtilizationPercentage: 80
+  targetMemoryUtilizationPercentage: 80
+
+nodeSelector: {}
+
+tolerations: []
+
+affinity: {}
