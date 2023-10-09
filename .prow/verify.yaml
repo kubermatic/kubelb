@@ -131,3 +131,40 @@ presubmits:
             limits:
               memory: 16Gi
               cpu: 4
+
+  - name: pull-kubelb-e2e-tests
+    always_run: true
+    decorate: true
+    clone_uri: "ssh://git@github.com/kubermatic/kubelb.git"
+    labels:
+      preset-kind-volume-mounts: "true"
+      preset-goproxy: "true"
+    spec:
+      containers:
+        - image: quay.io/kubermatic/build:go-1.21-node-18-kind-0.20-4
+          securityContext:
+            privileged: true
+          env:
+            - name: DOCKER_IN_DOCKER_ENABLED
+              value: "true"
+            - name: local_ip
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.podIP
+          command:
+            - bash
+          args:
+            - -c
+            - |
+              set -xeuo pipefail
+              start-docker.sh
+              docker load --input /kindest.tar
+              make download-gocache
+              ./hack/ci/e2e/run-tests.sh
+          resources:
+            requests:
+              memory: 4Gi
+              cpu: 1
+            limits:
+              memory: 16Gi
+              cpu: 4

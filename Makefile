@@ -154,6 +154,10 @@ deploy-%: manifests kustomize ## Deploy controller to the K8s cluster specified 
 #	cd config/$* && $(KUSTOMIZE) edit set image controller=${IMG}
 	$(KUSTOMIZE) build config/deploy/$* | kubectl apply -f -
 
+.PHONY: e2e-deploy
+e2e-deploy-%: manifests kustomize ## Deploy applying the e2e overlay
+	$(KUSTOMIZE) build ./hack/ci/e2e/config/$* | kubectl apply -f -
+
 .PHONY: undeploy
 undeploy-%: ## Undeploy controller from the K8s cluster specified in ~/.kube/config. Call with ignore-not-found=true to ignore resource not found errors during deletion.
 	$(KUSTOMIZE) build config/deploy/$* | kubectl delete --ignore-not-found=$(ignore-not-found) -f -
