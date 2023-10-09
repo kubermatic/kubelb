@@ -2,28 +2,11 @@
 
 ## Overview
 
-KubeLB is in an open source project to centrally manage load balancers across multicloud and on-prem.
+KubeLB is a project to centrally manage load balancers across multicloud and on-prem.
 
 ## Architecture
 
-The overall implementation contains two different parts:
-
-**Agent**: Controller which is deployed in every user cluster. It watches for Services, Ingresses and node changes.
-
-**Manager**: Controller which is responsible for deploying and configuring the actual LoadBalancer. Runs inside the load
-balancer cluster.
-
-**Load balancer cluster requirements:**
-
-* Service type "LoadBalancer" implementation (This can be a cloud solution, or some single cluster implementations)
-
-* Ingress controller installation
-
-* Network access to the user cluster nodes with node port range (default: 30000-32767)
-
-**User cluster requirements:**
-
-* Load balancer cluster API access
+Please see [docs/architecture.md](./docs/architecture.md) for an overview of the KubeLB architecture.
 
 ## Installation
 
@@ -40,7 +23,7 @@ You probably want to change the default configuration of the agent or manager.
 To do so, you can edit the deployment with your parameters in the [ccm](./config/ccm/) or [kubelb](./config/kubelb/).
 directory.
 
-**Manager**
+### Manager
 
 Deploy the manager to the load balancer cluster
 
@@ -48,7 +31,7 @@ Install the LoadBalancers CRD: `make install`
 
 Deploy to load balancer cluster: `make deploy-kubelb`
 
-**Agent**
+### CCM
 
 Deploy the agent to every user cluster where you want to use KubeLB
 
@@ -85,15 +68,9 @@ Feedback and discussion are available on [the mailing list][11].
 See [the list of releases][3] to find out about feature changes.
 
 [1]: https://github.com/kubermatic/KubeLB/issues
-
 [2]: https://github.com/kubermatic/KubeLB/blob/main/CONTRIBUTING.md
-
 [3]: https://github.com/kubermatic/KubeLB/releases
-
 [4]: https://github.com/kubermatic/KubeLB/blob/main/CODE_OF_CONDUCT.md
-
 [11]: https://groups.google.com/forum/#!forum/kubelb-dev
-
 [12]: https://kubermatic.slack.com/messages/kubelb
-
 [15]: http://slack.kubermatic.io/
