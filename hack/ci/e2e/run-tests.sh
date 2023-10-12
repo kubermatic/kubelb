@@ -48,14 +48,18 @@ function dump_logs() {
         kubectl_get_debug_resources kubelb
         export KUBECONFIG="${TMPDIR}"/tenant1.kubeconfig
         kubectl_get_debug_resources tenant1
+        export KUBECONFIG="${TMPDIR}"/tenant2.kubeconfig
+        kubectl_get_debug_resources tenant2
 
         mkdir -p "$ARTIFACTS/kind_logs/{kubelb,tenant1}"
         kind export logs "$ARTIFACTS/kind_logs/kubelb" --name kubelb ||:
         kind export logs "$ARTIFACTS/kind_logs/tenant1" --name tenant1 ||:
+        kind export logs "$ARTIFACTS/kind_logs/tenant2" --name tenant2 ||:
 
         mkdir -p "$ARTIFACTS/pod_logs"
         protokol --kubeconfig "${TMPDIR}"/kubelb.kubeconfig --flat --oneshot --output "$ARTIFACTS/pod_logs" --namespace kubelb 'kubelb-*' ||:
         protokol --kubeconfig "${TMPDIR}"/kubelb.kubeconfig --flat --oneshot --output "$ARTIFACTS/pod_logs" --namespace tenant1 'kubelb-ccm-*' ||:
+        protokol --kubeconfig "${TMPDIR}"/kubelb.kubeconfig --flat --oneshot --output "$ARTIFACTS/pod_logs" --namespace tenant2 'kubelb-ccm-*' ||:
     fi
 }
 
@@ -82,6 +86,20 @@ kind: Cluster
 apiVersion: kind.x-k8s.io/v1alpha4
 networking:
   apiServerAddress: "$local_ip"
+EOF
+)
+
+echodate "Creating tenant2 kind cluster"
+KUBECONFIG="${TMPDIR}"/tenant2.kubeconfig kind create cluster --retain --name tenant2 --config <(cat <<EOF 
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+networking:
+  apiServerAddress: "$local_ip"
+nodes:
+  - role: control-plane
+  - role: worker
+  - role: worker
+  - role: worker
 EOF
 )
 

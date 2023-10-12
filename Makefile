@@ -99,7 +99,7 @@ clean:  ## Clean binaries
 
 .PHONY: test
 test: envtest ## Run tests.
-	KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) --bin-dir $(LOCALBIN) -p path)" go test ./... -coverprofile cover.out
+	KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) --bin-dir $(LOCALBIN) -p path)" go test ./pkg/... -coverprofile cover.out
 
 ##@ Build
 
@@ -161,9 +161,13 @@ deploy-%: manifests kustomize ## Deploy controller to the K8s cluster specified 
 #	cd config/$* && $(KUSTOMIZE) edit set image controller=${IMG}
 	$(KUSTOMIZE) build config/deploy/$* | kubectl apply -f -
 
-.PHONY: e2e-deploy
-e2e-deploy-%: manifests kustomize ## Deploy applying the e2e overlay
-	$(KUSTOMIZE) build ./hack/ci/e2e/config/$* | kubectl apply -f -
+.PHONY: e2e-deploy-ccm
+e2e-deploy-ccm-%: manifests kustomize
+	$(KUSTOMIZE) build ./hack/ci/e2e/config/ccm/$* | kubectl apply -f -
+
+.PHONY: e2e-deploy-kubelb
+e2e-deploy-kubelb: manifests kustomize
+	$(KUSTOMIZE) build ./hack/ci/e2e/config/kubelb | kubectl apply -f -
 
 .PHONY: undeploy
 undeploy-%: ## Undeploy controller from the K8s cluster specified in ~/.kube/config. Call with ignore-not-found=true to ignore resource not found errors during deletion.

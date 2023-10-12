@@ -1,15 +1,11 @@
 resources:
-- ../../../../../config/ccm/
-namespace: cluster-tenant1
+- ../../../../../../config/ccm/
 images:
 - name: "controller"
   newName: "kubermatic.io/ccm"
   newTag: "e2e"
 patches:
 - patch: |-
-    - op: add
-      path: "/spec/template/spec/containers/0/args/-"
-      value: "--cluster-name=cluster-tenant1"
     - op: add
       path: "/spec/template/spec/containers/0/args/-"
       value: "--kubeconfig=/home/nonroot/.kube/tenant"

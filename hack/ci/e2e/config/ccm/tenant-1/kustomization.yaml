@@ -1,0 +1,10 @@
+resources:
+- ../base
+namespace: cluster-tenant1
+patches:
+- patch: |-
+    - op: add
+      path: "/spec/template/spec/containers/0/args/-"
+      value: "--cluster-name=cluster-tenant1"
+  target:
+    kind: Deployment
