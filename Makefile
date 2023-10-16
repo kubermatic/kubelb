@@ -127,20 +127,15 @@ docker-image:
 
 .PHONY: docker-image-publish
 docker-image-publish: docker-image
-	docker push $(KUBELB_IMAGE_NAME)
-	docker push $(CCM_IMAGE_NAME)
 	if [[ -n "$(GIT_TAG)" ]]; then \
-		$(eval IMAGE_TAG = $(GIT_TAG)) \
-		docker build -t $(KUBELB_IMAGE_NAME) -f kubelb.dockerfile . && \
-		docker push $(KUBELB_IMAGE_NAME) && \
-		docker build -t $(CCM_IMAGE_NAME) . && \
-		docker push $(CCM_IMAGE_NAME) && \
-		$(eval IMAGE_TAG = latest) \
-		docker build -t $(KUBELB_IMAGE_NAME) -f kubelb.dockerfile . ;\
-		docker push $(KUBELB_IMAGE_NAME) ;\
-		docker build -t $(CCM_IMAGE_NAME) -f ccm.dockerfile . ;\
-		docker push $(CCM_IMAGE_NAME) ;\
+		docker tag $(KUBELB_IMAGE_NAME) $(KUBELB_IMG):$(GIT_TAG) && \
+		docker tag $(KUBELB_IMAGE_NAME) $(KUBELB_IMG):latest && \
+		docker tag $(CCM_IMAGE_NAME) $(KUBELB_CCM_IMG):$(GIT_TAG) && \
+		docker tag $(CCM_IMAGE_NAME) $(KUBELB_CCM_IMG):latest ;\
 	fi
+
+	docker push $(KUBELB_IMG) --all-tags
+	docker push $(KUBELB_CCM_IMG) --all-tags
 
 ##@ Deployment
 
