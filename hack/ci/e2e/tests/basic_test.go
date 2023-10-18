@@ -66,7 +66,7 @@ func TestSimpleService(t *testing.T) {
 
 	ip := expectServiceIP(ctx, tenant1K8sClient, client.ObjectKeyFromObject(&svc))
 	testServiceURL := fmt.Sprintf("http://%v", ip)
-	expectHTTPGet(testServiceURL)
+	expectHTTPGet(testServiceURL, "nginx/1.24.0")
 
 	lb := v1alpha1.LoadBalancer{}
 	Expect(kubelbK8sClient.Get(ctx, types.NamespacedName{Namespace: "cluster-tenant1", Name: string(svc.UID)}, &lb)).To(Succeed())
@@ -89,11 +89,100 @@ func TestMultiNodeService(t *testing.T) {
 
 	ip := expectServiceIP(ctx, tenant2K8sClient, client.ObjectKeyFromObject(&svc))
 	testServiceURL := fmt.Sprintf("http://%v", ip)
-	expectHTTPGet(testServiceURL)
+	expectHTTPGet(testServiceURL, "nginx/1.24.0")
 
 	lb := v1alpha1.LoadBalancer{}
 	Expect(kubelbK8sClient.Get(ctx, types.NamespacedName{Namespace: "cluster-tenant2", Name: string(svc.UID)}, &lb)).To(Succeed())
 	Expect(len(lb.Spec.Endpoints)).To(Equal(1))
 	Expect(len(lb.Spec.Endpoints[0].Addresses)).To(Equal(4))
 	Expect(len(lb.Spec.Endpoints[0].Ports)).To(Equal(1))
+}
+
+func TestMultiPortService(t *testing.T) {
+	RegisterTestingT(t)
+	ctx := context.Background()
+
+	svc := twoAppService(80, 9901)
+	Expect(tenant1K8sClient.Create(ctx, &svc)).To(Succeed())
+	defer tenant1K8sClient.Delete(ctx, &svc)
+
+	deployment := twoAppDeployment()
+	Expect(tenant1K8sClient.Create(ctx, &deployment)).To(Succeed())
+	defer tenant1K8sClient.Delete(ctx, &deployment)
+
+	ip := expectServiceIP(ctx, tenant1K8sClient, client.ObjectKeyFromObject(&svc))
+	testServiceURL := fmt.Sprintf("http://%v", ip)
+	expectHTTPGet(testServiceURL, "nginx/1.24.0")
+	expectHTTPGet(fmt.Sprintf("%v:9901", testServiceURL), "envoy")
+
+	lb := v1alpha1.LoadBalancer{}
+	Expect(kubelbK8sClient.Get(ctx, types.NamespacedName{Namespace: "cluster-tenant1", Name: string(svc.UID)}, &lb)).To(Succeed())
+	Expect(len(lb.Spec.Endpoints)).To(Equal(1))
+	Expect(len(lb.Spec.Endpoints[0].Addresses)).To(Equal(1))
+	Expect(len(lb.Spec.Endpoints[0].Ports)).To(Equal(2))
+}
+
+func TestMultiPortMultiNodeService(t *testing.T) {
+	RegisterTestingT(t)
+	ctx := context.Background()
+
+	svc := twoAppService(80, 9901)
+	Expect(tenant2K8sClient.Create(ctx, &svc)).To(Succeed())
+	defer tenant2K8sClient.Delete(ctx, &svc)
+
+	deployment := twoAppDeployment()
+	Expect(tenant2K8sClient.Create(ctx, &deployment)).To(Succeed())
+	defer tenant2K8sClient.Delete(ctx, &deployment)
+
+	ip := expectServiceIP(ctx, tenant2K8sClient, client.ObjectKeyFromObject(&svc))
+	testServiceURL := fmt.Sprintf("http://%v", ip)
+	expectHTTPGet(testServiceURL, "nginx/1.24.0")
+	expectHTTPGet(fmt.Sprintf("%v:9901", testServiceURL), "envoy")
+
+	lb := v1alpha1.LoadBalancer{}
+	Expect(kubelbK8sClient.Get(ctx, types.NamespacedName{Namespace: "cluster-tenant2", Name: string(svc.UID)}, &lb)).To(Succeed())
+	Expect(len(lb.Spec.Endpoints)).To(Equal(1))
+	Expect(len(lb.Spec.Endpoints[0].Addresses)).To(Equal(4))
+	Expect(len(lb.Spec.Endpoints[0].Ports)).To(Equal(2))
+}
+
+func TestDuplicateService(t *testing.T) {
+	RegisterTestingT(t)
+	ctx := context.Background()
+
+	svc1 := twoAppService(8080, 9090)
+	Expect(tenant1K8sClient.Create(ctx, &svc1)).To(Succeed())
+	defer tenant1K8sClient.Delete(ctx, &svc1)
+	svc2 := twoAppService(9090, 8080)
+	Expect(tenant2K8sClient.Create(ctx, &svc2)).To(Succeed())
+	defer tenant2K8sClient.Delete(ctx, &svc2)
+
+	deployment1 := twoAppDeployment()
+	Expect(tenant1K8sClient.Create(ctx, &deployment1)).To(Succeed())
+	defer tenant1K8sClient.Delete(ctx, &deployment1)
+	deployment2 := twoAppDeployment()
+	Expect(tenant2K8sClient.Create(ctx, &deployment2)).To(Succeed())
+	defer tenant2K8sClient.Delete(ctx, &deployment2)
+
+	ip1 := expectServiceIP(ctx, tenant1K8sClient, client.ObjectKeyFromObject(&svc1))
+	testServiceURL1 := fmt.Sprintf("http://%v", ip1)
+	expectHTTPGet(fmt.Sprintf("%v:8080", testServiceURL1), "nginx/1.24.0")
+	expectHTTPGet(fmt.Sprintf("%v:9090", testServiceURL1), "envoy")
+
+	ip2 := expectServiceIP(ctx, tenant2K8sClient, client.ObjectKeyFromObject(&svc2))
+	testServiceURL2 := fmt.Sprintf("http://%v", ip2)
+	expectHTTPGet(fmt.Sprintf("%v:9090", testServiceURL2), "nginx/1.24.0")
+	expectHTTPGet(fmt.Sprintf("%v:8080", testServiceURL2), "envoy")
+
+	lb1 := v1alpha1.LoadBalancer{}
+	Expect(kubelbK8sClient.Get(ctx, types.NamespacedName{Namespace: "cluster-tenant1", Name: string(svc1.UID)}, &lb1)).To(Succeed())
+	Expect(len(lb1.Spec.Endpoints)).To(Equal(1))
+	Expect(len(lb1.Spec.Endpoints[0].Addresses)).To(Equal(1))
+	Expect(len(lb1.Spec.Endpoints[0].Ports)).To(Equal(2))
+
+	lb2 := v1alpha1.LoadBalancer{}
+	Expect(kubelbK8sClient.Get(ctx, types.NamespacedName{Namespace: "cluster-tenant2", Name: string(svc2.UID)}, &lb2)).To(Succeed())
+	Expect(len(lb2.Spec.Endpoints)).To(Equal(1))
+	Expect(len(lb2.Spec.Endpoints[0].Addresses)).To(Equal(4))
+	Expect(len(lb2.Spec.Endpoints[0].Ports)).To(Equal(2))
 }

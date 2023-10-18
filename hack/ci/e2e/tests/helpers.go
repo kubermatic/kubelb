@@ -70,6 +70,25 @@ func sampleAppService() corev1.Service {
 	}
 }
 
+func twoAppService(port1, port2 int32) corev1.Service {
+	return corev1.Service{
+		ObjectMeta: metav1.ObjectMeta{
+			Namespace: "default",
+			Name:      "test-2",
+		},
+		Spec: corev1.ServiceSpec{
+			Ports: []corev1.ServicePort{
+				{Name: "nginx", Port: port1, TargetPort: intstr.IntOrString{IntVal: 80}},
+				{Name: "envoy", Port: port2, TargetPort: intstr.IntOrString{IntVal: 9901}},
+			},
+			Selector: map[string]string{
+				"two-app": "two-app",
+			},
+			Type: corev1.ServiceTypeLoadBalancer,
+		},
+	}
+}
+
 func sampleAppDeployment() appsv1.Deployment {
 	return appsv1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{
@@ -101,6 +120,41 @@ func sampleAppDeployment() appsv1.Deployment {
 	}
 }
 
+func twoAppDeployment() appsv1.Deployment {
+	return appsv1.Deployment{
+		ObjectMeta: metav1.ObjectMeta{
+			Namespace: "default",
+			Name:      "test-server-2",
+		},
+		Spec: appsv1.DeploymentSpec{
+			Selector: &metav1.LabelSelector{
+				MatchLabels: map[string]string{
+					"two-app": "two-app",
+				},
+			},
+			Template: corev1.PodTemplateSpec{
+				ObjectMeta: metav1.ObjectMeta{
+					Labels: map[string]string{
+						"two-app": "two-app",
+					},
+				},
+				Spec: corev1.PodSpec{
+					Containers: []corev1.Container{
+						{
+							Name:  "nginx",
+							Image: "nginx:1.24.0",
+						},
+						{
+							Name:  "envoy",
+							Image: "envoyproxy/envoy:distroless-v1.26.6",
+						},
+					},
+				},
+			},
+		},
+	}
+}
+
 func expectServiceIP(ctx context.Context, cl client.Client, n types.NamespacedName) string {
 	svc := corev1.Service{}
 	Eventually(func() error {
@@ -119,7 +173,8 @@ func expectServiceIP(ctx context.Context, cl client.Client, n types.NamespacedNa
 	return svc.Status.LoadBalancer.Ingress[0].IP
 }
 
-func expectHTTPGet(url string) {
+func expectHTTPGet(url, serverHeader string) {
+	var respServerHeader string
 	Eventually(func() error {
 		resp, err := http.Get(url)
 		if err != nil {
@@ -131,6 +186,8 @@ func expectHTTPGet(url string) {
 			return fmt.Errorf("expected status %v but got %v", http.StatusOK, resp.StatusCode)
 		}
 		log.Printf("SUCCESS %v", url)
+		respServerHeader = resp.Header.Get("server")
 		return nil
 	}).WithTimeout(30 * time.Minute).WithPolling(1 * time.Second).Should(Succeed())
+	Expect(respServerHeader).To(Equal(serverHeader))
 }

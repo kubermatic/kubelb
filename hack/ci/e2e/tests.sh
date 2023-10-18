@@ -19,4 +19,4 @@ set -xeuo pipefail
 source "${ROOT_DIR}/hack/lib.sh"
 
 echodate "Running tests"
-KUBECONFIGS_DIR="${TMPDIR}" go test -v "${ROOT_DIR}/hack/ci/e2e/tests/" -coverprofile cover.out
+KUBECONFIGS_DIR="${TMPDIR}" go test -timeout 30m -v "${ROOT_DIR}/hack/ci/e2e/tests/" -coverprofile cover.out
