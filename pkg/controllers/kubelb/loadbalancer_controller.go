@@ -35,6 +35,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/intstr"
+	"k8s.io/client-go/util/retry"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/cache"
 	ctrlruntimeclient "sigs.k8s.io/controller-runtime/pkg/client"
@@ -350,14 +351,15 @@ func (r *LoadBalancerReconciler) reconcileService(ctx context.Context, loadBalan
 
 	// Update status if needed
 	updateStatus := false
+	updatedLoadBalanacerStatus := kubelbk8ciov1alpha1.LoadBalancerStatus{}
 	if !reflect.DeepEqual(loadBalancer.Status.Service.Ports, updatedPorts) {
-		loadBalancer.Status.Service.Ports = updatedPorts
+		updatedLoadBalanacerStatus.Service.Ports = updatedPorts
 		updateStatus = true
 	}
 
 	if loadBalancer.Spec.Type == corev1.ServiceTypeLoadBalancer {
 		if !reflect.DeepEqual(loadBalancer.Status.LoadBalancer.Ingress, service.Status.LoadBalancer.Ingress) {
-			loadBalancer.Status.LoadBalancer = service.Status.LoadBalancer
+			updatedLoadBalanacerStatus.LoadBalancer = service.Status.LoadBalancer
 			updateStatus = true
 		}
 	}
@@ -368,7 +370,20 @@ func (r *LoadBalancerReconciler) reconcileService(ctx context.Context, loadBalan
 	}
 
 	log.V(3).Info("updating LoadBalancer status", "name", loadBalancer.Name, "namespace", loadBalancer.Namespace)
-	return r.Status().Update(ctx, loadBalancer)
+
+	return retry.RetryOnConflict(retry.DefaultRetry, func() error {
+		lb := &kubelbk8ciov1alpha1.LoadBalancer{}
+		if err := r.Get(ctx, types.NamespacedName{Name: loadBalancer.Name, Namespace: loadBalancer.Namespace}, lb); err != nil {
+			return err
+		}
+		original := lb.DeepCopy()
+		lb.Status = updatedLoadBalanacerStatus
+		if reflect.DeepEqual(original.Status, lb.Status) {
+			return nil
+		}
+		// update the status
+		return r.Status().Patch(ctx, lb, ctrlruntimeclient.MergeFrom(original))
+	})
 }
 
 func (r *LoadBalancerReconciler) handleEnvoyProxyCleanup(ctx context.Context, lb kubelbk8ciov1alpha1.LoadBalancer, lbCount int, appName, resourceNamespace string) error {
