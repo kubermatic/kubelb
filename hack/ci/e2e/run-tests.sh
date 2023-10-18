@@ -14,7 +14,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-set -xeuo pipefail
+set -euo pipefail
 
 export ROOT_DIR="$(git rev-parse --show-toplevel)"
 export DIR="$(dirname "$(realpath "$0")")"
@@ -72,7 +72,7 @@ if [[ -z "${local_ip+x}" ]]; then
 fi
 
 echodate "Creating kubelb kind cluster"
-KUBECONFIG="${TMPDIR}"/kubelb.kubeconfig kind create cluster --retain --name kubelb --config <(cat <<EOF 
+KUBECONFIG="${TMPDIR}"/kubelb.kubeconfig kind create cluster --retain --name kubelb --config <(cat <<EOF
 kind: Cluster
 apiVersion: kind.x-k8s.io/v1alpha4
 networking:
@@ -81,7 +81,7 @@ EOF
 )
 
 echodate "Creating tenant1 kind cluster"
-KUBECONFIG="${TMPDIR}"/tenant1.kubeconfig kind create cluster --retain --name tenant1 --config <(cat <<EOF 
+KUBECONFIG="${TMPDIR}"/tenant1.kubeconfig kind create cluster --retain --name tenant1 --config <(cat <<EOF
 kind: Cluster
 apiVersion: kind.x-k8s.io/v1alpha4
 networking:
@@ -90,7 +90,7 @@ EOF
 )
 
 echodate "Creating tenant2 kind cluster"
-KUBECONFIG="${TMPDIR}"/tenant2.kubeconfig kind create cluster --retain --name tenant2 --config <(cat <<EOF 
+KUBECONFIG="${TMPDIR}"/tenant2.kubeconfig kind create cluster --retain --name tenant2 --config <(cat <<EOF
 kind: Cluster
 apiVersion: kind.x-k8s.io/v1alpha4
 networking:

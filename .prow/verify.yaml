@@ -156,7 +156,7 @@ presubmits:
           args:
             - -c
             - |
-              set -xeuo pipefail
+              set -euo pipefail
               start-docker.sh
               docker load --input /kindest.tar
               make download-gocache
