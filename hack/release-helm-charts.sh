@@ -31,8 +31,6 @@ REGISTRY_PASSWORD="${REGISTRY_PASSWORD:-$(vault kv get -field=password dev/kuber
 
 echo ${REGISTRY_PASSWORD} | helm registry login ${REGISTRY_HOST} --username ${REGISTRY_USER} --password-stdin
 
-CHART_VERSION="v0.4.0"
-
 # Package and publish charts
 MANAGER="kubelb-manager"
 CCM="kubelb-ccm"
