@@ -7,6 +7,6 @@ maintainers:
     email: support@kubermatic.com
 
 # Helm chart Version.
-version: v1.0.0-beta.0
+version: v0.4.0
 # Application version to be deployed.
-appVersion: v1.0.0-beta.0
+appVersion: v0.4.0
