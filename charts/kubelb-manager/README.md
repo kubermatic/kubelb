@@ -2,7 +2,7 @@
 
 Helm chart for KubeLB Manager. This is used to deploy the KubeLB CCM to a Kubernetes cluster. The CCM is responsible for propagating the load balancer configurations to the management cluster.
 
-![Version: v1.0.0-beta.0](https://img.shields.io/badge/Version-v1.0.0--beta.0-informational?style=flat-square) ![Type: application](https://img.shields.io/badge/Type-application-informational?style=flat-square) ![AppVersion: v1.0.0-beta.0](https://img.shields.io/badge/AppVersion-v1.0.0--beta.0-informational?style=flat-square)
+![Version: v0.4.0](https://img.shields.io/badge/Version-v1.0.0--beta.0-informational?style=flat-square) ![Type: application](https://img.shields.io/badge/Type-application-informational?style=flat-square) ![AppVersion: v0.4.0](https://img.shields.io/badge/AppVersion-v1.0.0--beta.0-informational?style=flat-square)
 
 ## Installing the chart
 
@@ -24,7 +24,7 @@ Now, we can install the helm chart:
 
 ```sh
 helm registry login quay.io --username ${REGISTRY_USER} --password ${REGISTRY_PASSWORD}
-helm pull oci://quay.io/kubermatic/helm-charts/kubelb-manager --version=v1.0.0-beta.0 --untardir "kubelb-manager" --untar
+helm pull oci://quay.io/kubermatic/helm-charts/kubelb-manager --version=v0.4.0 --untardir "kubelb-manager" --untar
 ## Create and update values.yaml with the required values.
 helm install kubelb-manager kubelb-manager --namespace kubelb -f values.yaml
 ```
@@ -42,7 +42,7 @@ helm install kubelb-manager kubelb-manager --namespace kubelb -f values.yaml
 | fullnameOverride | string | `""` |  |
 | image.pullPolicy | string | `"IfNotPresent"` |  |
 | image.repository | string | `"quay.io/kubermatic/kubelb-manager-ee"` |  |
-| image.tag | string | `"v1.0.0-beta.0"` |  |
+| image.tag | string | `"v0.4.0"` |  |
 | imagePullSecrets | list | `[]` |  |
 | kubelb.debug | bool | `false` |  |
 | kubelb.enableLeaderElection | bool | `true` |  |
