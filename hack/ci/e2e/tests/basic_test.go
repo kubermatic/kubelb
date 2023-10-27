@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"os"
 	"path"
+	"sync"
 	"testing"
 
 	. "github.com/onsi/gomega"
@@ -56,11 +57,11 @@ func TestSimpleService(t *testing.T) {
 	RegisterTestingT(t)
 	ctx := context.Background()
 
-	svc := sampleAppService()
+	svc := sampleAppService("simple")
 	Expect(tenant1K8sClient.Create(ctx, &svc)).To(Succeed())
 	defer tenant1K8sClient.Delete(ctx, &svc)
 
-	deployment := sampleAppDeployment()
+	deployment := sampleAppDeployment("simple")
 	Expect(tenant1K8sClient.Create(ctx, &deployment)).To(Succeed())
 	defer tenant1K8sClient.Delete(ctx, &deployment)
 
@@ -79,11 +80,11 @@ func TestMultiNodeService(t *testing.T) {
 	RegisterTestingT(t)
 	ctx := context.Background()
 
-	svc := sampleAppService()
+	svc := sampleAppService("multi-node")
 	Expect(tenant2K8sClient.Create(ctx, &svc)).To(Succeed())
 	defer tenant2K8sClient.Delete(ctx, &svc)
 
-	deployment := sampleAppDeployment()
+	deployment := sampleAppDeployment("multi-node")
 	Expect(tenant2K8sClient.Create(ctx, &deployment)).To(Succeed())
 	defer tenant2K8sClient.Delete(ctx, &deployment)
 
@@ -102,11 +103,11 @@ func TestMultiPortService(t *testing.T) {
 	RegisterTestingT(t)
 	ctx := context.Background()
 
-	svc := twoAppService(80, 9901)
+	svc := twoAppService("multi-port", 80, 9901)
 	Expect(tenant1K8sClient.Create(ctx, &svc)).To(Succeed())
 	defer tenant1K8sClient.Delete(ctx, &svc)
 
-	deployment := twoAppDeployment()
+	deployment := twoAppDeployment("multi-port")
 	Expect(tenant1K8sClient.Create(ctx, &deployment)).To(Succeed())
 	defer tenant1K8sClient.Delete(ctx, &deployment)
 
@@ -126,11 +127,11 @@ func TestMultiPortMultiNodeService(t *testing.T) {
 	RegisterTestingT(t)
 	ctx := context.Background()
 
-	svc := twoAppService(80, 9901)
+	svc := twoAppService("multi-port-and-node", 80, 9901)
 	Expect(tenant2K8sClient.Create(ctx, &svc)).To(Succeed())
 	defer tenant2K8sClient.Delete(ctx, &svc)
 
-	deployment := twoAppDeployment()
+	deployment := twoAppDeployment("multi-port-and-node")
 	Expect(tenant2K8sClient.Create(ctx, &deployment)).To(Succeed())
 	defer tenant2K8sClient.Delete(ctx, &deployment)
 
@@ -150,17 +151,17 @@ func TestDuplicateService(t *testing.T) {
 	RegisterTestingT(t)
 	ctx := context.Background()
 
-	svc1 := twoAppService(8080, 9090)
+	svc1 := twoAppService("duplicate", 8080, 9090)
 	Expect(tenant1K8sClient.Create(ctx, &svc1)).To(Succeed())
 	defer tenant1K8sClient.Delete(ctx, &svc1)
-	svc2 := twoAppService(9090, 8080)
+	svc2 := twoAppService("duplicate", 9090, 8080)
 	Expect(tenant2K8sClient.Create(ctx, &svc2)).To(Succeed())
 	defer tenant2K8sClient.Delete(ctx, &svc2)
 
-	deployment1 := twoAppDeployment()
+	deployment1 := twoAppDeployment("duplicate")
 	Expect(tenant1K8sClient.Create(ctx, &deployment1)).To(Succeed())
 	defer tenant1K8sClient.Delete(ctx, &deployment1)
-	deployment2 := twoAppDeployment()
+	deployment2 := twoAppDeployment("duplicate")
 	Expect(tenant2K8sClient.Create(ctx, &deployment2)).To(Succeed())
 	defer tenant2K8sClient.Delete(ctx, &deployment2)
 
@@ -178,6 +179,59 @@ func TestDuplicateService(t *testing.T) {
 	Expect(kubelbK8sClient.Get(ctx, types.NamespacedName{Namespace: "cluster-tenant1", Name: string(svc1.UID)}, &lb1)).To(Succeed())
 	Expect(len(lb1.Spec.Endpoints)).To(Equal(1))
 	Expect(len(lb1.Spec.Endpoints[0].Addresses)).To(Equal(1))
+	Expect(len(lb1.Spec.Endpoints[0].Ports)).To(Equal(2))
+
+	lb2 := v1alpha1.LoadBalancer{}
+	Expect(kubelbK8sClient.Get(ctx, types.NamespacedName{Namespace: "cluster-tenant2", Name: string(svc2.UID)}, &lb2)).To(Succeed())
+	Expect(len(lb2.Spec.Endpoints)).To(Equal(1))
+	Expect(len(lb2.Spec.Endpoints[0].Addresses)).To(Equal(4))
+	Expect(len(lb2.Spec.Endpoints[0].Ports)).To(Equal(2))
+}
+
+func TestMultipleServices(t *testing.T) {
+	RegisterTestingT(t)
+	ctx := context.Background()
+
+	svc1 := twoAppService("multi-port-1", 80, 9901)
+	Expect(tenant2K8sClient.Create(ctx, &svc1)).To(Succeed())
+	defer tenant2K8sClient.Delete(ctx, &svc1)
+
+	deployment1 := twoAppDeployment("multi-port-1")
+	Expect(tenant2K8sClient.Create(ctx, &deployment1)).To(Succeed())
+	defer tenant2K8sClient.Delete(ctx, &deployment1)
+
+	svc2 := twoAppService("multi-port-2", 80, 9901)
+	Expect(tenant2K8sClient.Create(ctx, &svc2)).To(Succeed())
+	defer tenant2K8sClient.Delete(ctx, &svc2)
+
+	deployment2 := twoAppDeployment("multi-port-2")
+	Expect(tenant2K8sClient.Create(ctx, &deployment2)).To(Succeed())
+	defer tenant2K8sClient.Delete(ctx, &deployment2)
+
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		ip1 := expectServiceIP(ctx, tenant2K8sClient, client.ObjectKeyFromObject(&svc1))
+		testServiceURL1 := fmt.Sprintf("http://%v", ip1)
+		expectHTTPGet(fmt.Sprintf("%v:80", testServiceURL1), "nginx/1.24.0")
+		expectHTTPGet(fmt.Sprintf("%v:9901", testServiceURL1), "envoy")
+		wg.Done()
+	}()
+
+	wg.Add(1)
+	go func() {
+		ip2 := expectServiceIP(ctx, tenant2K8sClient, client.ObjectKeyFromObject(&svc2))
+		testServiceURL2 := fmt.Sprintf("http://%v", ip2)
+		expectHTTPGet(fmt.Sprintf("%v:80", testServiceURL2), "nginx/1.24.0")
+		expectHTTPGet(fmt.Sprintf("%v:9901", testServiceURL2), "envoy")
+		wg.Done()
+	}()
+	wg.Wait()
+
+	lb1 := v1alpha1.LoadBalancer{}
+	Expect(kubelbK8sClient.Get(ctx, types.NamespacedName{Namespace: "cluster-tenant2", Name: string(svc1.UID)}, &lb1)).To(Succeed())
+	Expect(len(lb1.Spec.Endpoints)).To(Equal(1))
+	Expect(len(lb1.Spec.Endpoints[0].Addresses)).To(Equal(4))
 	Expect(len(lb1.Spec.Endpoints[0].Ports)).To(Equal(2))
 
 	lb2 := v1alpha1.LoadBalancer{}
