@@ -52,29 +52,29 @@ func getK8sClient(path string) client.Client {
 	return kcfg
 }
 
-func sampleAppService() corev1.Service {
+func sampleAppService(testID string) corev1.Service {
 	return corev1.Service{
 		ObjectMeta: metav1.ObjectMeta{
 			Namespace: "default",
-			Name:      "test",
+			Name:      testID,
 		},
 		Spec: corev1.ServiceSpec{
 			Ports: []corev1.ServicePort{
 				{Port: 80, TargetPort: intstr.IntOrString{IntVal: 80}},
 			},
 			Selector: map[string]string{
-				"sample-app": "sample-app",
+				"sample-app": testID,
 			},
 			Type: corev1.ServiceTypeLoadBalancer,
 		},
 	}
 }
 
-func twoAppService(port1, port2 int32) corev1.Service {
+func twoAppService(testID string, port1, port2 int32) corev1.Service {
 	return corev1.Service{
 		ObjectMeta: metav1.ObjectMeta{
 			Namespace: "default",
-			Name:      "test-2",
+			Name:      testID,
 		},
 		Spec: corev1.ServiceSpec{
 			Ports: []corev1.ServicePort{
@@ -82,29 +82,29 @@ func twoAppService(port1, port2 int32) corev1.Service {
 				{Name: "envoy", Port: port2, TargetPort: intstr.IntOrString{IntVal: 9901}},
 			},
 			Selector: map[string]string{
-				"two-app": "two-app",
+				"two-app": testID,
 			},
 			Type: corev1.ServiceTypeLoadBalancer,
 		},
 	}
 }
 
-func sampleAppDeployment() appsv1.Deployment {
+func sampleAppDeployment(testID string) appsv1.Deployment {
 	return appsv1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{
 			Namespace: "default",
-			Name:      "test-server",
+			Name:      testID,
 		},
 		Spec: appsv1.DeploymentSpec{
 			Selector: &metav1.LabelSelector{
 				MatchLabels: map[string]string{
-					"sample-app": "sample-app",
+					"sample-app": testID,
 				},
 			},
 			Template: corev1.PodTemplateSpec{
 				ObjectMeta: metav1.ObjectMeta{
 					Labels: map[string]string{
-						"sample-app": "sample-app",
+						"sample-app": testID,
 					},
 				},
 				Spec: corev1.PodSpec{
@@ -120,22 +120,22 @@ func sampleAppDeployment() appsv1.Deployment {
 	}
 }
 
-func twoAppDeployment() appsv1.Deployment {
+func twoAppDeployment(testID string) appsv1.Deployment {
 	return appsv1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{
 			Namespace: "default",
-			Name:      "test-server-2",
+			Name:      testID,
 		},
 		Spec: appsv1.DeploymentSpec{
 			Selector: &metav1.LabelSelector{
 				MatchLabels: map[string]string{
-					"two-app": "two-app",
+					"two-app": testID,
 				},
 			},
 			Template: corev1.PodTemplateSpec{
 				ObjectMeta: metav1.ObjectMeta{
 					Labels: map[string]string{
-						"two-app": "two-app",
+						"two-app": testID,
 					},
 				},
 				Spec: corev1.PodSpec{
@@ -169,7 +169,7 @@ func expectServiceIP(ctx context.Context, cl client.Client, n types.NamespacedNa
 			return fmt.Errorf("missing loadbalancer ingress IP")
 		}
 		return nil
-	}).Should(Succeed())
+	}).WithTimeout(10 * time.Second).Should(Succeed())
 	return svc.Status.LoadBalancer.Ingress[0].IP
 }
 
