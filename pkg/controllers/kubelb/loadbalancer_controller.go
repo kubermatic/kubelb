@@ -210,33 +210,41 @@ func (r *LoadBalancerReconciler) reconcileEnvoyProxy(ctx context.Context, namesp
 		return err
 	}
 
-	result, err := ctrl.CreateOrUpdate(ctx, r.Client, envoyProxy, func() error {
-		if r.EnvoyProxyUseDaemonset {
-			daemonset := envoyProxy.(*appsv1.DaemonSet)
-			daemonset.Spec.Selector = &v1.LabelSelector{
-				MatchLabels: map[string]string{kubelb.LabelAppKubernetesName: appName},
-			}
-			daemonset.Spec.Template = r.getEnvoyProxyPodSpec(namespace, appName, snapshotName)
-			envoyProxy = daemonset
-		} else {
-			deployment := envoyProxy.(*appsv1.Deployment)
-			var replicas = int32(r.EnvoyProxyReplicas)
-			deployment.Spec.Replicas = &replicas
-			deployment.Spec.Selector = &v1.LabelSelector{
-				MatchLabels: map[string]string{kubelb.LabelAppKubernetesName: appName},
-			}
-			deployment.Spec.Template = r.getEnvoyProxyPodSpec(namespace, appName, snapshotName)
-			envoyProxy = deployment
+	original := envoyProxy.DeepCopyObject()
+	if r.EnvoyProxyUseDaemonset {
+		daemonset := envoyProxy.(*appsv1.DaemonSet)
+		daemonset.Spec.Selector = &v1.LabelSelector{
+			MatchLabels: map[string]string{kubelb.LabelAppKubernetesName: appName},
 		}
+		daemonset.Spec.Template = r.getEnvoyProxyPodSpec(namespace, appName, snapshotName)
+		envoyProxy = daemonset
+	} else {
+		deployment := envoyProxy.(*appsv1.Deployment)
+		var replicas = int32(r.EnvoyProxyReplicas)
+		deployment.Spec.Replicas = &replicas
+		deployment.Spec.Selector = &v1.LabelSelector{
+			MatchLabels: map[string]string{kubelb.LabelAppKubernetesName: appName},
+		}
+		deployment.Spec.Template = r.getEnvoyProxyPodSpec(namespace, appName, snapshotName)
+		envoyProxy = deployment
+	}
 
-		return nil
-	})
-
+	if apierrors.IsNotFound(err) {
+		if err := r.Create(ctx, envoyProxy); err != nil {
+			return err
+		}
+	} else {
+		if !reflect.DeepEqual(original, envoyProxy) {
+			envoyProxy.SetManagedFields([]v1.ManagedFieldsEntry{})
+			envoyProxy.SetResourceVersion("")
+			if err := r.Patch(ctx, envoyProxy, ctrlruntimeclient.Apply, ctrlruntimeclient.ForceOwnership, ctrlruntimeclient.FieldOwner("kubelb")); err != nil {
+				return err
+			}
+		}
+	}
 	log.V(5).Info("desired", "envoy-proxy", envoyProxy)
 
-	log.V(2).Info("operation fulfilled", "status", result)
-
-	return err
+	return nil
 }
 
 func (r *LoadBalancerReconciler) reconcileService(ctx context.Context, loadBalancer *kubelbk8ciov1alpha1.LoadBalancer, appName, namespace string, portAllocator *portlookup.PortAllocator) error {
