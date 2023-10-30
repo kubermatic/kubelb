@@ -17,7 +17,6 @@ limitations under the License.
 package main
 
 import (
-	"context"
 	"fmt"
 	"os"
 	"path"
@@ -54,8 +53,7 @@ func TestMain(m *testing.M) {
 }
 
 func TestSimpleService(t *testing.T) {
-	RegisterTestingT(t)
-	ctx := context.Background()
+	ctx := testInit(t)
 
 	svc := sampleAppService("simple")
 	Expect(tenant1K8sClient.Create(ctx, &svc)).To(Succeed())
@@ -77,8 +75,7 @@ func TestSimpleService(t *testing.T) {
 }
 
 func TestMultiNodeService(t *testing.T) {
-	RegisterTestingT(t)
-	ctx := context.Background()
+	ctx := testInit(t)
 
 	svc := sampleAppService("multi-node")
 	Expect(tenant2K8sClient.Create(ctx, &svc)).To(Succeed())
@@ -100,8 +97,7 @@ func TestMultiNodeService(t *testing.T) {
 }
 
 func TestMultiPortService(t *testing.T) {
-	RegisterTestingT(t)
-	ctx := context.Background()
+	ctx := testInit(t)
 
 	svc := twoAppService("multi-port", 80, 9901)
 	Expect(tenant1K8sClient.Create(ctx, &svc)).To(Succeed())
@@ -124,8 +120,7 @@ func TestMultiPortService(t *testing.T) {
 }
 
 func TestMultiPortMultiNodeService(t *testing.T) {
-	RegisterTestingT(t)
-	ctx := context.Background()
+	ctx := testInit(t)
 
 	svc := twoAppService("multi-port-and-node", 80, 9901)
 	Expect(tenant2K8sClient.Create(ctx, &svc)).To(Succeed())
@@ -148,8 +143,7 @@ func TestMultiPortMultiNodeService(t *testing.T) {
 }
 
 func TestDuplicateService(t *testing.T) {
-	RegisterTestingT(t)
-	ctx := context.Background()
+	ctx := testInit(t)
 
 	svc1 := twoAppService("duplicate", 8080, 9090)
 	Expect(tenant1K8sClient.Create(ctx, &svc1)).To(Succeed())
@@ -189,8 +183,7 @@ func TestDuplicateService(t *testing.T) {
 }
 
 func TestMultipleServices(t *testing.T) {
-	RegisterTestingT(t)
-	ctx := context.Background()
+	ctx := testInit(t)
 
 	svc1 := twoAppService("multi-port-1", 80, 9901)
 	Expect(tenant2K8sClient.Create(ctx, &svc1)).To(Succeed())
