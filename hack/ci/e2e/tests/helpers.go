@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"testing"
 	"time"
 
 	. "github.com/onsi/gomega"
@@ -33,6 +34,13 @@ import (
 	"k8s.io/client-go/tools/clientcmd"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
+
+func testInit(t *testing.T) context.Context {
+	RegisterTestingT(t)
+	ctx := context.Background()
+	t.Parallel()
+	return ctx
+}
 
 func getK8sClient(path string) client.Client {
 	cfg := clientcmd.NewNonInteractiveDeferredLoadingClientConfig(
