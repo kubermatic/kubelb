@@ -2,11 +2,10 @@
 # To change team associations, update the GitHub teams via https://github.com/kubermatic/access.
 
 aliases:
-  sig-networking:
-    - cnvergence
-    - moadqassem
-    - pkprzekwas
-    - wozniakjan
   kubelb-maintainers:
     - ahmedwaleedmalik
     - kron4eg
+  sig-networking:
+    - cnvergence
+    - moadqassem
+    - wozniakjan
