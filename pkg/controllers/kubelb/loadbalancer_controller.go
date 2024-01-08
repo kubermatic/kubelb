@@ -574,7 +574,7 @@ func filterServicesPredicate() predicate.Predicate {
 				if _, ok := labels[kubelb.LabelLoadBalancerName]; ok {
 					// Service is managed by KubeLB.
 					// Save reconciliation cost here and only queue up LBs when the status has changed.
-					if reflect.DeepEqual(newSvc.Status, oldSvc.Status) {
+					if !reflect.DeepEqual(newSvc.Status, oldSvc.Status) {
 						return true
 					}
 				}
