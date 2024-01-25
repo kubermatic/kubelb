@@ -17,7 +17,7 @@ presubmits:
   - name: pull-kubelb-mod-verify
     always_run: true
     decorate: true
-    clone_uri: "ssh://git@github.com/kubermatic/kubelb.git"
+    clone_uri: "ssh://git@github.com/kubermatic/kubelb-ee.git"
     labels:
       preset-goproxy: "true"
     spec:
@@ -34,7 +34,7 @@ presubmits:
   - name: pull-kubelb-lint
     always_run: true
     decorate: true
-    clone_uri: "ssh://git@github.com/kubermatic/kubelb.git"
+    clone_uri: "ssh://git@github.com/kubermatic/kubelb-ee.git"
     labels:
       preset-goproxy: "true"
     spec:
@@ -52,7 +52,7 @@ presubmits:
   - name: pull-kubelb-yamllint
     always_run: true
     decorate: true
-    clone_uri: "ssh://git@github.com/kubermatic/kubelb.git"
+    clone_uri: "ssh://git@github.com/kubermatic/kubelb-ee.git"
     labels:
       preset-goproxy: "true"
     spec:
@@ -69,7 +69,7 @@ presubmits:
   - name: pull-kubelb-verify-boilerplate
     always_run: true
     decorate: true
-    clone_uri: "ssh://git@github.com/kubermatic/kubelb.git"
+    clone_uri: "ssh://git@github.com/kubermatic/kubelb-ee.git"
     spec:
       containers:
         - image: quay.io/kubermatic/build:go-1.21-node-18-kind-0.20-6
@@ -81,7 +81,7 @@ presubmits:
   - name: pull-kubelb-verify-imports
     always_run: true
     decorate: true
-    clone_uri: "ssh://git@github.com/kubermatic/kubelb.git"
+    clone_uri: "ssh://git@github.com/kubermatic/kubelb-ee.git"
     spec:
       containers:
         - image: quay.io/kubermatic/build:go-1.21-node-18-kind-0.20-6
@@ -93,7 +93,7 @@ presubmits:
   - name: pull-kubelb-build
     always_run: true
     decorate: true
-    clone_uri: "ssh://git@github.com/kubermatic/kubelb.git"
+    clone_uri: "ssh://git@github.com/kubermatic/kubelb-ee.git"
     labels:
       preset-goproxy: "true"
     spec:
@@ -114,7 +114,7 @@ presubmits:
   - name: pull-kubelb-unit-tests
     always_run: true
     decorate: true
-    clone_uri: "ssh://git@github.com/kubermatic/kubelb.git"
+    clone_uri: "ssh://git@github.com/kubermatic/kubelb-ee.git"
     labels:
       preset-goproxy: "true"
     spec:
@@ -135,7 +135,7 @@ presubmits:
   - name: pull-kubelb-e2e-tests
     always_run: true
     decorate: true
-    clone_uri: "ssh://git@github.com/kubermatic/kubelb.git"
+    clone_uri: "ssh://git@github.com/kubermatic/kubelb-ee.git"
     labels:
       preset-kind-volume-mounts: "true"
       preset-goproxy: "true"
