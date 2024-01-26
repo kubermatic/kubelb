@@ -555,31 +555,25 @@ func (r *LoadBalancerReconciler) enqueueLoadBalancers() handler.MapFunc {
 }
 
 // filterServicesPredicate filters out services that need to be propagated to the event handlers.
-// We only want to handle services that are managed by kubelb and queued against updation events.
+// We only want to handle services that are managed by kubelb.
 func filterServicesPredicate() predicate.Predicate {
 	return predicate.Funcs{
 		CreateFunc: func(e event.CreateEvent) bool {
-			return false
+			return e.Object.GetLabels()[kubelb.LabelLoadBalancerName] != ""
 		},
 		DeleteFunc: func(e event.DeleteEvent) bool {
-			return false
+			return e.Object.GetLabels()[kubelb.LabelLoadBalancerName] != ""
 		},
 		UpdateFunc: func(e event.UpdateEvent) bool {
-			// Ensure that this service is managed by kubelb
 			newSvc := e.ObjectNew.(*corev1.Service)
 			oldSvc := e.ObjectOld.(*corev1.Service)
-			labels := newSvc.GetLabels()
 
-			if labels != nil {
-				if _, ok := labels[kubelb.LabelLoadBalancerName]; ok {
-					// Service is managed by KubeLB.
-					// Save reconciliation cost here and only queue up LBs when the status has changed.
-					if !reflect.DeepEqual(newSvc.Status, oldSvc.Status) {
-						return true
-					}
-				}
+			// Ensure that this service is managed by kubelb
+			if e.ObjectNew.GetLabels()[kubelb.LabelLoadBalancerName] == "" {
+				return false
 			}
-			return false
+
+			return !reflect.DeepEqual(newSvc.Status, oldSvc.Status)
 		},
 		GenericFunc: func(e event.GenericEvent) bool {
 			return false
