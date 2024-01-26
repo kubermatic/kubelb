@@ -33,7 +33,6 @@ import (
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/rest"
-	"k8s.io/klog/v2/klogr"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/envtest"
@@ -83,7 +82,7 @@ var _ = BeforeSuite(func() {
 	err = v1alpha12.AddToScheme(scheme.Scheme)
 	Expect(err).NotTo(HaveOccurred())
 
-	ctrl.SetLogger(klogr.New())
+	ctrl.SetLogger(zap.New(zap.UseDevMode(false)))
 	sigCtx := ctrl.SetupSignalHandler()
 	ctx, cancel = context.WithCancel(sigCtx)
 
