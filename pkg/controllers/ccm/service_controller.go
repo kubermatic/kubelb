@@ -19,6 +19,7 @@ package ccm
 import (
 	"context"
 	"fmt"
+	"reflect"
 
 	"github.com/go-logr/logr"
 
@@ -31,6 +32,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/util/retry"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	ctrlclient "sigs.k8s.io/controller-runtime/pkg/client"
@@ -133,16 +135,26 @@ func (r *KubeLBServiceReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 
 	log.V(6).Info("load balancer status", "LoadBalancer", actualLB.Status.LoadBalancer.Ingress, "service", service.Status.LoadBalancer.Ingress)
 
-	if service.Spec.Type != corev1.ServiceTypeLoadBalancer || len(actualLB.Status.LoadBalancer.Ingress) == len(service.Status.LoadBalancer.Ingress) {
+	if service.Spec.Type != corev1.ServiceTypeLoadBalancer || reflect.DeepEqual(actualLB.Status.LoadBalancer.Ingress, service.Status.LoadBalancer.Ingress) {
 		log.V(2).Info("service status is in desired state")
 	} else {
 		log.V(1).Info("updating service status", "name", desiredLB.Name, "namespace", desiredLB.Namespace)
-		service.Status.LoadBalancer = actualLB.Status.LoadBalancer
-		log.V(7).Info("updating to", "service status", service.Status.LoadBalancer)
 
-		err = r.Client.Status().Update(ctx, &service)
-		if err != nil {
-			return ctrl.Result{}, err
+		key := ctrlclient.ObjectKeyFromObject(&service)
+		retErr := retry.RetryOnConflict(retry.DefaultRetry, func() error {
+			// fetch the current state of the service
+			if err := r.Client.Get(ctx, key, &service); err != nil {
+				return err
+			}
+
+			service.Status.LoadBalancer = actualLB.Status.LoadBalancer
+
+			// update the status
+			return r.Client.Status().Update(ctx, &service)
+		})
+
+		if retErr != nil {
+			return ctrl.Result{}, fmt.Errorf("failed to update status %s: %w", service.Name, retErr)
 		}
 	}
 
