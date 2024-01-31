@@ -359,15 +359,19 @@ func (r *LoadBalancerReconciler) reconcileService(ctx context.Context, loadBalan
 
 	// Update status if needed
 	updateStatus := false
-	updatedLoadBalanacerStatus := kubelbk8ciov1alpha1.LoadBalancerStatus{}
+	updatedLoadBalanacerStatus := kubelbk8ciov1alpha1.LoadBalancerStatus{
+		Service: kubelbk8ciov1alpha1.ServiceStatus{
+			Ports: updatedPorts,
+		},
+		LoadBalancer: service.Status.LoadBalancer,
+	}
+
 	if !reflect.DeepEqual(loadBalancer.Status.Service.Ports, updatedPorts) {
-		updatedLoadBalanacerStatus.Service.Ports = updatedPorts
 		updateStatus = true
 	}
 
 	if loadBalancer.Spec.Type == corev1.ServiceTypeLoadBalancer {
 		if !reflect.DeepEqual(loadBalancer.Status.LoadBalancer.Ingress, service.Status.LoadBalancer.Ingress) {
-			updatedLoadBalanacerStatus.LoadBalancer = service.Status.LoadBalancer
 			updateStatus = true
 		}
 	}

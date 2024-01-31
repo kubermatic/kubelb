@@ -135,9 +135,11 @@ func (r *KubeLBServiceReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 
 	log.V(6).Info("load balancer status", "LoadBalancer", actualLB.Status.LoadBalancer.Ingress, "service", service.Status.LoadBalancer.Ingress)
 
-	if service.Spec.Type != corev1.ServiceTypeLoadBalancer || reflect.DeepEqual(actualLB.Status.LoadBalancer.Ingress, service.Status.LoadBalancer.Ingress) {
+	isStatusInSync := reflect.DeepEqual(actualLB.Status.LoadBalancer.Ingress, service.Status.LoadBalancer.Ingress)
+
+	if service.Spec.Type != corev1.ServiceTypeLoadBalancer || isStatusInSync {
 		log.V(2).Info("service status is in desired state")
-	} else {
+	} else if !isStatusInSync {
 		log.V(1).Info("updating service status", "name", desiredLB.Name, "namespace", desiredLB.Namespace)
 
 		key := ctrlclient.ObjectKeyFromObject(&service)
@@ -171,7 +173,6 @@ func (r *KubeLBServiceReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 	if err != nil {
 		return ctrl.Result{}, err
 	}
-	log.V(7).Info("updated to", "LoadBalancer", actualLB)
 
 	return ctrl.Result{}, err
 }
