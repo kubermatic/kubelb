@@ -3,7 +3,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.9.2
+    controller-gen.kubebuilder.io/version: v0.11.3
   creationTimestamp: null
   name: loadbalancers.kubelb.k8c.io
 spec:
@@ -170,6 +170,17 @@ spec:
                           description: IP is set for load-balancer ingress points
                             that are IP based (typically GCE or OpenStack load-balancers)
                           type: string
+                        ipMode:
+                          description: IPMode specifies how the load-balancer IP behaves,
+                            and may only be specified when the ip field is specified.
+                            Setting this to "VIP" indicates that traffic is delivered
+                            to the node with the destination set to the load-balancer's
+                            IP and port. Setting this to "Proxy" indicates that traffic
+                            is delivered to the node or pod with the destination set
+                            to the node's IP and node port or the pod's IP and port.
+                            Service implementations may use this information to adjust
+                            traffic routing.
+                          type: string
                         ports:
                           description: Ports is a list of records of service ports
                             If used, every port defined in the service should have
@@ -223,7 +234,8 @@ spec:
                             are either: \n * Un-prefixed protocol names - reserved
                             for IANA standard service names (as per RFC-6335 and https://www.iana.org/assignments/service-names).
                             \n * Kubernetes-defined prefixed names: * 'kubernetes.io/h2c'
-                            - HTTP/2 over cleartext as described in https://www.rfc-editor.org/rfc/rfc7540
+                            - HTTP/2 prior knowledge over cleartext as described in
+                            https://www.rfc-editor.org/rfc/rfc9113.html#name-starting-http-2-with-prior-
                             * 'kubernetes.io/ws'  - WebSocket over cleartext as described
                             in https://www.rfc-editor.org/rfc/rfc6455 * 'kubernetes.io/wss'
                             - WebSocket over TLS as described in https://www.rfc-editor.org/rfc/rfc6455

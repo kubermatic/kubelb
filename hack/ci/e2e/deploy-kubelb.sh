@@ -26,7 +26,8 @@ export KUBECONFIG="${TMPDIR}"/kubelb.kubeconfig
 echodate "Deploying metallb"
 kubectl apply -f https://raw.githubusercontent.com/metallb/metallb/"$METALLB_VERSION"/config/manifests/metallb-native.yaml
 kubectl wait --namespace metallb-system --for=condition=ready pod --selector=app=metallb --timeout=360s
-gw=$(docker network inspect -f json kind | jq --raw-output '.[].IPAM.Config[0].Gateway' | sed -e 's/\(.*\..*\).*\..*\..*/\1/')
+
+gw=$(docker network inspect -f json kind | jq --raw-output '.[].IPAM.Config[1].Gateway' | sed -e 's/\(.*\..*\).*\..*\..*/\1/')
 
 cat <<EOF | kubectl apply -f -
 apiVersion: metallb.io/v1beta1
