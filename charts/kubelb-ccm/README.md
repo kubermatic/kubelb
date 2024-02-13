@@ -48,7 +48,7 @@ helm install kubelb-ccm kubelb-ccm --namespace kubelb -f values.yaml
 | extraVolumes | list | `[]` |  |
 | fullnameOverride | string | `""` |  |
 | image.pullPolicy | string | `"IfNotPresent"` |  |
-| image.repository | string | `"quay.io/kubermatic/kubelb-manager-ee"` |  |
+| image.repository | string | `"quay.io/kubermatic/kubelb-ccm-ee"` |  |
 | image.tag | string | `"v0.4.0"` |  |
 | imagePullSecrets | list | `[]` |  |
 | kubelb.clusterSecretName | string | `"kubelb-cluster"` |  |
