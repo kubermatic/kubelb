@@ -50,10 +50,6 @@ spec:
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           args:
             - --enable-leader-election={{ .Values.kubelb.enableLeaderElection }}
-            - --envoy-proxy-topology={{ .Values.kubelb.envoyProxyTopology }}
-            - --envoy-proxy-replicas={{ .Values.kubelb.envoyProxyReplicas }}
-            - --envoy-proxy-single-pod-per-node={{ .Values.kubelb.envoyProxySinglePodPerNode }}
-            - --envoy-proxy-use-daemonset={{ .Values.kubelb.envoyProxyUseDaemonset }}
             - --debug={{ .Values.kubelb.debug }}
           env:
           - name: NAMESPACE

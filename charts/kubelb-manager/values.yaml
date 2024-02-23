@@ -8,11 +8,25 @@ imagePullSecrets: []
 
 kubelb:
   enableLeaderElection: true
-  envoyProxyTopology: shared
-  envoyProxyReplicas: 3
-  envoyProxySinglePodPerNode: true
-  envoyProxyUseDaemonset: false
   debug: false
+  # -- Set to true to skip the generation of the Config CR. Useful when the config CR needs to be managed manually.
+  skipConfigGeneration: false
+  envoyProxy:
+    # -- Topology defines the deployment topology for Envoy Proxy. Valid values are: shared, dedicated, and global.
+    topology: shared
+    # -- The number of replicas for the Envoy Proxy deployment.
+    replicas: 3
+    # -- Deploy single pod per node.
+    singlePodPerNode: true
+    # -- Use DaemonSet for Envoy Proxy deployment instead of Deployment.
+    useDaemonset: false
+    nodeSelector: {}
+    tolerations: []
+    affinity: {}
+  # -- Allowed annotations that will be propagated from the LB resource to the LB service.
+  propagatedAnnotations: {}
+  # -- Propagate all annotations from the LB resource to the LB service.
+  propagateAllAnnotations: false
 
 nameOverride: ""
 fullnameOverride: ""

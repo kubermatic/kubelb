@@ -1,0 +1,8 @@
+apiVersion: kubelb.k8c.io/v1alpha1
+kind: Config
+metadata:
+  name: default
+spec:
+  envoyProxy:
+    replicas: 3
+    topology: shared

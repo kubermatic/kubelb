@@ -46,10 +46,16 @@ helm install kubelb-manager kubelb-manager --namespace kubelb -f values.yaml
 | imagePullSecrets | list | `[]` |  |
 | kubelb.debug | bool | `false` |  |
 | kubelb.enableLeaderElection | bool | `true` |  |
-| kubelb.envoyProxyReplicas | int | `3` |  |
-| kubelb.envoyProxySinglePodPerNode | bool | `true` |  |
-| kubelb.envoyProxyTopology | string | `"shared"` |  |
-| kubelb.envoyProxyUseDaemonset | bool | `false` |  |
+| kubelb.envoyProxy.affinity | object | `{}` |  |
+| kubelb.envoyProxy.nodeSelector | object | `{}` |  |
+| kubelb.envoyProxy.replicas | int | `3` | The number of replicas for the Envoy Proxy deployment. |
+| kubelb.envoyProxy.singlePodPerNode | bool | `true` | Deploy single pod per node. |
+| kubelb.envoyProxy.tolerations | list | `[]` |  |
+| kubelb.envoyProxy.topology | string | `"shared"` | Topology defines the deployment topology for Envoy Proxy. Valid values are: shared, dedicated, and global. |
+| kubelb.envoyProxy.useDaemonset | bool | `false` | Use DaemonSet for Envoy Proxy deployment instead of Deployment. |
+| kubelb.propagateAllAnnotations | bool | `false` | Propagate all annotations from the LB resource to the LB service. |
+| kubelb.propagatedAnnotations | object | `{}` | Allowed annotations that will be propagated from the LB resource to the LB service. |
+| kubelb.skipConfigGeneration | bool | `false` | Set to true to skip the generation of the Config CR. Useful when the config CR needs to be managed manually. |
 | nameOverride | string | `""` |  |
 | nodeSelector | object | `{}` |  |
 | podAnnotations | object | `{}` |  |

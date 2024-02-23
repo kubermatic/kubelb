@@ -23,6 +23,7 @@ import (
 	"go.uber.org/zap/zapcore"
 
 	kubelbk8ciov1alpha1 "k8c.io/kubelb/pkg/api/kubelb.k8c.io/v1alpha1"
+	"k8c.io/kubelb/pkg/config"
 	"k8c.io/kubelb/pkg/controllers/kubelb"
 	"k8c.io/kubelb/pkg/envoy"
 	portlookup "k8c.io/kubelb/pkg/port-lookup"
@@ -45,12 +46,6 @@ type options struct {
 	probeAddr            string
 	enableDebugMode      bool
 	namespace            string
-
-	// Envoy configuration
-	envoyProxyTopology         string
-	envoyProxyUseDaemonset     bool
-	envoyProxySinglePodPerNode bool
-	envoyProxyReplicas         int
 }
 
 var (
@@ -73,10 +68,6 @@ func main() {
 	flag.BoolVar(&opt.enableLeaderElection, "enable-leader-election", true,
 		"Enable leader election for controller kubelb. Enabling this will ensure there is only one active controller kubelb.")
 	flag.BoolVar(&opt.enableDebugMode, "debug", false, "Enables debug mode")
-	flag.StringVar(&opt.envoyProxyTopology, "envoy-proxy-topology", "shared", "The deployment topology for Envoy Proxy. Valid values are: shared, dedicated, and global.")
-	flag.BoolVar(&opt.envoyProxyUseDaemonset, "envoy-proxy-use-daemonset", false, "Envoy Proxy will run as daemonset. If set to true, --envoy-proxy-replicas will be ignored. If set to false, deployment will be used instead.")
-	flag.BoolVar(&opt.envoyProxySinglePodPerNode, "envoy-proxy-single-pod-per-node", true, "Envoy proxy pods will be spread across nodes. This ensures that multiple replicas are not running on the same node.")
-	flag.IntVar(&opt.envoyProxyReplicas, "envoy-proxy-replicas", 1, "Number of replicas for envoy proxy.")
 	flag.StringVar(&opt.namespace, "namespace", "", "The namespace where the controller will run.")
 
 	if len(opt.namespace) == 0 {
@@ -96,19 +87,7 @@ func main() {
 	opts.BindFlags(flag.CommandLine)
 	flag.Parse()
 
-	envoyProxyTopology := kubelb.EnvoyProxyTopology(opt.envoyProxyTopology)
-	if envoyProxyTopology != kubelb.EnvoyProxyTopologyDedicated && envoyProxyTopology != kubelb.EnvoyProxyTopologyShared && envoyProxyTopology != kubelb.EnvoyProxyTopologyGlobal {
-		setupLog.Error(nil, "invalid value for --envoy-proxy-topology. Valid values are: shared, dedicated, and global")
-		os.Exit(1)
-	}
-
-	if opt.envoyProxyUseDaemonset && opt.envoyProxySinglePodPerNode {
-		setupLog.Error(nil, "invalid value for --envoy-proxy-use-daemonset and --envoy-proxy-single-pod-per-node. Both cannot be set to true")
-		os.Exit(1)
-	}
-
 	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&opts)))
-
 	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
 		Scheme:                        scheme,
 		Metrics:                       metricsserver.Options{BindAddress: opt.metricsAddr},
@@ -147,9 +126,16 @@ func main() {
 	// setup signal handler
 	ctx := ctrl.SetupSignalHandler()
 
+	// Load the Config for controller
+	err = config.LoadConfig(ctx, mgr.GetAPIReader(), opt.namespace)
+	if err != nil {
+		setupLog.Error(err, "unable to load controller config")
+		os.Exit(1)
+	}
+
 	// For Global topology, we need to ensure that the port lookup table exists. If it doesn't, we create it since it's managed by this controller.
 	var portAllocator *portlookup.PortAllocator
-	if envoyProxyTopology == kubelb.EnvoyProxyTopologyGlobal {
+	if kubelb.EnvoyProxyTopology(config.GetEnvoyProxyTopology()) == kubelb.EnvoyProxyTopologyGlobal {
 		portAllocator = portlookup.NewPortAllocator()
 		if err := portAllocator.LoadState(ctx, mgr.GetAPIReader()); err != nil {
 			setupLog.Error(err, ("unable to load port lookup state"))
@@ -158,16 +144,13 @@ func main() {
 	}
 
 	if err = (&kubelb.LoadBalancerReconciler{
-		Client:                     mgr.GetClient(),
-		Cache:                      mgr.GetCache(),
-		Scheme:                     mgr.GetScheme(),
-		EnvoyBootstrap:             envoyServer.GenerateBootstrap(),
-		EnvoyProxyTopology:         envoyProxyTopology,
-		EnvoyProxyReplicas:         opt.envoyProxyReplicas,
-		EnvoyProxyUseDaemonset:     opt.envoyProxyUseDaemonset,
-		EnvoyProxySinglePodPerNode: opt.envoyProxySinglePodPerNode,
-		Namespace:                  opt.namespace,
-		PortAllocator:              portAllocator,
+		Client:             mgr.GetClient(),
+		Cache:              mgr.GetCache(),
+		Scheme:             mgr.GetScheme(),
+		EnvoyBootstrap:     envoyServer.GenerateBootstrap(),
+		Namespace:          opt.namespace,
+		EnvoyProxyTopology: kubelb.EnvoyProxyTopology(config.GetEnvoyProxyTopology()),
+		PortAllocator:      portAllocator,
 	}).SetupWithManager(ctx, mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "LoadBalancer")
 		os.Exit(1)
@@ -185,7 +168,7 @@ func main() {
 	if err = (&kubelb.EnvoyCPReconciler{
 		Client:             envoyMgr.GetClient(),
 		EnvoyCache:         envoyServer.Cache,
-		EnvoyProxyTopology: envoyProxyTopology,
+		EnvoyProxyTopology: kubelb.EnvoyProxyTopology(config.GetEnvoyProxyTopology()),
 		PortAllocator:      portAllocator,
 	}).SetupWithManager(ctx, envoyMgr); err != nil {
 		setupLog.Error(err, "unable to create envoy control-plane controller", "controller", "LoadBalancer")

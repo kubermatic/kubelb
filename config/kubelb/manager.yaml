@@ -9,6 +9,16 @@ metadata:
     app.kubernetes.io/part-of: kubelb
   name: kubelb
 ---
+apiVersion: kubelb.k8c.io/v1alpha1
+kind: Config
+metadata:
+  name: default
+  namespace: kubelb
+spec:
+  envoyProxy:
+    replicas: 3
+    topology: shared
+---
 apiVersion: v1
 kind: Service
 metadata:
@@ -52,38 +62,36 @@ spec:
         seccompProfile:
           type: RuntimeDefault
       containers:
-      - name: kubelb
-        args:
-        - --enable-leader-election
-        - --envoy-proxy-topology=shared
-        - --envoy-proxy-replicas=3
-        image: controller:latest
-        env:
-          - name: NAMESPACE
-            valueFrom:
-              fieldRef:
-                fieldPath: metadata.namespace
-        securityContext:
-          allowPrivilegeEscalation: false
-          runAsUser: 65532
-          capabilities:
-            drop:
-              - "ALL"
-        livenessProbe:
-          httpGet:
-            path: /healthz
-            port: 8081
-          initialDelaySeconds: 15
-          periodSeconds: 20
-        readinessProbe:
-          httpGet:
-            path: /readyz
-            port: 8081
-          initialDelaySeconds: 5
-          periodSeconds: 10
-        resources:
-          requests:
-            cpu: 10m
-            memory: 64Mi
+        - name: kubelb
+          args:
+            - --enable-leader-election
+          image: controller:latest
+          env:
+            - name: NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+          securityContext:
+            allowPrivilegeEscalation: false
+            runAsUser: 65532
+            capabilities:
+              drop:
+                - "ALL"
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8081
+            initialDelaySeconds: 15
+            periodSeconds: 20
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: 8081
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: 10m
+              memory: 64Mi
       serviceAccountName: kubelb
       terminationGracePeriodSeconds: 10

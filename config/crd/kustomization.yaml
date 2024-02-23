@@ -3,6 +3,7 @@
 # It should be run by config/default
 resources:
 - bases/kubelb.k8c.io_loadbalancers.yaml
+- bases/kubelb.k8c.io_configs.yaml
 #+kubebuilder:scaffold:crdkustomizeresource
 
 patchesStrategicMerge:

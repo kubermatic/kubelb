@@ -55,6 +55,22 @@ rules:
       - get
       - patch
       - update
+  - apiGroups:
+    - kubelb.k8c.io
+    resources:
+    - configs
+    verbs:
+    - get
+    - list
+    - watch
+  - apiGroups:
+    - kubelb.k8c.io
+    resources:
+    - configs/status
+    verbs:
+    - get
+    - patch
+    - update
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding

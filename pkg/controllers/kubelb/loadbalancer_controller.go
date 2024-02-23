@@ -23,6 +23,7 @@ import (
 	"strings"
 
 	kubelbk8ciov1alpha1 "k8c.io/kubelb/pkg/api/kubelb.k8c.io/v1alpha1"
+	"k8c.io/kubelb/pkg/config"
 	utils "k8c.io/kubelb/pkg/controllers"
 	"k8c.io/kubelb/pkg/kubelb"
 	kuberneteshelper "k8c.io/kubelb/pkg/kubernetes"
@@ -72,15 +73,14 @@ type LoadBalancerReconciler struct {
 
 	PortAllocator *portlookup.PortAllocator
 
-	EnvoyBootstrap             string
-	EnvoyProxyTopology         EnvoyProxyTopology
-	EnvoyProxyReplicas         int
-	EnvoyProxyUseDaemonset     bool
-	EnvoyProxySinglePodPerNode bool
+	EnvoyBootstrap     string
+	EnvoyProxyTopology EnvoyProxyTopology
 }
 
 // +kubebuilder:rbac:groups=kubelb.k8c.io,resources=loadbalancers,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=kubelb.k8c.io,resources=loadbalancers/status,verbs=get;update;patch
+// +kubebuilder:rbac:groups=kubelb.k8c.io,resources=configs,verbs=get;list;watch
+// +kubebuilder:rbac:groups=kubelb.k8c.io,resources=configs/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups="",resources=services,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups="",resources=namespaces,verbs=get;list;watch
 // +kubebuilder:rbac:groups="apps",resources=deployments,verbs=get;list;watch;create;update;patch;delete
@@ -191,7 +191,7 @@ func (r *LoadBalancerReconciler) reconcileEnvoyProxy(ctx context.Context, namesp
 		Name:      fmt.Sprintf(envoyResourcePattern, appName),
 		Namespace: namespace,
 	}
-	if r.EnvoyProxyUseDaemonset {
+	if config.GetConfig().Spec.EnvoyProxy.UseDaemonset {
 		envoyProxy = &appsv1.DaemonSet{
 			ObjectMeta: objMeta,
 		}
@@ -211,7 +211,7 @@ func (r *LoadBalancerReconciler) reconcileEnvoyProxy(ctx context.Context, namesp
 	}
 
 	original := envoyProxy.DeepCopyObject()
-	if r.EnvoyProxyUseDaemonset {
+	if config.GetConfig().Spec.EnvoyProxy.UseDaemonset {
 		daemonset := envoyProxy.(*appsv1.DaemonSet)
 		daemonset.Spec.Selector = &v1.LabelSelector{
 			MatchLabels: map[string]string{kubelb.LabelAppKubernetesName: appName},
@@ -220,7 +220,7 @@ func (r *LoadBalancerReconciler) reconcileEnvoyProxy(ctx context.Context, namesp
 		envoyProxy = daemonset
 	} else {
 		deployment := envoyProxy.(*appsv1.Deployment)
-		var replicas = int32(r.EnvoyProxyReplicas)
+		var replicas = config.GetConfig().Spec.EnvoyProxy.Replicas
 		deployment.Spec.Replicas = &replicas
 		deployment.Spec.Selector = &v1.LabelSelector{
 			MatchLabels: map[string]string{kubelb.LabelAppKubernetesName: appName},
@@ -410,7 +410,7 @@ func (r *LoadBalancerReconciler) handleEnvoyProxyCleanup(ctx context.Context, lb
 			Namespace: resourceNamespace,
 		}
 		var envoyProxy ctrlruntimeclient.Object
-		if r.EnvoyProxyUseDaemonset {
+		if config.GetConfig().Spec.EnvoyProxy.UseDaemonset {
 			envoyProxy = &appsv1.DaemonSet{
 				ObjectMeta: objMeta,
 			}
@@ -486,10 +486,17 @@ func (r *LoadBalancerReconciler) SetupWithManager(ctx context.Context, mgr ctrl.
 		handler.EnqueueRequestsFromMapFunc(r.enqueueLoadBalancers()),
 		filterServicesPredicate(),
 	)
+
+	// Watch for changes to Config in the KubeLB management cluster.
+	if err := c.Watch(source.Kind(mgr.GetCache(), &kubelbk8ciov1alpha1.Config{}), handler.EnqueueRequestsFromMapFunc(r.enqueueLoadBalancersForConfig())); err != nil {
+		return fmt.Errorf("failed to watch Config: %w", err)
+	}
+
 	return err
 }
 
 func (r *LoadBalancerReconciler) getEnvoyProxyPodSpec(namespace, appName, snapshotName string) corev1.PodTemplateSpec {
+	envoyProxy := config.GetConfig().Spec.EnvoyProxy
 	template := corev1.PodTemplateSpec{
 		ObjectMeta: v1.ObjectMeta{
 			Name:      appName,
@@ -511,7 +518,19 @@ func (r *LoadBalancerReconciler) getEnvoyProxyPodSpec(namespace, appName, snapsh
 		},
 	}
 
-	if r.EnvoyProxySinglePodPerNode {
+	if envoyProxy.Affinity != nil {
+		template.Spec.Affinity = envoyProxy.Affinity
+	}
+
+	if envoyProxy.Tolerations != nil && len(envoyProxy.Tolerations) > 0 {
+		template.Spec.Tolerations = envoyProxy.Tolerations
+	}
+
+	if envoyProxy.NodeSelector != nil {
+		template.Spec.NodeSelector = envoyProxy.NodeSelector
+	}
+
+	if envoyProxy.SinglePodPerNode {
 		template.Spec.TopologySpreadConstraints = []corev1.TopologySpreadConstraint{
 			{
 				MaxSkew:           1,
@@ -529,7 +548,7 @@ func (r *LoadBalancerReconciler) getEnvoyProxyPodSpec(namespace, appName, snapsh
 // enqueueLoadBalancers is a handler.MapFunc to be used to enqeue requests for reconciliation
 // for LoadBalancers against the corresponding service.
 func (r *LoadBalancerReconciler) enqueueLoadBalancers() handler.MapFunc {
-	return func(ctx context.Context, o ctrlruntimeclient.Object) []ctrl.Request {
+	return func(_ context.Context, o ctrlruntimeclient.Object) []ctrl.Request {
 		result := []reconcile.Request{}
 
 		// Find the LoadBalancer that corresponds to this service.
@@ -579,13 +598,26 @@ func filterServicesPredicate() predicate.Predicate {
 
 			return !reflect.DeepEqual(newSvc.Status, oldSvc.Status)
 		},
-		GenericFunc: func(e event.GenericEvent) bool {
+		GenericFunc: func(_ event.GenericEvent) bool {
 			return false
 		},
 	}
 }
 
 func propagateAnnotations(permitted map[string]string, loadbalancer map[string]string) map[string]string {
+	if config.GetConfig().Spec.PropagateAllAnnotations {
+		return loadbalancer
+	}
+
+	if config.GetConfig().Spec.PropagatedAnnotations != nil {
+		globallyPermitted := config.GetConfig().Spec.PropagatedAnnotations
+		for k, v := range globallyPermitted {
+			if _, found := permitted[k]; !found {
+				permitted[k] = v
+			}
+		}
+	}
+
 	a := make(map[string]string)
 	permittedMap := make(map[string][]string)
 	for k, v := range permitted {
@@ -618,4 +650,38 @@ func propagateAnnotations(permitted map[string]string, loadbalancer map[string]s
 		}
 	}
 	return a
+}
+
+// enqueueLoadBalancersForConfig is a handler.MapFunc to be used to enqeue requests for reconciliation
+// for LoadBalancers if some change is made to the controller config.
+func (r *LoadBalancerReconciler) enqueueLoadBalancersForConfig() handler.MapFunc {
+	return func(ctx context.Context, _ ctrlruntimeclient.Object) []ctrl.Request {
+		result := []reconcile.Request{}
+
+		// Reload the Config for the controller.
+		conf := &kubelbk8ciov1alpha1.Config{}
+		err := r.Get(ctx, types.NamespacedName{Name: config.DefaultConfigResourceName, Namespace: r.Namespace}, conf)
+		if err != nil {
+			return result
+		}
+		config.SetConfig(*conf)
+
+		// List all loadbalancers. We don't care about the namespace here.
+		loadBalancers := &kubelbk8ciov1alpha1.LoadBalancerList{}
+		err = r.List(ctx, loadBalancers)
+		if err != nil {
+			return result
+		}
+
+		for _, lb := range loadBalancers.Items {
+			result = append(result, reconcile.Request{
+				NamespacedName: types.NamespacedName{
+					Name:      lb.Name,
+					Namespace: lb.Namespace,
+				},
+			})
+		}
+
+		return result
+	}
 }

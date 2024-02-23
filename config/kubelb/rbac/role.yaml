@@ -2,7 +2,6 @@
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
-  creationTimestamp: null
   name: kubelb
 rules:
 - apiGroups:
@@ -49,6 +48,22 @@ rules:
   - patch
   - update
   - watch
+- apiGroups:
+  - kubelb.k8c.io
+  resources:
+  - configs
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - kubelb.k8c.io
+  resources:
+  - configs/status
+  verbs:
+  - get
+  - patch
+  - update
 - apiGroups:
   - kubelb.k8c.io
   resources:

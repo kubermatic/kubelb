@@ -207,7 +207,7 @@ func (r *KubeLBServiceReconciler) cleanupService(ctx context.Context, log logr.L
 }
 
 func (r *KubeLBServiceReconciler) enqueueLoadBalancer() handler.MapFunc {
-	return func(ctx context.Context, a client.Object) []ctrl.Request {
+	return func(_ context.Context, a client.Object) []ctrl.Request {
 		if a.GetNamespace() != r.ClusterName {
 			return []reconcile.Request{}
 		}
