@@ -3,7 +3,7 @@ replicaCount: 1
 image:
   repository: quay.io/kubermatic/kubelb-manager-ee
   pullPolicy: IfNotPresent
-  tag: v0.4.0
+  tag: v0.6.0
 imagePullSecrets: []
 
 kubelb:
