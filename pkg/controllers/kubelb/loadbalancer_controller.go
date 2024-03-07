@@ -609,15 +609,6 @@ func propagateAnnotations(permitted map[string]string, loadbalancer map[string]s
 		return loadbalancer
 	}
 
-	if config.GetConfig().Spec.PropagatedAnnotations != nil {
-		globallyPermitted := config.GetConfig().Spec.PropagatedAnnotations
-		for k, v := range globallyPermitted {
-			if _, found := permitted[k]; !found {
-				permitted[k] = v
-			}
-		}
-	}
-
 	a := make(map[string]string)
 	permittedMap := make(map[string][]string)
 	for k, v := range permitted {
@@ -635,6 +626,16 @@ func propagateAnnotations(permitted map[string]string, loadbalancer map[string]s
 			}
 		}
 	}
+
+	if config.GetConfig().Spec.PropagatedAnnotations != nil {
+		globallyPermitted := config.GetConfig().Spec.PropagatedAnnotations
+		for k, v := range globallyPermitted {
+			if _, found := permitted[k]; !found {
+				permitted[k] = v
+			}
+		}
+	}
+
 	for k, v := range loadbalancer {
 		if valuesFilter, ok := permittedMap[k]; ok {
 			if len(valuesFilter) == 0 {
