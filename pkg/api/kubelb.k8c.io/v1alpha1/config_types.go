@@ -76,6 +76,10 @@ type EnvoyProxy struct {
 	// +optional
 	Tolerations []corev1.Toleration `json:"tolerations,omitempty"`
 
+	// Resources defines the resource requirements for Envoy Proxy.
+	// +optional
+	Resources *corev1.ResourceRequirements `json:"resources,omitempty"`
+
 	// Affinity is used to schedule Envoy Proxy pods on nodes with matching affinity.
 	// +optional
 	Affinity *corev1.Affinity `json:"affinity,omitempty"`

@@ -518,6 +518,10 @@ func (r *LoadBalancerReconciler) getEnvoyProxyPodSpec(namespace, appName, snapsh
 		},
 	}
 
+	if envoyProxy.Resources != nil {
+		template.Spec.Containers[0].Resources = *envoyProxy.Resources
+	}
+
 	if envoyProxy.Affinity != nil {
 		template.Spec.Affinity = envoyProxy.Affinity
 	}

@@ -49,6 +49,7 @@ helm install kubelb-manager kubelb-manager --namespace kubelb -f values.yaml
 | kubelb.envoyProxy.affinity | object | `{}` |  |
 | kubelb.envoyProxy.nodeSelector | object | `{}` |  |
 | kubelb.envoyProxy.replicas | int | `3` | The number of replicas for the Envoy Proxy deployment. |
+| kubelb.envoyProxy.resources | object | `{}` |  |
 | kubelb.envoyProxy.singlePodPerNode | bool | `true` | Deploy single pod per node. |
 | kubelb.envoyProxy.tolerations | list | `[]` |  |
 | kubelb.envoyProxy.topology | string | `"shared"` | Topology defines the deployment topology for Envoy Proxy. Valid values are: shared, dedicated, and global. |

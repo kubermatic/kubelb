@@ -153,6 +153,11 @@ func (in *EnvoyProxy) DeepCopyInto(out *EnvoyProxy) {
 			(*in)[i].DeepCopyInto(&(*out)[i])
 		}
 	}
+	if in.Resources != nil {
+		in, out := &in.Resources, &out.Resources
+		*out = new(v1.ResourceRequirements)
+		(*in).DeepCopyInto(*out)
+	}
 	if in.Affinity != nil {
 		in, out := &in.Affinity, &out.Affinity
 		*out = new(v1.Affinity)

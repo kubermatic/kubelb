@@ -22,6 +22,7 @@ kubelb:
     useDaemonset: false
     nodeSelector: {}
     tolerations: []
+    resources: {}
     affinity: {}
   # -- Allowed annotations that will be propagated from the LB resource to the LB service.
   propagatedAnnotations: {}
