@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="docs/kubelb-logo.png" width="700px" />
+</p>
+
 # KubeLB
 
 ## Overview
