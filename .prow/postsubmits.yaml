@@ -17,7 +17,7 @@ postsubmits:
   - name: ci-push-kubelb
     always_run: true
     decorate: true
-    clone_uri: "ssh://git@github.com/kubermatic/kubelb-ee.git"
+    clone_uri: "ssh://git@github.com/kubermatic/kubelb.git"
     branches:
       - ^main
       # Match on tags
@@ -50,7 +50,7 @@ postsubmits:
   - name: ci-push-kubelb-upload-gocache
     always_run: true
     decorate: true
-    clone_uri: "ssh://git@github.com/kubermatic/kubelb-ee.git"
+    clone_uri: "ssh://git@github.com/kubermatic/kubelb.git"
     branches:
       - ^main$
     reporter_config:
@@ -71,7 +71,7 @@ postsubmits:
   # - name: ci-push-kubelb-charts
   #   always_run: true
   #   decorate: true
-  #   clone_uri: "ssh://git@github.com/kubermatic/kubelb-ee.git"
+  #   clone_uri: "ssh://git@github.com/kubermatic/kubelb.git"
   #   branches:
   #     # Match on tags
   #     - ^v\d+\.\d+\.\d+.*
