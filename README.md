@@ -15,19 +15,6 @@ Please see [docs/architecture.md](./docs/architecture.md) for an overview of the
 
 ## Installation
 
-We strongly recommend that you use an [official release][3] of KubeLB. The tarballs for each release contain the
-version-specific sample YAML files for deploying KubeLB to your cluster.
-
-_The code and sample YAML files in the main branch of the KubeLB repository are under active development and are not
-guaranteed to be stable. Use them at your own risk!_
-
-Make sure your current cluster configuration for kubectl points to the correct cluster.
-
-You probably want to change the default configuration of the agent or manager.
-
-To do so, you can edit the deployment with your parameters in the [ccm](./config/ccm/) or [kubelb](./config/kubelb/).
-directory.
-
 ### Manager
 
 Please refer to the [KubeLB Manager README](./charts/kubelb-manager/README.md) for installation instructions.
