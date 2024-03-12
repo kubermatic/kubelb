@@ -634,8 +634,9 @@ func propagateAnnotations(permitted map[string]string, loadbalancer map[string]s
 	if config.GetConfig().Spec.PropagatedAnnotations != nil {
 		globallyPermitted := config.GetConfig().Spec.PropagatedAnnotations
 		for k, v := range globallyPermitted {
-			if _, found := permitted[k]; !found {
-				permitted[k] = v
+			// Annotations specified at namespace level have a higher precedence.
+			if _, found := permittedMap[k]; !found {
+				permittedMap[k] = []string{v}
 			}
 		}
 	}
