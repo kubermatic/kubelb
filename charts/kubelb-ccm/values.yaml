@@ -1,9 +1,9 @@
 replicaCount: 1
 
 image:
-  repository: quay.io/kubermatic/kubelb-ccm-ee
+  repository: quay.io/kubermatic/kubelb-ccm
   pullPolicy: IfNotPresent
-  tag: v0.6.0
+  tag: v1.0.0
 imagePullSecrets: []
 
 kubelb:

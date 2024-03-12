@@ -1,9 +1,9 @@
 replicaCount: 1
 
 image:
-  repository: quay.io/kubermatic/kubelb-manager-ee
+  repository: quay.io/kubermatic/kubelb-manager
   pullPolicy: IfNotPresent
-  tag: v0.6.0
+  tag: v1.0.0
 imagePullSecrets: []
 
 kubelb:
