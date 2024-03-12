@@ -1,8 +1,8 @@
 SHELL = /bin/bash -eu -o pipefail
 
 # Image URL to use all building/pushing image targets
-KUBELB_IMG ?= quay.io/kubermatic/kubelb-manager-ee
-KUBELB_CCM_IMG ?= quay.io/kubermatic/kubelb-ccm-ee
+KUBELB_IMG ?= quay.io/kubermatic/kubelb-manager
+KUBELB_CCM_IMG ?= quay.io/kubermatic/kubelb-ccm
 # ENVTEST_K8S_VERSION refers to the version of kubebuilder assets to be downloaded by envtest binary.
 ENVTEST_K8S_VERSION = 1.28.0
 
@@ -13,7 +13,7 @@ export GO111MODULE=on
 export GOFLAGS?=-mod=readonly -trimpath
 export GIT_TAG ?= $(shell git tag --points-at HEAD)
 
-GO_VERSION = 1.22.0
+GO_VERSION = 1.22.1
 
 IMAGE_TAG = \
 		$(shell echo $$(git rev-parse HEAD && if [[ -n $$(git status --porcelain) ]]; then echo '-dirty'; fi)|tr -d ' ')
@@ -170,8 +170,8 @@ undeploy-%: ## Undeploy controller from the K8s cluster specified in ~/.kube/con
 
 .PHONY: bump
 bump: kustomize
-	cd config/deploy/kubelb && $(KUSTOMIZE) edit set image controller=quay.io/kubermatic/kubelb-manager-ee:$(IMAGE_TAG)
-	cd config/deploy/ccm && $(KUSTOMIZE) edit set image controller=quay.io/kubermatic/kubelb-ccm-ee:$(IMAGE_TAG)
+	cd config/deploy/kubelb && $(KUSTOMIZE) edit set image controller=quay.io/kubermatic/kubelb-manager:$(IMAGE_TAG)
+	cd config/deploy/ccm && $(KUSTOMIZE) edit set image controller=quay.io/kubermatic/kubelb-ccm:$(IMAGE_TAG)
 
 ##@ Build Dependencies
 

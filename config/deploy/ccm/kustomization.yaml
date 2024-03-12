@@ -5,5 +5,5 @@ resources:
   - ../../ccm
 images:
   - name: controller
-    newName: quay.io/kubermatic/kubelb-ccm-ee
-    newTag: v0.6.0
+    newName: quay.io/kubermatic/kubelb-ccm
+    newTag: v1.0.0

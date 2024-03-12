@@ -23,6 +23,7 @@ clusterId=$1
 namespace="cluster-$clusterId"
 
 kubectl create namespace "$namespace"
+kubectl label namespace "$namespace" kubelb.k8c.io/managed-by=kubelb
 cat <<EOF | kubectl apply -n "$namespace" -f -
 ---
 apiVersion: v1

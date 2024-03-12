@@ -30,52 +30,39 @@ directory.
 
 ### Manager
 
-Deploy the manager to the load balancer cluster
-
-Install the LoadBalancers CRD: `make install`
-
-Deploy to load balancer cluster: `make deploy-kubelb`
+Please refer to the [KubeLB Manager README](./charts/kubelb-manager/README.md) for installation instructions.
 
 ### CCM
 
-Deploy the agent to every user cluster where you want to use KubeLB
-
-Inside the deployment you need to change the ClusterName parameter to its actual name. Also make sure that a namespace
-is created inside the kubelb cluster and has the label `kubelb.k8c.io/managed-by: kubelb`, so the agent can create the CRDs inside its cluster namespace.
-
-The agent expects a `Secret` with a kubeconf file named `kubelb` to access the load balancer cluster.
-
-To create such run: `kubectl --namespace kubelb create secret generic kubelb-cluster --from-file=<path to kubelb kubeconf file>`
-
-Deploy to user cluster: `make deploy-ccm`
+Please refer to the [KubeLB CCM README](./charts/kubelb-ccm/README.md) for installation instructions.
 
 ## Troubleshooting
 
-If you encounter issues [file an issue][1] or talk to us on the [#KubeLB channel][12] on the [Kubermatic Slack][15].
+If you encounter issues [file an issue][1] or talk to us on the [#kubermatic channel][6] on the [Kubermatic Slack][7].
 
 ## Contributing
 
 Thanks for taking the time to join our community and start contributing!
 
-Feedback and discussion are available on [the mailing list][11].
+Feedback and discussion are available on [the mailing list][5].
 
 ### Before you start
 
-* Please familiarize yourself with the [Code of Conduct][4] before contributing.
-* See [CONTRIBUTING.md][2] for instructions on the developer certificate of origin that we require.
+- Please familiarize yourself with the [Code of Conduct][4] before contributing.
+- See [CONTRIBUTING.md][2] for instructions on the developer certificate of origin that we require.
 
 ### Pull requests
 
-* We welcome pull requests. Feel free to dig through the [issues][1] and jump in.
+- We welcome pull requests. Feel free to dig through the [issues][1] and jump in.
 
 ## Changelog
 
 See [the list of releases][3] to find out about feature changes.
 
-[1]: https://github.com/kubermatic/KubeLB/issues
-[2]: https://github.com/kubermatic/KubeLB/blob/main/CONTRIBUTING.md
-[3]: https://github.com/kubermatic/KubeLB/releases
-[4]: https://github.com/kubermatic/KubeLB/blob/main/CODE_OF_CONDUCT.md
-[11]: https://groups.google.com/forum/#!forum/kubelb-dev
-[12]: https://kubermatic.slack.com/messages/kubelb
-[15]: http://slack.kubermatic.io/
+[1]: https://github.com/kubermatic/kubelb/issues
+[2]: https://github.com/kubermatic/kubelb/blob/main/CONTRIBUTING.md
+[3]: https://github.com/kubermatic/kubelb/releases
+[4]: https://github.com/kubermatic/kubelb/blob/main/CODE_OF_CONDUCT.md
+[5]: https://groups.google.com/forum/#!forum/kubermatic-dev
+[6]: https://kubermatic.slack.com/messages/kubermatic
+[7]: http://slack.kubermatic.io/
