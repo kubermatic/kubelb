@@ -86,7 +86,7 @@ func main() {
 	flag.StringVar(&leaderElectionNamespace, "leader-election-namespace", "", "Optionally configure leader election namespace.")
 
 	opts := zap.Options{
-		Development: true,
+		Development: false,
 		TimeEncoder: zapcore.ISO8601TimeEncoder,
 	}
 	opts.BindFlags(flag.CommandLine)
