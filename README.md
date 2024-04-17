@@ -7,7 +7,15 @@
 
 ## Overview
 
-KubeLB is a project to centrally manage load balancers across multicloud and on-prem.
+KubeLB is a project by Kubermatic, it is a Kubernetes native tool, responsible for centrally managing load balancers for Kubernetes clusters across multi-cloud and on-premise environments.
+
+### Motivation and Background
+
+Kubernetes does not offer any implementation for load balancers and in turn relies on the in-tree or out-of-tree cloud provider implementations to take care of provisioning and managing load balancers. This means that if you are not running on a supported cloud provider, your services of type `LoadBalancer` will never be allotted a load balancer IP address. This is an obstacle for bare-metal Kubernetes environments.
+
+There are solutions available like [MetalLB][8], [Cilium][9], etc. that solve this issue. However, these solutions are focused on a single cluster where you have to deploy the application in the same cluster where you want the load balancers. This is not ideal for multi-cluster environments since you have to configure load balancing for each cluster separately, which makes IP address management not trivial.
+
+KubeLB solves this problem by providing a centralized load balancer management solution for Kubernetes clusters across multi-cloud and on-premise environments.
 
 ## Architecture
 
@@ -53,3 +61,5 @@ See [the list of releases][3] to find out about feature changes.
 [5]: https://groups.google.com/forum/#!forum/kubermatic-dev
 [6]: https://kubermatic.slack.com/messages/kubermatic
 [7]: http://slack.kubermatic.io/
+[8]: https://metallb.universe.tf
+[9]: https://cilium.io/use-cases/load-balancer
