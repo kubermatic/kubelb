@@ -23,10 +23,10 @@ import (
 	envoycachev3 "github.com/envoyproxy/go-control-plane/pkg/cache/v3"
 	envoyresource "github.com/envoyproxy/go-control-plane/pkg/resource/v3"
 
-	kubelbk8ciov1alpha1 "k8c.io/kubelb/pkg/api/kubelb.k8c.io/v1alpha1"
-	utils "k8c.io/kubelb/pkg/controllers"
-	envoycp "k8c.io/kubelb/pkg/envoy"
-	portlookup "k8c.io/kubelb/pkg/port-lookup"
+	kubelbk8ciov1alpha1 "k8c.io/kubelb/api/kubelb.k8c.io/v1alpha1"
+	utils "k8c.io/kubelb/internal/controllers"
+	envoycp "k8c.io/kubelb/internal/envoy"
+	portlookup "k8c.io/kubelb/internal/port-lookup"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	ctrl "sigs.k8s.io/controller-runtime"

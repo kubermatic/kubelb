@@ -22,11 +22,11 @@ import (
 
 	"go.uber.org/zap/zapcore"
 
-	kubelbk8ciov1alpha1 "k8c.io/kubelb/pkg/api/kubelb.k8c.io/v1alpha1"
-	"k8c.io/kubelb/pkg/config"
-	"k8c.io/kubelb/pkg/controllers/kubelb"
-	"k8c.io/kubelb/pkg/envoy"
-	portlookup "k8c.io/kubelb/pkg/port-lookup"
+	kubelbk8ciov1alpha1 "k8c.io/kubelb/api/kubelb.k8c.io/v1alpha1"
+	"k8c.io/kubelb/internal/config"
+	"k8c.io/kubelb/internal/controllers/kubelb"
+	"k8c.io/kubelb/internal/envoy"
+	portlookup "k8c.io/kubelb/internal/port-lookup"
 
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"

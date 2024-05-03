@@ -22,12 +22,12 @@ import (
 	"reflect"
 	"strings"
 
-	kubelbk8ciov1alpha1 "k8c.io/kubelb/pkg/api/kubelb.k8c.io/v1alpha1"
-	"k8c.io/kubelb/pkg/config"
-	utils "k8c.io/kubelb/pkg/controllers"
-	"k8c.io/kubelb/pkg/kubelb"
-	kuberneteshelper "k8c.io/kubelb/pkg/kubernetes"
-	portlookup "k8c.io/kubelb/pkg/port-lookup"
+	kubelbk8ciov1alpha1 "k8c.io/kubelb/api/kubelb.k8c.io/v1alpha1"
+	"k8c.io/kubelb/internal/config"
+	utils "k8c.io/kubelb/internal/controllers"
+	"k8c.io/kubelb/internal/kubelb"
+	kuberneteshelper "k8c.io/kubelb/internal/kubernetes"
+	portlookup "k8c.io/kubelb/internal/port-lookup"
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"

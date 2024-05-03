@@ -19,7 +19,7 @@ package controllers
 import (
 	"context"
 
-	"k8c.io/kubelb/pkg/kubelb"
+	"k8c.io/kubelb/internal/kubelb"
 
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/types"

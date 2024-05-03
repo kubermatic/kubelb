@@ -25,8 +25,8 @@ import (
 
 	. "github.com/onsi/gomega"
 
-	"k8c.io/kubelb/pkg/api/kubelb.k8c.io/v1alpha1"
-	kubelbv1alpha1 "k8c.io/kubelb/pkg/api/kubelb.k8c.io/v1alpha1"
+	"k8c.io/kubelb/api/kubelb.k8c.io/v1alpha1"
+	kubelbv1alpha1 "k8c.io/kubelb/api/kubelb.k8c.io/v1alpha1"
 
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes/scheme"

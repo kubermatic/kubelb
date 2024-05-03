@@ -19,8 +19,8 @@ package portlookup
 import (
 	"fmt"
 
-	kubelbk8ciov1alpha1 "k8c.io/kubelb/pkg/api/kubelb.k8c.io/v1alpha1"
-	"k8c.io/kubelb/pkg/kubelb"
+	kubelbk8ciov1alpha1 "k8c.io/kubelb/api/kubelb.k8c.io/v1alpha1"
+	"k8c.io/kubelb/internal/kubelb"
 )
 
 // AllocatePortsForLoadBalancers allocates ports to the given load balancers. If a port is already allocated, it will be skipped.
