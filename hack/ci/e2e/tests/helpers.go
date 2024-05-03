@@ -119,7 +119,7 @@ func sampleAppDeployment(testID string) appsv1.Deployment {
 					Containers: []corev1.Container{
 						{
 							Name:  "nginx",
-							Image: "nginx:stable",
+							Image: "nginx:1.24.0",
 						},
 					},
 				},
