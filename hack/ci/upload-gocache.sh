@@ -65,7 +65,7 @@ echodate "Building binaries"
 echodate "Building tests"
 
 (
-  go test -run thisTestDoesNotExist ./pkg/...
+  go test -run thisTestDoesNotExist ./internal/...
 )
 
 TEST_NAME="Creating gocache archive"

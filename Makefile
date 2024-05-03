@@ -63,8 +63,8 @@ help: ## Display this help.
 .PHONY: manifests
 manifests: controller-gen ## Generate WebhookConfiguration, ClusterRole and CustomResourceDefinition objects.
 	$(CONTROLLER_GEN) crd webhook paths="./..." output:crd:artifacts:config=config/crd/bases
-	$(CONTROLLER_GEN) rbac:roleName=kubelb-ccm paths="./pkg/controllers/ccm/..." output:artifacts:config=config/ccm/rbac
-	$(CONTROLLER_GEN) rbac:roleName=kubelb paths="./pkg/controllers/kubelb/..." output:artifacts:config=config/kubelb/rbac
+	$(CONTROLLER_GEN) rbac:roleName=kubelb-ccm paths="./internal/controllers/ccm/..." output:artifacts:config=config/ccm/rbac
+	$(CONTROLLER_GEN) rbac:roleName=kubelb paths="./internal/controllers/kubelb/..." output:artifacts:config=config/kubelb/rbac
 	$(CONTROLLER_GEN) crd webhook paths="./..." output:crd:artifacts:config=charts/kubelb-manager/crds
 
 .PHONY: generate
@@ -99,7 +99,7 @@ clean:  ## Clean binaries
 
 .PHONY: test
 test: envtest ## Run tests.
-	KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) --bin-dir $(LOCALBIN) -p path)" go test ./pkg/... -coverprofile cover.out
+	KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) --bin-dir $(LOCALBIN) -p path)" go test ./internal/... -coverprofile cover.out
 
 ##@ Build
 
