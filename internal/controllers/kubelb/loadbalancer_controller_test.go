@@ -26,9 +26,9 @@ import (
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 
-	kubelbk8ciov1alpha1 "k8c.io/kubelb/pkg/api/kubelb.k8c.io/v1alpha1"
-	envoycp "k8c.io/kubelb/pkg/envoy"
-	"k8c.io/kubelb/pkg/kubelb"
+	kubelbk8ciov1alpha1 "k8c.io/kubelb/api/kubelb.k8c.io/v1alpha1"
+	envoycp "k8c.io/kubelb/internal/envoy"
+	"k8c.io/kubelb/internal/kubelb"
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"

@@ -23,9 +23,9 @@ import (
 
 	"github.com/go-logr/logr"
 
-	kubelbk8ciov1alpha1 "k8c.io/kubelb/pkg/api/kubelb.k8c.io/v1alpha1"
-	utils "k8c.io/kubelb/pkg/controllers"
-	"k8c.io/kubelb/pkg/kubelb"
+	kubelbk8ciov1alpha1 "k8c.io/kubelb/api/kubelb.k8c.io/v1alpha1"
+	utils "k8c.io/kubelb/internal/controllers"
+	"k8c.io/kubelb/internal/kubelb"
 
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
