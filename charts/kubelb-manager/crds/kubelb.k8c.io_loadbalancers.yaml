@@ -96,12 +96,11 @@ spec:
                             type: integer
                           protocol:
                             default: TCP
-                            description: |-
-                              The IP protocol for this port.
-                              Must be TCP.
-                              Default is TCP.
+                            description: The IP protocol for this port. Defaults to
+                              "TCP".
                             enum:
                             - TCP
+                            - UDP
                             type: string
                         required:
                         - port
@@ -133,11 +132,10 @@ spec:
                       type: integer
                     protocol:
                       default: TCP
-                      description: |-
-                        The IP protocol for this port. Supports "TCP".
-                        Default is TCP.
+                      description: The IP protocol for this port. Defaults to "TCP".
                       enum:
                       - TCP
+                      - UDP
                       type: string
                   required:
                   - port
