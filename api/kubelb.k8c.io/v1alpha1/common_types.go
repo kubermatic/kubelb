@@ -15,3 +15,61 @@ limitations under the License.
 */
 
 package v1alpha1
+
+import corev1 "k8s.io/api/core/v1"
+
+// LoadBalancerEndpoints is a group of addresses with a common set of ports. The
+// expanded set of endpoints is the Cartesian product of Addresses x Ports.
+// For example, given:
+//
+//	{
+//	  Addresses: [{"ip": "10.10.1.1"}, {"ip": "10.10.2.2"}],
+//	  Ports:     [{"name": "a", "port": 8675}, {"name": "b", "port": 309}]
+//	}
+//
+// The resulting set of endpoints can be viewed as:
+//
+//	a: [ 10.10.1.1:8675, 10.10.2.2:8675 ],
+//	b: [ 10.10.1.1:309, 10.10.2.2:309 ]
+type LoadBalancerEndpoints struct {
+	// Name is the name of the endpoints.
+	Name string `json:"name,omitempty" protobuf:"bytes,1,opt,name=name"`
+
+	// IP addresses which offer the related ports that are marked as ready. These endpoints
+	// should be considered safe for load balancers and clients to utilize.
+	//+kubebuilder:validation:MinItems:=1
+	Addresses []EndpointAddress `json:"addresses,omitempty" protobuf:"bytes,1,rep,name=addresses"`
+
+	// Port numbers available on the related IP addresses.
+	//+kubebuilder:validation:MinItems=1
+	Ports []EndpointPort `json:"ports,omitempty" protobuf:"bytes,3,rep,name=ports"`
+}
+
+// EndpointPort is a tuple that describes a single port.
+type EndpointPort struct {
+	// The name of this port.  This must match the 'name' field in the
+	// corresponding ServicePort.
+	// Must be a DNS_LABEL.
+	// Optional only if one port is defined.
+	// +optional
+	Name string `json:"name,omitempty" protobuf:"bytes,1,opt,name=name"`
+
+	// The port number of the endpoint.
+	Port int32 `json:"port" protobuf:"varint,2,opt,name=port"`
+
+	// The IP protocol for this port. Defaults to "TCP".
+	// +kubebuilder:validation:Enum=TCP;UDP
+	Protocol corev1.Protocol `json:"protocol,omitempty" protobuf:"bytes,3,opt,name=protocol,casttype=Protocol"`
+}
+
+// EndpointAddress is a tuple that describes single IP address.
+type EndpointAddress struct {
+	// The IP of this endpoint.
+	// May not be loopback (127.0.0.0/8), link-local (169.254.0.0/16),
+	// or link-local multicast ((224.0.0.0/24).
+	// +kubebuilder:validation:MinLength=7
+	IP string `json:"ip" protobuf:"bytes,1,opt,name=ip"`
+	// The Hostname of this endpoint
+	// +optional
+	Hostname string `json:"hostname,omitempty" protobuf:"bytes,3,opt,name=hostname"`
+}
