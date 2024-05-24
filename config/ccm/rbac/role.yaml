@@ -17,6 +17,7 @@ rules:
   resources:
   - services
   verbs:
+  - create
   - get
   - list
   - patch
@@ -30,3 +31,11 @@ rules:
   - get
   - patch
   - update
+- apiGroups:
+  - networking.k8s.io
+  resources:
+  - ingresses
+  verbs:
+  - get
+  - list
+  - watch

@@ -115,8 +115,6 @@ func makeCluster(clusterName string, lbEndpoints []*envoyEndpoint.LbEndpoint) *e
 			}},
 		},
 		DnsLookupFamily: envoyCluster.Cluster_V4_ONLY,
-
-		// Todo: Control HealthChecks via LoadBalancer
 		HealthChecks: []*envoyCore.HealthCheck{
 			{
 				Timeout:            &duration.Duration{Seconds: 5},

@@ -19,7 +19,7 @@ package v1alpha1
 import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	runtime "k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	gwapiv1a2 "sigs.k8s.io/gateway-api/apis/v1alpha2"
 )
 
@@ -41,30 +41,59 @@ type RouteSource struct {
 }
 
 type KubernetesSource struct {
-	// Resources contains the list of resources that are used as the source for the Route.
-	// Allowed resources:
-	// - networking.k8s.io/ingress
+	// TODO: Add more resources
 	// - gateway.networking.k8s.io/httproute
 	// - gateway.networking.k8s.io/grpcroute
 	// - gateway.networking.k8s.io/tcproute
 	// - gateway.networking.k8s.io/udproute
+
+	// Resources contains the list of resources that are used as the source for the Route.
+	// Allowed resources:
+	// - networking.k8s.io/ingress
 	// +optional
-	Route runtime.RawExtension `json:"resource,omitempty"`
+	// +kubebuilder:validation:EmbeddedResource
+	// +kubebuilder:pruning:PreserveUnknownFields
+	Route unstructured.Unstructured `json:"resource,omitempty"`
 
 	// Services contains the list of services that are used as the source for the Route.
-	Services []corev1.Service `json:"services,omitempty"`
+	// +kubebuilder:pruning:PreserveUnknownFields
+	Services []UpstreamService `json:"services,omitempty"`
 
 	// ReferenceGrants contains the list of ReferenceGrants that are used as the source for the Route.
 	// ReferenceGrant identifies kinds of resources in other namespaces that are
 	// trusted to reference the specified kinds of resources in the same namespace
 	// as the policy.
-	ReferenceGrants []gwapiv1a2.ReferenceGrant `json:"referenceGrants,omitempty"`
+	// +kubebuilder:pruning:PreserveUnknownFields
+	ReferenceGrants []UpstreamReferenceGrant `json:"referenceGrants,omitempty"`
+}
+
+// TODO(waleed): Evaluate if this is really worth it, semantically it makes sense but it adds a lot of boilerplate. Alternatively,
+// we can simply use YQ and add the required markers/fields in the CRD. This will also make the CRD more readable.
+
+// UpstreamService is a wrapper over the corev1.Service object.
+// This is required as kubebuilder:validation:EmbeddedResource marker adds the x-kubernetes-embedded-resource to the array instead of
+// the elements within it. Which results in a broken CRD; validation error. Without this marker, the embedded resource is not properly
+// serialized to the CRD.
+type UpstreamService struct {
+	// +kubebuilder:pruning:PreserveUnknownFields
+	// +kubebuilder:validation:EmbeddedResource
+	corev1.Service `json:",inline"`
+}
+
+// UpstreamReferenceGrant is a wrapper over the sigs.k8s.io/gateway-api/apis/v1alpha2.ReferenceGrant object.
+// This is required as kubebuilder:validation:EmbeddedResource marker adds the x-kubernetes-embedded-resource to the array instead of
+// the elements within it. Which results in a broken CRD; validation error. Without this marker, the embedded resource is not properly
+// serialized to the CRD.
+type UpstreamReferenceGrant struct {
+	// +kubebuilder:pruning:PreserveUnknownFields
+	// +kubebuilder:validation:EmbeddedResource
+	gwapiv1a2.ReferenceGrant `json:",inline"`
 }
 
 //+kubebuilder:object:root=true
 //+kubebuilder:subresource:status
 
-// Route is the object that represents the Config for the KubeLB management controller.
+// Route is the object that represents a route in the cluster.
 type Route struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
@@ -88,4 +117,24 @@ type RouteList struct {
 
 func init() {
 	SchemeBuilder.Register(&Route{}, &RouteList{})
+}
+
+func ConvertServicesToUpstreamServices(services []corev1.Service) []UpstreamService {
+	var upstreamServices []UpstreamService
+	for _, service := range services {
+		upstreamServices = append(upstreamServices, UpstreamService{
+			Service: service,
+		})
+	}
+	return upstreamServices
+}
+
+func ConvertReferenceGrantsToUpstreamReferenceGrants(referenceGrants []gwapiv1a2.ReferenceGrant) []UpstreamReferenceGrant {
+	var upstreamReferenceGrants []UpstreamReferenceGrant
+	for _, referenceGrant := range referenceGrants {
+		upstreamReferenceGrants = append(upstreamReferenceGrants, UpstreamReferenceGrant{
+			ReferenceGrant: referenceGrant,
+		})
+	}
+	return upstreamReferenceGrants
 }

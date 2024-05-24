@@ -17,8 +17,7 @@ spec:
   - name: v1alpha1
     schema:
       openAPIV3Schema:
-        description: Route is the object that represents the Config for the KubeLB
-          management controller.
+        description: Route is the object that represents a route in the cluster.
         properties:
           apiVersion:
             description: |-
@@ -128,29 +127,10 @@ spec:
                           as the policy.
                         items:
                           description: |-
-                            ReferenceGrant identifies kinds of resources in other namespaces that are
-                            trusted to reference the specified kinds of resources in the same namespace
-                            as the policy.
-
-
-                            Each ReferenceGrant can be used to represent a unique trust relationship.
-                            Additional Reference Grants can be used to add to the set of trusted
-                            sources of inbound references for the namespace they are defined within.
-
-
-                            A ReferenceGrant is required for all cross-namespace references in Gateway API
-                            (with the exception of cross-namespace Route-Gateway attachment, which is
-                            governed by the AllowedRoutes configuration on the Gateway, and cross-namespace
-                            Service ParentRefs on a "consumer" mesh Route, which defines routing rules
-                            applicable only to workloads in the Route namespace). ReferenceGrants allowing
-                            a reference from a Route to a Service are only applicable to BackendRefs.
-
-
-                            ReferenceGrant is a form of runtime verification allowing users to assert
-                            which cross-namespace object references are permitted. Implementations that
-                            support ReferenceGrant MUST NOT permit cross-namespace references which have
-                            no grant, and MUST respond to the removal of a grant by revoking the access
-                            that the grant allowed.
+                            UpstreamReferenceGrant is a wrapper over the sigs.k8s.io/gateway-api/apis/v1alpha2.ReferenceGrant object.
+                            This is required as kubebuilder:validation:EmbeddedResource marker adds the x-kubernetes-embedded-resource to the array instead of
+                            the elements within it. Which results in a broken CRD; validation error. Without this marker, the embedded resource is not properly
+                            serialized to the CRD.
                           properties:
                             apiVersion:
                               description: |-
@@ -295,26 +275,27 @@ spec:
                               - to
                               type: object
                           type: object
+                          x-kubernetes-embedded-resource: true
+                          x-kubernetes-preserve-unknown-fields: true
                         type: array
+                        x-kubernetes-preserve-unknown-fields: true
                       resource:
                         description: |-
                           Resources contains the list of resources that are used as the source for the Route.
                           Allowed resources:
                           - networking.k8s.io/ingress
-                          - gateway.networking.k8s.io/httproute
-                          - gateway.networking.k8s.io/grpcroute
-                          - gateway.networking.k8s.io/tcproute
-                          - gateway.networking.k8s.io/udproute
                         type: object
+                        x-kubernetes-embedded-resource: true
                         x-kubernetes-preserve-unknown-fields: true
                       services:
                         description: Services contains the list of services that are
                           used as the source for the Route.
                         items:
                           description: |-
-                            Service is a named abstraction of software service (for example, mysql) consisting of local port
-                            (for example 3306) that the proxy listens on, and the selector that determines which pods
-                            will answer requests sent through the proxy.
+                            UpstreamService is a wrapper over the corev1.Service object.
+                            This is required as kubebuilder:validation:EmbeddedResource marker adds the x-kubernetes-embedded-resource to the array instead of
+                            the elements within it. Which results in a broken CRD; validation error. Without this marker, the embedded resource is not properly
+                            serialized to the CRD.
                           properties:
                             apiVersion:
                               description: |-
@@ -846,7 +827,10 @@ spec:
                                   type: object
                               type: object
                           type: object
+                          x-kubernetes-embedded-resource: true
+                          x-kubernetes-preserve-unknown-fields: true
                         type: array
+                        x-kubernetes-preserve-unknown-fields: true
                     type: object
                 type: object
             type: object
