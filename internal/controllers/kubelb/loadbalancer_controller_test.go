@@ -45,7 +45,7 @@ var testMatrix = []struct {
 	{
 		topology: EnvoyProxyTopologyShared,
 		envoyProxyDeploymentName: func(lb types.NamespacedName) types.NamespacedName {
-			return types.NamespacedName{Name: fmt.Sprintf(envoyResourcePattern, lb.Name), Namespace: LBNamespace}
+			return types.NamespacedName{Name: fmt.Sprintf(envoyResourcePattern, lb.Namespace), Namespace: LBNamespace}
 		},
 		envoyProxyServiceName: func(lb types.NamespacedName) types.NamespacedName {
 			return types.NamespacedName{Name: fmt.Sprintf(envoyResourcePattern, lb.Name), Namespace: LBNamespace}

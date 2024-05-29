@@ -13,13 +13,8 @@
 # limitations under the License.
 
 run:
-  deadline: 20m
+  timeout: 20m
   issues-exit-code: 1
-  skip-dirs:
-    - hack
-    - vendor
-  skip-files:
-    - zz_generated.*.go
 
 linters:
   enable:
@@ -27,7 +22,6 @@ linters:
     - asciicheck
     - bidichk
     - bodyclose
-    - deadcode
     - depguard
     - durationcheck
     - errcheck
@@ -52,23 +46,13 @@ linters:
     - promlinter
     - revive
     - staticcheck
-    - structcheck
     - tenv
     - typecheck
     - unconvert
     - unused
-    - varcheck
     - wastedassign
     - whitespace
   disable-all: true
-
-issues:
-  # Excluding configuration per-path and per-linter
-  exclude-rules:
-    # Exclude some linters from running on tests files.
-    - path: _test\.go
-      linters:
-        - revive
 
 linters-settings:
   goimports:
@@ -83,3 +67,19 @@ linters-settings:
       main:
         deny:
           - { pkg: io/ioutil, desc: https://go.dev/doc/go1.16#ioutil }
+  govet:
+    enable:
+      - nilness # find tautologies / impossible conditions
+
+issues:
+  exclude-dirs:
+    - hack
+    - vendor
+  exclude-files:
+    - zz_generated.*.go
+  # Excluding configuration per-path and per-linter
+  exclude-rules:
+    # Exclude some linters from running on tests files.
+    - path: _test\.go
+      linters:
+        - revive

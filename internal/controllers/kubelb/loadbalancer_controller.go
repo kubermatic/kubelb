@@ -38,13 +38,14 @@ import (
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/client-go/util/retry"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/cache"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	ctrlruntimeclient "sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
-	"sigs.k8s.io/controller-runtime/pkg/source"
 )
 
 const (
@@ -463,36 +464,19 @@ func (r *LoadBalancerReconciler) handleEnvoyProxyCleanup(ctx context.Context, lb
 }
 
 func (r *LoadBalancerReconciler) SetupWithManager(ctx context.Context, mgr ctrl.Manager) error {
-	c, err := ctrl.NewControllerManagedBy(mgr).
+	return ctrl.NewControllerManagedBy(mgr).
 		For(&kubelbk8ciov1alpha1.LoadBalancer{}).
 		WithEventFilter(utils.ByLabelExistsOnNamespace(ctx, mgr.GetClient())).
-		Build(r)
-	if err != nil {
-		return err
-	}
-
-	// Todo: same as owns? can be removed : leave it
-	serviceInformer, err := r.Cache.GetInformer(ctx, &corev1.Service{})
-	if err != nil {
-		return err
-	}
-	_, err = r.Cache.GetInformer(ctx, &corev1.Namespace{})
-	if err != nil {
-		return err
-	}
-
-	err = c.Watch(
-		&source.Informer{Informer: serviceInformer},
-		handler.EnqueueRequestsFromMapFunc(r.enqueueLoadBalancers()),
-		filterServicesPredicate(),
-	)
-
-	// Watch for changes to Config in the KubeLB management cluster.
-	if err := c.Watch(source.Kind(mgr.GetCache(), &kubelbk8ciov1alpha1.Config{}), handler.EnqueueRequestsFromMapFunc(r.enqueueLoadBalancersForConfig())); err != nil {
-		return fmt.Errorf("failed to watch Config: %w", err)
-	}
-
-	return err
+		Watches(
+			&kubelbk8ciov1alpha1.Config{},
+			handler.EnqueueRequestsFromMapFunc(r.enqueueLoadBalancersForConfig()),
+			builder.WithPredicates(filterServicesPredicate()),
+		).
+		Watches(
+			&corev1.Service{},
+			handler.EnqueueRequestsFromMapFunc(r.enqueueLoadBalancers()),
+		).
+		Complete(r)
 }
 
 func (r *LoadBalancerReconciler) getEnvoyProxyPodSpec(namespace, appName, snapshotName string) corev1.PodTemplateSpec {
@@ -583,8 +567,8 @@ func (r *LoadBalancerReconciler) enqueueLoadBalancers() handler.MapFunc {
 
 // filterServicesPredicate filters out services that need to be propagated to the event handlers.
 // We only want to handle services that are managed by kubelb.
-func filterServicesPredicate() predicate.Predicate {
-	return predicate.Funcs{
+func filterServicesPredicate() predicate.TypedPredicate[client.Object] {
+	return predicate.TypedFuncs[client.Object]{
 		CreateFunc: func(e event.CreateEvent) bool {
 			return e.Object.GetLabels()[kubelb.LabelLoadBalancerName] != ""
 		},
