@@ -19,7 +19,7 @@ set -euo pipefail
 cd "${ROOT_DIR}"
 source "${ROOT_DIR}/hack/lib.sh"
 
-METALLB_VERSION=v0.13.11
+METALLB_VERSION=v0.14.5
 
 export KUBECONFIG="${TMPDIR}"/kubelb.kubeconfig
 

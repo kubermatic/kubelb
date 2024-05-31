@@ -154,7 +154,7 @@ func twoAppDeployment(testID string) appsv1.Deployment {
 						},
 						{
 							Name:  "envoy",
-							Image: "envoyproxy/envoy:distroless-v1.26.6",
+							Image: "envoyproxy/envoy:distroless-v1.30.1",
 						},
 					},
 				},

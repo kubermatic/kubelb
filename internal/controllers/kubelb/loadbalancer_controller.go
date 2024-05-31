@@ -49,7 +49,7 @@ import (
 )
 
 const (
-	envoyImage                        = "envoyproxy/envoy:distroless-v1.27.0"
+	envoyImage                        = "envoyproxy/envoy:distroless-v1.30.1"
 	envoyProxyContainerName           = "envoy-proxy"
 	envoyResourcePattern              = "envoy-%s"
 	envoyGlobalTopologyServicePattern = "envoy-%s-%s"
