@@ -40,23 +40,22 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/source"
 )
 
-const LBFinalizerName = "kubelb.k8c.io/lb-finalizer"
+const (
+	LBFinalizerName       = "kubelb.k8c.io/lb-finalizer"
+	LoadBalancerClassName = "kubelb"
+)
 
 // KubeLBServiceReconciler reconciles a Service object
 type KubeLBServiceReconciler struct {
 	ctrlclient.Client
 
-	KubeLBManager   ctrl.Manager
-	Log             logr.Logger
-	Scheme          *runtime.Scheme
-	ClusterName     string
-	CloudController bool
-	Endpoints       *kubelb.Endpoints
-}
-
-var AnnotationServiceClassMatcher = &utils.MatchingAnnotationPredicate{
-	AnnotationName:  "kubernetes.io/service.class",
-	AnnotationValue: "kubelb",
+	KubeLBManager        ctrl.Manager
+	Log                  logr.Logger
+	Scheme               *runtime.Scheme
+	ClusterName          string
+	CloudController      bool
+	UseLoadbalancerClass bool
+	Endpoints            *kubelb.Endpoints
 }
 
 // +kubebuilder:rbac:groups="",resources=services,verbs=get;list;watch;update;patch
@@ -78,8 +77,7 @@ func (r *KubeLBServiceReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 		return ctrl.Result{}, nil
 	}
 
-	if service.Spec.Type != corev1.ServiceTypeNodePort && service.Spec.Type != corev1.ServiceTypeLoadBalancer ||
-		(!r.CloudController || service.Spec.Type == corev1.ServiceTypeNodePort) && !AnnotationServiceClassMatcher.Match(service.GetAnnotations()) {
+	if !r.shouldReconcile(service) {
 		return ctrl.Result{}, nil
 	}
 
@@ -239,16 +237,6 @@ func (r *KubeLBServiceReconciler) enqueueLoadBalancer() handler.TypedMapFunc[*ku
 	})
 }
 
-func (r *KubeLBServiceReconciler) SetupWithManager(mgr ctrl.Manager) error {
-	return ctrl.NewControllerManagedBy(mgr).
-		For(&corev1.Service{}).
-		WatchesRawSource(
-			source.Kind(r.KubeLBManager.GetCache(), &kubelbk8ciov1alpha1.LoadBalancer{},
-				handler.TypedEnqueueRequestsFromMapFunc[*kubelbk8ciov1alpha1.LoadBalancer](r.enqueueLoadBalancer())),
-		).
-		Complete(r)
-}
-
 func (r *KubeLBServiceReconciler) getEndpoints(service *corev1.Service) []string {
 	var clusterEndpoints []string
 
@@ -266,4 +254,25 @@ func (r *KubeLBServiceReconciler) getEndpoints(service *corev1.Service) []string
 	}
 
 	return clusterEndpoints
+}
+
+func (r *KubeLBServiceReconciler) shouldReconcile(svc corev1.Service) bool {
+	if svc.Spec.Type != corev1.ServiceTypeLoadBalancer {
+		return false
+	}
+
+	if r.UseLoadbalancerClass {
+		return svc.Spec.LoadBalancerClass != nil && *svc.Spec.LoadBalancerClass == LoadBalancerClassName
+	}
+	return true
+}
+
+func (r *KubeLBServiceReconciler) SetupWithManager(mgr ctrl.Manager) error {
+	return ctrl.NewControllerManagedBy(mgr).
+		For(&corev1.Service{}).
+		WatchesRawSource(
+			source.Kind(r.KubeLBManager.GetCache(), &kubelbk8ciov1alpha1.LoadBalancer{},
+				handler.TypedEnqueueRequestsFromMapFunc[*kubelbk8ciov1alpha1.LoadBalancer](r.enqueueLoadBalancer())),
+		).
+		Complete(r)
 }
