@@ -64,6 +64,7 @@ func main() {
 	var metricsAddr string
 	var probeAddr string
 	var enableCloudController bool
+	var useLoadbalancerClass bool
 	var enableLeaderElection bool
 	var leaderElectionNamespace string
 	var endpointAddressTypeString string
@@ -77,13 +78,15 @@ func main() {
 
 	flag.StringVar(&metricsAddr, "metrics-addr", ":0", "The address the metric endpoint binds to.")
 	flag.StringVar(&probeAddr, "health-probe-bind-address", ":8081", "The address the probe endpoint binds to.")
-	flag.StringVar(&endpointAddressTypeString, "node-address-type", "ExternalIP", "The default address type used as an endpoint address.")
-	flag.StringVar(&clusterName, "cluster-name", "", "Cluster name where the ccm is running. Resources inside the KubeLb cluster will get deployed to the namespace named by cluster name, must be unique.")
-	flag.StringVar(&kubeLbKubeconf, "kubelb-kubeconfig", defaultKubeLbConf, "The path to the kubelb cluster kubeconfig.")
-	flag.BoolVar(&enableCloudController, "enable-cloud-provider", true, "Enables cloud controller like behavior. This will set the status of LoadBalancer")
 	flag.BoolVar(&enableLeaderElection, "enable-leader-election", true,
 		"Enable leader election for controller ccm. Enabling this will ensure there is only one active controller ccm.")
 	flag.StringVar(&leaderElectionNamespace, "leader-election-namespace", "", "Optionally configure leader election namespace.")
+
+	flag.StringVar(&endpointAddressTypeString, "node-address-type", string(corev1.NodeExternalIP), "The default address type used as an endpoint address for the LoadBalancer service. Valid values are ExternalIP or InternalIP, default is ExternalIP.")
+	flag.StringVar(&clusterName, "cluster-name", "", "Cluster name where the ccm is running. Resources inside the KubeLb cluster will get deployed to the namespace named by cluster name, must be unique.")
+	flag.StringVar(&kubeLbKubeconf, "kubelb-kubeconfig", defaultKubeLbConf, "The path to the kubelb cluster kubeconfig.")
+	flag.BoolVar(&enableCloudController, "enable-cloud-provider", true, "Enables cloud controller like behavior. This will set the status of LoadBalancer")
+	flag.BoolVar(&useLoadbalancerClass, "use-loadbalancer-class", false, "Use LoadBalancerClass `kubelb` to filter services. If false, all load balancer services will be managed by KubeLB.")
 
 	opts := zap.Options{
 		Development: false,
@@ -179,13 +182,14 @@ func main() {
 	}
 
 	if err = (&ccm.KubeLBServiceReconciler{
-		Client:          mgr.GetClient(),
-		KubeLBManager:   kubeLBMgr,
-		Log:             ctrl.Log.WithName("kubelb.service.reconciler"),
-		Scheme:          mgr.GetScheme(),
-		CloudController: enableCloudController,
-		Endpoints:       &sharedEndpoints,
-		ClusterName:     clusterName,
+		Client:               mgr.GetClient(),
+		KubeLBManager:        kubeLBMgr,
+		Log:                  ctrl.Log.WithName("kubelb.service.reconciler"),
+		Scheme:               mgr.GetScheme(),
+		CloudController:      enableCloudController,
+		UseLoadbalancerClass: useLoadbalancerClass,
+		Endpoints:            &sharedEndpoints,
+		ClusterName:          clusterName,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "reconciler", "kubelb.service.reconciler")
 		os.Exit(1)
