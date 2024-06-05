@@ -4,6 +4,7 @@
 resources:
 - bases/kubelb.k8c.io_loadbalancers.yaml
 - bases/kubelb.k8c.io_configs.yaml
+- bases/kubelb.k8c.io_routes.yaml
 #+kubebuilder:scaffold:crdkustomizeresource
 
 patchesStrategicMerge:
