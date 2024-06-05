@@ -71,6 +71,16 @@ if [[ -z "${local_ip+x}" ]]; then
     local_ip=$(ip -j route show | jq -r '.[] | select(.dst == "default") | .prefsrc' | head -n1)
 fi
 
+echodate "Pre-pulling base image in the background"
+(
+  cd ${ROOT_DIR}
+  dockerfile="ccm.dockerfile"
+  line=$(grep "as builder" $dockerfile)
+  dockerImage=$(echo $line | awk -F'FROM | as builder' '{print $2}')
+  echodate "Pulling image: $dockerImage"
+  docker pull $dockerImage &>/dev/null &
+)
+
 echodate "Creating kubelb kind cluster"
 KUBECONFIG="${TMPDIR}"/kubelb.kubeconfig kind create cluster --retain --name kubelb --config <(cat <<EOF
 kind: Cluster
@@ -78,7 +88,7 @@ apiVersion: kind.x-k8s.io/v1alpha4
 networking:
   apiServerAddress: "$local_ip"
 EOF
-)
+) &
 
 echodate "Creating tenant1 kind cluster"
 KUBECONFIG="${TMPDIR}"/tenant1.kubeconfig kind create cluster --retain --name tenant1 --config <(cat <<EOF
@@ -87,7 +97,7 @@ apiVersion: kind.x-k8s.io/v1alpha4
 networking:
   apiServerAddress: "$local_ip"
 EOF
-)
+) &
 
 echodate "Creating tenant2 kind cluster"
 KUBECONFIG="${TMPDIR}"/tenant2.kubeconfig kind create cluster --retain --name tenant2 --config <(cat <<EOF
@@ -101,7 +111,9 @@ nodes:
   - role: worker
   - role: worker
 EOF
-)
+) &
+
+wait
 
 ./deploy-kubelb.sh
 ./tests.sh
