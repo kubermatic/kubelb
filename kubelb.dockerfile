@@ -12,11 +12,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-ARG GO_VERSION=1.22.1
-FROM golang:${GO_VERSION} AS builder
+FROM docker.io/golang:1.22.2 as builder
+
 WORKDIR /go/src/k8c.io/kubelb
 COPY . .
-RUN make all
+RUN make build-kubelb
 
 FROM gcr.io/distroless/static:nonroot
 

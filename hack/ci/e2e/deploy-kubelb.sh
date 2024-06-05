@@ -46,10 +46,7 @@ metadata:
   namespace: metallb-system
 EOF
 
-echodate "Build kubelb binaries"
 kubectl config set-context $(kubectl config current-context) --namespace=kubelb
-make build-kubelb
-make build-ccm
 
 echodate "Build kubelb images"
 KUBELB_IMAGE_NAME="kubermatic.io/kubelb:e2e" CCM_IMAGE_NAME="kubermatic.io/ccm:e2e" make docker-image
