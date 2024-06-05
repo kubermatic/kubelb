@@ -16,8 +16,10 @@ limitations under the License.
 
 package kubelb
 
+// TODO(waleed): Rename to origin-namespace
 const LabelOriginNamespace = "kubelb.k8c.io/origin-ns"
 const LabelOriginName = "kubelb.k8c.io/origin-name"
+const LabelOriginResourceKind = "kubelb.k8c.io/origin-resource-kind"
 
 const LabelLoadBalancerNamespace = "kubelb.k8c.io/lb-namespace"
 const LabelLoadBalancerName = "kubelb.k8c.io/lb-name"

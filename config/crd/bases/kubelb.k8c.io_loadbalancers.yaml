@@ -77,6 +77,9 @@ spec:
                         type: object
                       minItems: 1
                       type: array
+                    name:
+                      description: Name is the name of the endpoints.
+                      type: string
                     ports:
                       description: Port numbers available on the related IP addresses.
                       items:
@@ -234,6 +237,7 @@ spec:
                           x-kubernetes-list-type: atomic
                       type: object
                     type: array
+                    x-kubernetes-list-type: atomic
                 type: object
               service:
                 description: Service contains the current status of the LB service.

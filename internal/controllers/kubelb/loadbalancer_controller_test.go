@@ -165,8 +165,6 @@ var _ = Describe("Lb deployment and service creation", func() {
 					Port: 8081,
 				})
 
-				// Todo: this should actually fail on update if there is no corresponding endpoint port set,
-				// as well as a name to map those. Go ahead with admission webhooks
 				Expect(k8sClient.Update(ctx, existingLb)).Should(Succeed())
 
 				By("updating the service ports")

@@ -43,6 +43,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
+	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
+	gwapiv1a2 "sigs.k8s.io/gateway-api/apis/v1alpha2"
 )
 
 var (
@@ -56,6 +58,8 @@ var (
 func init() {
 	utilruntime.Must(clientgoscheme.AddToScheme(scheme))
 	utilruntime.Must(kubelbk8ciov1alpha1.AddToScheme(scheme))
+	utilruntime.Must(gwapiv1a2.Install(scheme))
+	utilruntime.Must(gwapiv1.Install(scheme))
 
 	// +kubebuilder:scaffold:scheme
 }
@@ -71,6 +75,7 @@ func main() {
 	var clusterName string
 	var kubeLbKubeconf string
 	var kubeconfig string
+	var useIngressClass bool
 
 	if flag.Lookup("kubeconfig") == nil {
 		flag.StringVar(&kubeconfig, "kubeconfig", "", "Path to a kubeconfig. Only required if out-of-cluster.")
@@ -86,6 +91,7 @@ func main() {
 	flag.StringVar(&clusterName, "cluster-name", "", "Cluster name where the ccm is running. Resources inside the KubeLb cluster will get deployed to the namespace named by cluster name, must be unique.")
 	flag.StringVar(&kubeLbKubeconf, "kubelb-kubeconfig", defaultKubeLbConf, "The path to the kubelb cluster kubeconfig.")
 	flag.BoolVar(&enableCloudController, "enable-cloud-provider", true, "Enables cloud controller like behavior. This will set the status of LoadBalancer")
+	flag.BoolVar(&useIngressClass, "use-ingress-class", true, "Use IngressClass `kubelb` to filter Ingress objects. Ingresses should have `ingressClassName: kubelb` set in the spec.")
 	flag.BoolVar(&useLoadbalancerClass, "use-loadbalancer-class", false, "Use LoadBalancerClass `kubelb` to filter services. If false, all load balancer services will be managed by KubeLB.")
 
 	opts := zap.Options{
@@ -144,6 +150,11 @@ func main() {
 						clusterName: {},
 					},
 				},
+				&kubelbk8ciov1alpha1.Route{}: {
+					Namespaces: map[string]cache.Config{
+						clusterName: {},
+					},
+				},
 			},
 		},
 	})
@@ -192,6 +203,19 @@ func main() {
 		ClusterName:          clusterName,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "reconciler", "kubelb.service.reconciler")
+		os.Exit(1)
+	}
+
+	if err = (&ccm.IngressReconciler{
+		Client:          mgr.GetClient(),
+		LBClient:        kubeLBMgr.GetClient(),
+		ClusterName:     clusterName,
+		Log:             ctrl.Log.WithName("controllers").WithName(ccm.IngressControllerName),
+		Scheme:          mgr.GetScheme(),
+		Recorder:        mgr.GetEventRecorderFor(ccm.IngressControllerName),
+		UseIngressClass: useIngressClass,
+	}).SetupWithManager(mgr); err != nil {
+		setupLog.Error(err, "unable to create controller", "controller", ccm.IngressControllerName)
 		os.Exit(1)
 	}
 

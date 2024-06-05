@@ -1,10 +1,34 @@
 domain: k8c.io
-repo: kubelb
+layout:
+  - go.kubebuilder.io/v4
+projectName: kubelb
+repo: github.com/kubermatic/kubelb
 resources:
-- group: kubelb.k8c.io
-  kind: LoadBalancer
-  version: v1alpha1
-- group: kubelb.k8c.io
-  kind: Config
-  version: v1alpha1
-version: "2"
+  - api:
+      crdVersion: v1
+      namespaced: true
+    controller: true
+    domain: k8c.io
+    group: kubelb.k8c.io
+    kind: LoadBalancer
+    version: v1alpha1
+    path: github.com/kubermatic/kubelb/api/kubelb.k8c.io/v1alpha1
+  - api:
+      crdVersion: v1
+      namespaced: true
+    controller: false
+    domain: k8c.io
+    group: kubelb.k8c.io
+    kind: Config
+    version: v1alpha1
+    path: github.com/kubermatic/kubelb/api/kubelb.k8c.io/v1alpha1
+  - api:
+      crdVersion: v1
+      namespaced: true
+    controller: false
+    domain: k8c.io
+    group: kubelb.k8c.io
+    kind: Route
+    version: v1alpha1
+    path: github.com/kubermatic/kubelb/api/kubelb.k8c.io/v1alpha1
+version: "3"
