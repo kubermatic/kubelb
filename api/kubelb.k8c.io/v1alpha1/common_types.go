@@ -18,6 +18,11 @@ package v1alpha1
 
 import corev1 "k8s.io/api/core/v1"
 
+const (
+	// DefaultAddressName is the default name for the Addresses object.
+	DefaultAddressName = "default"
+)
+
 // LoadBalancerEndpoints is a group of addresses with a common set of ports. The
 // expanded set of endpoints is the Cartesian product of Addresses x Ports.
 // For example, given:
@@ -39,6 +44,11 @@ type LoadBalancerEndpoints struct {
 	// should be considered safe for load balancers and clients to utilize.
 	//+kubebuilder:validation:MinItems:=1
 	Addresses []EndpointAddress `json:"addresses,omitempty" protobuf:"bytes,1,rep,name=addresses"`
+
+	// AddressesReference is a reference to the Addresses object that contains the IP addresses.
+	// If this field is set, the Addresses field will be ignored.
+	// +optional
+	AddressesReference *corev1.ObjectReference `json:"addressesReference,omitempty" protobuf:"bytes,2,opt,name=addressesReference"`
 
 	// Port numbers available on the related IP addresses.
 	//+kubebuilder:validation:MinItems=1

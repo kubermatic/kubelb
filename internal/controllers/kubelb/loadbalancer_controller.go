@@ -82,6 +82,8 @@ type LoadBalancerReconciler struct {
 // +kubebuilder:rbac:groups=kubelb.k8c.io,resources=loadbalancers/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=kubelb.k8c.io,resources=configs,verbs=get;list;watch
 // +kubebuilder:rbac:groups=kubelb.k8c.io,resources=configs/status,verbs=get;update;patch
+// +kubebuilder:rbac:groups=kubelb.k8c.io,resources=addresses,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=kubelb.k8c.io,resources=addresses/status,verbs=get
 // +kubebuilder:rbac:groups="",resources=services,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups="",resources=namespaces,verbs=get;list;watch
 // +kubebuilder:rbac:groups="apps",resources=deployments,verbs=get;list;watch;create;update;patch;delete

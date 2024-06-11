@@ -55,7 +55,6 @@ type KubeLBServiceReconciler struct {
 	ClusterName          string
 	CloudController      bool
 	UseLoadbalancerClass bool
-	Endpoints            *kubelb.Endpoints
 }
 
 // +kubebuilder:rbac:groups="",resources=services,verbs=get;list;watch;update;patch
@@ -81,10 +80,7 @@ func (r *KubeLBServiceReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 		return ctrl.Result{}, nil
 	}
 
-	clusterEndpoints := r.getEndpoints(&service)
-
-	log.V(6).Info("processing", "service", service)
-	log.V(5).Info("proceeding with", "endpoints", clusterEndpoints)
+	clusterEndpoints, useAddressesReference := r.getEndpoints(&service)
 
 	// examine DeletionTimestamp to determine if object is under deletion
 	if !service.ObjectMeta.DeletionTimestamp.IsZero() {
@@ -110,7 +106,7 @@ func (r *KubeLBServiceReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 
 	log.V(5).Info("proceeding with", "endpoints", clusterEndpoints)
 
-	desiredLB := kubelb.MapLoadBalancer(&service, clusterEndpoints, r.ClusterName)
+	desiredLB := kubelb.MapLoadBalancer(&service, clusterEndpoints, useAddressesReference, r.ClusterName)
 	log.V(6).Info("desired", "LoadBalancer", desiredLB)
 
 	kubelbClient := r.KubeLBManager.GetClient()
@@ -237,7 +233,7 @@ func (r *KubeLBServiceReconciler) enqueueLoadBalancer() handler.TypedMapFunc[*ku
 	})
 }
 
-func (r *KubeLBServiceReconciler) getEndpoints(service *corev1.Service) []string {
+func (r *KubeLBServiceReconciler) getEndpoints(service *corev1.Service) ([]string, bool) {
 	var clusterEndpoints []string
 
 	// Use LB Endpoint if there is any non KubeLb load balancer implementation
@@ -250,10 +246,10 @@ func (r *KubeLBServiceReconciler) getEndpoints(service *corev1.Service) []string
 			}
 		}
 	} else {
-		clusterEndpoints = r.Endpoints.ClusterEndpoints
+		return nil, true
 	}
 
-	return clusterEndpoints
+	return clusterEndpoints, false
 }
 
 func (r *KubeLBServiceReconciler) shouldReconcile(svc corev1.Service) bool {
