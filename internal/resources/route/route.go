@@ -58,6 +58,15 @@ func GenerateRoute(resource unstructured.Unstructured, resources Subresources, n
 			},
 		},
 		Spec: kubelbk8ciov1alpha1.RouteSpec{
+			// TODO(waleed): Once we have everything in place, figure out how this should look like.
+			Endpoints: []kubelbk8ciov1alpha1.LoadBalancerEndpoints{
+				{
+					Name: "default",
+					AddressesReference: &corev1.ObjectReference{
+						Name: kubelbk8ciov1alpha1.DefaultAddressName,
+					},
+				},
+			},
 			Source: kubelbk8ciov1alpha1.RouteSource{
 				Kubernetes: &kubelbk8ciov1alpha1.KubernetesSource{
 					Route:           resource,

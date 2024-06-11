@@ -18,26 +18,31 @@ package ccm
 
 import (
 	"context"
+	"reflect"
 
 	"github.com/go-logr/logr"
 
 	kubelbiov1alpha1 "k8c.io/kubelb/api/kubelb.k8c.io/v1alpha1"
-	"k8c.io/kubelb/internal/kubelb"
 
 	corev1 "k8s.io/api/core/v1"
+	kerrors "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
 	ctrlclient "sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 )
 
 // KubeLBNodeReconciler reconciles a Service object
 type KubeLBNodeReconciler struct {
 	ctrlclient.Client
 
-	KubeLBClient ctrlclient.Client
-	Log          logr.Logger
-	Scheme       *runtime.Scheme
-	Endpoints    *kubelb.Endpoints
+	KubeLBClient        ctrlclient.Client
+	ClusterName         string
+	Log                 logr.Logger
+	Scheme              *runtime.Scheme
+	EndpointAddressType corev1.NodeAddressType
 }
 
 // +kubebuilder:rbac:groups="",resources=nodes,verbs=list;get;watch
@@ -54,49 +59,70 @@ func (r *KubeLBNodeReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 		return ctrl.Result{}, err
 	}
 
-	log.V(6).Info("processing", "nodes", nodeList, "endpoints", r.Endpoints)
+	// Compute current state
+	currentAddresses := r.GenerateAddresses(nodeList)
 
-	if r.Endpoints.EndpointIsDesiredState(nodeList) {
-		log.V(2).Info("endpoints are in desired state")
+	// Retrieve current state from the LB cluster
+	var addresses kubelbiov1alpha1.Addresses
+	if err = r.KubeLBClient.Get(ctx, types.NamespacedName{Name: kubelbiov1alpha1.DefaultAddressName, Namespace: r.ClusterName}, &addresses); err != nil {
+		if kerrors.IsNotFound(err) {
+			// Create the default address object
+			if err = r.KubeLBClient.Create(ctx, currentAddresses); err != nil {
+				log.Error(err, "unable to create addresses")
+				return ctrl.Result{}, err
+			}
+		}
+		return reconcile.Result{}, err
+	}
+
+	// Compare the current state with the desired state
+	if reflect.DeepEqual(addresses.Spec.Addresses, currentAddresses.Spec.Addresses) {
+		log.V(2).Info("addresses are in desired state")
+		return ctrl.Result{}, nil
+	}
+
+	// Update the addresses
+	addresses.Spec.Addresses = currentAddresses.Spec.Addresses
+	if err = r.KubeLBClient.Update(ctx, &addresses); err != nil {
+		log.Error(err, "unable to update addresses")
 		return ctrl.Result{}, err
 	}
 
-	log.V(6).Info("actual", "endpoints", r.Endpoints.ClusterEndpoints)
-	log.V(6).Info("desired", "endpoints", r.Endpoints.GetEndpoints(nodeList))
+	return ctrl.Result{}, nil
+}
 
-	r.Endpoints.ClusterEndpoints = r.Endpoints.GetEndpoints(nodeList)
-	log.V(5).Info("proceeding with", "endpoints", r.Endpoints.ClusterEndpoints)
-
-	// patch endpoints
-	var lbList kubelbiov1alpha1.LoadBalancerList
-	if err = r.KubeLBClient.List(ctx, &lbList); err != nil {
-		log.Error(err, "unable to list LoadBalancer")
-		return ctrl.Result{}, err
-	}
-
-	log.V(6).Info("patching", "LoadBalancers", lbList)
-
-	var endpointAddresses []kubelbiov1alpha1.EndpointAddress
-	for _, endpoint := range r.Endpoints.ClusterEndpoints {
-		endpointAddresses = append(endpointAddresses, kubelbiov1alpha1.EndpointAddress{
+func (r *KubeLBNodeReconciler) GenerateAddresses(nodes *corev1.NodeList) *kubelbiov1alpha1.Addresses {
+	endpoints := r.getEndpoints(nodes)
+	var addresses []kubelbiov1alpha1.EndpointAddress
+	for _, endpoint := range endpoints {
+		addresses = append(addresses, kubelbiov1alpha1.EndpointAddress{
 			IP: endpoint,
 		})
 	}
 
-	for _, lb := range lbList.Items {
-		for _, endpoints := range lb.Spec.Endpoints {
-			endpoints.Addresses = endpointAddresses
-		}
-
-		if err = r.KubeLBClient.Update(ctx, &lb); err != nil {
-			log.Error(err, "unable to update", "LoadBalancer", lb.Name)
-		}
-
-		log.V(2).Info("updated", "LoadBalancer", lb.Name)
-		log.V(7).Info("updated to", "LoadBalancer", lb)
+	return &kubelbiov1alpha1.Addresses{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      kubelbiov1alpha1.DefaultAddressName,
+			Namespace: r.ClusterName,
+		},
+		Spec: kubelbiov1alpha1.AddressesSpec{
+			Addresses: addresses,
+		},
 	}
+}
 
-	return ctrl.Result{}, nil
+func (r *KubeLBNodeReconciler) getEndpoints(nodes *corev1.NodeList) []string {
+	var clusterEndpoints []string
+	for _, node := range nodes.Items {
+		var internalIP string
+		for _, address := range node.Status.Addresses {
+			if address.Type == r.EndpointAddressType {
+				internalIP = address.Address
+			}
+		}
+		clusterEndpoints = append(clusterEndpoints, internalIP)
+	}
+	return clusterEndpoints
 }
 
 func (r *KubeLBNodeReconciler) SetupWithManager(mgr ctrl.Manager) error {

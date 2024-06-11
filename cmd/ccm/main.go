@@ -29,7 +29,6 @@ import (
 
 	kubelbk8ciov1alpha1 "k8c.io/kubelb/api/kubelb.k8c.io/v1alpha1"
 	"k8c.io/kubelb/internal/controllers/ccm"
-	"k8c.io/kubelb/internal/kubelb"
 
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -120,11 +119,6 @@ func main() {
 
 	setupLog.V(1).Info("using endpoint address", "type", endpointAddressType)
 
-	sharedEndpoints := kubelb.Endpoints{
-		ClusterEndpoints:    []string{},
-		EndpointAddressType: endpointAddressType,
-	}
-
 	// setup signal handler
 	ctx := ctrl.SetupSignalHandler()
 
@@ -182,11 +176,12 @@ func main() {
 	}
 
 	if err = (&ccm.KubeLBNodeReconciler{
-		Client:       mgr.GetClient(),
-		Log:          ctrl.Log.WithName("kubelb.node.reconciler"),
-		Scheme:       mgr.GetScheme(),
-		KubeLBClient: kubeLBMgr.GetClient(),
-		Endpoints:    &sharedEndpoints,
+		Client:              mgr.GetClient(),
+		Log:                 ctrl.Log.WithName("kubelb.node.reconciler"),
+		Scheme:              mgr.GetScheme(),
+		KubeLBClient:        kubeLBMgr.GetClient(),
+		EndpointAddressType: endpointAddressType,
+		ClusterName:         clusterName,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "reconciler", "kubelb.node.reconciler")
 		os.Exit(1)
@@ -199,7 +194,6 @@ func main() {
 		Scheme:               mgr.GetScheme(),
 		CloudController:      enableCloudController,
 		UseLoadbalancerClass: useLoadbalancerClass,
-		Endpoints:            &sharedEndpoints,
 		ClusterName:          clusterName,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "reconciler", "kubelb.service.reconciler")
