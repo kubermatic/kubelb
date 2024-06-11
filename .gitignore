@@ -10,3 +10,4 @@ _build
 cover.out
 charts/*/Chart.lock
 kubelb-*.tgz
+__debug*

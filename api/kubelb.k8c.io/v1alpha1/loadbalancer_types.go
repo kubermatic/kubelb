@@ -26,8 +26,6 @@ import (
 // To configure multiple different annotations, you can provide unique suffix e.g. "kubelb.k8c.io/propagate-annotation-1"
 var PropagateAnnotation = "kubelb.k8c.io/propagate-annotation"
 
-// NOTE: json tags are required.  Any new fields you add must have json tags for the fields to be serialized.
-
 // LoadBalancerStatus defines the observed state of LoadBalancer
 type LoadBalancerStatus struct {
 	// LoadBalancer contains the current status of the load-balancer,

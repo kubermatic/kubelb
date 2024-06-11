@@ -23,7 +23,9 @@ import (
 
 	"github.com/go-logr/logr"
 
+	"k8c.io/kubelb/internal/kubelb"
 	kuberneteshelper "k8c.io/kubelb/internal/kubernetes"
+	ingressHelpers "k8c.io/kubelb/internal/resources/ingress"
 	serviceHelpers "k8c.io/kubelb/internal/resources/service"
 
 	corev1 "k8s.io/api/core/v1"
@@ -33,6 +35,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/record"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/builder"
 	ctrlclient "sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
@@ -106,13 +109,37 @@ func (r *IngressReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 
 func (r *IngressReconciler) reconcile(ctx context.Context, log logr.Logger, ingress *networkingv1.Ingress) error {
 	// We need to traverse the Ingress, find all the services associated with it, create/update the corresponding Route in LB cluster.
-	originalServices := r.getServicesFromSource(ingress)
+	originalServices := ingressHelpers.GetServicesFromIngress(*ingress)
 	return reconcileSourceForRoute(ctx, log, r.Client, r.LBClient, ingress, originalServices, nil, r.ClusterName)
 }
 
 func (r *IngressReconciler) cleanup(ctx context.Context, ingress *networkingv1.Ingress) (ctrl.Result, error) {
+	impactedServices := ingressHelpers.GetServicesFromIngress(*ingress)
+	services := corev1.ServiceList{}
+	err := r.List(ctx, &services, ctrlclient.InNamespace(ingress.Namespace), ctrlclient.MatchingLabels{kubelb.LabelAppKubernetesManagedBy: kubelb.LabelControllerName})
+	if err != nil {
+		return reconcile.Result{}, fmt.Errorf("failed to list services: %w", err)
+	}
+
+	// Delete services created by the controller.
+	for _, service := range services.Items {
+		originalName := service.Name
+		if service.Labels[kubelb.LabelOriginName] != "" {
+			originalName = service.Labels[kubelb.LabelOriginName]
+		}
+
+		for _, serviceRef := range impactedServices {
+			if serviceRef.Name == originalName && serviceRef.Namespace == service.Namespace {
+				err := r.Delete(ctx, &service)
+				if err != nil {
+					return reconcile.Result{}, fmt.Errorf("failed to delete service: %w", err)
+				}
+			}
+		}
+	}
+
 	// Find the Route in LB cluster and delete it
-	err := cleanupRoute(ctx, r.LBClient, string(ingress.UID), ingress.Namespace)
+	err = cleanupRoute(ctx, r.LBClient, string(ingress.UID), r.ClusterName)
 	if err != nil {
 		return reconcile.Result{}, fmt.Errorf("failed to cleanup route: %w", err)
 	}
@@ -125,34 +152,11 @@ func (r *IngressReconciler) cleanup(ctx context.Context, ingress *networkingv1.I
 	return reconcile.Result{}, nil
 }
 
-// This method retrieves list of services from the Ingress and normalizes them.
-func (r *IngressReconciler) getServicesFromSource(ingress *networkingv1.Ingress) []types.NamespacedName {
-	serviceReferences := make([]types.NamespacedName, 0)
-	for _, rule := range ingress.Spec.Rules {
-		for _, path := range rule.HTTP.Paths {
-			serviceReferences = append(serviceReferences, types.NamespacedName{
-				Name:      path.Backend.Service.Name,
-				Namespace: ingress.Namespace,
-			})
-		}
-	}
-
-	if ingress.Spec.DefaultBackend != nil && ingress.Spec.DefaultBackend.Service != nil {
-		serviceReferences = append(serviceReferences, types.NamespacedName{
-			Name:      ingress.Spec.DefaultBackend.Service.Name,
-			Namespace: ingress.Namespace,
-		})
-	}
-	return serviceReferences
-}
-
 // enqueueIngresses is a handler.MapFunc to be used to enqeue requests for reconciliation
 // for Ingresses against the corresponding service.
 func (r *IngressReconciler) enqueueIngresses() handler.MapFunc {
 	return func(_ context.Context, o ctrlclient.Object) []ctrl.Request {
 		result := []reconcile.Request{}
-
-		// TODO: We should use field indexers here to avoid listing all services
 		ingressList := &networkingv1.IngressList{}
 		if err := r.List(context.Background(), ingressList, ctrlclient.InNamespace(o.GetNamespace())); err != nil {
 			return nil
@@ -163,7 +167,7 @@ func (r *IngressReconciler) enqueueIngresses() handler.MapFunc {
 				continue
 			}
 
-			services := r.getServicesFromSource(&ingress)
+			services := ingressHelpers.GetServicesFromIngress(ingress)
 			for _, serviceRef := range services {
 				if (serviceRef.Name == o.GetName() || fmt.Sprintf(serviceHelpers.NodePortServicePattern, serviceRef.Name) == o.GetName()) && serviceRef.Namespace == o.GetNamespace() {
 					result = append(result, reconcile.Request{
@@ -222,8 +226,7 @@ func (r *IngressReconciler) shouldReconcile(ingress *networkingv1.Ingress) bool 
 
 func (r *IngressReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&networkingv1.Ingress{}).
-		WithEventFilter(r.ingressFilter()).
+		For(&networkingv1.Ingress{}, builder.WithPredicates(r.ingressFilter())).
 		Watches(
 			&corev1.Service{},
 			handler.EnqueueRequestsFromMapFunc(r.enqueueIngresses()),

@@ -23,7 +23,7 @@ import (
 
 	"github.com/go-logr/logr"
 
-	kubelbk8ciov1alpha1 "k8c.io/kubelb/api/kubelb.k8c.io/v1alpha1"
+	kubelbv1alpha1 "k8c.io/kubelb/api/kubelb.k8c.io/v1alpha1"
 	"k8c.io/kubelb/internal/kubelb"
 
 	corev1 "k8s.io/api/core/v1"
@@ -45,8 +45,8 @@ func CreateRouteForResource(ctx context.Context, _ logr.Logger, client ctrlclien
 	return CreateUpdateRoute(ctx, client, generateRoute)
 }
 
-func GenerateRoute(resource unstructured.Unstructured, resources Subresources, namespace string) kubelbk8ciov1alpha1.Route {
-	return kubelbk8ciov1alpha1.Route{
+func GenerateRoute(resource unstructured.Unstructured, resources Subresources, namespace string) kubelbv1alpha1.Route {
+	return kubelbv1alpha1.Route{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      string(resource.GetUID()),
 			Namespace: namespace,
@@ -57,29 +57,29 @@ func GenerateRoute(resource unstructured.Unstructured, resources Subresources, n
 				kubelb.LabelManagedBy:          kubelb.LabelControllerName,
 			},
 		},
-		Spec: kubelbk8ciov1alpha1.RouteSpec{
+		Spec: kubelbv1alpha1.RouteSpec{
 			// TODO(waleed): Once we have everything in place, figure out how this should look like.
-			Endpoints: []kubelbk8ciov1alpha1.LoadBalancerEndpoints{
+			Endpoints: []kubelbv1alpha1.LoadBalancerEndpoints{
 				{
 					Name: "default",
 					AddressesReference: &corev1.ObjectReference{
-						Name: kubelbk8ciov1alpha1.DefaultAddressName,
+						Name: kubelbv1alpha1.DefaultAddressName,
 					},
 				},
 			},
-			Source: kubelbk8ciov1alpha1.RouteSource{
-				Kubernetes: &kubelbk8ciov1alpha1.KubernetesSource{
+			Source: kubelbv1alpha1.RouteSource{
+				Kubernetes: &kubelbv1alpha1.KubernetesSource{
 					Route:           resource,
-					Services:        kubelbk8ciov1alpha1.ConvertServicesToUpstreamServices(resources.Services),
-					ReferenceGrants: kubelbk8ciov1alpha1.ConvertReferenceGrantsToUpstreamReferenceGrants(resources.ReferenceGrants),
+					Services:        kubelbv1alpha1.ConvertServicesToUpstreamServices(resources.Services),
+					ReferenceGrants: kubelbv1alpha1.ConvertReferenceGrantsToUpstreamReferenceGrants(resources.ReferenceGrants),
 				},
 			},
 		},
 	}
 }
 
-func CreateUpdateRoute(ctx context.Context, client ctrlclient.Client, route kubelbk8ciov1alpha1.Route) error {
-	existingRoute := kubelbk8ciov1alpha1.Route{}
+func CreateUpdateRoute(ctx context.Context, client ctrlclient.Client, route kubelbv1alpha1.Route) error {
+	existingRoute := kubelbv1alpha1.Route{}
 	err := client.Get(ctx, types.NamespacedName{Name: route.Name, Namespace: route.Namespace}, &existingRoute)
 	if err != nil && !errors.IsNotFound(err) {
 		return fmt.Errorf("failed to get Route from LB cluster: %w", err)

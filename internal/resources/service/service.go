@@ -28,6 +28,7 @@ import (
 	kerrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/apimachinery/pkg/util/intstr"
 	ctrl "sigs.k8s.io/controller-runtime"
 	ctrlclient "sigs.k8s.io/controller-runtime/pkg/client"
 )
@@ -75,6 +76,7 @@ func NormalizeAndReplicateServices(ctx context.Context, log logr.Logger, client 
 			}
 			service.Labels[kubelb.LabelOriginNamespace] = service.Namespace
 			service.Labels[kubelb.LabelOriginName] = service.Name
+			service.Labels[kubelb.LabelManagedBy] = kubelb.LabelControllerName
 
 			service.Name = fmt.Sprintf(NodePortServicePattern, service.Name)
 			servicesToCreateUpdate = append(servicesToCreateUpdate, *service)
@@ -104,6 +106,41 @@ func NormalizeAndReplicateServices(ctx context.Context, log logr.Logger, client 
 	}
 
 	return services, nil
+}
+
+func GenerateServiceForLBCluster(service corev1.Service, appName, namespace string) corev1.Service {
+	service.Name = kubelb.GenerateName(false, string(service.UID), GetServiceName(service), service.Namespace)
+	service.Namespace = namespace
+	service.UID = ""
+	if service.Spec.Type == corev1.ServiceTypeNodePort {
+		service.Spec.Type = corev1.ServiceTypeClusterIP
+	}
+
+	// Use the nodePort(s) assigned as the targetPort for the new service. This is required to route traffic back to the actual service.
+	for i, port := range service.Spec.Ports {
+		// TODO for `Global` topology, we need to allocate a port from the global port pool.
+		// Maybe it makes sense to always use arbitrary port here for the mapping since global port allocator is not aware that an entry for this port exists, can cause conflicts.
+		port.TargetPort = intstr.FromInt(int(port.NodePort))
+		port.NodePort = 0
+		service.Spec.Ports[i] = port
+	}
+
+	// Replace the selector with the envoy proxy selector.
+	service.Spec.Selector = map[string]string{
+		kubelb.LabelAppKubernetesName: appName,
+	}
+
+	return service
+}
+
+func GetServiceName(service corev1.Service) string {
+	name := service.Name
+	if labels := service.Labels; labels != nil {
+		if _, ok := labels[kubelb.LabelOriginName]; ok {
+			name = service.Labels[kubelb.LabelOriginName]
+		}
+	}
+	return name
 }
 
 func cleanseService(svc corev1.Service, removeUID, removeClusterSpecificFields bool) *corev1.Service {

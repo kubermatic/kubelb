@@ -22,7 +22,7 @@ import (
 
 	"github.com/go-logr/logr"
 
-	kubelbk8ciov1alpha1 "k8c.io/kubelb/api/kubelb.k8c.io/v1alpha1"
+	kubelbv1alpha1 "k8c.io/kubelb/api/kubelb.k8c.io/v1alpha1"
 	"k8c.io/kubelb/internal/resources/route"
 	serviceHelpers "k8c.io/kubelb/internal/resources/service"
 	"k8c.io/kubelb/internal/resources/unstructured"
@@ -40,7 +40,7 @@ const (
 func reconcileSourceForRoute(ctx context.Context, log logr.Logger, client ctrlclient.Client, lbClient ctrlclient.Client, resource ctrlclient.Object, originalServices []types.NamespacedName, referenceGrants []gwapiv1a2.ReferenceGrant, namespace string) error {
 	log.V(2).Info("reconciling source for producing route")
 
-	unstructuredResource, err := unstructured.ConverObjectToUnstructured(resource)
+	unstructuredResource, err := unstructured.ConvertObjectToUnstructured(resource)
 	if err != nil {
 		return fmt.Errorf("failed to convert Ingress to unstructured: %w", err)
 	}
@@ -65,7 +65,7 @@ func reconcileSourceForRoute(ctx context.Context, log logr.Logger, client ctrlcl
 
 func cleanupRoute(ctx context.Context, client ctrlclient.Client, resourceUID string, namespace string) error {
 	// Find the Route in LB cluster and delete it
-	route := kubelbk8ciov1alpha1.Route{}
+	route := kubelbv1alpha1.Route{}
 	err := client.Get(ctx, types.NamespacedName{Name: resourceUID, Namespace: namespace}, &route)
 	if err != nil {
 		if !errors.IsNotFound(err) {

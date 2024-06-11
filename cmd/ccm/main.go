@@ -27,7 +27,7 @@ import (
 
 	"go.uber.org/zap/zapcore"
 
-	kubelbk8ciov1alpha1 "k8c.io/kubelb/api/kubelb.k8c.io/v1alpha1"
+	kubelbv1alpha1 "k8c.io/kubelb/api/kubelb.k8c.io/v1alpha1"
 	"k8c.io/kubelb/internal/controllers/ccm"
 
 	corev1 "k8s.io/api/core/v1"
@@ -56,7 +56,7 @@ var (
 
 func init() {
 	utilruntime.Must(clientgoscheme.AddToScheme(scheme))
-	utilruntime.Must(kubelbk8ciov1alpha1.AddToScheme(scheme))
+	utilruntime.Must(kubelbv1alpha1.AddToScheme(scheme))
 	utilruntime.Must(gwapiv1a2.Install(scheme))
 	utilruntime.Must(gwapiv1.Install(scheme))
 
@@ -92,6 +92,14 @@ func main() {
 	flag.BoolVar(&enableCloudController, "enable-cloud-provider", true, "Enables cloud controller like behavior. This will set the status of LoadBalancer")
 	flag.BoolVar(&useIngressClass, "use-ingress-class", true, "Use IngressClass `kubelb` to filter Ingress objects. Ingresses should have `ingressClassName: kubelb` set in the spec.")
 	flag.BoolVar(&useLoadbalancerClass, "use-loadbalancer-class", false, "Use LoadBalancerClass `kubelb` to filter services. If false, all load balancer services will be managed by KubeLB.")
+
+	// TODO: Delete this
+	leaderElectionNamespace = "kube-system"
+	enableLeaderElection = false
+	clusterName = "tenant-xyz"
+	useIngressClass = false
+	kubeLbKubeconf = "/Users/waleedmalik/.kube/kubelb-manager"
+	probeAddr = ":8090"
 
 	opts := zap.Options{
 		Development: false,
@@ -139,12 +147,12 @@ func main() {
 		Scheme: scheme,
 		Cache: cache.Options{
 			ByObject: map[client.Object]cache.ByObject{
-				&kubelbk8ciov1alpha1.LoadBalancer{}: {
+				&kubelbv1alpha1.LoadBalancer{}: {
 					Namespaces: map[string]cache.Config{
 						clusterName: {},
 					},
 				},
-				&kubelbk8ciov1alpha1.Route{}: {
+				&kubelbv1alpha1.Route{}: {
 					Namespaces: map[string]cache.Config{
 						clusterName: {},
 					},
