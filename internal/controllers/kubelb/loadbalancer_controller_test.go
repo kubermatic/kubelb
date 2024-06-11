@@ -26,7 +26,7 @@ import (
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 
-	kubelbk8ciov1alpha1 "k8c.io/kubelb/api/kubelb.k8c.io/v1alpha1"
+	kubelbv1alpha1 "k8c.io/kubelb/api/kubelb.k8c.io/v1alpha1"
 	envoycp "k8c.io/kubelb/internal/envoy"
 	"k8c.io/kubelb/internal/kubelb"
 
@@ -143,7 +143,7 @@ var _ = Describe("Lb deployment and service creation", func() {
 
 		Context(fmt.Sprintf("When updating an existing LoadBalancers Ports with %v topology", t.topology), func() {
 			It("Should update the load balancer service and envoy snapshot", func() {
-				existingLb := &kubelbk8ciov1alpha1.LoadBalancer{}
+				existingLb := &kubelbv1alpha1.LoadBalancer{}
 
 				Eventually(func() error {
 					return k8sClient.Get(ctx, lbLookupKey, existingLb)
@@ -155,12 +155,12 @@ var _ = Describe("Lb deployment and service creation", func() {
 				existingLb.Spec.Ports[0].Name = "port-a"
 				existingLb.Spec.Endpoints[0].Ports[0].Name = "port-a"
 
-				existingLb.Spec.Ports = append(existingLb.Spec.Ports, kubelbk8ciov1alpha1.LoadBalancerPort{
+				existingLb.Spec.Ports = append(existingLb.Spec.Ports, kubelbv1alpha1.LoadBalancerPort{
 					Name: "port-b",
 					Port: 81,
 				})
 
-				existingLb.Spec.Endpoints[0].Ports = append(existingLb.Spec.Endpoints[0].Ports, kubelbk8ciov1alpha1.EndpointPort{
+				existingLb.Spec.Endpoints[0].Ports = append(existingLb.Spec.Endpoints[0].Ports, kubelbv1alpha1.EndpointPort{
 					Name: "port-b",
 					Port: 8081,
 				})
@@ -280,6 +280,6 @@ var _ = Describe("Lb deployment and service creation", func() {
 	}
 })
 
-func getLoadBalancerList(lb kubelbk8ciov1alpha1.LoadBalancer) []kubelbk8ciov1alpha1.LoadBalancer {
-	return []kubelbk8ciov1alpha1.LoadBalancer{lb}
+func getLoadBalancerList(lb kubelbv1alpha1.LoadBalancer) []kubelbv1alpha1.LoadBalancer {
+	return []kubelbv1alpha1.LoadBalancer{lb}
 }

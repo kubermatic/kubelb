@@ -22,7 +22,7 @@ import (
 
 	"go.uber.org/zap/zapcore"
 
-	kubelbk8ciov1alpha1 "k8c.io/kubelb/api/kubelb.k8c.io/v1alpha1"
+	kubelbv1alpha1 "k8c.io/kubelb/api/kubelb.k8c.io/v1alpha1"
 	"k8c.io/kubelb/internal/config"
 	"k8c.io/kubelb/internal/controllers/kubelb"
 	"k8c.io/kubelb/internal/envoy"
@@ -55,7 +55,7 @@ var (
 
 func init() {
 	utilruntime.Must(clientgoscheme.AddToScheme(scheme))
-	utilruntime.Must(kubelbk8ciov1alpha1.AddToScheme(scheme))
+	utilruntime.Must(kubelbv1alpha1.AddToScheme(scheme))
 	// +kubebuilder:scaffold:scheme
 }
 
@@ -69,6 +69,9 @@ func main() {
 		"Enable leader election for controller kubelb. Enabling this will ensure there is only one active controller kubelb.")
 	flag.BoolVar(&opt.enableDebugMode, "debug", false, "Enables debug mode")
 	flag.StringVar(&opt.namespace, "namespace", "", "The namespace where the controller will run.")
+
+	// TODO: Delete this
+	opt.namespace = "kubelb"
 
 	if len(opt.namespace) == 0 {
 		// Retrieve controller namespace
@@ -172,6 +175,17 @@ func main() {
 		PortAllocator:      portAllocator,
 	}).SetupWithManager(ctx, envoyMgr); err != nil {
 		setupLog.Error(err, "unable to create envoy control-plane controller", "controller", "LoadBalancer")
+		os.Exit(1)
+	}
+
+	if err = (&kubelb.RouteReconciler{
+		Client:             mgr.GetClient(),
+		Scheme:             mgr.GetScheme(),
+		Log:                ctrl.Log.WithName("controllers").WithName(kubelb.RouteControllerName),
+		Recorder:           mgr.GetEventRecorderFor(kubelb.RouteControllerName),
+		EnvoyProxyTopology: kubelb.EnvoyProxyTopology(config.GetEnvoyProxyTopology()),
+	}).SetupWithManager(mgr); err != nil {
+		setupLog.Error(err, "unable to create controller", "controller", kubelb.RouteControllerName)
 		os.Exit(1)
 	}
 

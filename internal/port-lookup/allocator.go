@@ -22,7 +22,7 @@ import (
 	"math/rand"
 	"sync"
 
-	kubelbk8ciov1alpha1 "k8c.io/kubelb/api/kubelb.k8c.io/v1alpha1"
+	kubelbv1alpha1 "k8c.io/kubelb/api/kubelb.k8c.io/v1alpha1"
 	"k8c.io/kubelb/internal/kubelb"
 
 	"k8s.io/utils/strings/slices"
@@ -151,7 +151,7 @@ func (pa *PortAllocator) LoadState(ctx context.Context, apiReader client.Reader)
 	lookupTable := make(LookupTable)
 
 	// We use the API reader here because the cache may not be fully synced yet.
-	loadBalancers := &kubelbk8ciov1alpha1.LoadBalancerList{}
+	loadBalancers := &kubelbv1alpha1.LoadBalancerList{}
 	err := apiReader.List(ctx, loadBalancers)
 	if err != nil {
 		return err

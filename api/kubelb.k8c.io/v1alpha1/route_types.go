@@ -20,6 +20,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	runtime "k8s.io/apimachinery/pkg/runtime"
 	gwapiv1a2 "sigs.k8s.io/gateway-api/apis/v1alpha2"
 )
 
@@ -104,6 +105,47 @@ type Route struct {
 
 // RouteStatus defines the observed state of the Route.
 type RouteStatus struct {
+	// Resources contains the list of resources that are created/processed as a result of the Route.
+	Resources RouteResourceStatus `json:"resources,omitempty"`
+}
+
+type RouteResourceStatus struct {
+	Source string `json:"source,omitempty"`
+
+	Services map[string]ResourceStatus `json:"services,omitempty"`
+
+	ReferenceGrants map[string]ResourceStatus `json:"referenceGrants,omitempty"`
+
+	Route ResourceStatus `json:"route,omitempty"`
+}
+
+type ResourceStatus struct {
+	// APIVersion is the API version of the resource.
+	APIVersion string `json:"apiVersion,omitempty"`
+
+	// Kind is the kind of the resource.
+	Kind string `json:"kind,omitempty"`
+
+	// Name is the name of the resource.
+	Name string `json:"name,omitempty"`
+
+	// Namespace is the namespace of the resource.
+	Namespace string `json:"namespace,omitempty"`
+
+	// Status is the actual status of the resource.
+	Status runtime.RawExtension `json:"status,omitempty"`
+
+	Conditions []metav1.Condition `json:"conditions,omitempty"`
+}
+
+type ConditionType string
+
+const (
+	ConditionResourceAppliedSuccessfully ConditionType = "ResourceAppliedSuccessfully"
+)
+
+func (t ConditionType) String() string {
+	return string(t)
 }
 
 //+kubebuilder:object:root=true

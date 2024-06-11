@@ -22,7 +22,7 @@ import (
 	"reflect"
 	"strings"
 
-	kubelbk8ciov1alpha1 "k8c.io/kubelb/api/kubelb.k8c.io/v1alpha1"
+	kubelbv1alpha1 "k8c.io/kubelb/api/kubelb.k8c.io/v1alpha1"
 	"k8c.io/kubelb/internal/config"
 	utils "k8c.io/kubelb/internal/controllers"
 	"k8c.io/kubelb/internal/kubelb"
@@ -54,7 +54,7 @@ const (
 	envoyResourcePattern              = "envoy-%s"
 	envoyGlobalTopologyServicePattern = "envoy-%s-%s"
 	envoyProxyCleanupFinalizer        = "kubelb.k8c.io/cleanup-envoy-proxy"
-	envoyGlobalCache                  = "global"
+	EnvoyGlobalCache                  = "global"
 )
 
 type EnvoyProxyTopology string
@@ -94,7 +94,7 @@ func (r *LoadBalancerReconciler) Reconcile(ctx context.Context, req ctrl.Request
 
 	log.V(2).Info("reconciling LoadBalancer")
 
-	var loadBalancer kubelbk8ciov1alpha1.LoadBalancer
+	var loadBalancer kubelbv1alpha1.LoadBalancer
 	err := r.Get(ctx, req.NamespacedName, &loadBalancer)
 	if err != nil {
 		if ctrlruntimeclient.IgnoreNotFound(err) != nil {
@@ -115,7 +115,7 @@ func (r *LoadBalancerReconciler) Reconcile(ctx context.Context, req ctrl.Request
 	// In case of shared envoy proxy topology, we need to fetch all load balancers. Otherwise, we only need to fetch the current one.
 	// To keep things generic, we always propagate a list of load balancers here.
 	var (
-		loadBalancers     kubelbk8ciov1alpha1.LoadBalancerList
+		loadBalancers     kubelbv1alpha1.LoadBalancerList
 		appName           string
 		resourceNamespace string
 	)
@@ -137,10 +137,10 @@ func (r *LoadBalancerReconciler) Reconcile(ctx context.Context, req ctrl.Request
 			log.Error(err, "unable to fetch LoadBalancer list")
 			return ctrl.Result{}, err
 		}
-		appName = envoyGlobalCache
+		appName = EnvoyGlobalCache
 		resourceNamespace = r.Namespace
 	case EnvoyProxyTopologyDedicated:
-		loadBalancers.Items = []kubelbk8ciov1alpha1.LoadBalancer{loadBalancer}
+		loadBalancers.Items = []kubelbv1alpha1.LoadBalancer{loadBalancer}
 		appName = loadBalancer.Name
 		resourceNamespace = req.Namespace
 	}
@@ -250,7 +250,7 @@ func (r *LoadBalancerReconciler) reconcileEnvoyProxy(ctx context.Context, namesp
 	return nil
 }
 
-func (r *LoadBalancerReconciler) reconcileService(ctx context.Context, loadBalancer *kubelbk8ciov1alpha1.LoadBalancer, appName, namespace string, portAllocator *portlookup.PortAllocator) error {
+func (r *LoadBalancerReconciler) reconcileService(ctx context.Context, loadBalancer *kubelbv1alpha1.LoadBalancer, appName, namespace string, portAllocator *portlookup.PortAllocator) error {
 	log := ctrl.LoggerFrom(ctx).WithValues("reconcile", "service")
 
 	log.V(2).Info("verify service")
@@ -350,10 +350,10 @@ func (r *LoadBalancerReconciler) reconcileService(ctx context.Context, loadBalan
 	// Status changes
 	log.V(5).Info("load balancer status", "LoadBalancer", loadBalancer.Status.LoadBalancer.Ingress, "service", service.Status.LoadBalancer.Ingress)
 
-	updatedPorts := []kubelbk8ciov1alpha1.ServicePort{}
+	updatedPorts := []kubelbv1alpha1.ServicePort{}
 	for i, port := range service.Spec.Ports {
 		targetPort := loadBalancer.Spec.Endpoints[0].Ports[i].Port
-		updatedPorts = append(updatedPorts, kubelbk8ciov1alpha1.ServicePort{
+		updatedPorts = append(updatedPorts, kubelbv1alpha1.ServicePort{
 			ServicePort: port,
 			// In case of global topology, this will be different from the targetPort. Otherwise it will be the same.
 			UpstreamTargetPort: targetPort,
@@ -362,8 +362,8 @@ func (r *LoadBalancerReconciler) reconcileService(ctx context.Context, loadBalan
 
 	// Update status if needed
 	updateStatus := false
-	updatedLoadBalanacerStatus := kubelbk8ciov1alpha1.LoadBalancerStatus{
-		Service: kubelbk8ciov1alpha1.ServiceStatus{
+	updatedLoadBalanacerStatus := kubelbv1alpha1.LoadBalancerStatus{
+		Service: kubelbv1alpha1.ServiceStatus{
 			Ports: updatedPorts,
 		},
 		LoadBalancer: service.Status.LoadBalancer,
@@ -387,7 +387,7 @@ func (r *LoadBalancerReconciler) reconcileService(ctx context.Context, loadBalan
 	log.V(3).Info("updating LoadBalancer status", "name", loadBalancer.Name, "namespace", loadBalancer.Namespace)
 
 	return retry.RetryOnConflict(retry.DefaultRetry, func() error {
-		lb := &kubelbk8ciov1alpha1.LoadBalancer{}
+		lb := &kubelbv1alpha1.LoadBalancer{}
 		if err := r.Get(ctx, types.NamespacedName{Name: loadBalancer.Name, Namespace: loadBalancer.Namespace}, lb); err != nil {
 			return err
 		}
@@ -401,7 +401,7 @@ func (r *LoadBalancerReconciler) reconcileService(ctx context.Context, loadBalan
 	})
 }
 
-func (r *LoadBalancerReconciler) handleEnvoyProxyCleanup(ctx context.Context, lb kubelbk8ciov1alpha1.LoadBalancer, lbCount int, appName, resourceNamespace string) error {
+func (r *LoadBalancerReconciler) handleEnvoyProxyCleanup(ctx context.Context, lb kubelbv1alpha1.LoadBalancer, lbCount int, appName, resourceNamespace string) error {
 	log := ctrl.LoggerFrom(ctx).WithValues("cleanup", "LoadBalancer")
 
 	log.V(2).Info("Cleaning up LoadBalancer", "name", lb.Name, "namespace", lb.Namespace)
@@ -467,10 +467,10 @@ func (r *LoadBalancerReconciler) handleEnvoyProxyCleanup(ctx context.Context, lb
 
 func (r *LoadBalancerReconciler) SetupWithManager(ctx context.Context, mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&kubelbk8ciov1alpha1.LoadBalancer{}).
+		For(&kubelbv1alpha1.LoadBalancer{}).
 		WithEventFilter(utils.ByLabelExistsOnNamespace(ctx, mgr.GetClient())).
 		Watches(
-			&kubelbk8ciov1alpha1.Config{},
+			&kubelbv1alpha1.Config{},
 			handler.EnqueueRequestsFromMapFunc(r.enqueueLoadBalancersForConfig()),
 			builder.WithPredicates(filterServicesPredicate()),
 		).
@@ -602,7 +602,7 @@ func propagateAnnotations(permitted map[string]string, loadbalancer map[string]s
 	a := make(map[string]string)
 	permittedMap := make(map[string][]string)
 	for k, v := range permitted {
-		if strings.HasPrefix(k, kubelbk8ciov1alpha1.PropagateAnnotation) {
+		if strings.HasPrefix(k, kubelbv1alpha1.PropagateAnnotation) {
 			filter := strings.SplitN(k, "=", 2)
 			if len(filter) <= 1 {
 				permittedMap[v] = []string{}
@@ -651,7 +651,7 @@ func (r *LoadBalancerReconciler) enqueueLoadBalancersForConfig() handler.MapFunc
 		result := []reconcile.Request{}
 
 		// Reload the Config for the controller.
-		conf := &kubelbk8ciov1alpha1.Config{}
+		conf := &kubelbv1alpha1.Config{}
 		err := r.Get(ctx, types.NamespacedName{Name: config.DefaultConfigResourceName, Namespace: r.Namespace}, conf)
 		if err != nil {
 			return result
@@ -659,7 +659,7 @@ func (r *LoadBalancerReconciler) enqueueLoadBalancersForConfig() handler.MapFunc
 		config.SetConfig(*conf)
 
 		// List all loadbalancers. We don't care about the namespace here.
-		loadBalancers := &kubelbk8ciov1alpha1.LoadBalancerList{}
+		loadBalancers := &kubelbv1alpha1.LoadBalancerList{}
 		err = r.List(ctx, loadBalancers)
 		if err != nil {
 			return result

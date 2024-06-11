@@ -1102,6 +1102,11 @@ spec:
                       If set to true, Replicas will be ignored.
                     type: boolean
                 type: object
+              ingressClassName:
+                description: |-
+                  IngressClassName is the name of the IngressClass that will be used for the routes created by KubeLB. If not specified, KubeLB will replace the IngressClassName
+                  with an empty value in the Ingress resource which would result in the default IngressClass being used.
+                type: string
               propagateAllAnnotations:
                 description: PropagateAllAnnotations defines whether all annotations
                   will be propagated to the LoadBalancer service. If set to true,

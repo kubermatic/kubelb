@@ -16,6 +16,10 @@ limitations under the License.
 
 package kubelb
 
+import (
+	"fmt"
+)
+
 // TODO(waleed): Rename to origin-namespace
 const LabelOriginNamespace = "kubelb.k8c.io/origin-ns"
 const LabelOriginName = "kubelb.k8c.io/origin-name"
@@ -37,3 +41,20 @@ const LabelAppKubernetesManagedBy = "app.kubernetes.io/managed-by" // helm
 const EnvoyResourceIdentifierPattern = "%s-%s-ep-%d-port-%d-%s"
 const EnvoyEndpointPattern = "%s-%s-ep-%d"
 const EnvoyListenerPattern = "%d-%s"
+
+const NameSuffixLength = 4
+
+func GenerateName(useUID bool, uid, name, namespace string) string {
+	if useUID {
+		return uid
+	}
+
+	output := fmt.Sprintf("%s-%s", namespace, name)
+	// If the output is longer than 63 characters, truncate the name and append a suffix
+	if len(output)+NameSuffixLength+1 > 63 {
+		output = output[:len(output)-NameSuffixLength+1]
+		output = fmt.Sprintf("%s-%s", output, uid[len(uid)-NameSuffixLength:])
+	}
+
+	return output
+}

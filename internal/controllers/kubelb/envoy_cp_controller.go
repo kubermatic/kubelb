@@ -23,7 +23,7 @@ import (
 	envoycachev3 "github.com/envoyproxy/go-control-plane/pkg/cache/v3"
 	envoyresource "github.com/envoyproxy/go-control-plane/pkg/resource/v3"
 
-	kubelbk8ciov1alpha1 "k8c.io/kubelb/api/kubelb.k8c.io/v1alpha1"
+	kubelbv1alpha1 "k8c.io/kubelb/api/kubelb.k8c.io/v1alpha1"
 	utils "k8c.io/kubelb/internal/controllers"
 	envoycp "k8c.io/kubelb/internal/envoy"
 	portlookup "k8c.io/kubelb/internal/port-lookup"
@@ -51,7 +51,7 @@ func (r *EnvoyCPReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 }
 
 func (r *EnvoyCPReconciler) reconcile(ctx context.Context, req ctrl.Request) error {
-	var lb kubelbk8ciov1alpha1.LoadBalancer
+	var lb kubelbv1alpha1.LoadBalancer
 	err := r.Get(ctx, req.NamespacedName, &lb)
 	if err != nil && !apierrors.IsNotFound(err) {
 		return err
@@ -64,7 +64,7 @@ func (r *EnvoyCPReconciler) reconcile(ctx context.Context, req ctrl.Request) err
 			r.EnvoyCache.ClearSnapshot(snapshotName)
 			return nil
 		}
-		return r.updateCache(ctx, snapshotName, []kubelbk8ciov1alpha1.LoadBalancer{lb})
+		return r.updateCache(ctx, snapshotName, []kubelbv1alpha1.LoadBalancer{lb})
 	case EnvoyProxyTopologyShared:
 		lbs, err := r.listLBs(ctx, client.InNamespace(lb.Namespace))
 		if err != nil {
@@ -86,7 +86,7 @@ func (r *EnvoyCPReconciler) reconcile(ctx context.Context, req ctrl.Request) err
 		}
 
 		// For Global topology, we need to ensure that an arbitrary port has been assigned to the endpoint ports of the LoadBalancer.
-		lbList := kubelbk8ciov1alpha1.LoadBalancerList{
+		lbList := kubelbv1alpha1.LoadBalancerList{
 			Items: lbs,
 		}
 		if err := r.PortAllocator.AllocatePortsForLoadBalancers(lbList); err != nil {
@@ -98,7 +98,7 @@ func (r *EnvoyCPReconciler) reconcile(ctx context.Context, req ctrl.Request) err
 	return fmt.Errorf("unknown envoy proxy topology: %v", r.EnvoyProxyTopology)
 }
 
-func (r *EnvoyCPReconciler) updateCache(ctx context.Context, snapshotName string, lbs []kubelbk8ciov1alpha1.LoadBalancer) error {
+func (r *EnvoyCPReconciler) updateCache(ctx context.Context, snapshotName string, lbs []kubelbv1alpha1.LoadBalancer) error {
 	log := ctrl.LoggerFrom(ctx)
 	currentSnapshot, err := r.EnvoyCache.GetSnapshot(snapshotName)
 	if err != nil {
@@ -135,8 +135,8 @@ func (r *EnvoyCPReconciler) updateCache(ctx context.Context, snapshotName string
 	return nil
 }
 
-func (r *EnvoyCPReconciler) listLBs(ctx context.Context, options ...client.ListOption) (lbs []kubelbk8ciov1alpha1.LoadBalancer, err error) {
-	var list kubelbk8ciov1alpha1.LoadBalancerList
+func (r *EnvoyCPReconciler) listLBs(ctx context.Context, options ...client.ListOption) (lbs []kubelbv1alpha1.LoadBalancer, err error) {
+	var list kubelbv1alpha1.LoadBalancerList
 	err = r.List(ctx, &list, options...)
 	if err != nil {
 		return
@@ -156,14 +156,14 @@ func envoySnapshotName(topology EnvoyProxyTopology, req ctrl.Request) string {
 	case EnvoyProxyTopologyDedicated:
 		return fmt.Sprintf("%s-%s", req.Namespace, req.Name)
 	case EnvoyProxyTopologyGlobal:
-		return envoyGlobalCache
+		return EnvoyGlobalCache
 	}
 	return ""
 }
 
 func (r *EnvoyCPReconciler) SetupWithManager(ctx context.Context, mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&kubelbk8ciov1alpha1.LoadBalancer{}).
+		For(&kubelbv1alpha1.LoadBalancer{}).
 		WithEventFilter(utils.ByLabelExistsOnNamespace(ctx, mgr.GetClient())).
 		Complete(r)
 }
