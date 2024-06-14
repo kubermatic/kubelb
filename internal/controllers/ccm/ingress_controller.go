@@ -19,7 +19,6 @@ package ccm
 import (
 	"context"
 	"fmt"
-	"reflect"
 
 	"github.com/go-logr/logr"
 
@@ -116,7 +115,7 @@ func (r *IngressReconciler) reconcile(ctx context.Context, log logr.Logger, ingr
 func (r *IngressReconciler) cleanup(ctx context.Context, ingress *networkingv1.Ingress) (ctrl.Result, error) {
 	impactedServices := ingressHelpers.GetServicesFromIngress(*ingress)
 	services := corev1.ServiceList{}
-	err := r.List(ctx, &services, ctrlclient.InNamespace(ingress.Namespace), ctrlclient.MatchingLabels{kubelb.LabelAppKubernetesManagedBy: kubelb.LabelControllerName})
+	err := r.List(ctx, &services, ctrlclient.InNamespace(ingress.Namespace), ctrlclient.MatchingLabels{kubelb.LabelManagedBy: kubelb.LabelControllerName})
 	if err != nil {
 		return reconcile.Result{}, fmt.Errorf("failed to list services: %w", err)
 	}
@@ -196,9 +195,7 @@ func (r *IngressReconciler) ingressFilter() predicate.Predicate {
 				if !r.shouldReconcile(ingress) {
 					return false
 				}
-				oldIngress, _ := e.ObjectOld.(*networkingv1.Ingress)
-				return !reflect.DeepEqual(ingress.Spec, oldIngress.Spec) || !reflect.DeepEqual(ingress.Labels, oldIngress.Labels) ||
-					!reflect.DeepEqual(ingress.Annotations, oldIngress.Annotations)
+				return e.ObjectOld.GetResourceVersion() != e.ObjectNew.GetResourceVersion()
 			}
 			return false
 		},

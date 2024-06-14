@@ -191,7 +191,8 @@ func (r *RouteReconciler) cleanupOrphanedServices(ctx context.Context, log logr.
 	// Get all the services based on route.
 	desiredServices := map[string]bool{}
 	for _, service := range route.Spec.Source.Kubernetes.Services {
-		desiredServices[service.Namespace+"/"+service.Name] = true
+		name := serviceHelpers.GetServiceName(service.Service)
+		desiredServices[service.Namespace+"/"+name] = true
 	}
 
 	if route.Status.Resources.Services == nil {
@@ -375,6 +376,7 @@ func updateResourceStatus(routeStatus *kubelbv1alpha1.RouteStatus, obj client.Ob
 		if resource.Labels[kubelb.LabelOriginName] != "" {
 			svcName = resource.Labels[kubelb.LabelOriginName]
 		}
+
 		status.Name = svcName
 		status.Status = runtime.RawExtension{
 			Raw: resourceStatus,

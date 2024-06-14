@@ -150,7 +150,6 @@ func main() {
 		Client:             mgr.GetClient(),
 		Cache:              mgr.GetCache(),
 		Scheme:             mgr.GetScheme(),
-		EnvoyBootstrap:     envoyServer.GenerateBootstrap(),
 		Namespace:          opt.namespace,
 		EnvoyProxyTopology: kubelb.EnvoyProxyTopology(config.GetEnvoyProxyTopology()),
 		PortAllocator:      portAllocator,
@@ -173,6 +172,8 @@ func main() {
 		EnvoyCache:         envoyServer.Cache,
 		EnvoyProxyTopology: kubelb.EnvoyProxyTopology(config.GetEnvoyProxyTopology()),
 		PortAllocator:      portAllocator,
+		Namespace:          opt.namespace,
+		EnvoyBootstrap:     envoyServer.GenerateBootstrap(),
 	}).SetupWithManager(ctx, envoyMgr); err != nil {
 		setupLog.Error(err, "unable to create envoy control-plane controller", "controller", "LoadBalancer")
 		os.Exit(1)
