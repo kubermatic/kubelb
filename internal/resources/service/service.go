@@ -23,6 +23,7 @@ import (
 	"github.com/go-logr/logr"
 
 	"k8c.io/kubelb/internal/kubelb"
+	portlookup "k8c.io/kubelb/internal/port-lookup"
 
 	corev1 "k8s.io/api/core/v1"
 	kerrors "k8s.io/apimachinery/pkg/api/errors"
@@ -108,7 +109,7 @@ func NormalizeAndReplicateServices(ctx context.Context, log logr.Logger, client 
 	return services, nil
 }
 
-func GenerateServiceForLBCluster(service corev1.Service, appName, namespace string) corev1.Service {
+func GenerateServiceForLBCluster(service corev1.Service, appName, namespace string, portAllocator *portlookup.PortAllocator) corev1.Service {
 	service.Name = kubelb.GenerateName(false, string(service.UID), GetServiceName(service), service.Namespace)
 	service.Namespace = namespace
 	service.UID = ""
@@ -116,11 +117,17 @@ func GenerateServiceForLBCluster(service corev1.Service, appName, namespace stri
 		service.Spec.Type = corev1.ServiceTypeClusterIP
 	}
 
+	endpointKey := fmt.Sprintf(kubelb.EnvoyEndpointRoutePattern, namespace, service.Name, service.Namespace)
+
 	// Use the nodePort(s) assigned as the targetPort for the new service. This is required to route traffic back to the actual service.
 	for i, port := range service.Spec.Ports {
-		// TODO for `Global` topology, we need to allocate a port from the global port pool.
-		// Maybe it makes sense to always use arbitrary port here for the mapping since global port allocator is not aware that an entry for this port exists, can cause conflicts.
-		port.TargetPort = intstr.FromInt(int(port.NodePort))
+		portKey := fmt.Sprintf(kubelb.EnvoyListenerPattern, port.Port, port.Protocol)
+		targetPort := port.NodePort
+		if value, exists := portAllocator.Lookup(endpointKey, portKey); exists {
+			targetPort = int32(value)
+		}
+
+		port.TargetPort = intstr.FromInt(int(targetPort))
 		port.NodePort = 0
 		service.Spec.Ports[i] = port
 	}

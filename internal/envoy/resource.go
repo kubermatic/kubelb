@@ -17,6 +17,7 @@ limitations under the License.
 package envoy
 
 import (
+	"context"
 	"fmt"
 	"time"
 
@@ -43,15 +44,37 @@ import (
 	portlookup "k8c.io/kubelb/internal/port-lookup"
 
 	corev1 "k8s.io/api/core/v1"
+	ctrlclient "sigs.k8s.io/controller-runtime/pkg/client"
 )
 
-func MapSnapshot(loadBalancers []kubelbv1alpha1.LoadBalancer, routes []kubelbv1alpha1.Route, portAllocator *portlookup.PortAllocator, globalEnvoyProxyTopology bool) (*envoycache.Snapshot, error) {
+const (
+	endpointAddressReferencePattern = "%s-address-%s"
+)
+
+func MapSnapshot(ctx context.Context, client ctrlclient.Client, loadBalancers []kubelbv1alpha1.LoadBalancer, routes []kubelbv1alpha1.Route, portAllocator *portlookup.PortAllocator, globalEnvoyProxyTopology bool) (*envoycache.Snapshot, error) {
 	var listener []types.Resource
 	var cluster []types.Resource
 
+	addressesMap := make(map[string][]kubelbv1alpha1.EndpointAddress)
 	for _, lb := range loadBalancers {
 		// multiple endpoints represent multiple clusters
 		for i, lbEndpoint := range lb.Spec.Endpoints {
+			if lbEndpoint.AddressesReference != nil {
+				// Check if map already contains the key
+				if val, ok := addressesMap[fmt.Sprintf(endpointAddressReferencePattern, lb.Namespace, lbEndpoint.AddressesReference.Name)]; ok {
+					lb.Spec.Endpoints[i].Addresses = val
+					continue
+				}
+
+				// Load addresses from reference
+				var addresses kubelbv1alpha1.Addresses
+				if err := client.Get(ctx, ctrlclient.ObjectKey{Namespace: lb.Namespace, Name: lbEndpoint.AddressesReference.Name}, &addresses); err != nil {
+					return nil, fmt.Errorf("failed to get addresses: %w", err)
+				}
+				addressesMap[fmt.Sprintf(endpointAddressReferencePattern, lb.Namespace, lbEndpoint.AddressesReference.Name)] = addresses.Spec.Addresses
+				lb.Spec.Endpoints[i].Addresses = addresses.Spec.Addresses
+			}
+
 			for _, lbEndpointPort := range lbEndpoint.Ports {
 				var lbEndpoints []*envoyEndpoint.LbEndpoint
 				key := fmt.Sprintf(kubelb.EnvoyResourceIdentifierPattern, lb.Namespace, lb.Name, i, lbEndpointPort.Port, lbEndpointPort.Protocol)
@@ -76,6 +99,53 @@ func MapSnapshot(loadBalancers []kubelbv1alpha1.LoadBalancer, routes []kubelbv1a
 					listener = append(listener, makeUDPListener(key, key, port))
 				}
 				cluster = append(cluster, makeCluster(key, lbEndpoints))
+			}
+		}
+	}
+
+	for _, route := range routes {
+		if route.Spec.Source.Kubernetes == nil {
+			continue
+		}
+		for i, routeendpoint := range route.Spec.Endpoints {
+			if routeendpoint.AddressesReference != nil {
+				// Check if map already contains the key
+				if val, ok := addressesMap[fmt.Sprintf(endpointAddressReferencePattern, route.Namespace, routeendpoint.AddressesReference.Name)]; ok {
+					route.Spec.Endpoints[i].Addresses = val
+					continue
+				}
+
+				// Load addresses from reference
+				var addresses kubelbv1alpha1.Addresses
+				if err := client.Get(ctx, ctrlclient.ObjectKey{Namespace: route.Namespace, Name: routeendpoint.AddressesReference.Name}, &addresses); err != nil {
+					return nil, fmt.Errorf("failed to get addresses: %w", err)
+				}
+				addressesMap[fmt.Sprintf(endpointAddressReferencePattern, route.Namespace, routeendpoint.AddressesReference.Name)] = addresses.Spec.Addresses
+				route.Spec.Endpoints[i].Addresses = addresses.Spec.Addresses
+			}
+		}
+		source := route.Spec.Source.Kubernetes
+		for _, svc := range source.Services {
+			endpointKey := fmt.Sprintf(kubelb.EnvoyEndpointRoutePattern, route.Namespace, svc.Name, svc.Namespace)
+			for _, port := range svc.Spec.Ports {
+				portKey := fmt.Sprintf(kubelb.EnvoyListenerPattern, port.Port, port.Protocol)
+				var lbEndpoints []*envoyEndpoint.LbEndpoint
+				for _, address := range route.Spec.Endpoints {
+					for _, routeEndpoints := range address.Addresses {
+						lbEndpoints = append(lbEndpoints, makeEndpoint(routeEndpoints.IP, uint32(port.NodePort)))
+					}
+				}
+
+				listenerPort := uint32(port.Port)
+				if value, exists := portAllocator.Lookup(endpointKey, portKey); exists {
+					listenerPort = uint32(value)
+				}
+				if port.Protocol == corev1.ProtocolTCP {
+					listener = append(listener, makeTCPListener(portKey, portKey, listenerPort))
+				} else if port.Protocol == corev1.ProtocolUDP {
+					listener = append(listener, makeUDPListener(portKey, portKey, listenerPort))
+				}
+				cluster = append(cluster, makeCluster(portKey, lbEndpoints))
 			}
 		}
 	}

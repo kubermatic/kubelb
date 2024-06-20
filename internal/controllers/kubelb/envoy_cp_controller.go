@@ -94,12 +94,16 @@ func (r *EnvoyCPReconciler) reconcile(ctx context.Context, req ctrl.Request) err
 		}
 	}
 
+	if err := r.PortAllocator.AllocatePortsForRoutes(routes); err != nil {
+		return err
+	}
+
 	return r.updateCache(ctx, snapshotName, lbs, routes)
 }
 
 func (r *EnvoyCPReconciler) updateCache(ctx context.Context, snapshotName string, lbs []kubelbv1alpha1.LoadBalancer, routes []kubelbv1alpha1.Route) error {
 	log := ctrl.LoggerFrom(ctx)
-	desiredSnapshot, err := envoycp.MapSnapshot(lbs, routes, r.PortAllocator, r.EnvoyProxyTopology == EnvoyProxyTopologyGlobal)
+	desiredSnapshot, err := envoycp.MapSnapshot(ctx, r.Client, lbs, routes, r.PortAllocator, r.EnvoyProxyTopology == EnvoyProxyTopologyGlobal)
 	if err != nil {
 		return err
 	}
