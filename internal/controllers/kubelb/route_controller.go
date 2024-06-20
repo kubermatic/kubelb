@@ -29,6 +29,7 @@ import (
 	"k8c.io/kubelb/internal/config"
 	"k8c.io/kubelb/internal/kubelb"
 	kuberneteshelper "k8c.io/kubelb/internal/kubernetes"
+	portlookup "k8c.io/kubelb/internal/port-lookup"
 	serviceHelpers "k8c.io/kubelb/internal/resources/service"
 	"k8c.io/kubelb/internal/resources/unstructured"
 
@@ -59,6 +60,7 @@ type RouteReconciler struct {
 	Scheme   *runtime.Scheme
 	Recorder record.EventRecorder
 
+	PortAllocator      *portlookup.PortAllocator
 	EnvoyProxyTopology EnvoyProxyTopology
 }
 
@@ -162,11 +164,16 @@ func (r *RouteReconciler) manageServices(ctx context.Context, log logr.Logger, r
 		return fmt.Errorf("failed to cleanup orphaned services: %w", err)
 	}
 
+	// Allocate ports for the services. These ports are then used as the target ports for the services.
+	if err := r.PortAllocator.AllocatePortsForRoutes([]kubelbv1alpha1.Route{*route}); err != nil {
+		return err
+	}
+
 	appName := envoyApplicationName(r.EnvoyProxyTopology, route.Namespace)
 	services := []corev1.Service{}
 	for _, service := range route.Spec.Source.Kubernetes.Services {
 		// Transform the service into desired state.
-		svc := serviceHelpers.GenerateServiceForLBCluster(service.Service, appName, route.Namespace)
+		svc := serviceHelpers.GenerateServiceForLBCluster(service.Service, appName, route.Namespace, r.PortAllocator)
 		services = append(services, svc)
 	}
 

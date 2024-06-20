@@ -40,6 +40,26 @@ func (pa *PortAllocator) AllocatePortsForLoadBalancers(loadBalancers kubelbv1alp
 	return nil
 }
 
+// AllocatePortsForRoutes allocates ports for the routes. If a port is already allocated, it will be skipped.
+func (pa *PortAllocator) AllocatePortsForRoutes(routes []kubelbv1alpha1.Route) error {
+	for _, route := range routes {
+		if route.Spec.Source.Kubernetes == nil {
+			continue
+		}
+
+		for _, svc := range route.Spec.Source.Kubernetes.Services {
+			endpointKey := fmt.Sprintf(kubelb.EnvoyEndpointRoutePattern, route.Namespace, svc.Namespace, svc.Name)
+			var keys []string
+			for _, svcPort := range svc.Spec.Ports {
+				keys = append(keys, fmt.Sprintf(kubelb.EnvoyListenerPattern, svcPort.Port, svcPort.Protocol))
+			}
+			// If a port is already allocated, it will be skipped.
+			pa.AllocatePorts(endpointKey, keys)
+		}
+	}
+	return nil
+}
+
 // DeallocatePortsForLoadBalancer deallocates ports against the given load balancer.
 func (pa *PortAllocator) DeallocatePortsForLoadBalancer(loadBalancer kubelbv1alpha1.LoadBalancer) error {
 	var endpointKeys []string

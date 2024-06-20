@@ -135,15 +135,12 @@ func main() {
 		setupLog.Error(err, "unable to load controller config")
 		os.Exit(1)
 	}
-
 	// For Global topology, we need to ensure that the port lookup table exists. If it doesn't, we create it since it's managed by this controller.
 	var portAllocator *portlookup.PortAllocator
-	if kubelb.EnvoyProxyTopology(config.GetEnvoyProxyTopology()) == kubelb.EnvoyProxyTopologyGlobal {
-		portAllocator = portlookup.NewPortAllocator()
-		if err := portAllocator.LoadState(ctx, mgr.GetAPIReader()); err != nil {
-			setupLog.Error(err, ("unable to load port lookup state"))
-			os.Exit(1)
-		}
+	portAllocator = portlookup.NewPortAllocator()
+	if err := portAllocator.LoadState(ctx, mgr.GetAPIReader()); err != nil {
+		setupLog.Error(err, ("unable to load port lookup state"))
+		os.Exit(1)
 	}
 
 	if err = (&kubelb.LoadBalancerReconciler{
@@ -185,6 +182,7 @@ func main() {
 		Log:                ctrl.Log.WithName("controllers").WithName(kubelb.RouteControllerName),
 		Recorder:           mgr.GetEventRecorderFor(kubelb.RouteControllerName),
 		EnvoyProxyTopology: kubelb.EnvoyProxyTopology(config.GetEnvoyProxyTopology()),
+		PortAllocator:      portAllocator,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", kubelb.RouteControllerName)
 		os.Exit(1)
