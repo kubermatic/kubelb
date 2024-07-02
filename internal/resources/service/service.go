@@ -24,13 +24,13 @@ import (
 
 	"k8c.io/kubelb/internal/kubelb"
 	portlookup "k8c.io/kubelb/internal/port-lookup"
+	"k8c.io/reconciler/pkg/equality"
 
 	corev1 "k8s.io/api/core/v1"
 	kerrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/intstr"
-	ctrl "sigs.k8s.io/controller-runtime"
 	ctrlclient "sigs.k8s.io/controller-runtime/pkg/client"
 )
 
@@ -86,9 +86,7 @@ func NormalizeAndReplicateServices(ctx context.Context, log logr.Logger, client 
 
 	for _, svc := range servicesToCreateUpdate {
 		log.V(4).Info("Creating/Updating service", "name", svc.Name, "namespace", svc.Namespace)
-		if _, err := ctrl.CreateOrUpdate(ctx, client, &svc, func() error {
-			return nil
-		}); err != nil {
+		if err := CreateOrUpdateService(ctx, client, &svc); err != nil {
 			return nil, fmt.Errorf("failed to create or update Service: %w", err)
 		}
 	}
@@ -110,14 +108,14 @@ func NormalizeAndReplicateServices(ctx context.Context, log logr.Logger, client 
 }
 
 func GenerateServiceForLBCluster(service corev1.Service, appName, namespace string, portAllocator *portlookup.PortAllocator) corev1.Service {
+	endpointKey := fmt.Sprintf(kubelb.EnvoyEndpointRoutePattern, namespace, service.Namespace, service.Name)
+
 	service.Name = kubelb.GenerateName(false, string(service.UID), GetServiceName(service), service.Namespace)
 	service.Namespace = namespace
 	service.UID = ""
 	if service.Spec.Type == corev1.ServiceTypeNodePort {
 		service.Spec.Type = corev1.ServiceTypeClusterIP
 	}
-
-	endpointKey := fmt.Sprintf(kubelb.EnvoyEndpointRoutePattern, namespace, service.Name, service.Namespace)
 
 	// Use the nodePort(s) assigned as the targetPort for the new service. This is required to route traffic back to the actual service.
 	for i, port := range service.Spec.Ports {
@@ -140,11 +138,49 @@ func GenerateServiceForLBCluster(service corev1.Service, appName, namespace stri
 	return service
 }
 
+func CreateOrUpdateService(ctx context.Context, client ctrlclient.Client, obj *corev1.Service) error {
+	key := ctrlclient.ObjectKey{Namespace: obj.Namespace, Name: obj.Name}
+	existingObj := &corev1.Service{}
+	if err := client.Get(ctx, key, existingObj); err != nil {
+		if !kerrors.IsNotFound(err) {
+			return fmt.Errorf("failed to get Service: %w", err)
+		} else {
+			err := client.Create(ctx, obj)
+			if err != nil {
+				return fmt.Errorf("failed to create Service: %w", err)
+			}
+			return nil
+		}
+	}
+
+	// Update the Service object if it is different from the existing one.
+	if equality.Semantic.DeepEqual(existingObj.Spec, obj.Spec) &&
+		equality.Semantic.DeepEqual(existingObj.Labels, obj.Labels) &&
+		equality.Semantic.DeepEqual(existingObj.Annotations, obj.Annotations) {
+		return nil
+	}
+
+	if err := client.Update(ctx, obj); err != nil {
+		return fmt.Errorf("failed to update Service: %w", err)
+	}
+	return nil
+}
+
 func GetServiceName(service corev1.Service) string {
 	name := service.Name
 	if labels := service.Labels; labels != nil {
 		if _, ok := labels[kubelb.LabelOriginName]; ok {
 			name = service.Labels[kubelb.LabelOriginName]
+		}
+	}
+	return name
+}
+
+func GetServiceNamespace(service corev1.Service) string {
+	name := service.Namespace
+	if labels := service.Labels; labels != nil {
+		if _, ok := labels[kubelb.LabelOriginNamespace]; ok {
+			name = service.Labels[kubelb.LabelOriginNamespace]
 		}
 	}
 	return name

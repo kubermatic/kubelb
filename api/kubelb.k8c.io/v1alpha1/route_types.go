@@ -38,6 +38,7 @@ type RouteSpec struct {
 
 type RouteSource struct {
 	// Kubernetes contains the information about the Kubernetes source.
+	// This field is automatically populated by the KubeLB CCM and in most cases, users should not set this field manually.
 	Kubernetes *KubernetesSource `json:"kubernetes,omitempty"`
 }
 
@@ -106,20 +107,25 @@ type Route struct {
 // RouteStatus defines the observed state of the Route.
 type RouteStatus struct {
 	// Resources contains the list of resources that are created/processed as a result of the Route.
-	Resources RouteResourceStatus `json:"resources,omitempty"`
+	Resources RouteResourcesStatus `json:"resources,omitempty"`
 }
 
-type RouteResourceStatus struct {
+type RouteResourcesStatus struct {
 	Source string `json:"source,omitempty"`
 
-	Services map[string]ResourceStatus `json:"services,omitempty"`
+	Services map[string]RouteServiceStatus `json:"services,omitempty"`
 
-	ReferenceGrants map[string]ResourceStatus `json:"referenceGrants,omitempty"`
+	ReferenceGrants map[string]ResourceState `json:"referenceGrants,omitempty"`
 
-	Route ResourceStatus `json:"route,omitempty"`
+	Route ResourceState `json:"route,omitempty"`
 }
 
-type ResourceStatus struct {
+type RouteServiceStatus struct {
+	ResourceState `json:",inline"`
+	Ports         []corev1.ServicePort `json:"ports,omitempty"`
+}
+
+type ResourceState struct {
 	// APIVersion is the API version of the resource.
 	APIVersion string `json:"apiVersion,omitempty"`
 
@@ -131,6 +137,9 @@ type ResourceStatus struct {
 
 	// Namespace is the namespace of the resource.
 	Namespace string `json:"namespace,omitempty"`
+
+	// GeneratedName is the generated name of the resource.
+	GeneratedName string `json:"generatedName,omitempty"`
 
 	// Status is the actual status of the resource.
 	Status runtime.RawExtension `json:"status,omitempty"`

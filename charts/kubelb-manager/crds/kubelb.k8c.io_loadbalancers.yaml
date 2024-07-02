@@ -127,7 +127,9 @@ spec:
                       description: Name is the name of the endpoints.
                       type: string
                     ports:
-                      description: Port numbers available on the related IP addresses.
+                      description: |-
+                        Port numbers available on the related IP addresses.
+                        This field is ignored for routes that are using kubernetes resources as the source.
                       items:
                         description: EndpointPort is a tuple that describes a single
                           port.
