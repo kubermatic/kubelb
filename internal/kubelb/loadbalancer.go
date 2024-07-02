@@ -25,7 +25,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-func MapLoadBalancer(userService *corev1.Service, clusterEndpoints []string, clusterName string) *kubelbiov1alpha1.LoadBalancer {
+func MapLoadBalancer(userService *corev1.Service, clusterEndpoints []string, useAddressesReference bool, clusterName string) *kubelbiov1alpha1.LoadBalancer {
 	var lbServicePorts []kubelbiov1alpha1.LoadBalancerPort
 	var lbEndpointSubsets []kubelbiov1alpha1.LoadBalancerEndpoints
 	var lbEndpointPorts []kubelbiov1alpha1.EndpointPort
@@ -45,17 +45,25 @@ func MapLoadBalancer(userService *corev1.Service, clusterEndpoints []string, clu
 		})
 	}
 
-	var endpointAddresses []kubelbiov1alpha1.EndpointAddress
-	for _, endpoint := range clusterEndpoints {
-		endpointAddresses = append(endpointAddresses, kubelbiov1alpha1.EndpointAddress{
-			IP: endpoint,
-		})
+	lbEndpoints := kubelbiov1alpha1.LoadBalancerEndpoints{
+		Ports: lbEndpointPorts,
 	}
 
-	lbEndpointSubsets = append(lbEndpointSubsets, kubelbiov1alpha1.LoadBalancerEndpoints{
-		Addresses: endpointAddresses,
-		Ports:     lbEndpointPorts,
-	})
+	if useAddressesReference {
+		lbEndpoints.AddressesReference = &corev1.ObjectReference{
+			Name: kubelbiov1alpha1.DefaultAddressName,
+		}
+	} else {
+		var endpointAddresses []kubelbiov1alpha1.EndpointAddress
+		for _, endpoint := range clusterEndpoints {
+			endpointAddresses = append(endpointAddresses, kubelbiov1alpha1.EndpointAddress{
+				IP: endpoint,
+			})
+		}
+		lbEndpoints.Addresses = endpointAddresses
+	}
+
+	lbEndpointSubsets = append(lbEndpointSubsets, lbEndpoints)
 
 	return &kubelbiov1alpha1.LoadBalancer{
 		ObjectMeta: metav1.ObjectMeta{

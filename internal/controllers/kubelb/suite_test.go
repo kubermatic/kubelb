@@ -116,7 +116,6 @@ var _ = BeforeSuite(func() {
 		Client:             k8sManager.GetClient(),
 		Cache:              k8sManager.GetCache(),
 		Scheme:             k8sManager.GetScheme(),
-		EnvoyBootstrap:     envoyServer.GenerateBootstrap(),
 		EnvoyProxyTopology: EnvoyProxyTopologyDedicated,
 		Namespace:          LBNamespace,
 		PortAllocator:      portAllocator,
@@ -128,6 +127,8 @@ var _ = BeforeSuite(func() {
 		Client:             k8sManager.GetClient(),
 		EnvoyCache:         envoyServer.Cache,
 		EnvoyProxyTopology: EnvoyProxyTopologyDedicated,
+		EnvoyBootstrap:     envoyServer.GenerateBootstrap(),
+		Namespace:          LBNamespace,
 		PortAllocator:      portAllocator,
 	}
 	err = ecpr.SetupWithManager(ctx, k8sManager)

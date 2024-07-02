@@ -65,6 +65,7 @@ spec:
         - name: kubelb
           args:
             - --enable-leader-election
+            - --debug=true
           image: controller:latest
           env:
             - name: NAMESPACE

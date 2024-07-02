@@ -42,6 +42,11 @@ type ConfigSpec struct {
 	// PropagateAllAnnotations defines whether all annotations will be propagated to the LoadBalancer service. If set to true, PropagatedAnnotations will be ignored.
 	// +optional
 	PropagateAllAnnotations bool `json:"propagateAllAnnotations,omitempty"`
+
+	// IngressClassName is the name of the IngressClass that will be used for the routes created by KubeLB. If not specified, KubeLB will replace the IngressClassName
+	// with an empty value in the Ingress resource which would result in the default IngressClass being used.
+	// +optional
+	IngressClassName *string `json:"ingressClassName,omitempty"`
 }
 
 // EnvoyProxy defines the desired state of the EnvoyProxy
