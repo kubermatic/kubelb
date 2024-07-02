@@ -35,6 +35,7 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 	v1 "k8s.io/api/networking/v1"
+	"k8s.io/apimachinery/pkg/api/equality"
 	kerrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -131,11 +132,11 @@ func (r *RouteReconciler) cleanup(ctx context.Context, route *kubelbv1alpha1.Rou
 
 	for _, value := range route.Status.Resources.Services {
 		log := r.Log.WithValues("name", value.Name, "namespace", value.Namespace)
-		log.V(1).Info("Deleting service", "name", value.Name, "namespace", value.Namespace)
+		log.V(1).Info("Deleting service", "name", value.GeneratedName, "namespace", route.Namespace)
 		svc := corev1.Service{
 			ObjectMeta: metav1.ObjectMeta{
-				Name:      value.Name,
-				Namespace: value.Namespace,
+				Name:      value.GeneratedName,
+				Namespace: route.Namespace,
 			},
 		}
 		if err := r.Client.Delete(ctx, &svc); err != nil {
@@ -181,15 +182,13 @@ func (r *RouteReconciler) manageServices(ctx context.Context, log logr.Logger, r
 	for _, svc := range services {
 		log.V(4).Info("Creating/Updating service", "name", svc.Name, "namespace", svc.Namespace)
 		var err error
-		if _, err = ctrl.CreateOrUpdate(ctx, r.Client, &svc, func() error {
-			return nil
-		}); err != nil {
+		if err = serviceHelpers.CreateOrUpdateService(ctx, r.Client, &svc); err != nil {
 			// We only log the error and set the condition to false. The error will be set in the status.
 			log.Error(err, "failed to create or update Service", "name", svc.Name, "namespace", svc.Namespace)
 			errorMessage := fmt.Errorf("failed to create or update Service: %w", err)
 			r.Recorder.Eventf(route, corev1.EventTypeWarning, "ServiceApplyFailed", errorMessage.Error())
 		}
-		updateResourceStatus(routeStatus, &svc, err)
+		updateServiceStatus(routeStatus, &svc, err)
 	}
 	return r.UpdateRouteStatus(ctx, route, *routeStatus)
 }
@@ -199,7 +198,8 @@ func (r *RouteReconciler) cleanupOrphanedServices(ctx context.Context, log logr.
 	desiredServices := map[string]bool{}
 	for _, service := range route.Spec.Source.Kubernetes.Services {
 		name := serviceHelpers.GetServiceName(service.Service)
-		desiredServices[service.Namespace+"/"+name] = true
+		key := fmt.Sprintf(kubelb.RouteServiceMapKey, service.Service.Namespace, name)
+		desiredServices[key] = true
 	}
 
 	if route.Status.Resources.Services == nil {
@@ -322,46 +322,74 @@ func (r *RouteReconciler) createOrUpdateIngress(ctx context.Context, log logr.Lo
 	ingress.SetUID("") // Reset UID to generate a new UID for the Ingress object
 
 	log.V(4).Info("Creating/Updating Ingress", "name", ingress.Name, "namespace", ingress.Namespace)
+	// Check if it already exists.
+	ingressKey := client.ObjectKey{Namespace: ingress.Namespace, Name: ingress.Name}
+	existingIngress := &v1.Ingress{}
+	if err := r.Client.Get(ctx, ingressKey, existingIngress); err != nil {
+		if !kerrors.IsNotFound(err) {
+			return fmt.Errorf("failed to get Ingress: %w", err)
+		} else {
+			err := r.Client.Create(ctx, ingress)
+			if err != nil {
+				return fmt.Errorf("failed to create Ingress: %w", err)
+			}
+			return nil
+		}
+	}
 
-	// Create or update the Ingress object in the cluster.
-	if _, err := ctrl.CreateOrUpdate(ctx, r.Client, ingress, func() error {
+	// Update the Ingress object if it is different from the existing one.
+	if equality.Semantic.DeepEqual(existingIngress.Spec, ingress.Spec) &&
+		equality.Semantic.DeepEqual(existingIngress.Labels, ingress.Labels) &&
+		equality.Semantic.DeepEqual(existingIngress.Annotations, ingress.Annotations) {
 		return nil
-	}); err != nil {
-		return fmt.Errorf("failed to create or update Ingress: %w", err)
+	}
+
+	if err := r.Client.Update(ctx, ingress); err != nil {
+		return fmt.Errorf("failed to update Ingress: %w", err)
 	}
 	return nil
 }
 
-func updateResourceStatus(routeStatus *kubelbv1alpha1.RouteStatus, obj client.Object, err error) {
-	status := kubelbv1alpha1.ResourceStatus{
-		Name:       obj.GetName(),
-		Namespace:  obj.GetNamespace(),
-		APIVersion: obj.GetObjectKind().GroupVersionKind().GroupVersion().String(),
-		Kind:       obj.GetObjectKind().GroupVersionKind().Kind,
+func updateServiceStatus(routeStatus *kubelbv1alpha1.RouteStatus, svc *corev1.Service, err error) {
+	originalName := serviceHelpers.GetServiceName(*svc)
+	originalNamespace := serviceHelpers.GetServiceNamespace(*svc)
+	status := kubelbv1alpha1.RouteServiceStatus{
+		ResourceState: kubelbv1alpha1.ResourceState{
+			GeneratedName: svc.GetName(),
+			Namespace:     originalNamespace,
+			Name:          originalName,
+		},
+		Ports: svc.Spec.Ports,
+	}
+	status.Conditions = generateConditions(err)
+
+	svcStatus, err := json.Marshal(svc.Status)
+	if err != nil {
+		// If we are unable to marshal the status, we set it to empty object. There is no need to fail the reconciliation.
+		svcStatus = []byte("{}")
 	}
 
-	conditionMessage := "Success"
-	conditionStatus := metav1.ConditionTrue
-	conditionReason := "InstallationSuccessful"
-	if err != nil {
-		conditionMessage = err.Error()
-		conditionStatus = metav1.ConditionFalse
-		conditionReason = "InstallationFailed"
+	status.Status = runtime.RawExtension{
+		Raw: svcStatus,
 	}
-	status.Conditions = []metav1.Condition{
-		{
-			Type:   kubelbv1alpha1.ConditionResourceAppliedSuccessfully.String(),
-			Reason: conditionReason,
-			Status: conditionStatus,
-			LastTransitionTime: metav1.Time{
-				Time: time.Now(),
-			},
-			Message: conditionMessage,
-		},
+	if routeStatus.Resources.Services == nil {
+		routeStatus.Resources.Services = make(map[string]kubelbv1alpha1.RouteServiceStatus)
 	}
+	key := fmt.Sprintf(kubelb.RouteServiceMapKey, originalNamespace, originalName)
+	routeStatus.Resources.Services[key] = status
+}
+
+func updateResourceStatus(routeStatus *kubelbv1alpha1.RouteStatus, obj client.Object, err error) {
+	status := kubelbv1alpha1.ResourceState{
+		GeneratedName: obj.GetName(),
+		Namespace:     kubelb.GetNamespace(obj),
+		Name:          kubelb.GetName(obj),
+		APIVersion:    obj.GetObjectKind().GroupVersionKind().GroupVersion().String(),
+		Kind:          obj.GetObjectKind().GroupVersionKind().Kind,
+	}
+	status.Conditions = generateConditions(err)
 
 	var resourceStatus []byte
-
 	switch resource := obj.(type) {
 	case *v1.Ingress:
 		resourceStatus, err = json.Marshal(resource.Status)
@@ -373,25 +401,28 @@ func updateResourceStatus(routeStatus *kubelbv1alpha1.RouteStatus, obj client.Ob
 			Raw: resourceStatus,
 		}
 		routeStatus.Resources.Route = status
-	case *corev1.Service:
-		resourceStatus, err = json.Marshal(resource.Status)
-		if err != nil {
-			// If we are unable to marshal the status, we set it to empty object. There is no need to fail the reconciliation.
-			resourceStatus = []byte("{}")
-		}
-		svcName := resource.Name
-		if resource.Labels[kubelb.LabelOriginName] != "" {
-			svcName = resource.Labels[kubelb.LabelOriginName]
-		}
+	}
+}
 
-		status.Name = svcName
-		status.Status = runtime.RawExtension{
-			Raw: resourceStatus,
-		}
-		if routeStatus.Resources.Services == nil {
-			routeStatus.Resources.Services = make(map[string]kubelbv1alpha1.ResourceStatus)
-		}
-		routeStatus.Resources.Services[resource.Namespace+"/"+svcName] = status
+func generateConditions(err error) []metav1.Condition {
+	conditionMessage := "Success"
+	conditionStatus := metav1.ConditionTrue
+	conditionReason := "InstallationSuccessful"
+	if err != nil {
+		conditionMessage = err.Error()
+		conditionStatus = metav1.ConditionFalse
+		conditionReason = "InstallationFailed"
+	}
+	return []metav1.Condition{
+		{
+			Type:   kubelbv1alpha1.ConditionResourceAppliedSuccessfully.String(),
+			Reason: conditionReason,
+			Status: conditionStatus,
+			LastTransitionTime: metav1.Time{
+				Time: time.Now(),
+			},
+			Message: conditionMessage,
+		},
 	}
 }
 

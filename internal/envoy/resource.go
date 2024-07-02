@@ -126,7 +126,7 @@ func MapSnapshot(ctx context.Context, client ctrlclient.Client, loadBalancers []
 		}
 		source := route.Spec.Source.Kubernetes
 		for _, svc := range source.Services {
-			endpointKey := fmt.Sprintf(kubelb.EnvoyEndpointRoutePattern, route.Namespace, svc.Name, svc.Namespace)
+			endpointKey := fmt.Sprintf(kubelb.EnvoyEndpointRoutePattern, route.Namespace, svc.Namespace, svc.Name)
 			for _, port := range svc.Spec.Ports {
 				portKey := fmt.Sprintf(kubelb.EnvoyListenerPattern, port.Port, port.Protocol)
 				var lbEndpoints []*envoyEndpoint.LbEndpoint
