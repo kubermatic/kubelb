@@ -43,6 +43,7 @@ const LabelAppKubernetesManagedBy = "app.kubernetes.io/managed-by" // helm
 const EnvoyResourceIdentifierPattern = "%s-%s-ep-%d-port-%d-%s"
 const EnvoyEndpointPattern = "%s-%s-ep-%d"
 const EnvoyEndpointRoutePattern = "tenant-%s-route-%s-%s"
+const EnvoyRoutePortIdentifierPattern = "tenant-%s-route-%s-%s-svc-%s-port-%d-%s"
 const EnvoyListenerPattern = "%v-%s"
 const RouteServiceMapKey = "%s/%s"
 

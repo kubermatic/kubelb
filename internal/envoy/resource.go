@@ -128,7 +128,7 @@ func MapSnapshot(ctx context.Context, client ctrlclient.Client, loadBalancers []
 		for _, svc := range source.Services {
 			endpointKey := fmt.Sprintf(kubelb.EnvoyEndpointRoutePattern, route.Namespace, svc.Namespace, svc.Name)
 			for _, port := range svc.Spec.Ports {
-				portKey := fmt.Sprintf(kubelb.EnvoyListenerPattern, port.Port, port.Protocol)
+				portLookupKey := fmt.Sprintf(kubelb.EnvoyListenerPattern, port.Port, port.Protocol)
 				var lbEndpoints []*envoyEndpoint.LbEndpoint
 				for _, address := range route.Spec.Endpoints {
 					for _, routeEndpoints := range address.Addresses {
@@ -137,15 +137,18 @@ func MapSnapshot(ctx context.Context, client ctrlclient.Client, loadBalancers []
 				}
 
 				listenerPort := uint32(port.Port)
-				if value, exists := portAllocator.Lookup(endpointKey, portKey); exists {
+				if value, exists := portAllocator.Lookup(endpointKey, portLookupKey); exists {
 					listenerPort = uint32(value)
 				}
+
+				key := fmt.Sprintf(kubelb.EnvoyRoutePortIdentifierPattern, route.Namespace, svc.Namespace, svc.Name, svc.UID, port.Port, port.Protocol)
+
 				if port.Protocol == corev1.ProtocolTCP {
-					listener = append(listener, makeTCPListener(portKey, portKey, listenerPort))
+					listener = append(listener, makeTCPListener(key, key, listenerPort))
 				} else if port.Protocol == corev1.ProtocolUDP {
-					listener = append(listener, makeUDPListener(portKey, portKey, listenerPort))
+					listener = append(listener, makeUDPListener(key, key, listenerPort))
 				}
-				cluster = append(cluster, makeCluster(portKey, lbEndpoints))
+				cluster = append(cluster, makeCluster(key, lbEndpoints))
 			}
 		}
 	}
