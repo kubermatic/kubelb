@@ -147,6 +147,11 @@ func (r *RouteReconciler) cleanup(ctx context.Context, route *kubelbv1alpha1.Rou
 		}
 	}
 
+	// De-allocate the ports allocated for the services.
+	if err := r.PortAllocator.DeallocatePortsForRoute(*route); err != nil {
+		return reconcile.Result{}, fmt.Errorf("failed to deallocate ports: %w", err)
+	}
+
 	kuberneteshelper.RemoveFinalizer(route, CleanupFinalizer)
 	if err := r.Update(ctx, route); err != nil {
 		return reconcile.Result{}, fmt.Errorf("failed to remove finalizer: %w", err)
@@ -210,11 +215,11 @@ func (r *RouteReconciler) cleanupOrphanedServices(ctx context.Context, log logr.
 	for key, value := range route.Status.Resources.Services {
 		if _, ok := desiredServices[key]; !ok {
 			// Service is not desired, so delete it.
-			log.V(4).Info("Deleting orphaned service", "name", value.Name, "namespace", value.Namespace)
+			log.V(4).Info("Deleting orphaned service", "name", value.GeneratedName, "namespace", route.Namespace)
 			svc := corev1.Service{
 				ObjectMeta: metav1.ObjectMeta{
-					Name:      value.Name,
-					Namespace: value.Namespace,
+					Name:      value.GeneratedName,
+					Namespace: route.Namespace,
 				},
 			}
 			if err := r.Client.Delete(ctx, &svc); err != nil {
@@ -223,6 +228,10 @@ func (r *RouteReconciler) cleanupOrphanedServices(ctx context.Context, log logr.
 				}
 			}
 			delete(route.Status.Resources.Services, key)
+
+			endpointKey := fmt.Sprintf(kubelb.EnvoyEndpointRoutePattern, route.Namespace, value.Namespace, svc.Name)
+			// De-allocate the ports allocated for the service.
+			r.PortAllocator.DeallocateEndpoints([]string{endpointKey})
 		}
 	}
 	return nil
@@ -288,11 +297,22 @@ func (r *RouteReconciler) manageRoutes(ctx context.Context, log logr.Logger, rou
 	switch v := resource.(type) {
 	case *v1.Ingress: // Assuming v1 "k8s.io/api/networking/v1"
 		err = r.createOrUpdateIngress(ctx, log, v, referencedServices, route.Namespace)
+		if err == nil {
+			// Retrieve updated Ingress object to get the status.
+			ingressKey := client.ObjectKey{Namespace: v.Namespace, Name: v.Name}
+			ingress := &v1.Ingress{}
+			if err := r.Client.Get(ctx, ingressKey, ingress); err != nil {
+				if !kerrors.IsNotFound(err) {
+					return fmt.Errorf("failed to get Ingress: %w", err)
+				}
+			}
+			updateResourceStatus(routeStatus, ingress, err)
+		}
+
 	default:
 		log.V(4).Info("Unsupported resource type")
 	}
 
-	updateResourceStatus(routeStatus, resource, err)
 	return r.UpdateRouteStatus(ctx, route, *routeStatus)
 }
 
@@ -329,13 +349,12 @@ func (r *RouteReconciler) createOrUpdateIngress(ctx context.Context, log logr.Lo
 	if err := r.Client.Get(ctx, ingressKey, existingIngress); err != nil {
 		if !kerrors.IsNotFound(err) {
 			return fmt.Errorf("failed to get Ingress: %w", err)
-		} else {
-			err := r.Client.Create(ctx, ingress)
-			if err != nil {
-				return fmt.Errorf("failed to create Ingress: %w", err)
-			}
-			return nil
 		}
+		err := r.Client.Create(ctx, ingress)
+		if err != nil {
+			return fmt.Errorf("failed to create Ingress: %w", err)
+		}
+		return nil
 	}
 
 	// Update the Ingress object if it is different from the existing one.
@@ -367,7 +386,7 @@ func updateServiceStatus(routeStatus *kubelbv1alpha1.RouteStatus, svc *corev1.Se
 	svcStatus, err := json.Marshal(svc.Status)
 	if err != nil {
 		// If we are unable to marshal the status, we set it to empty object. There is no need to fail the reconciliation.
-		svcStatus = []byte("{}")
+		svcStatus = []byte(kubelb.DefaultRouteStatus)
 	}
 
 	status.Status = runtime.RawExtension{
@@ -391,12 +410,13 @@ func updateResourceStatus(routeStatus *kubelbv1alpha1.RouteStatus, obj client.Ob
 	status.Conditions = generateConditions(err)
 
 	var resourceStatus []byte
+	//nolint:gocritic
 	switch resource := obj.(type) {
 	case *v1.Ingress:
 		resourceStatus, err = json.Marshal(resource.Status)
 		if err != nil {
 			// If we are unable to marshal the status, we set it to empty object. There is no need to fail the reconciliation.
-			resourceStatus = []byte("{}")
+			resourceStatus = []byte(kubelb.DefaultRouteStatus)
 		}
 		status.Status = runtime.RawExtension{
 			Raw: resourceStatus,

@@ -70,9 +70,6 @@ func main() {
 	flag.BoolVar(&opt.enableDebugMode, "debug", false, "Enables debug mode")
 	flag.StringVar(&opt.namespace, "namespace", "", "The namespace where the controller will run.")
 
-	// TODO: Delete this
-	opt.namespace = "kubelb"
-
 	if len(opt.namespace) == 0 {
 		// Retrieve controller namespace
 		ns, _ := os.LookupEnv("NAMESPACE")
@@ -136,8 +133,7 @@ func main() {
 		os.Exit(1)
 	}
 	// For Global topology, we need to ensure that the port lookup table exists. If it doesn't, we create it since it's managed by this controller.
-	var portAllocator *portlookup.PortAllocator
-	portAllocator = portlookup.NewPortAllocator()
+	portAllocator := portlookup.NewPortAllocator()
 	if err := portAllocator.LoadState(ctx, mgr.GetAPIReader()); err != nil {
 		setupLog.Error(err, ("unable to load port lookup state"))
 		os.Exit(1)

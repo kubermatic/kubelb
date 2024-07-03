@@ -18,10 +18,13 @@ package ccm
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"reflect"
 
 	"github.com/go-logr/logr"
 
+	kubelbv1alpha1 "k8c.io/kubelb/api/kubelb.k8c.io/v1alpha1"
 	"k8c.io/kubelb/internal/kubelb"
 	kuberneteshelper "k8c.io/kubelb/internal/kubernetes"
 	ingressHelpers "k8c.io/kubelb/internal/resources/ingress"
@@ -33,6 +36,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/record"
+	"k8s.io/client-go/util/retry"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	ctrlclient "sigs.k8s.io/controller-runtime/pkg/client"
@@ -40,6 +44,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
+	"sigs.k8s.io/yaml"
 )
 
 const (
@@ -109,7 +114,49 @@ func (r *IngressReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 func (r *IngressReconciler) reconcile(ctx context.Context, log logr.Logger, ingress *networkingv1.Ingress) error {
 	// We need to traverse the Ingress, find all the services associated with it, create/update the corresponding Route in LB cluster.
 	originalServices := ingressHelpers.GetServicesFromIngress(*ingress)
-	return reconcileSourceForRoute(ctx, log, r.Client, r.LBClient, ingress, originalServices, nil, r.ClusterName)
+	err := reconcileSourceForRoute(ctx, log, r.Client, r.LBClient, ingress, originalServices, nil, r.ClusterName)
+	if err != nil {
+		return fmt.Errorf("failed to reconcile source for route: %w", err)
+	}
+
+	// Route was reconciled successfully, now we need to update the status of the Ingress.
+	route := kubelbv1alpha1.Route{}
+	err = r.LBClient.Get(ctx, types.NamespacedName{Name: string(ingress.UID), Namespace: r.ClusterName}, &route)
+	if err != nil {
+		return fmt.Errorf("failed to get Route from LB cluster: %w", err)
+	}
+
+	// Update the status of the Ingress
+	if len(route.Status.Resources.Route.GeneratedName) > 0 {
+		// First we need to ensure that status is available in the Route
+		resourceStatus := route.Status.Resources.Route.Status
+		jsonData, err := json.Marshal(resourceStatus.Raw)
+		if err != nil || string(jsonData) == kubelb.DefaultRouteStatus {
+			// Status is not available in the Route, so we need to wait for it
+			return nil
+		}
+
+		// Convert rawExtension to networkingv1.IngressStatus
+		status := networkingv1.IngressStatus{}
+		if err := yaml.UnmarshalStrict(resourceStatus.Raw, &status); err != nil {
+			return fmt.Errorf("failed to unmarshal Ingress status: %w", err)
+		}
+
+		log.V(3).Info("updating Ingress status", "name", ingress.Name, "namespace", ingress.Namespace)
+		return retry.RetryOnConflict(retry.DefaultRetry, func() error {
+			if err := r.Get(ctx, types.NamespacedName{Name: ingress.Name, Namespace: ingress.Namespace}, ingress); err != nil {
+				return err
+			}
+			original := ingress.DeepCopy()
+			ingress.Status = status
+			if reflect.DeepEqual(original.Status, ingress.Status) {
+				return nil
+			}
+			// update the status
+			return r.Status().Patch(ctx, ingress, ctrlclient.MergeFrom(original))
+		})
+	}
+	return nil
 }
 
 func (r *IngressReconciler) cleanup(ctx context.Context, ingress *networkingv1.Ingress) (ctrl.Result, error) {

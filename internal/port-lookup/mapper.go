@@ -60,6 +60,21 @@ func (pa *PortAllocator) AllocatePortsForRoutes(routes []kubelbv1alpha1.Route) e
 	return nil
 }
 
+// DeallocatePortsForRoutes deallocates ports for the route.
+func (pa *PortAllocator) DeallocatePortsForRoute(route kubelbv1alpha1.Route) error {
+	if route.Spec.Source.Kubernetes == nil {
+		return nil
+	}
+
+	var keys []string
+	for _, svc := range route.Spec.Source.Kubernetes.Services {
+		keys = append(keys, fmt.Sprintf(kubelb.EnvoyEndpointRoutePattern, route.Namespace, svc.Namespace, svc.Name))
+	}
+
+	pa.DeallocateEndpoints(keys)
+	return nil
+}
+
 // DeallocatePortsForLoadBalancer deallocates ports against the given load balancer.
 func (pa *PortAllocator) DeallocatePortsForLoadBalancer(loadBalancer kubelbv1alpha1.LoadBalancer) error {
 	var endpointKeys []string

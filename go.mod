@@ -2,7 +2,7 @@ module k8c.io/kubelb
 
 go 1.22.0
 
-toolchain go1.22.3
+toolchain go1.22.5
 
 require (
 	github.com/envoyproxy/go-control-plane v0.12.0
@@ -23,6 +23,7 @@ require (
 	k8s.io/utils v0.0.0-20240502163921-fe8a2dddb1d0
 	sigs.k8s.io/controller-runtime v0.18.4
 	sigs.k8s.io/gateway-api v1.1.0
+	sigs.k8s.io/yaml v1.4.0
 )
 
 require (
@@ -84,5 +85,4 @@ require (
 	k8s.io/kube-openapi v0.0.0-20240620174524-b456828f718b // indirect
 	sigs.k8s.io/json v0.0.0-20221116044647-bc3834ca7abd // indirect
 	sigs.k8s.io/structured-merge-diff/v4 v4.4.1 // indirect
-	sigs.k8s.io/yaml v1.4.0 // indirect
 )
