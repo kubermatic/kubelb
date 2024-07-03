@@ -144,13 +144,12 @@ func CreateOrUpdateService(ctx context.Context, client ctrlclient.Client, obj *c
 	if err := client.Get(ctx, key, existingObj); err != nil {
 		if !kerrors.IsNotFound(err) {
 			return fmt.Errorf("failed to get Service: %w", err)
-		} else {
-			err := client.Create(ctx, obj)
-			if err != nil {
-				return fmt.Errorf("failed to create Service: %w", err)
-			}
-			return nil
 		}
+		err := client.Create(ctx, obj)
+		if err != nil {
+			return fmt.Errorf("failed to create Service: %w", err)
+		}
+		return nil
 	}
 
 	// Update the Service object if it is different from the existing one.

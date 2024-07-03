@@ -203,9 +203,7 @@ func (pa *PortAllocator) LoadState(ctx context.Context, apiReader client.Reader)
 				}
 			}
 		}
-
 	}
-
 	pa.portLookup = lookupTable
 	pa.recomputeAvailablePorts()
 	return nil

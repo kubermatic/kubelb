@@ -93,14 +93,6 @@ func main() {
 	flag.BoolVar(&useIngressClass, "use-ingress-class", true, "Use IngressClass `kubelb` to filter Ingress objects. Ingresses should have `ingressClassName: kubelb` set in the spec.")
 	flag.BoolVar(&useLoadbalancerClass, "use-loadbalancer-class", false, "Use LoadBalancerClass `kubelb` to filter services. If false, all load balancer services will be managed by KubeLB.")
 
-	// TODO: Delete this
-	leaderElectionNamespace = "kube-system"
-	enableLeaderElection = false
-	clusterName = "tenant-xyz"
-	useIngressClass = false
-	kubeLbKubeconf = "/Users/waleedmalik/.kube/kubelb-manager"
-	probeAddr = ":8090"
-
 	opts := zap.Options{
 		Development: false,
 		TimeEncoder: zapcore.ISO8601TimeEncoder,

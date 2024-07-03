@@ -46,6 +46,7 @@ const EnvoyEndpointRoutePattern = "tenant-%s-route-%s-%s"
 const EnvoyRoutePortIdentifierPattern = "tenant-%s-route-%s-%s-svc-%s-port-%d-%s"
 const EnvoyListenerPattern = "%v-%s"
 const RouteServiceMapKey = "%s/%s"
+const DefaultRouteStatus = "{}"
 
 const NameSuffixLength = 4
 
