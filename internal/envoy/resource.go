@@ -73,6 +73,7 @@ func MapSnapshot(ctx context.Context, client ctrlclient.Client, loadBalancers []
 				}
 				addressesMap[fmt.Sprintf(endpointAddressReferencePattern, lb.Namespace, lbEndpoint.AddressesReference.Name)] = addresses.Spec.Addresses
 				lb.Spec.Endpoints[i].Addresses = addresses.Spec.Addresses
+				lbEndpoint.Addresses = addresses.Spec.Addresses
 			}
 
 			for _, lbEndpointPort := range lbEndpoint.Ports {
