@@ -6,4 +6,4 @@ resources:
 images:
   - name: controller
     newName: quay.io/kubermatic/kubelb-manager
-    newTag: local-17199188671
+    newTag: v1.0.0
