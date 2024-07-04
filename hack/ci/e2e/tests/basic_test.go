@@ -70,8 +70,13 @@ func TestSimpleService(t *testing.T) {
 	lb := v1alpha1.LoadBalancer{}
 	Expect(kubelbK8sClient.Get(ctx, types.NamespacedName{Namespace: "cluster-tenant1", Name: string(svc.UID)}, &lb)).To(Succeed())
 	Expect(len(lb.Spec.Endpoints)).To(Equal(1))
-	Expect(len(lb.Spec.Endpoints[0].Addresses)).To(Equal(1))
 	Expect(len(lb.Spec.Endpoints[0].Ports)).To(Equal(1))
+
+	Expect(lb.Spec.Endpoints[0].AddressesReference).ToNot(BeNil())
+	// Retrieve the endpoint addresses and make sure they are correct
+	addresses := v1alpha1.Addresses{}
+	Expect(kubelbK8sClient.Get(ctx, types.NamespacedName{Namespace: "cluster-tenant1", Name: string(*&lb.Spec.Endpoints[0].AddressesReference.Name)}, &addresses)).To(Succeed())
+	Expect(len(addresses.Spec.Addresses)).To(Equal(1))
 }
 
 func TestMultiNodeService(t *testing.T) {
@@ -92,8 +97,13 @@ func TestMultiNodeService(t *testing.T) {
 	lb := v1alpha1.LoadBalancer{}
 	Expect(kubelbK8sClient.Get(ctx, types.NamespacedName{Namespace: "cluster-tenant2", Name: string(svc.UID)}, &lb)).To(Succeed())
 	Expect(len(lb.Spec.Endpoints)).To(Equal(1))
-	Expect(len(lb.Spec.Endpoints[0].Addresses)).To(Equal(4))
 	Expect(len(lb.Spec.Endpoints[0].Ports)).To(Equal(1))
+
+	Expect(lb.Spec.Endpoints[0].AddressesReference).ToNot(BeNil())
+	// Retrieve the endpoint addresses and make sure they are correct
+	addresses := v1alpha1.Addresses{}
+	Expect(kubelbK8sClient.Get(ctx, types.NamespacedName{Namespace: "cluster-tenant2", Name: string(*&lb.Spec.Endpoints[0].AddressesReference.Name)}, &addresses)).To(Succeed())
+	Expect(len(addresses.Spec.Addresses)).To(Equal(4))
 }
 
 func TestMultiPortService(t *testing.T) {
@@ -115,8 +125,13 @@ func TestMultiPortService(t *testing.T) {
 	lb := v1alpha1.LoadBalancer{}
 	Expect(kubelbK8sClient.Get(ctx, types.NamespacedName{Namespace: "cluster-tenant1", Name: string(svc.UID)}, &lb)).To(Succeed())
 	Expect(len(lb.Spec.Endpoints)).To(Equal(1))
-	Expect(len(lb.Spec.Endpoints[0].Addresses)).To(Equal(1))
 	Expect(len(lb.Spec.Endpoints[0].Ports)).To(Equal(2))
+
+	Expect(lb.Spec.Endpoints[0].AddressesReference).ToNot(BeNil())
+	// Retrieve the endpoint addresses and make sure they are correct
+	addresses := v1alpha1.Addresses{}
+	Expect(kubelbK8sClient.Get(ctx, types.NamespacedName{Namespace: "cluster-tenant2", Name: string(*&lb.Spec.Endpoints[0].AddressesReference.Name)}, &addresses)).To(Succeed())
+	Expect(len(addresses.Spec.Addresses)).To(Equal(4))
 }
 
 func TestMultiPortMultiNodeService(t *testing.T) {
@@ -138,8 +153,13 @@ func TestMultiPortMultiNodeService(t *testing.T) {
 	lb := v1alpha1.LoadBalancer{}
 	Expect(kubelbK8sClient.Get(ctx, types.NamespacedName{Namespace: "cluster-tenant2", Name: string(svc.UID)}, &lb)).To(Succeed())
 	Expect(len(lb.Spec.Endpoints)).To(Equal(1))
-	Expect(len(lb.Spec.Endpoints[0].Addresses)).To(Equal(4))
 	Expect(len(lb.Spec.Endpoints[0].Ports)).To(Equal(2))
+
+	Expect(lb.Spec.Endpoints[0].AddressesReference).ToNot(BeNil())
+	// Retrieve the endpoint addresses and make sure they are correct
+	addresses := v1alpha1.Addresses{}
+	Expect(kubelbK8sClient.Get(ctx, types.NamespacedName{Namespace: "cluster-tenant2", Name: string(*&lb.Spec.Endpoints[0].AddressesReference.Name)}, &addresses)).To(Succeed())
+	Expect(len(addresses.Spec.Addresses)).To(Equal(4))
 }
 
 func TestDuplicateService(t *testing.T) {
@@ -172,14 +192,24 @@ func TestDuplicateService(t *testing.T) {
 	lb1 := v1alpha1.LoadBalancer{}
 	Expect(kubelbK8sClient.Get(ctx, types.NamespacedName{Namespace: "cluster-tenant1", Name: string(svc1.UID)}, &lb1)).To(Succeed())
 	Expect(len(lb1.Spec.Endpoints)).To(Equal(1))
-	Expect(len(lb1.Spec.Endpoints[0].Addresses)).To(Equal(1))
 	Expect(len(lb1.Spec.Endpoints[0].Ports)).To(Equal(2))
+
+	Expect(lb1.Spec.Endpoints[0].AddressesReference).ToNot(BeNil())
+	// Retrieve the endpoint addresses and make sure they are correct
+	addresses := v1alpha1.Addresses{}
+	Expect(kubelbK8sClient.Get(ctx, types.NamespacedName{Namespace: "cluster-tenant1", Name: string(*&lb1.Spec.Endpoints[0].AddressesReference.Name)}, &addresses)).To(Succeed())
+	Expect(len(addresses.Spec.Addresses)).To(Equal(1))
 
 	lb2 := v1alpha1.LoadBalancer{}
 	Expect(kubelbK8sClient.Get(ctx, types.NamespacedName{Namespace: "cluster-tenant2", Name: string(svc2.UID)}, &lb2)).To(Succeed())
 	Expect(len(lb2.Spec.Endpoints)).To(Equal(1))
-	Expect(len(lb2.Spec.Endpoints[0].Addresses)).To(Equal(4))
 	Expect(len(lb2.Spec.Endpoints[0].Ports)).To(Equal(2))
+
+	Expect(lb2.Spec.Endpoints[0].AddressesReference).ToNot(BeNil())
+	// Retrieve the endpoint addresses and make sure they are correct
+	addresses = v1alpha1.Addresses{}
+	Expect(kubelbK8sClient.Get(ctx, types.NamespacedName{Namespace: "cluster-tenant2", Name: string(*&lb2.Spec.Endpoints[0].AddressesReference.Name)}, &addresses)).To(Succeed())
+	Expect(len(addresses.Spec.Addresses)).To(Equal(4))
 }
 
 func TestMultipleServices(t *testing.T) {
@@ -224,12 +254,22 @@ func TestMultipleServices(t *testing.T) {
 	lb1 := v1alpha1.LoadBalancer{}
 	Expect(kubelbK8sClient.Get(ctx, types.NamespacedName{Namespace: "cluster-tenant2", Name: string(svc1.UID)}, &lb1)).To(Succeed())
 	Expect(len(lb1.Spec.Endpoints)).To(Equal(1))
-	Expect(len(lb1.Spec.Endpoints[0].Addresses)).To(Equal(4))
 	Expect(len(lb1.Spec.Endpoints[0].Ports)).To(Equal(2))
+
+	Expect(lb1.Spec.Endpoints[0].AddressesReference).ToNot(BeNil())
+	// Retrieve the endpoint addresses and make sure they are correct
+	addresses := v1alpha1.Addresses{}
+	Expect(kubelbK8sClient.Get(ctx, types.NamespacedName{Namespace: "cluster-tenant2", Name: string(*&lb1.Spec.Endpoints[0].AddressesReference.Name)}, &addresses)).To(Succeed())
+	Expect(len(addresses.Spec.Addresses)).To(Equal(4))
 
 	lb2 := v1alpha1.LoadBalancer{}
 	Expect(kubelbK8sClient.Get(ctx, types.NamespacedName{Namespace: "cluster-tenant2", Name: string(svc2.UID)}, &lb2)).To(Succeed())
 	Expect(len(lb2.Spec.Endpoints)).To(Equal(1))
-	Expect(len(lb2.Spec.Endpoints[0].Addresses)).To(Equal(4))
 	Expect(len(lb2.Spec.Endpoints[0].Ports)).To(Equal(2))
+
+	Expect(lb2.Spec.Endpoints[0].AddressesReference).ToNot(BeNil())
+	// Retrieve the endpoint addresses and make sure they are correct
+	addresses = v1alpha1.Addresses{}
+	Expect(kubelbK8sClient.Get(ctx, types.NamespacedName{Namespace: "cluster-tenant2", Name: string(*&lb2.Spec.Endpoints[0].AddressesReference.Name)}, &addresses)).To(Succeed())
+	Expect(len(addresses.Spec.Addresses)).To(Equal(4))
 }
