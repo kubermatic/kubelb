@@ -32,6 +32,24 @@ rules:
   - patch
   - update
 - apiGroups:
+  - kubelb.k8c.io
+  resources:
+  - routes
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - kubelb.k8c.io
+  resources:
+  - routes/status
+  verbs:
+  - get
+- apiGroups:
   - networking.k8s.io
   resources:
   - ingresses

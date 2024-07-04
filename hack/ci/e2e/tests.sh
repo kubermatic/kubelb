@@ -18,7 +18,5 @@ set -euo pipefail
 
 source "${ROOT_DIR}/hack/lib.sh"
 
-sleep 50000
-
 echodate "Running tests"
 KUBECONFIGS_DIR="${TMPDIR}" go test -timeout 30m -v "${ROOT_DIR}/hack/ci/e2e/tests/" -coverprofile cover.out
