@@ -1102,6 +1102,11 @@ spec:
                       If set to true, Replicas will be ignored.
                     type: boolean
                 type: object
+              gatewayClassName:
+                description: |-
+                  GatewayClassName is the name of the GatewayClass that will be used for the routes created by KubeLB.
+                  If not specified, KubeLB will replace the GatewayClassName with an empty value in the Gateway resource which would result in the default GatewayClass being used.
+                type: string
               ingressClassName:
                 description: |-
                   IngressClassName is the name of the IngressClass that will be used for the routes created by KubeLB. If not specified, KubeLB will replace the IngressClassName
