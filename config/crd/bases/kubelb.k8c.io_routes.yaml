@@ -329,10 +329,6 @@ spec:
                         type: array
                         x-kubernetes-preserve-unknown-fields: true
                       resource:
-                        description: |-
-                          Resources contains the list of resources that are used as the source for the Route.
-                          Allowed resources:
-                          - networking.k8s.io/ingress
                         type: object
                         x-kubernetes-embedded-resource: true
                         x-kubernetes-preserve-unknown-fields: true

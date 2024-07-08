@@ -47,6 +47,7 @@ import (
 	ctrlruntimeclient "sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
+	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
 )
 
 const (
@@ -296,18 +297,32 @@ func (r *RouteReconciler) manageRoutes(ctx context.Context, log logr.Logger, rou
 
 	// Determine the type of the resource and call the appropriate method
 	switch v := resource.(type) {
-	case *v1.Ingress: // Assuming v1 "k8s.io/api/networking/v1"
+	case *v1.Ingress: // v1 "k8s.io/api/networking/v1"
 		err = r.createOrUpdateIngress(ctx, log, v, referencedServices, route.Namespace)
 		if err == nil {
-			// Retrieve updated Ingress object to get the status.
-			ingressKey := client.ObjectKey{Namespace: v.Namespace, Name: v.Name}
-			ingress := &v1.Ingress{}
-			if err := r.Client.Get(ctx, ingressKey, ingress); err != nil {
+			// Retrieve updated object to get the status.
+			key := client.ObjectKey{Namespace: v.Namespace, Name: v.Name}
+			res := &v1.Ingress{}
+			if err := r.Client.Get(ctx, key, res); err != nil {
 				if !kerrors.IsNotFound(err) {
 					return fmt.Errorf("failed to get Ingress: %w", err)
 				}
 			}
-			updateResourceStatus(routeStatus, ingress, err)
+			updateResourceStatus(routeStatus, res, err)
+		}
+
+	case *gwapiv1.Gateway: // v1 "sigs.k8s.io/gateway-api/apis/v1"
+		err = r.createOrUpdateGateway(ctx, log, v, route.Namespace)
+		if err == nil {
+			// Retrieve updated object to get the status.
+			key := client.ObjectKey{Namespace: v.Namespace, Name: v.Name}
+			res := &gwapiv1.Gateway{}
+			if err := r.Client.Get(ctx, key, res); err != nil {
+				if !kerrors.IsNotFound(err) {
+					return fmt.Errorf("failed to get Gateway: %w", err)
+				}
+			}
+			updateResourceStatus(routeStatus, res, err)
 		}
 
 	default:
@@ -315,6 +330,38 @@ func (r *RouteReconciler) manageRoutes(ctx context.Context, log logr.Logger, rou
 	}
 
 	return r.UpdateRouteStatus(ctx, route, *routeStatus)
+}
+
+func (r *RouteReconciler) createOrUpdateGateway(ctx context.Context, log logr.Logger, gateway *gwapiv1.Gateway, namespace string) error {
+	gateway.Namespace = namespace
+	gateway.SetUID("") // Reset UID to generate a new UID for the Gateway object
+
+	log.V(4).Info("Creating/Updating Gateway", "name", gateway.Name, "namespace", gateway.Namespace)
+	// Check if it already exists.
+	gatewayKey := client.ObjectKey{Namespace: gateway.Namespace, Name: gateway.Name}
+	existingGateway := &gwapiv1.Gateway{}
+	if err := r.Client.Get(ctx, gatewayKey, existingGateway); err != nil {
+		if !kerrors.IsNotFound(err) {
+			return fmt.Errorf("failed to get Gateway: %w", err)
+		}
+		err := r.Client.Create(ctx, gateway)
+		if err != nil {
+			return fmt.Errorf("failed to create Gateway: %w", err)
+		}
+		return nil
+	}
+
+	// Update the Gateway object if it is different from the existing one.
+	if equality.Semantic.DeepEqual(existingGateway.Spec, gateway.Spec) &&
+		equality.Semantic.DeepEqual(existingGateway.Labels, gateway.Labels) &&
+		equality.Semantic.DeepEqual(existingGateway.Annotations, gateway.Annotations) {
+		return nil
+	}
+
+	if err := r.Client.Update(ctx, gateway); err != nil {
+		return fmt.Errorf("failed to update Gateway: %w", err)
+	}
+	return nil
 }
 
 // createOrUpdateIngress creates or updates the Ingress object in the cluster.
