@@ -76,11 +76,11 @@ func GetName(obj client.Object) string {
 }
 
 func GetNamespace(obj client.Object) string {
-	name := obj.GetNamespace()
+	namespace := obj.GetNamespace()
 	if labels := obj.GetLabels(); labels != nil {
 		if _, ok := labels[LabelOriginNamespace]; ok {
-			name = labels[LabelOriginNamespace]
+			namespace = labels[LabelOriginNamespace]
 		}
 	}
-	return name
+	return namespace
 }

@@ -176,13 +176,13 @@ func GetServiceName(service corev1.Service) string {
 }
 
 func GetServiceNamespace(service corev1.Service) string {
-	name := service.Namespace
+	namespace := service.Namespace
 	if labels := service.Labels; labels != nil {
 		if _, ok := labels[kubelb.LabelOriginNamespace]; ok {
-			name = service.Labels[kubelb.LabelOriginNamespace]
+			namespace = service.Labels[kubelb.LabelOriginNamespace]
 		}
 	}
-	return name
+	return namespace
 }
 
 func cleanseService(svc corev1.Service, removeUID, removeClusterSpecificFields bool) *corev1.Service {
