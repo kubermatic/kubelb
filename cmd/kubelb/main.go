@@ -22,7 +22,7 @@ import (
 
 	"go.uber.org/zap/zapcore"
 
-	kubelbk8ciov1alpha1 "k8c.io/kubelb/api/kubelb.k8c.io/v1alpha1"
+	kubelbv1alpha1 "k8c.io/kubelb/api/kubelb.k8c.io/v1alpha1"
 	"k8c.io/kubelb/internal/config"
 	"k8c.io/kubelb/internal/controllers/kubelb"
 	"k8c.io/kubelb/internal/envoy"
@@ -55,7 +55,7 @@ var (
 
 func init() {
 	utilruntime.Must(clientgoscheme.AddToScheme(scheme))
-	utilruntime.Must(kubelbk8ciov1alpha1.AddToScheme(scheme))
+	utilruntime.Must(kubelbv1alpha1.AddToScheme(scheme))
 	// +kubebuilder:scaffold:scheme
 }
 
@@ -132,22 +132,17 @@ func main() {
 		setupLog.Error(err, "unable to load controller config")
 		os.Exit(1)
 	}
-
 	// For Global topology, we need to ensure that the port lookup table exists. If it doesn't, we create it since it's managed by this controller.
-	var portAllocator *portlookup.PortAllocator
-	if kubelb.EnvoyProxyTopology(config.GetEnvoyProxyTopology()) == kubelb.EnvoyProxyTopologyGlobal {
-		portAllocator = portlookup.NewPortAllocator()
-		if err := portAllocator.LoadState(ctx, mgr.GetAPIReader()); err != nil {
-			setupLog.Error(err, ("unable to load port lookup state"))
-			os.Exit(1)
-		}
+	portAllocator := portlookup.NewPortAllocator()
+	if err := portAllocator.LoadState(ctx, mgr.GetAPIReader()); err != nil {
+		setupLog.Error(err, ("unable to load port lookup state"))
+		os.Exit(1)
 	}
 
 	if err = (&kubelb.LoadBalancerReconciler{
 		Client:             mgr.GetClient(),
 		Cache:              mgr.GetCache(),
 		Scheme:             mgr.GetScheme(),
-		EnvoyBootstrap:     envoyServer.GenerateBootstrap(),
 		Namespace:          opt.namespace,
 		EnvoyProxyTopology: kubelb.EnvoyProxyTopology(config.GetEnvoyProxyTopology()),
 		PortAllocator:      portAllocator,
@@ -170,8 +165,22 @@ func main() {
 		EnvoyCache:         envoyServer.Cache,
 		EnvoyProxyTopology: kubelb.EnvoyProxyTopology(config.GetEnvoyProxyTopology()),
 		PortAllocator:      portAllocator,
+		Namespace:          opt.namespace,
+		EnvoyBootstrap:     envoyServer.GenerateBootstrap(),
 	}).SetupWithManager(ctx, envoyMgr); err != nil {
 		setupLog.Error(err, "unable to create envoy control-plane controller", "controller", "LoadBalancer")
+		os.Exit(1)
+	}
+
+	if err = (&kubelb.RouteReconciler{
+		Client:             mgr.GetClient(),
+		Scheme:             mgr.GetScheme(),
+		Log:                ctrl.Log.WithName("controllers").WithName(kubelb.RouteControllerName),
+		Recorder:           mgr.GetEventRecorderFor(kubelb.RouteControllerName),
+		EnvoyProxyTopology: kubelb.EnvoyProxyTopology(config.GetEnvoyProxyTopology()),
+		PortAllocator:      portAllocator,
+	}).SetupWithManager(mgr); err != nil {
+		setupLog.Error(err, "unable to create controller", "controller", kubelb.RouteControllerName)
 		os.Exit(1)
 	}
 

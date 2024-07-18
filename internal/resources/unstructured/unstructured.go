@@ -20,6 +20,7 @@ import (
 	"fmt"
 
 	corev1 "k8s.io/api/core/v1"
+	networkingv1 "k8s.io/api/networking/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -35,6 +36,7 @@ func NormalizeUnstructured(obj *unstructured.Unstructured) *unstructured.Unstruc
 	clone.SetLabels(obj.GetLabels())
 	clone.SetAnnotations(obj.GetAnnotations())
 	clone.SetUID(obj.GetUID())
+	clone.SetOwnerReferences(nil)
 
 	clone.Object["spec"] = obj.Object["spec"]
 
@@ -45,10 +47,28 @@ func NormalizeUnstructured(obj *unstructured.Unstructured) *unstructured.Unstruc
 	return clone
 }
 
-func ConverObjectToUnstructured(object client.Object) (*unstructured.Unstructured, error) {
+func ConvertObjectToUnstructured(object client.Object) (*unstructured.Unstructured, error) {
 	unstruct, err := runtime.DefaultUnstructuredConverter.ToUnstructured(object)
 	if err != nil {
 		return nil, fmt.Errorf("failed to convert resource to unstructured: %w", err)
 	}
 	return &unstructured.Unstructured{Object: unstruct}, nil
+}
+
+func ConvertUnstructuredToObject(unstruct *unstructured.Unstructured) (client.Object, error) {
+	var object client.Object
+	gvk := unstruct.GetObjectKind().GroupVersionKind()
+
+	switch gvk {
+	case networkingv1.SchemeGroupVersion.WithKind("Ingress"):
+		object = &networkingv1.Ingress{}
+	case corev1.SchemeGroupVersion.WithKind("Service"):
+		object = &corev1.Service{}
+	}
+
+	err := runtime.DefaultUnstructuredConverter.FromUnstructured(unstruct.UnstructuredContent(), object)
+	if err != nil {
+		return nil, fmt.Errorf("failed to convert unstructured to resource: %w", err)
+	}
+	return object, nil
 }

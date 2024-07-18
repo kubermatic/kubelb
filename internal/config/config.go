@@ -54,3 +54,7 @@ func SetConfig(conf v1alpha1.Config) {
 func GetEnvoyProxyTopology() v1alpha1.EnvoyProxyTopology {
 	return config.Spec.EnvoyProxy.Topology
 }
+
+func IsGlobalTopology() bool {
+	return GetEnvoyProxyTopology() == v1alpha1.EnvoyProxyTopologyGlobal
+}

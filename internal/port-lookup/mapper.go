@@ -19,12 +19,12 @@ package portlookup
 import (
 	"fmt"
 
-	kubelbk8ciov1alpha1 "k8c.io/kubelb/api/kubelb.k8c.io/v1alpha1"
+	kubelbv1alpha1 "k8c.io/kubelb/api/kubelb.k8c.io/v1alpha1"
 	"k8c.io/kubelb/internal/kubelb"
 )
 
 // AllocatePortsForLoadBalancers allocates ports to the given load balancers. If a port is already allocated, it will be skipped.
-func (pa *PortAllocator) AllocatePortsForLoadBalancers(loadBalancers kubelbk8ciov1alpha1.LoadBalancerList) error {
+func (pa *PortAllocator) AllocatePortsForLoadBalancers(loadBalancers kubelbv1alpha1.LoadBalancerList) error {
 	for _, lb := range loadBalancers.Items {
 		for i, lbEndpoint := range lb.Spec.Endpoints {
 			endpointKey := fmt.Sprintf(kubelb.EnvoyEndpointPattern, lb.Namespace, lb.Name, i)
@@ -40,8 +40,43 @@ func (pa *PortAllocator) AllocatePortsForLoadBalancers(loadBalancers kubelbk8cio
 	return nil
 }
 
+// AllocatePortsForRoutes allocates ports for the routes. If a port is already allocated, it will be skipped.
+func (pa *PortAllocator) AllocatePortsForRoutes(routes []kubelbv1alpha1.Route) error {
+	for _, route := range routes {
+		if route.Spec.Source.Kubernetes == nil {
+			continue
+		}
+
+		for _, svc := range route.Spec.Source.Kubernetes.Services {
+			endpointKey := fmt.Sprintf(kubelb.EnvoyEndpointRoutePattern, route.Namespace, svc.Namespace, svc.Name)
+			var keys []string
+			for _, svcPort := range svc.Spec.Ports {
+				keys = append(keys, fmt.Sprintf(kubelb.EnvoyListenerPattern, svcPort.Port, svcPort.Protocol))
+			}
+			// If a port is already allocated, it will be skipped.
+			pa.AllocatePorts(endpointKey, keys)
+		}
+	}
+	return nil
+}
+
+// DeallocatePortsForRoutes deallocates ports for the route.
+func (pa *PortAllocator) DeallocatePortsForRoute(route kubelbv1alpha1.Route) error {
+	if route.Spec.Source.Kubernetes == nil {
+		return nil
+	}
+
+	var keys []string
+	for _, svc := range route.Spec.Source.Kubernetes.Services {
+		keys = append(keys, fmt.Sprintf(kubelb.EnvoyEndpointRoutePattern, route.Namespace, svc.Namespace, svc.Name))
+	}
+
+	pa.DeallocateEndpoints(keys)
+	return nil
+}
+
 // DeallocatePortsForLoadBalancer deallocates ports against the given load balancer.
-func (pa *PortAllocator) DeallocatePortsForLoadBalancer(loadBalancer kubelbk8ciov1alpha1.LoadBalancer) error {
+func (pa *PortAllocator) DeallocatePortsForLoadBalancer(loadBalancer kubelbv1alpha1.LoadBalancer) error {
 	var endpointKeys []string
 
 	for i := range loadBalancer.Spec.Endpoints {

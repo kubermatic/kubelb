@@ -22,7 +22,7 @@ import (
 	"math/rand"
 	"sync"
 
-	kubelbk8ciov1alpha1 "k8c.io/kubelb/api/kubelb.k8c.io/v1alpha1"
+	kubelbv1alpha1 "k8c.io/kubelb/api/kubelb.k8c.io/v1alpha1"
 	"k8c.io/kubelb/internal/kubelb"
 
 	"k8s.io/utils/strings/slices"
@@ -56,7 +56,6 @@ func NewPortAllocator() *PortAllocator {
 func (pa *PortAllocator) GetPortLookupTable() LookupTable {
 	return pa.portLookup
 }
-
 func (pa *PortAllocator) Lookup(endpointKey, portKey string) (int, bool) {
 	if endpointLookup, exists := pa.portLookup[endpointKey]; exists {
 		if port, exists := endpointLookup[portKey]; exists {
@@ -151,7 +150,7 @@ func (pa *PortAllocator) LoadState(ctx context.Context, apiReader client.Reader)
 	lookupTable := make(LookupTable)
 
 	// We use the API reader here because the cache may not be fully synced yet.
-	loadBalancers := &kubelbk8ciov1alpha1.LoadBalancerList{}
+	loadBalancers := &kubelbv1alpha1.LoadBalancerList{}
 	err := apiReader.List(ctx, loadBalancers)
 	if err != nil {
 		return err
@@ -177,6 +176,34 @@ func (pa *PortAllocator) LoadState(ctx context.Context, apiReader client.Reader)
 		}
 	}
 
+	routes := &kubelbv1alpha1.RouteList{}
+	err = apiReader.List(ctx, routes)
+	if err != nil {
+		return err
+	}
+
+	for _, route := range routes.Items {
+		if route.Spec.Source.Kubernetes == nil {
+			continue
+		}
+		for _, svc := range route.Spec.Source.Kubernetes.Services {
+			endpointKey := fmt.Sprintf(kubelb.EnvoyEndpointRoutePattern, route.Namespace, svc.Namespace, svc.Name)
+			if _, exists := lookupTable[endpointKey]; !exists {
+				lookupTable[endpointKey] = make(map[string]int)
+			}
+
+			// The assigned port is stored in the status of the service.
+			if route.Status.Resources.Services != nil {
+				key := fmt.Sprintf(kubelb.RouteServiceMapKey, svc.Namespace, kubelb.GetName(&svc))
+				if svcPort, exists := route.Status.Resources.Services[key]; exists {
+					for _, port := range svcPort.Ports {
+						portKey := fmt.Sprintf(kubelb.EnvoyListenerPattern, port.Port, port.Protocol)
+						lookupTable[endpointKey][portKey] = port.TargetPort.IntValue()
+					}
+				}
+			}
+		}
+	}
 	pa.portLookup = lookupTable
 	pa.recomputeAvailablePorts()
 	return nil

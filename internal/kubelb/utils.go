@@ -16,6 +16,12 @@ limitations under the License.
 
 package kubelb
 
+import (
+	"fmt"
+
+	"sigs.k8s.io/controller-runtime/pkg/client"
+)
+
 // TODO(waleed): Rename to origin-namespace
 const LabelOriginNamespace = "kubelb.k8c.io/origin-ns"
 const LabelOriginName = "kubelb.k8c.io/origin-name"
@@ -36,4 +42,45 @@ const LabelAppKubernetesManagedBy = "app.kubernetes.io/managed-by" // helm
 
 const EnvoyResourceIdentifierPattern = "%s-%s-ep-%d-port-%d-%s"
 const EnvoyEndpointPattern = "%s-%s-ep-%d"
-const EnvoyListenerPattern = "%d-%s"
+const EnvoyEndpointRoutePattern = "tenant-%s-route-%s-%s"
+const EnvoyRoutePortIdentifierPattern = "tenant-%s-route-%s-%s-svc-%s-port-%d-%s"
+const EnvoyListenerPattern = "%v-%s"
+const RouteServiceMapKey = "%s/%s"
+const DefaultRouteStatus = "{}"
+
+const NameSuffixLength = 4
+
+func GenerateName(useUID bool, uid, name, namespace string) string {
+	if useUID {
+		return uid
+	}
+
+	output := fmt.Sprintf("%s-%s", namespace, name)
+	// If the output is longer than 63 characters, truncate the name and append a suffix
+	if len(output) > 63 {
+		output = output[:63-NameSuffixLength+1]
+		output = fmt.Sprintf("%s-%s", output, uid[len(uid)-NameSuffixLength:])
+	}
+
+	return output
+}
+
+func GetName(obj client.Object) string {
+	name := obj.GetName()
+	if labels := obj.GetLabels(); labels != nil {
+		if _, ok := labels[LabelOriginName]; ok {
+			name = labels[LabelOriginName]
+		}
+	}
+	return name
+}
+
+func GetNamespace(obj client.Object) string {
+	namespace := obj.GetNamespace()
+	if labels := obj.GetLabels(); labels != nil {
+		if _, ok := labels[LabelOriginNamespace]; ok {
+			namespace = labels[LabelOriginNamespace]
+		}
+	}
+	return namespace
+}

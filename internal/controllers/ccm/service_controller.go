@@ -23,7 +23,7 @@ import (
 
 	"github.com/go-logr/logr"
 
-	kubelbk8ciov1alpha1 "k8c.io/kubelb/api/kubelb.k8c.io/v1alpha1"
+	kubelbv1alpha1 "k8c.io/kubelb/api/kubelb.k8c.io/v1alpha1"
 	utils "k8c.io/kubelb/internal/controllers"
 	"k8c.io/kubelb/internal/kubelb"
 
@@ -55,7 +55,6 @@ type KubeLBServiceReconciler struct {
 	ClusterName          string
 	CloudController      bool
 	UseLoadbalancerClass bool
-	Endpoints            *kubelb.Endpoints
 }
 
 // +kubebuilder:rbac:groups="",resources=services,verbs=get;list;watch;update;patch
@@ -81,10 +80,7 @@ func (r *KubeLBServiceReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 		return ctrl.Result{}, nil
 	}
 
-	clusterEndpoints := r.getEndpoints(&service)
-
-	log.V(6).Info("processing", "service", service)
-	log.V(5).Info("proceeding with", "endpoints", clusterEndpoints)
+	clusterEndpoints, useAddressesReference := r.getEndpoints(&service)
 
 	// examine DeletionTimestamp to determine if object is under deletion
 	if !service.ObjectMeta.DeletionTimestamp.IsZero() {
@@ -110,12 +106,12 @@ func (r *KubeLBServiceReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 
 	log.V(5).Info("proceeding with", "endpoints", clusterEndpoints)
 
-	desiredLB := kubelb.MapLoadBalancer(&service, clusterEndpoints, r.ClusterName)
+	desiredLB := kubelb.MapLoadBalancer(&service, clusterEndpoints, useAddressesReference, r.ClusterName)
 	log.V(6).Info("desired", "LoadBalancer", desiredLB)
 
 	kubelbClient := r.KubeLBManager.GetClient()
 
-	var actualLB kubelbk8ciov1alpha1.LoadBalancer
+	var actualLB kubelbv1alpha1.LoadBalancer
 
 	err = kubelbClient.Get(ctx, ctrlclient.ObjectKeyFromObject(desiredLB), &actualLB)
 	log.V(6).Info("actual", "LoadBalancer", actualLB)
@@ -174,7 +170,7 @@ func (r *KubeLBServiceReconciler) cleanupService(ctx context.Context, log logr.L
 		return ctrl.Result{}, nil
 	}
 
-	lb := &kubelbk8ciov1alpha1.LoadBalancer{
+	lb := &kubelbv1alpha1.LoadBalancer{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      string(service.UID),
 			Namespace: r.ClusterName,
@@ -202,8 +198,8 @@ func (r *KubeLBServiceReconciler) cleanupService(ctx context.Context, log logr.L
 	return ctrl.Result{}, nil
 }
 
-func (r *KubeLBServiceReconciler) enqueueLoadBalancer() handler.TypedMapFunc[*kubelbk8ciov1alpha1.LoadBalancer] {
-	return handler.TypedMapFunc[*kubelbk8ciov1alpha1.LoadBalancer](func(_ context.Context, lb *kubelbk8ciov1alpha1.LoadBalancer) []reconcile.Request {
+func (r *KubeLBServiceReconciler) enqueueLoadBalancer() handler.TypedMapFunc[*kubelbv1alpha1.LoadBalancer] {
+	return handler.TypedMapFunc[*kubelbv1alpha1.LoadBalancer](func(_ context.Context, lb *kubelbv1alpha1.LoadBalancer) []reconcile.Request {
 		if lb.GetNamespace() != r.ClusterName {
 			return []reconcile.Request{}
 		}
@@ -214,14 +210,14 @@ func (r *KubeLBServiceReconciler) enqueueLoadBalancer() handler.TypedMapFunc[*ku
 
 		originalNamespace, ok := lb.GetLabels()[kubelb.LabelOriginNamespace]
 		if !ok || originalNamespace == "" {
-			r.Log.Error(fmt.Errorf("required label \"%s\" not found", kubelb.LabelOriginNamespace), fmt.Sprintf("failed to queue service for LoadBalacner: %s, could not determine origin namespace", lb.GetName()))
+			r.Log.Error(fmt.Errorf("required label \"%s\" not found", kubelb.LabelOriginNamespace), fmt.Sprintf("failed to queue service for LoadBalancer: %s, could not determine origin namespace", lb.GetName()))
 
 			return []reconcile.Request{}
 		}
 
 		originalName, ok := lb.GetLabels()[kubelb.LabelOriginName]
 		if !ok || originalName == "" {
-			r.Log.Error(fmt.Errorf("required label \"%s\" not found", kubelb.LabelOriginName), fmt.Sprintf("failed to queue service for LoadBalacner: %s, could not determine origin name", lb.GetName()))
+			r.Log.Error(fmt.Errorf("required label \"%s\" not found", kubelb.LabelOriginName), fmt.Sprintf("failed to queue service for LoadBalancer: %s, could not determine origin name", lb.GetName()))
 
 			return []reconcile.Request{}
 		}
@@ -237,7 +233,7 @@ func (r *KubeLBServiceReconciler) enqueueLoadBalancer() handler.TypedMapFunc[*ku
 	})
 }
 
-func (r *KubeLBServiceReconciler) getEndpoints(service *corev1.Service) []string {
+func (r *KubeLBServiceReconciler) getEndpoints(service *corev1.Service) ([]string, bool) {
 	var clusterEndpoints []string
 
 	// Use LB Endpoint if there is any non KubeLb load balancer implementation
@@ -250,10 +246,10 @@ func (r *KubeLBServiceReconciler) getEndpoints(service *corev1.Service) []string
 			}
 		}
 	} else {
-		clusterEndpoints = r.Endpoints.ClusterEndpoints
+		return nil, true
 	}
 
-	return clusterEndpoints
+	return clusterEndpoints, false
 }
 
 func (r *KubeLBServiceReconciler) shouldReconcile(svc corev1.Service) bool {
@@ -271,8 +267,8 @@ func (r *KubeLBServiceReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&corev1.Service{}).
 		WatchesRawSource(
-			source.Kind(r.KubeLBManager.GetCache(), &kubelbk8ciov1alpha1.LoadBalancer{},
-				handler.TypedEnqueueRequestsFromMapFunc[*kubelbk8ciov1alpha1.LoadBalancer](r.enqueueLoadBalancer())),
+			source.Kind(r.KubeLBManager.GetCache(), &kubelbv1alpha1.LoadBalancer{},
+				handler.TypedEnqueueRequestsFromMapFunc[*kubelbv1alpha1.LoadBalancer](r.enqueueLoadBalancer())),
 		).
 		Complete(r)
 }

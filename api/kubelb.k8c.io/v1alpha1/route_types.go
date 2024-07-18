@@ -20,6 +20,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	runtime "k8s.io/apimachinery/pkg/runtime"
 	gwapiv1a2 "sigs.k8s.io/gateway-api/apis/v1alpha2"
 )
 
@@ -37,6 +38,7 @@ type RouteSpec struct {
 
 type RouteSource struct {
 	// Kubernetes contains the information about the Kubernetes source.
+	// This field is automatically populated by the KubeLB CCM and in most cases, users should not set this field manually.
 	Kubernetes *KubernetesSource `json:"kubernetes,omitempty"`
 }
 
@@ -104,6 +106,55 @@ type Route struct {
 
 // RouteStatus defines the observed state of the Route.
 type RouteStatus struct {
+	// Resources contains the list of resources that are created/processed as a result of the Route.
+	Resources RouteResourcesStatus `json:"resources,omitempty"`
+}
+
+type RouteResourcesStatus struct {
+	Source string `json:"source,omitempty"`
+
+	Services map[string]RouteServiceStatus `json:"services,omitempty"`
+
+	ReferenceGrants map[string]ResourceState `json:"referenceGrants,omitempty"`
+
+	Route ResourceState `json:"route,omitempty"`
+}
+
+type RouteServiceStatus struct {
+	ResourceState `json:",inline"`
+	Ports         []corev1.ServicePort `json:"ports,omitempty"`
+}
+
+type ResourceState struct {
+	// APIVersion is the API version of the resource.
+	APIVersion string `json:"apiVersion,omitempty"`
+
+	// Kind is the kind of the resource.
+	Kind string `json:"kind,omitempty"`
+
+	// Name is the name of the resource.
+	Name string `json:"name,omitempty"`
+
+	// Namespace is the namespace of the resource.
+	Namespace string `json:"namespace,omitempty"`
+
+	// GeneratedName is the generated name of the resource.
+	GeneratedName string `json:"generatedName,omitempty"`
+
+	// Status is the actual status of the resource.
+	Status runtime.RawExtension `json:"status,omitempty"`
+
+	Conditions []metav1.Condition `json:"conditions,omitempty"`
+}
+
+type ConditionType string
+
+const (
+	ConditionResourceAppliedSuccessfully ConditionType = "ResourceAppliedSuccessfully"
+)
+
+func (t ConditionType) String() string {
+	return string(t)
 }
 
 //+kubebuilder:object:root=true

@@ -27,9 +27,8 @@ import (
 
 	"go.uber.org/zap/zapcore"
 
-	kubelbk8ciov1alpha1 "k8c.io/kubelb/api/kubelb.k8c.io/v1alpha1"
+	kubelbv1alpha1 "k8c.io/kubelb/api/kubelb.k8c.io/v1alpha1"
 	"k8c.io/kubelb/internal/controllers/ccm"
-	"k8c.io/kubelb/internal/kubelb"
 
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -57,7 +56,7 @@ var (
 
 func init() {
 	utilruntime.Must(clientgoscheme.AddToScheme(scheme))
-	utilruntime.Must(kubelbk8ciov1alpha1.AddToScheme(scheme))
+	utilruntime.Must(kubelbv1alpha1.AddToScheme(scheme))
 	utilruntime.Must(gwapiv1a2.Install(scheme))
 	utilruntime.Must(gwapiv1.Install(scheme))
 
@@ -120,11 +119,6 @@ func main() {
 
 	setupLog.V(1).Info("using endpoint address", "type", endpointAddressType)
 
-	sharedEndpoints := kubelb.Endpoints{
-		ClusterEndpoints:    []string{},
-		EndpointAddressType: endpointAddressType,
-	}
-
 	// setup signal handler
 	ctx := ctrl.SetupSignalHandler()
 
@@ -145,12 +139,12 @@ func main() {
 		Scheme: scheme,
 		Cache: cache.Options{
 			ByObject: map[client.Object]cache.ByObject{
-				&kubelbk8ciov1alpha1.LoadBalancer{}: {
+				&kubelbv1alpha1.LoadBalancer{}: {
 					Namespaces: map[string]cache.Config{
 						clusterName: {},
 					},
 				},
-				&kubelbk8ciov1alpha1.Route{}: {
+				&kubelbv1alpha1.Route{}: {
 					Namespaces: map[string]cache.Config{
 						clusterName: {},
 					},
@@ -182,11 +176,12 @@ func main() {
 	}
 
 	if err = (&ccm.KubeLBNodeReconciler{
-		Client:       mgr.GetClient(),
-		Log:          ctrl.Log.WithName("kubelb.node.reconciler"),
-		Scheme:       mgr.GetScheme(),
-		KubeLBClient: kubeLBMgr.GetClient(),
-		Endpoints:    &sharedEndpoints,
+		Client:              mgr.GetClient(),
+		Log:                 ctrl.Log.WithName("kubelb.node.reconciler"),
+		Scheme:              mgr.GetScheme(),
+		KubeLBClient:        kubeLBMgr.GetClient(),
+		EndpointAddressType: endpointAddressType,
+		ClusterName:         clusterName,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "reconciler", "kubelb.node.reconciler")
 		os.Exit(1)
@@ -199,7 +194,6 @@ func main() {
 		Scheme:               mgr.GetScheme(),
 		CloudController:      enableCloudController,
 		UseLoadbalancerClass: useLoadbalancerClass,
-		Endpoints:            &sharedEndpoints,
 		ClusterName:          clusterName,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "reconciler", "kubelb.service.reconciler")
