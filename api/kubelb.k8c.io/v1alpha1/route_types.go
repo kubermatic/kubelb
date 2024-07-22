@@ -49,7 +49,6 @@ type KubernetesSource struct {
 	// - gateway.networking.k8s.io/gateway
 	// - gateway.networking.k8s.io/httproute
 	// - gateway.networking.k8s.io/grpcroute
-	// - gateway.networking.k8s.io/tlsroute
 
 	// +optional
 	// +kubebuilder:validation:EmbeddedResource

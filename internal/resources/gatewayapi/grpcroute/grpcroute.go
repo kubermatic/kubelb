@@ -17,12 +17,10 @@ limitations under the License.
 package grpcroute
 
 import (
+	"k8c.io/kubelb/internal/kubelb"
+
 	"k8s.io/apimachinery/pkg/types"
 	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
-)
-
-const (
-	ServiceKind = "Service"
 )
 
 // GetServicesFromGRPCRoute returns a list of services referenced by the given GRPCRoute.
@@ -31,7 +29,7 @@ func GetServicesFromGRPCRoute(grpcroute *gwapiv1.GRPCRoute) []types.NamespacedNa
 	for _, rule := range grpcroute.Spec.Rules {
 		// Collect services from the filters.
 		for _, filter := range rule.Filters {
-			if filter.RequestMirror != nil && (filter.RequestMirror.BackendRef.Kind == nil || *filter.RequestMirror.BackendRef.Kind == ServiceKind) {
+			if filter.RequestMirror != nil && (filter.RequestMirror.BackendRef.Kind == nil || *filter.RequestMirror.BackendRef.Kind == kubelb.ServiceKind) {
 				ref := filter.RequestMirror.BackendRef
 				serviceReference := types.NamespacedName{
 					Name: string(ref.Name),
@@ -46,7 +44,7 @@ func GetServicesFromGRPCRoute(grpcroute *gwapiv1.GRPCRoute) []types.NamespacedNa
 
 		// Collect services from the backend references.
 		for _, ref := range rule.BackendRefs {
-			if ref.Kind == nil || *ref.Kind == ServiceKind {
+			if ref.Kind == nil || *ref.Kind == kubelb.ServiceKind {
 				serviceReference := types.NamespacedName{
 					Name: string(ref.Name),
 				}
@@ -60,7 +58,7 @@ func GetServicesFromGRPCRoute(grpcroute *gwapiv1.GRPCRoute) []types.NamespacedNa
 			// Collect services from the filters.
 			if ref.Filters != nil {
 				for _, filter := range ref.Filters {
-					if filter.RequestMirror != nil && (filter.RequestMirror.BackendRef.Kind == nil || *filter.RequestMirror.BackendRef.Kind == ServiceKind) {
+					if filter.RequestMirror != nil && (filter.RequestMirror.BackendRef.Kind == nil || *filter.RequestMirror.BackendRef.Kind == kubelb.ServiceKind) {
 						ref := filter.RequestMirror.BackendRef
 						serviceReference := types.NamespacedName{
 							Name: string(ref.Name),

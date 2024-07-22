@@ -72,6 +72,10 @@ linters-settings:
       - nilness # find tautologies / impossible conditions
 
 issues:
+  exclude:
+    # TODO: These methods are more or less the same and we need to build an abstraction for this. That would lower the cyclomatic complexity.
+    - 'cyclomatic complexity 33 of func `\(\*RouteReconciler\)\.createOrUpdateGRPCRoute` is high'
+    - 'cyclomatic complexity 33 of func `\(\*RouteReconciler\)\.createOrUpdateHTTPRoute` is high'
   exclude-dirs:
     - hack
     - vendor

@@ -48,6 +48,8 @@ const EnvoyListenerPattern = "%v-%s"
 const RouteServiceMapKey = "%s/%s"
 const DefaultRouteStatus = "{}"
 
+const ServiceKind = "Service"
+
 const NameSuffixLength = 4
 
 func GenerateName(useUID bool, uid, name, namespace string) string {

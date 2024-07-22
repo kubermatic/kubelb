@@ -325,6 +325,34 @@ func (r *RouteReconciler) manageRoutes(ctx context.Context, log logr.Logger, rou
 			updateResourceStatus(routeStatus, res, err)
 		}
 
+	case *gwapiv1.HTTPRoute: // v1 "sigs.k8s.io/gateway-api/apis/v1"
+		err = r.createOrUpdateHTTPRoute(ctx, log, v, referencedServices, route.Namespace)
+		if err == nil {
+			// Retrieve updated object to get the status.
+			key := client.ObjectKey{Namespace: v.Namespace, Name: v.Name}
+			res := &gwapiv1.HTTPRoute{}
+			if err := r.Client.Get(ctx, key, res); err != nil {
+				if !kerrors.IsNotFound(err) {
+					return fmt.Errorf("failed to get HTTPRoute: %w", err)
+				}
+			}
+			updateResourceStatus(routeStatus, res, err)
+		}
+
+	case *gwapiv1.GRPCRoute: // v1 "sigs.k8s.io/gateway-api/apis/v1"
+		err = r.createOrUpdateGRPCRoute(ctx, log, v, referencedServices, route.Namespace)
+		if err == nil {
+			// Retrieve updated object to get the status.
+			key := client.ObjectKey{Namespace: v.Namespace, Name: v.Name}
+			res := &gwapiv1.GRPCRoute{}
+			if err := r.Client.Get(ctx, key, res); err != nil {
+				if !kerrors.IsNotFound(err) {
+					return fmt.Errorf("failed to get GRPCRoute: %w", err)
+				}
+			}
+			updateResourceStatus(routeStatus, res, err)
+		}
+
 	default:
 		log.V(4).Info("Unsupported resource type")
 	}
@@ -333,8 +361,33 @@ func (r *RouteReconciler) manageRoutes(ctx context.Context, log logr.Logger, rou
 }
 
 func (r *RouteReconciler) createOrUpdateGateway(ctx context.Context, log logr.Logger, gateway *gwapiv1.Gateway, namespace string) error {
+	// Check if Gateway with the same name but different namespace already exists. If it does, log an error as we don't support
+	// multiple Gateway objects.
+	gateways := &gwapiv1.GatewayList{}
+	if err := r.Client.List(ctx, gateways, client.InNamespace(namespace)); err != nil {
+		return fmt.Errorf("failed to list Gateways: %w", err)
+	}
+
+	found := false
+	for _, existingGateway := range gateways.Items {
+		if existingGateway.Name == gateway.Name {
+			found = true
+			break
+		}
+	}
+
+	if !found && len(gateways.Items) >= 1 {
+		return fmt.Errorf("multiple Gateway objects are not supported")
+	}
+
+	// Create/Update the Gateway object in the cluster.
 	gateway.Namespace = namespace
 	gateway.SetUID("") // Reset UID to generate a new UID for the Gateway object
+
+	// Set the GatewayClassName if it is specified in the configuration.
+	if config.GetConfig().Spec.GatewayClassName != nil {
+		gateway.Spec.GatewayClassName = gwapiv1.ObjectName(*config.GetConfig().Spec.GatewayClassName)
+	}
 
 	log.V(4).Info("Creating/Updating Gateway", "name", gateway.Name, "namespace", gateway.Namespace)
 	// Check if it already exists.
@@ -364,41 +417,219 @@ func (r *RouteReconciler) createOrUpdateGateway(ctx context.Context, log logr.Lo
 	return nil
 }
 
-// createOrUpdateIngress creates or updates the Ingress object in the cluster.
-func (r *RouteReconciler) createOrUpdateIngress(ctx context.Context, log logr.Logger, ingress *v1.Ingress, referencedServices []metav1.ObjectMeta, namespace string) error {
-	// Name of the services referenced by the Ingress have to be updated to match the services created against the Route in the LB cluster.
-	for i, rule := range ingress.Spec.Rules {
-		for j, path := range rule.HTTP.Paths {
-			for _, service := range referencedServices {
-				if path.Backend.Service.Name == service.Name {
-					ingress.Spec.Rules[i].HTTP.Paths[j].Backend.Service.Name = kubelb.GenerateName(false, string(service.UID), service.Name, service.Namespace)
+// createOrUpdateHTTPRoute creates or updates the HTTPRoute object in the cluster.
+func (r *RouteReconciler) createOrUpdateHTTPRoute(ctx context.Context, log logr.Logger, object *gwapiv1.HTTPRoute, referencedServices []metav1.ObjectMeta, namespace string) error {
+	// Name of the services referenced by the Object have to be updated to match the services created against the Route in the LB cluster.
+	for i, rule := range object.Spec.Rules {
+		for j, filter := range rule.Filters {
+			if filter.RequestMirror != nil && (filter.RequestMirror.BackendRef.Kind == nil || *filter.RequestMirror.BackendRef.Kind == kubelb.ServiceKind) {
+				ref := filter.RequestMirror.BackendRef
+				for _, service := range referencedServices {
+					if string(ref.Name) == service.Name {
+						ns := ref.Namespace
+						// Corresponding service found, update the name.
+						if ns != nil && ns == (*gwapiv1.Namespace)(&service.Namespace) {
+							object.Spec.Rules[i].Filters[j].RequestMirror.BackendRef.Name = gwapiv1.ObjectName(kubelb.GenerateName(false, string(service.UID), service.Name, service.Namespace))
+							// Set the namespace to nil since all the services are created in the same namespace as the Route.
+							object.Spec.Rules[i].Filters[j].RequestMirror.BackendRef.Namespace = nil
+						}
+					}
+				}
+			}
+		}
+
+		for j, ref := range rule.BackendRefs {
+			if ref.Kind == nil || *ref.Kind == kubelb.ServiceKind {
+				for _, service := range referencedServices {
+					if string(ref.Name) == service.Name {
+						ns := ref.Namespace
+						// Corresponding service found, update the name.
+						if ns != nil && ns == (*gwapiv1.Namespace)(&service.Namespace) {
+							object.Spec.Rules[i].Filters[j].RequestMirror.BackendRef.Name = gwapiv1.ObjectName(kubelb.GenerateName(false, string(service.UID), service.Name, service.Namespace))
+							// Set the namespace to nil since all the services are created in the same namespace as the Route.
+							object.Spec.Rules[i].Filters[j].RequestMirror.BackendRef.Namespace = nil
+						}
+					}
+				}
+			}
+			// Collect services from the filters.
+			if ref.Filters != nil {
+				for _, filter := range ref.Filters {
+					if filter.RequestMirror != nil && (filter.RequestMirror.BackendRef.Kind == nil || *filter.RequestMirror.BackendRef.Kind == kubelb.ServiceKind) {
+						ref := filter.RequestMirror.BackendRef
+						for _, service := range referencedServices {
+							if string(ref.Name) == service.Name {
+								ns := ref.Namespace
+								// Corresponding service found, update the name.
+								if ns != nil && ns == (*gwapiv1.Namespace)(&service.Namespace) {
+									object.Spec.Rules[i].Filters[j].RequestMirror.BackendRef.Name = gwapiv1.ObjectName(kubelb.GenerateName(false, string(service.UID), service.Name, service.Namespace))
+									// Set the namespace to nil since all the services are created in the same namespace as the Route.
+									object.Spec.Rules[i].Filters[j].RequestMirror.BackendRef.Namespace = nil
+								}
+							}
+						}
+					}
 				}
 			}
 		}
 	}
 
-	if ingress.Spec.DefaultBackend != nil && ingress.Spec.DefaultBackend.Service != nil {
-		for _, service := range referencedServices {
-			if ingress.Spec.DefaultBackend.Service.Name == service.Name {
-				ingress.Spec.DefaultBackend.Service.Name = kubelb.GenerateName(false, string(service.UID), service.Name, service.Namespace)
+	object.Name = kubelb.GenerateName(false, string(object.UID), object.Name, object.Namespace)
+	object.Namespace = namespace
+	object.SetUID("") // Reset UID to generate a new UID for the object
+
+	log.V(4).Info("Creating/Updating HTTPRoute", "name", object.Name, "namespace", object.Namespace)
+	// Check if it already exists.
+	key := client.ObjectKey{Namespace: object.Namespace, Name: object.Name}
+	existingObject := &gwapiv1.HTTPRoute{}
+	if err := r.Client.Get(ctx, key, existingObject); err != nil {
+		if !kerrors.IsNotFound(err) {
+			return fmt.Errorf("failed to get HTTPRoute: %w", err)
+		}
+		err := r.Client.Create(ctx, object)
+		if err != nil {
+			return fmt.Errorf("failed to create HTTPRoute: %w", err)
+		}
+		return nil
+	}
+
+	// Update the Ingress object if it is different from the existing one.
+	if equality.Semantic.DeepEqual(existingObject.Spec, object.Spec) &&
+		equality.Semantic.DeepEqual(existingObject.Labels, object.Labels) &&
+		equality.Semantic.DeepEqual(existingObject.Annotations, object.Annotations) {
+		return nil
+	}
+
+	if err := r.Client.Update(ctx, object); err != nil {
+		return fmt.Errorf("failed to update HTTPRoute: %w", err)
+	}
+	return nil
+}
+
+// createOrUpdateGRPCRoute creates or updates the GRPCRoute object in the cluster.
+func (r *RouteReconciler) createOrUpdateGRPCRoute(ctx context.Context, log logr.Logger, object *gwapiv1.GRPCRoute, referencedServices []metav1.ObjectMeta, namespace string) error {
+	// Name of the services referenced by the Object have to be updated to match the services created against the Route in the LB cluster.
+	for i, rule := range object.Spec.Rules {
+		for j, filter := range rule.Filters {
+			if filter.RequestMirror != nil && (filter.RequestMirror.BackendRef.Kind == nil || *filter.RequestMirror.BackendRef.Kind == kubelb.ServiceKind) {
+				ref := filter.RequestMirror.BackendRef
+				for _, service := range referencedServices {
+					if string(ref.Name) == service.Name {
+						ns := ref.Namespace
+						// Corresponding service found, update the name.
+						if ns != nil && ns == (*gwapiv1.Namespace)(&service.Namespace) {
+							object.Spec.Rules[i].Filters[j].RequestMirror.BackendRef.Name = gwapiv1.ObjectName(kubelb.GenerateName(false, string(service.UID), service.Name, service.Namespace))
+							// Set the namespace to nil since all the services are created in the same namespace as the Route.
+							object.Spec.Rules[i].Filters[j].RequestMirror.BackendRef.Namespace = nil
+						}
+					}
+				}
+			}
+		}
+
+		for j, ref := range rule.BackendRefs {
+			if ref.Kind == nil || *ref.Kind == kubelb.ServiceKind {
+				for _, service := range referencedServices {
+					if string(ref.Name) == service.Name {
+						ns := ref.Namespace
+						// Corresponding service found, update the name.
+						if ns != nil && ns == (*gwapiv1.Namespace)(&service.Namespace) {
+							object.Spec.Rules[i].Filters[j].RequestMirror.BackendRef.Name = gwapiv1.ObjectName(kubelb.GenerateName(false, string(service.UID), service.Name, service.Namespace))
+							// Set the namespace to nil since all the services are created in the same namespace as the Route.
+							object.Spec.Rules[i].Filters[j].RequestMirror.BackendRef.Namespace = nil
+						}
+					}
+				}
+			}
+			// Collect services from the filters.
+			if ref.Filters != nil {
+				for _, filter := range ref.Filters {
+					if filter.RequestMirror != nil && (filter.RequestMirror.BackendRef.Kind == nil || *filter.RequestMirror.BackendRef.Kind == kubelb.ServiceKind) {
+						ref := filter.RequestMirror.BackendRef
+						for _, service := range referencedServices {
+							if string(ref.Name) == service.Name {
+								ns := ref.Namespace
+								// Corresponding service found, update the name.
+								if ns != nil && ns == (*gwapiv1.Namespace)(&service.Namespace) {
+									object.Spec.Rules[i].Filters[j].RequestMirror.BackendRef.Name = gwapiv1.ObjectName(kubelb.GenerateName(false, string(service.UID), service.Name, service.Namespace))
+									// Set the namespace to nil since all the services are created in the same namespace as the Route.
+									object.Spec.Rules[i].Filters[j].RequestMirror.BackendRef.Namespace = nil
+								}
+							}
+						}
+					}
+				}
 			}
 		}
 	}
 
-	ingress.Spec.IngressClassName = config.GetConfig().Spec.IngressClassName
-	ingress.Name = kubelb.GenerateName(false, string(ingress.UID), ingress.Name, ingress.Namespace)
-	ingress.Namespace = namespace
-	ingress.SetUID("") // Reset UID to generate a new UID for the Ingress object
+	object.Name = kubelb.GenerateName(false, string(object.UID), object.Name, object.Namespace)
+	object.Namespace = namespace
+	object.SetUID("") // Reset UID to generate a new UID for the object
 
-	log.V(4).Info("Creating/Updating Ingress", "name", ingress.Name, "namespace", ingress.Namespace)
+	log.V(4).Info("Creating/Updating GRPCRoute", "name", object.Name, "namespace", object.Namespace)
 	// Check if it already exists.
-	ingressKey := client.ObjectKey{Namespace: ingress.Namespace, Name: ingress.Name}
-	existingIngress := &v1.Ingress{}
-	if err := r.Client.Get(ctx, ingressKey, existingIngress); err != nil {
+	key := client.ObjectKey{Namespace: object.Namespace, Name: object.Name}
+	existingObject := &gwapiv1.GRPCRoute{}
+	if err := r.Client.Get(ctx, key, existingObject); err != nil {
+		if !kerrors.IsNotFound(err) {
+			return fmt.Errorf("failed to get GRPCRoute: %w", err)
+		}
+		err := r.Client.Create(ctx, object)
+		if err != nil {
+			return fmt.Errorf("failed to create GRPCRoute: %w", err)
+		}
+		return nil
+	}
+
+	// Update the Ingress object if it is different from the existing one.
+	if equality.Semantic.DeepEqual(existingObject.Spec, object.Spec) &&
+		equality.Semantic.DeepEqual(existingObject.Labels, object.Labels) &&
+		equality.Semantic.DeepEqual(existingObject.Annotations, object.Annotations) {
+		return nil
+	}
+
+	if err := r.Client.Update(ctx, object); err != nil {
+		return fmt.Errorf("failed to update GRPCRoute: %w", err)
+	}
+	return nil
+}
+
+// createOrUpdateIngress creates or updates the Ingress object in the cluster.
+func (r *RouteReconciler) createOrUpdateIngress(ctx context.Context, log logr.Logger, object *v1.Ingress, referencedServices []metav1.ObjectMeta, namespace string) error {
+	// Name of the services referenced by the Ingress have to be updated to match the services created against the Route in the LB cluster.
+	for i, rule := range object.Spec.Rules {
+		for j, path := range rule.HTTP.Paths {
+			for _, service := range referencedServices {
+				if path.Backend.Service.Name == service.Name {
+					object.Spec.Rules[i].HTTP.Paths[j].Backend.Service.Name = kubelb.GenerateName(false, string(service.UID), service.Name, service.Namespace)
+				}
+			}
+		}
+	}
+
+	if object.Spec.DefaultBackend != nil && object.Spec.DefaultBackend.Service != nil {
+		for _, service := range referencedServices {
+			if object.Spec.DefaultBackend.Service.Name == service.Name {
+				object.Spec.DefaultBackend.Service.Name = kubelb.GenerateName(false, string(service.UID), service.Name, service.Namespace)
+			}
+		}
+	}
+
+	object.Spec.IngressClassName = config.GetConfig().Spec.IngressClassName
+	object.Name = kubelb.GenerateName(false, string(object.UID), object.Name, object.Namespace)
+	object.Namespace = namespace
+	object.SetUID("") // Reset UID to generate a new UID for the object
+
+	log.V(4).Info("Creating/Updating Ingress", "name", object.Name, "namespace", object.Namespace)
+	// Check if it already exists.
+	key := client.ObjectKey{Namespace: object.Namespace, Name: object.Name}
+	existingObject := &v1.Ingress{}
+	if err := r.Client.Get(ctx, key, existingObject); err != nil {
 		if !kerrors.IsNotFound(err) {
 			return fmt.Errorf("failed to get Ingress: %w", err)
 		}
-		err := r.Client.Create(ctx, ingress)
+		err := r.Client.Create(ctx, object)
 		if err != nil {
 			return fmt.Errorf("failed to create Ingress: %w", err)
 		}
@@ -406,13 +637,13 @@ func (r *RouteReconciler) createOrUpdateIngress(ctx context.Context, log logr.Lo
 	}
 
 	// Update the Ingress object if it is different from the existing one.
-	if equality.Semantic.DeepEqual(existingIngress.Spec, ingress.Spec) &&
-		equality.Semantic.DeepEqual(existingIngress.Labels, ingress.Labels) &&
-		equality.Semantic.DeepEqual(existingIngress.Annotations, ingress.Annotations) {
+	if equality.Semantic.DeepEqual(existingObject.Spec, object.Spec) &&
+		equality.Semantic.DeepEqual(existingObject.Labels, object.Labels) &&
+		equality.Semantic.DeepEqual(existingObject.Annotations, object.Annotations) {
 		return nil
 	}
 
-	if err := r.Client.Update(ctx, ingress); err != nil {
+	if err := r.Client.Update(ctx, object); err != nil {
 		return fmt.Errorf("failed to update Ingress: %w", err)
 	}
 	return nil
