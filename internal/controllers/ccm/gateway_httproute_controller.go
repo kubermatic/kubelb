@@ -27,11 +27,10 @@ import (
 	kubelbv1alpha1 "k8c.io/kubelb/api/kubelb.k8c.io/v1alpha1"
 	"k8c.io/kubelb/internal/kubelb"
 	kuberneteshelper "k8c.io/kubelb/internal/kubernetes"
-	ingressHelpers "k8c.io/kubelb/internal/resources/ingress"
+	httprouteHelpers "k8c.io/kubelb/internal/resources/gatewayapi/httproute"
 	serviceHelpers "k8c.io/kubelb/internal/resources/service"
 
 	corev1 "k8s.io/api/core/v1"
-	networkingv1 "k8s.io/api/networking/v1"
 	kerrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
@@ -44,21 +43,20 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
+	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
 	"sigs.k8s.io/yaml"
 )
 
 const (
-	IngressControllerName = "ingress-controller"
-	IngressClassName      = "kubelb"
+	GatewayHTTPRouteControllerName = "gateway-httproute-controller"
 )
 
-// IngressReconciler reconciles an Ingress Object
-type IngressReconciler struct {
+// HTTPRouteReconciler reconciles an HTTPRoute Object
+type HTTPRouteReconciler struct {
 	ctrlclient.Client
 
-	LBClient        ctrlclient.Client
-	ClusterName     string
-	UseIngressClass bool
+	LBClient    ctrlclient.Client
+	ClusterName string
 
 	Log      logr.Logger
 	Scheme   *runtime.Scheme
@@ -69,14 +67,14 @@ type IngressReconciler struct {
 // +kubebuilder:rbac:groups="",resources=services/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=kubelb.k8c.io,resources=routes,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=kubelb.k8c.io,resources=routes/status,verbs=get
-// +kubebuilder:rbac:groups=networking.k8s.io,resources=ingresses,verbs=get;list;watch
+// +kubebuilder:rbac:groups=gateway.networking.k8s.io,resources=httproutes,verbs=get;list;watch
 
-func (r *IngressReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+func (r *HTTPRouteReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	log := r.Log.WithValues("name", req.NamespacedName)
 
-	log.Info("Reconciling Ingress")
+	log.Info("Reconciling HTTPRoute")
 
-	resource := &networkingv1.Ingress{}
+	resource := &gwapiv1.HTTPRoute{}
 	if err := r.Get(ctx, req.NamespacedName, resource); err != nil {
 		if kerrors.IsNotFound(err) {
 			return reconcile.Result{}, nil
@@ -113,22 +111,22 @@ func (r *IngressReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 	return reconcile.Result{}, err
 }
 
-func (r *IngressReconciler) reconcile(ctx context.Context, log logr.Logger, ingress *networkingv1.Ingress) error {
-	// We need to traverse the Ingress, find all the services associated with it, create/update the corresponding Route in LB cluster.
-	originalServices := ingressHelpers.GetServicesFromIngress(*ingress)
-	err := reconcileSourceForRoute(ctx, log, r.Client, r.LBClient, ingress, originalServices, nil, r.ClusterName)
+func (r *HTTPRouteReconciler) reconcile(ctx context.Context, log logr.Logger, httpRoute *gwapiv1.HTTPRoute) error {
+	// We need to traverse the HTTPRoute, find all the services associated with it, create/update the corresponding Route in LB cluster.
+	originalServices := httprouteHelpers.GetServicesFromHTTPRoute(httpRoute)
+	err := reconcileSourceForRoute(ctx, log, r.Client, r.LBClient, httpRoute, originalServices, nil, r.ClusterName)
 	if err != nil {
 		return fmt.Errorf("failed to reconcile source for route: %w", err)
 	}
 
-	// Route was reconciled successfully, now we need to update the status of the Ingress.
+	// Route was reconciled successfully, now we need to update the status of the Resource.
 	route := kubelbv1alpha1.Route{}
-	err = r.LBClient.Get(ctx, types.NamespacedName{Name: string(ingress.UID), Namespace: r.ClusterName}, &route)
+	err = r.LBClient.Get(ctx, types.NamespacedName{Name: string(httpRoute.UID), Namespace: r.ClusterName}, &route)
 	if err != nil {
 		return fmt.Errorf("failed to get Route from LB cluster: %w", err)
 	}
 
-	// Update the status of the Ingress
+	// Update the status of the HTTPRoute
 	if len(route.Status.Resources.Route.GeneratedName) > 0 {
 		// First we need to ensure that status is available in the Route
 		resourceStatus := route.Status.Resources.Route.Status
@@ -138,33 +136,33 @@ func (r *IngressReconciler) reconcile(ctx context.Context, log logr.Logger, ingr
 			return nil
 		}
 
-		// Convert rawExtension to networkingv1.IngressStatus
-		status := networkingv1.IngressStatus{}
+		// Convert rawExtension to gwapiv1.HTTPRouteStatus
+		status := gwapiv1.HTTPRouteStatus{}
 		if err := yaml.UnmarshalStrict(resourceStatus.Raw, &status); err != nil {
-			return fmt.Errorf("failed to unmarshal Ingress status: %w", err)
+			return fmt.Errorf("failed to unmarshal HTTPRoute status: %w", err)
 		}
 
-		log.V(3).Info("updating Ingress status", "name", ingress.Name, "namespace", ingress.Namespace)
+		log.V(3).Info("updating HTTPRoute status", "name", httpRoute.Name, "namespace", httpRoute.Namespace)
 		return retry.RetryOnConflict(retry.DefaultRetry, func() error {
-			if err := r.Get(ctx, types.NamespacedName{Name: ingress.Name, Namespace: ingress.Namespace}, ingress); err != nil {
+			if err := r.Get(ctx, types.NamespacedName{Name: httpRoute.Name, Namespace: httpRoute.Namespace}, httpRoute); err != nil {
 				return err
 			}
-			original := ingress.DeepCopy()
-			ingress.Status = status
-			if reflect.DeepEqual(original.Status, ingress.Status) {
+			original := httpRoute.DeepCopy()
+			httpRoute.Status = status
+			if reflect.DeepEqual(original.Status, httpRoute.Status) {
 				return nil
 			}
 			// update the status
-			return r.Status().Patch(ctx, ingress, ctrlclient.MergeFrom(original))
+			return r.Status().Patch(ctx, httpRoute, ctrlclient.MergeFrom(original))
 		})
 	}
 	return nil
 }
 
-func (r *IngressReconciler) cleanup(ctx context.Context, ingress *networkingv1.Ingress) (ctrl.Result, error) {
-	impactedServices := ingressHelpers.GetServicesFromIngress(*ingress)
+func (r *HTTPRouteReconciler) cleanup(ctx context.Context, httpRoute *gwapiv1.HTTPRoute) (ctrl.Result, error) {
+	impactedServices := httprouteHelpers.GetServicesFromHTTPRoute(httpRoute)
 	services := corev1.ServiceList{}
-	err := r.List(ctx, &services, ctrlclient.InNamespace(ingress.Namespace), ctrlclient.MatchingLabels{kubelb.LabelManagedBy: kubelb.LabelControllerName})
+	err := r.List(ctx, &services, ctrlclient.InNamespace(httpRoute.Namespace), ctrlclient.MatchingLabels{kubelb.LabelManagedBy: kubelb.LabelControllerName})
 	if err != nil {
 		return reconcile.Result{}, fmt.Errorf("failed to list services: %w", err)
 	}
@@ -187,13 +185,13 @@ func (r *IngressReconciler) cleanup(ctx context.Context, ingress *networkingv1.I
 	}
 
 	// Find the Route in LB cluster and delete it
-	err = cleanupRoute(ctx, r.LBClient, string(ingress.UID), r.ClusterName)
+	err = cleanupRoute(ctx, r.LBClient, string(httpRoute.UID), r.ClusterName)
 	if err != nil {
 		return reconcile.Result{}, fmt.Errorf("failed to cleanup route: %w", err)
 	}
 
-	kuberneteshelper.RemoveFinalizer(ingress, CleanupFinalizer)
-	if err := r.Update(ctx, ingress); err != nil {
+	kuberneteshelper.RemoveFinalizer(httpRoute, CleanupFinalizer)
+	if err := r.Update(ctx, httpRoute); err != nil {
 		return reconcile.Result{}, fmt.Errorf("failed to remove finalizer: %w", err)
 	}
 
@@ -201,27 +199,27 @@ func (r *IngressReconciler) cleanup(ctx context.Context, ingress *networkingv1.I
 }
 
 // enqueueResources is a handler.MapFunc to be used to enqeue requests for reconciliation
-// for Ingresses against the corresponding service.
-func (r *IngressReconciler) enqueueResources() handler.MapFunc {
+// for HTTPRoutes against the corresponding service.
+func (r *HTTPRouteReconciler) enqueueResources() handler.MapFunc {
 	return func(_ context.Context, o ctrlclient.Object) []ctrl.Request {
 		result := []reconcile.Request{}
-		ingressList := &networkingv1.IngressList{}
-		if err := r.List(context.Background(), ingressList, ctrlclient.InNamespace(o.GetNamespace())); err != nil {
+		httpRouteList := &gwapiv1.HTTPRouteList{}
+		if err := r.List(context.Background(), httpRouteList, ctrlclient.InNamespace(o.GetNamespace())); err != nil {
 			return nil
 		}
 
-		for _, ingress := range ingressList.Items {
-			if !r.shouldReconcile(&ingress) {
+		for _, httpRoute := range httpRouteList.Items {
+			if !r.shouldReconcile(&httpRoute) {
 				continue
 			}
 
-			services := ingressHelpers.GetServicesFromIngress(ingress)
+			services := httprouteHelpers.GetServicesFromHTTPRoute(&httpRoute)
 			for _, serviceRef := range services {
 				if (serviceRef.Name == o.GetName() || fmt.Sprintf(serviceHelpers.NodePortServicePattern, serviceRef.Name) == o.GetName()) && serviceRef.Namespace == o.GetNamespace() {
 					result = append(result, reconcile.Request{
 						NamespacedName: types.NamespacedName{
-							Name:      ingress.Name,
-							Namespace: ingress.Namespace,
+							Name:      httpRoute.Name,
+							Namespace: httpRoute.Namespace,
 						},
 					})
 				}
@@ -231,16 +229,16 @@ func (r *IngressReconciler) enqueueResources() handler.MapFunc {
 	}
 }
 
-func (r *IngressReconciler) resourceFilter() predicate.Predicate {
+func (r *HTTPRouteReconciler) resourceFilter() predicate.Predicate {
 	return predicate.Funcs{
 		CreateFunc: func(e event.CreateEvent) bool {
-			if obj, ok := e.Object.(*networkingv1.Ingress); ok {
+			if obj, ok := e.Object.(*gwapiv1.HTTPRoute); ok {
 				return r.shouldReconcile(obj)
 			}
 			return false
 		},
 		UpdateFunc: func(e event.UpdateEvent) bool {
-			if obj, ok := e.ObjectNew.(*networkingv1.Ingress); ok {
+			if obj, ok := e.ObjectNew.(*gwapiv1.HTTPRoute); ok {
 				if !r.shouldReconcile(obj) {
 					return false
 				}
@@ -249,13 +247,13 @@ func (r *IngressReconciler) resourceFilter() predicate.Predicate {
 			return false
 		},
 		DeleteFunc: func(e event.DeleteEvent) bool {
-			if obj, ok := e.Object.(*networkingv1.Ingress); ok {
+			if obj, ok := e.Object.(*gwapiv1.HTTPRoute); ok {
 				return r.shouldReconcile(obj)
 			}
 			return false
 		},
 		GenericFunc: func(e event.GenericEvent) bool {
-			if obj, ok := e.Object.(*networkingv1.Ingress); ok {
+			if obj, ok := e.Object.(*gwapiv1.HTTPRoute); ok {
 				return r.shouldReconcile(obj)
 			}
 			return false
@@ -263,16 +261,21 @@ func (r *IngressReconciler) resourceFilter() predicate.Predicate {
 	}
 }
 
-func (r *IngressReconciler) shouldReconcile(ingress *networkingv1.Ingress) bool {
-	if r.UseIngressClass {
-		return ingress.Spec.IngressClassName != nil && *ingress.Spec.IngressClassName == IngressClassName
+// shouldReconcile returns true if the HTTPRoute should be reconciled by the controller.
+// In Community Edition, the controller only reconciles HTTPRoutes against the gateway named "kubelb".
+func (r *HTTPRouteReconciler) shouldReconcile(httpRoute *gwapiv1.HTTPRoute) bool {
+	if len(httpRoute.Spec.CommonRouteSpec.ParentRefs) == 1 {
+		parentRef := httpRoute.Spec.CommonRouteSpec.ParentRefs[0]
+		if parentRef.Name == ParentGatewayName {
+			return true
+		}
 	}
-	return true
+	return false
 }
 
-func (r *IngressReconciler) SetupWithManager(mgr ctrl.Manager) error {
+func (r *HTTPRouteReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&networkingv1.Ingress{}, builder.WithPredicates(r.resourceFilter())).
+		For(&gwapiv1.HTTPRoute{}, builder.WithPredicates(r.resourceFilter())).
 		Watches(
 			&corev1.Service{},
 			handler.EnqueueRequestsFromMapFunc(r.enqueueResources()),
