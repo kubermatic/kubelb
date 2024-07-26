@@ -30,14 +30,14 @@ import (
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/types"
 	ctrlclient "sigs.k8s.io/controller-runtime/pkg/client"
-	gwapiv1a2 "sigs.k8s.io/gateway-api/apis/v1alpha2"
+	gwapiv1alpha2 "sigs.k8s.io/gateway-api/apis/v1alpha2"
 )
 
 const (
 	CleanupFinalizer = "kubelb.k8c.io/cleanup"
 )
 
-func reconcileSourceForRoute(ctx context.Context, log logr.Logger, client ctrlclient.Client, lbClient ctrlclient.Client, resource ctrlclient.Object, originalServices []types.NamespacedName, referenceGrants []gwapiv1a2.ReferenceGrant, namespace string) error {
+func reconcileSourceForRoute(ctx context.Context, log logr.Logger, client ctrlclient.Client, lbClient ctrlclient.Client, resource ctrlclient.Object, originalServices []types.NamespacedName, referenceGrants []gwapiv1alpha2.ReferenceGrant, namespace string) error {
 	log.V(2).Info("reconciling source for producing route")
 
 	unstructuredResource, err := unstructured.ConvertObjectToUnstructured(resource)

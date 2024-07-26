@@ -47,6 +47,11 @@ type ConfigSpec struct {
 	// with an empty value in the Ingress resource which would result in the default IngressClass being used.
 	// +optional
 	IngressClassName *string `json:"ingressClassName,omitempty"`
+
+	// GatewayClassName is the name of the GatewayClass that will be used for the routes created by KubeLB.
+	// If not specified, KubeLB will replace the GatewayClassName with an empty value in the Gateway resource which would result in the default GatewayClass being used.
+	// +optional
+	GatewayClassName *string `json:"gatewayClassName,omitempty"`
 }
 
 // EnvoyProxy defines the desired state of the EnvoyProxy

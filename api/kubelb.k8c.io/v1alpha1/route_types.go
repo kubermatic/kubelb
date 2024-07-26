@@ -21,7 +21,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	runtime "k8s.io/apimachinery/pkg/runtime"
-	gwapiv1a2 "sigs.k8s.io/gateway-api/apis/v1alpha2"
+	gwapiv1alpha2 "sigs.k8s.io/gateway-api/apis/v1alpha2"
 )
 
 // RouteSpec defines the desired state of the Route.
@@ -43,15 +43,13 @@ type RouteSource struct {
 }
 
 type KubernetesSource struct {
-	// TODO: Add more resources
-	// - gateway.networking.k8s.io/httproute
-	// - gateway.networking.k8s.io/grpcroute
-	// - gateway.networking.k8s.io/tcproute
-	// - gateway.networking.k8s.io/udproute
-
 	// Resources contains the list of resources that are used as the source for the Route.
 	// Allowed resources:
 	// - networking.k8s.io/ingress
+	// - gateway.networking.k8s.io/gateway
+	// - gateway.networking.k8s.io/httproute
+	// - gateway.networking.k8s.io/grpcroute
+
 	// +optional
 	// +kubebuilder:validation:EmbeddedResource
 	// +kubebuilder:pruning:PreserveUnknownFields
@@ -89,7 +87,7 @@ type UpstreamService struct {
 type UpstreamReferenceGrant struct {
 	// +kubebuilder:pruning:PreserveUnknownFields
 	// +kubebuilder:validation:EmbeddedResource
-	gwapiv1a2.ReferenceGrant `json:",inline"`
+	gwapiv1alpha2.ReferenceGrant `json:",inline"`
 }
 
 //+kubebuilder:object:root=true
@@ -180,7 +178,7 @@ func ConvertServicesToUpstreamServices(services []corev1.Service) []UpstreamServ
 	return upstreamServices
 }
 
-func ConvertReferenceGrantsToUpstreamReferenceGrants(referenceGrants []gwapiv1a2.ReferenceGrant) []UpstreamReferenceGrant {
+func ConvertReferenceGrantsToUpstreamReferenceGrants(referenceGrants []gwapiv1alpha2.ReferenceGrant) []UpstreamReferenceGrant {
 	var upstreamReferenceGrants []UpstreamReferenceGrant
 	for _, referenceGrant := range referenceGrants {
 		upstreamReferenceGrants = append(upstreamReferenceGrants, UpstreamReferenceGrant{

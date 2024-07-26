@@ -32,12 +32,12 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/types"
 	ctrlclient "sigs.k8s.io/controller-runtime/pkg/client"
-	gwapiv1a2 "sigs.k8s.io/gateway-api/apis/v1alpha2"
+	gwapiv1alpha2 "sigs.k8s.io/gateway-api/apis/v1alpha2"
 )
 
 type Subresources struct {
-	Services        []corev1.Service           `json:"services,omitempty"`
-	ReferenceGrants []gwapiv1a2.ReferenceGrant `json:"referenceGrants,omitempty"`
+	Services        []corev1.Service               `json:"services,omitempty"`
+	ReferenceGrants []gwapiv1alpha2.ReferenceGrant `json:"referenceGrants,omitempty"`
 }
 
 func CreateRouteForResource(ctx context.Context, _ logr.Logger, client ctrlclient.Client, resource unstructured.Unstructured, subresources Subresources, namespace string) error {
