@@ -1,0 +1,80 @@
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.14.0
+  name: tenants.kubelb.k8c.io
+spec:
+  group: kubelb.k8c.io
+  names:
+    kind: Tenant
+    listKind: TenantList
+    plural: tenants
+    singular: tenant
+  scope: Namespaced
+  versions:
+  - name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: Tenant is the Schema for the tenants API
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: TenantSpec defines the desired state of Tenant
+            properties:
+              gatewayAPI:
+                properties:
+                  class:
+                    description: Class is the class of the gateway API to use. This
+                      can be used to
+                    type: string
+                type: object
+              ingress:
+                properties:
+                  class:
+                    description: Class is the class of the ingress to use.
+                    type: string
+                type: object
+              loadBalancer:
+                properties:
+                  annotations:
+                    additionalProperties:
+                      type: string
+                    description: Annotations is the list of annotations that will
+                      be propagated to the LoadBalancer service.
+                    type: object
+                  class:
+                    description: Class is the class of the load balancer to use.
+                    type: string
+                  propagateAllAnnotations:
+                    description: PropagateAllAnnotations defines whether all annotations
+                      will be propagated to the LoadBalancer service. If set to true,
+                      Annotations will be ignored.
+                    type: boolean
+                type: object
+            type: object
+          status:
+            description: TenantStatus defines the observed state of Tenant
+            type: object
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}
