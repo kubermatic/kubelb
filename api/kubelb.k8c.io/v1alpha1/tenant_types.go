@@ -9,36 +9,29 @@ import (
 
 // TenantSpec defines the desired state of Tenant
 type TenantSpec struct {
-	LoadBalancer LoadBalancerSettings `json:"loadBalancer,omitempty"`
-	Ingress 	IngressSettings      `json:"ingress,omitempty"`
-	GatewayAPI 	GatewayAPISettings      `json:"gatewayAPI,omitempty"`
+	// TODO: To be structured and implemented
+	// LoadBalancer *LoadBalancerSettings `json:"loadBalancer,omitempty"`
+	// Ingress      *IngressSettings      `json:"ingress,omitempty"`
+	// GatewayAPI   *GatewayAPISettings   `json:"gatewayAPI,omitempty"`
 }
 
-type LoadBalancerSettings struct {
-	// Class is the class of the load balancer to use.
-	// +optional
-	Class string `json:"class,omitempty"`
+// type LoadBalancerSettings struct {
+// 	// Class is the class of the load balancer to use.
+// 	// +optional
+// 	Class *string `json:"class,omitempty"`
+// }
 
-	// Annotations is the list of annotations that will be propagated to the LoadBalancer service.
-	// +optional
-	Annotations map[string]string `json:"annotations,omitempty"`
+// type IngressSettings struct {
+// 	// Class is the class of the ingress to use.
+// 	// +optional
+// 	Class *string `json:"class,omitempty"`
+// }
 
-	// PropagateAllAnnotations defines whether all annotations will be propagated to the LoadBalancer service. If set to true, Annotations will be ignored.
-	// +optional
-	PropagateAllAnnotations bool `json:"propagateAllAnnotations,omitempty"`
-}
-
-type IngressSettings struct {
-	// Class is the class of the ingress to use.
-	// +optional
-	Class string `json:"class,omitempty"`
-}
-
-type GatewayAPISettings struct {
-	// Class is the class of the gateway API to use. This can be used to
-	// +optional
-	Class string `json:"class,omitempty"`
-}
+// type GatewayAPISettings struct {
+// 	// Class is the class of the gateway API to use. This can be used to
+// 	// +optional
+// 	Class *string `json:"class,omitempty"`
+// }
 
 // TenantStatus defines the observed state of Tenant
 type TenantStatus struct {
@@ -46,6 +39,8 @@ type TenantStatus struct {
 	// Important: Run "make" to regenerate code after modifying this file
 }
 
+// +kubebuilder:resource:scope=Cluster
+// +kubebuilder:object:generate=true
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
 

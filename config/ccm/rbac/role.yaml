@@ -73,6 +73,8 @@ rules:
   - routes/status
   verbs:
   - get
+  - patch
+  - update
 - apiGroups:
   - networking.k8s.io
   resources:
