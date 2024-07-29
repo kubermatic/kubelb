@@ -73,7 +73,7 @@ users:
 type TenantReconciler struct {
 	ctrlclient.Client
 
-	Config  *rest.Config
+	Config   *rest.Config
 	Log      logr.Logger
 	Scheme   *runtime.Scheme
 	Recorder record.EventRecorder
