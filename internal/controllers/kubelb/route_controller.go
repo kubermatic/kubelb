@@ -62,6 +62,7 @@ type RouteReconciler struct {
 	Scheme   *runtime.Scheme
 	Recorder record.EventRecorder
 
+	Namespace          string
 	PortAllocator      *portlookup.PortAllocator
 	EnvoyProxyTopology EnvoyProxyTopology
 }
@@ -116,14 +117,19 @@ func (r *RouteReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 }
 
 func (r *RouteReconciler) reconcile(ctx context.Context, log logr.Logger, route *kubelbv1alpha1.Route) error {
+	resourceNamespace := route.Namespace
+	if config.IsGlobalTopology() {
+		resourceNamespace = r.Namespace
+	}
+
 	// Create or update services based on the route.
-	err := r.manageServices(ctx, log, route)
+	err := r.manageServices(ctx, log, route, resourceNamespace)
 	if err != nil {
 		return fmt.Errorf("failed to create or update services: %w", err)
 	}
 
 	// Create or update the route object.
-	err = r.manageRoutes(ctx, log, route)
+	err = r.manageRoutes(ctx, log, route, resourceNamespace)
 	if err != nil {
 		return fmt.Errorf("failed to create or update route: %w", err)
 	}
@@ -139,13 +145,18 @@ func (r *RouteReconciler) cleanup(ctx context.Context, route *kubelbv1alpha1.Rou
 		return reconcile.Result{}, nil
 	}
 
+	ns := route.Namespace
+	if config.IsGlobalTopology() {
+		ns = r.Namespace
+	}
+
 	for _, value := range route.Status.Resources.Services {
 		log := r.Log.WithValues("name", value.Name, "namespace", value.Namespace)
-		log.V(1).Info("Deleting service", "name", value.GeneratedName, "namespace", route.Namespace)
+		log.V(1).Info("Deleting service", "name", value.GeneratedName, "namespace", ns)
 		svc := corev1.Service{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      value.GeneratedName,
-				Namespace: route.Namespace,
+				Namespace: ns,
 			},
 		}
 		if err := r.Client.Delete(ctx, &svc); err != nil {
@@ -168,13 +179,13 @@ func (r *RouteReconciler) cleanup(ctx context.Context, route *kubelbv1alpha1.Rou
 	return reconcile.Result{}, nil
 }
 
-func (r *RouteReconciler) manageServices(ctx context.Context, log logr.Logger, route *kubelbv1alpha1.Route) error {
+func (r *RouteReconciler) manageServices(ctx context.Context, log logr.Logger, route *kubelbv1alpha1.Route, resourceNamespace string) error {
 	if route.Spec.Source.Kubernetes == nil {
 		return nil
 	}
 
 	// Before creating/updating services, ensure that the orphaned services are cleaned up.
-	err := r.cleanupOrphanedServices(ctx, log, route)
+	err := r.cleanupOrphanedServices(ctx, log, route, resourceNamespace)
 	if err != nil {
 		return fmt.Errorf("failed to cleanup orphaned services: %w", err)
 	}
@@ -188,7 +199,7 @@ func (r *RouteReconciler) manageServices(ctx context.Context, log logr.Logger, r
 	services := []corev1.Service{}
 	for _, service := range route.Spec.Source.Kubernetes.Services {
 		// Transform the service into desired state.
-		svc := serviceHelpers.GenerateServiceForLBCluster(service.Service, appName, route.Namespace, r.PortAllocator)
+		svc := serviceHelpers.GenerateServiceForLBCluster(service.Service, appName, route.Namespace, resourceNamespace, r.PortAllocator)
 		services = append(services, svc)
 	}
 
@@ -207,7 +218,7 @@ func (r *RouteReconciler) manageServices(ctx context.Context, log logr.Logger, r
 	return r.UpdateRouteStatus(ctx, route, *routeStatus)
 }
 
-func (r *RouteReconciler) cleanupOrphanedServices(ctx context.Context, log logr.Logger, route *kubelbv1alpha1.Route) error {
+func (r *RouteReconciler) cleanupOrphanedServices(ctx context.Context, log logr.Logger, route *kubelbv1alpha1.Route, resourceNamespace string) error {
 	// Get all the services based on route.
 	desiredServices := map[string]bool{}
 	for _, service := range route.Spec.Source.Kubernetes.Services {
@@ -223,11 +234,11 @@ func (r *RouteReconciler) cleanupOrphanedServices(ctx context.Context, log logr.
 	for key, value := range route.Status.Resources.Services {
 		if _, ok := desiredServices[key]; !ok {
 			// Service is not desired, so delete it.
-			log.V(4).Info("Deleting orphaned service", "name", value.GeneratedName, "namespace", route.Namespace)
+			log.V(4).Info("Deleting orphaned service", "name", value.GeneratedName, "namespace", resourceNamespace)
 			svc := corev1.Service{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      value.GeneratedName,
-					Namespace: route.Namespace,
+					Namespace: resourceNamespace,
 				},
 			}
 			if err := r.Client.Delete(ctx, &svc); err != nil {
@@ -267,7 +278,7 @@ func (r *RouteReconciler) UpdateRouteStatus(ctx context.Context, route *kubelbv1
 	})
 }
 
-func (r *RouteReconciler) manageRoutes(ctx context.Context, log logr.Logger, route *kubelbv1alpha1.Route) error {
+func (r *RouteReconciler) manageRoutes(ctx context.Context, log logr.Logger, route *kubelbv1alpha1.Route, resourceNamespace string) error {
 	if route.Spec.Source.Kubernetes == nil {
 		return nil
 	}
@@ -304,7 +315,7 @@ func (r *RouteReconciler) manageRoutes(ctx context.Context, log logr.Logger, rou
 	// Determine the type of the resource and call the appropriate method
 	switch v := resource.(type) {
 	case *v1.Ingress: // v1 "k8s.io/api/networking/v1"
-		err = r.createOrUpdateIngress(ctx, log, v, referencedServices, route.Namespace)
+		err = r.createOrUpdateIngress(ctx, log, v, referencedServices, resourceNamespace)
 		if err == nil {
 			// Retrieve updated object to get the status.
 			key := client.ObjectKey{Namespace: v.Namespace, Name: v.Name}
@@ -318,7 +329,7 @@ func (r *RouteReconciler) manageRoutes(ctx context.Context, log logr.Logger, rou
 		}
 
 	case *gwapiv1.Gateway: // v1 "sigs.k8s.io/gateway-api/apis/v1"
-		err = r.createOrUpdateGateway(ctx, log, v, route.Namespace)
+		err = r.createOrUpdateGateway(ctx, log, v, resourceNamespace)
 		if err == nil {
 			// Retrieve updated object to get the status.
 			key := client.ObjectKey{Namespace: v.Namespace, Name: v.Name}
@@ -332,7 +343,7 @@ func (r *RouteReconciler) manageRoutes(ctx context.Context, log logr.Logger, rou
 		}
 
 	case *gwapiv1.HTTPRoute: // v1 "sigs.k8s.io/gateway-api/apis/v1"
-		err = r.createOrUpdateHTTPRoute(ctx, log, v, referencedServices, route.Namespace)
+		err = r.createOrUpdateHTTPRoute(ctx, log, v, referencedServices, resourceNamespace)
 		if err == nil {
 			// Retrieve updated object to get the status.
 			key := client.ObjectKey{Namespace: v.Namespace, Name: v.Name}
@@ -346,7 +357,7 @@ func (r *RouteReconciler) manageRoutes(ctx context.Context, log logr.Logger, rou
 		}
 
 	case *gwapiv1.GRPCRoute: // v1 "sigs.k8s.io/gateway-api/apis/v1"
-		err = r.createOrUpdateGRPCRoute(ctx, log, v, referencedServices, route.Namespace)
+		err = r.createOrUpdateGRPCRoute(ctx, log, v, referencedServices, resourceNamespace)
 		if err == nil {
 			// Retrieve updated object to get the status.
 			key := client.ObjectKey{Namespace: v.Namespace, Name: v.Name}
@@ -451,9 +462,9 @@ func (r *RouteReconciler) createOrUpdateHTTPRoute(ctx context.Context, log logr.
 						ns := ref.Namespace
 						// Corresponding service found, update the name.
 						if ns != nil && ns == (*gwapiv1.Namespace)(&service.Namespace) {
-							object.Spec.Rules[i].Filters[j].RequestMirror.BackendRef.Name = gwapiv1.ObjectName(kubelb.GenerateName(false, string(service.UID), service.Name, service.Namespace))
+							object.Spec.Rules[i].BackendRefs[j].Name = gwapiv1.ObjectName(kubelb.GenerateName(false, string(service.UID), service.Name, service.Namespace))
 							// Set the namespace to nil since all the services are created in the same namespace as the Route.
-							object.Spec.Rules[i].Filters[j].RequestMirror.BackendRef.Namespace = nil
+							object.Spec.Rules[i].BackendRefs[j].Namespace = nil
 						}
 					}
 				}
@@ -540,9 +551,9 @@ func (r *RouteReconciler) createOrUpdateGRPCRoute(ctx context.Context, log logr.
 						ns := ref.Namespace
 						// Corresponding service found, update the name.
 						if ns != nil && ns == (*gwapiv1.Namespace)(&service.Namespace) {
-							object.Spec.Rules[i].Filters[j].RequestMirror.BackendRef.Name = gwapiv1.ObjectName(kubelb.GenerateName(false, string(service.UID), service.Name, service.Namespace))
+							object.Spec.Rules[i].BackendRefs[j].Name = gwapiv1.ObjectName(kubelb.GenerateName(false, string(service.UID), service.Name, service.Namespace))
 							// Set the namespace to nil since all the services are created in the same namespace as the Route.
-							object.Spec.Rules[i].Filters[j].RequestMirror.BackendRef.Namespace = nil
+							object.Spec.Rules[i].BackendRefs[j].Namespace = nil
 						}
 					}
 				}
@@ -694,19 +705,30 @@ func updateResourceStatus(routeStatus *kubelbv1alpha1.RouteStatus, obj client.Ob
 	}
 	status.Conditions = generateConditions(err)
 
-	var resourceStatus []byte
-	//nolint:gocritic
 	switch resource := obj.(type) {
 	case *v1.Ingress:
-		resourceStatus, err = json.Marshal(resource.Status)
-		if err != nil {
-			// If we are unable to marshal the status, we set it to empty object. There is no need to fail the reconciliation.
-			resourceStatus = []byte(kubelb.DefaultRouteStatus)
-		}
-		status.Status = runtime.RawExtension{
-			Raw: resourceStatus,
-		}
+		status.Status = getResourceStatus(resource.Status)
 		routeStatus.Resources.Route = status
+	case *gwapiv1.Gateway:
+		status.Status = getResourceStatus(resource.Status)
+		routeStatus.Resources.Route = status
+	case *gwapiv1.HTTPRoute:
+		status.Status = getResourceStatus(resource.Status)
+		routeStatus.Resources.Route = status
+	case *gwapiv1.GRPCRoute:
+		status.Status = getResourceStatus(resource.Status)
+		routeStatus.Resources.Route = status
+	}
+}
+
+func getResourceStatus(v any) runtime.RawExtension {
+	resourceStatus, err := json.Marshal(v)
+	if err != nil {
+		// If we are unable to marshal the status, we set it to empty object. There is no need to fail the reconciliation.
+		resourceStatus = []byte(kubelb.DefaultRouteStatus)
+	}
+	return runtime.RawExtension{
+		Raw: resourceStatus,
 	}
 }
 

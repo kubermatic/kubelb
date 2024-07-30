@@ -107,11 +107,11 @@ func NormalizeAndReplicateServices(ctx context.Context, log logr.Logger, client 
 	return services, nil
 }
 
-func GenerateServiceForLBCluster(service corev1.Service, appName, namespace string, portAllocator *portlookup.PortAllocator) corev1.Service {
+func GenerateServiceForLBCluster(service corev1.Service, appName, namespace, resourceNamespace string, portAllocator *portlookup.PortAllocator) corev1.Service {
 	endpointKey := fmt.Sprintf(kubelb.EnvoyEndpointRoutePattern, namespace, service.Namespace, service.Name)
 
 	service.Name = kubelb.GenerateName(false, string(service.UID), GetServiceName(service), service.Namespace)
-	service.Namespace = namespace
+	service.Namespace = resourceNamespace
 	service.UID = ""
 	if service.Spec.Type == corev1.ServiceTypeNodePort {
 		service.Spec.Type = corev1.ServiceTypeClusterIP
