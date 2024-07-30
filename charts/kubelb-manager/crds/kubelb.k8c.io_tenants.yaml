@@ -38,6 +38,25 @@ spec:
             type: object
           spec:
             description: TenantSpec defines the desired state of Tenant
+            properties:
+              loadBalancer:
+                properties:
+                  class:
+                    description: Class is the class of the load balancer to use.
+                    type: string
+                  propagateAllAnnotations:
+                    description: |-
+                      PropagateAllAnnotations defines whether all annotations will be propagated to the LoadBalancer service. If set to true, PropagatedAnnotations will be ignored.
+                      This will have a higher precedence than the value specified at the Config level.
+                    type: boolean
+                  propagatedAnnotations:
+                    additionalProperties:
+                      type: string
+                    description: |-
+                      PropagatedAnnotations defines the list of annotations(key-value pairs) that will be propagated to the LoadBalancer service. Keep the `value` field empty in the key-value pair to allow any value.
+                      This will have a higher precedence than the annotations specified at the Config level.
+                    type: object
+                type: object
             type: object
           status:
             description: TenantStatus defines the observed state of Tenant

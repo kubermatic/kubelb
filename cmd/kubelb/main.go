@@ -39,14 +39,15 @@ import (
 )
 
 type options struct {
-	metricsAddr          string
-	envoyCPMetricsAddr   string
-	envoyListenAddress   string
-	enableLeaderElection bool
-	probeAddr            string
-	kubeconfig           string
-	enableDebugMode      bool
-	namespace            string
+	metricsAddr                     string
+	envoyCPMetricsAddr              string
+	envoyListenAddress              string
+	enableLeaderElection            bool
+	probeAddr                       string
+	kubeconfig                      string
+	enableDebugMode                 bool
+	namespace                       string
+	enableTenantMigrationController bool
 }
 
 var (
@@ -70,6 +71,8 @@ func main() {
 		"Enable leader election for controller kubelb. Enabling this will ensure there is only one active controller kubelb.")
 	flag.BoolVar(&opt.enableDebugMode, "debug", false, "Enables debug mode")
 	flag.StringVar(&opt.namespace, "namespace", "", "The namespace where the controller will run.")
+
+	flag.BoolVar(&opt.enableTenantMigrationController, "enable-tenant-migration", true, "Enables a controller that performs automated migration from namespaces to tenants")
 
 	if flag.Lookup("kubeconfig") == nil {
 		flag.StringVar(&opt.kubeconfig, "kubeconfig", "", "Path to a kubeconfig. Only required if out-of-cluster.")
@@ -201,14 +204,16 @@ func main() {
 		os.Exit(1)
 	}
 
-	if err = (&kubelb.TenantMigrationReconciler{
-		Client:   mgr.GetClient(),
-		Scheme:   mgr.GetScheme(),
-		Log:      ctrl.Log.WithName("controllers").WithName(kubelb.TenantMigrationControllerName),
-		Recorder: mgr.GetEventRecorderFor(kubelb.TenantMigrationControllerName),
-	}).SetupWithManager(mgr); err != nil {
-		setupLog.Error(err, "unable to create controller", "controller", kubelb.TenantMigrationControllerName)
-		os.Exit(1)
+	if opt.enableTenantMigrationController {
+		if err = (&kubelb.TenantMigrationReconciler{
+			Client:   mgr.GetClient(),
+			Scheme:   mgr.GetScheme(),
+			Log:      ctrl.Log.WithName("controllers").WithName(kubelb.TenantMigrationControllerName),
+			Recorder: mgr.GetEventRecorderFor(kubelb.TenantMigrationControllerName),
+		}).SetupWithManager(mgr); err != nil {
+			setupLog.Error(err, "unable to create controller", "controller", kubelb.TenantMigrationControllerName)
+			os.Exit(1)
+		}
 	}
 
 	go func() {
