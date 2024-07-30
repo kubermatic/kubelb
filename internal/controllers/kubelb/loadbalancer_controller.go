@@ -181,8 +181,8 @@ func (r *LoadBalancerReconciler) reconcileService(ctx context.Context, loadBalan
 
 	tenant, err := getTenantForNamespace(ctx, r.Client, namespace)
 	if err != nil {
-		// This should never happen as the namespace should always have a tenant owner.
-		return err
+		// This should never happen as the namespace should always have a tenant owner. We simply log this and continue.
+		log.V(5).Info("Tenant not found for namespace", "namespace", namespace)
 	}
 
 	labels := map[string]string{
