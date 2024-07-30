@@ -199,7 +199,7 @@ func (r *RouteReconciler) manageServices(ctx context.Context, log logr.Logger, r
 	services := []corev1.Service{}
 	for _, service := range route.Spec.Source.Kubernetes.Services {
 		// Transform the service into desired state.
-		svc := serviceHelpers.GenerateServiceForLBCluster(service.Service, appName, route.Namespace, resourceNamespace, r.PortAllocator)
+		svc := serviceHelpers.GenerateServiceForLBCluster(service.Service, appName, route.Namespace, resourceNamespace, r.PortAllocator, r.EnvoyProxyTopology.IsGlobalTopology())
 		services = append(services, svc)
 	}
 
@@ -446,7 +446,7 @@ func (r *RouteReconciler) createOrUpdateHTTPRoute(ctx context.Context, log logr.
 						ns := ref.Namespace
 						// Corresponding service found, update the name.
 						if ns != nil && ns == (*gwapiv1.Namespace)(&service.Namespace) {
-							object.Spec.Rules[i].Filters[j].RequestMirror.BackendRef.Name = gwapiv1.ObjectName(kubelb.GenerateName(false, string(service.UID), service.Name, service.Namespace))
+							object.Spec.Rules[i].Filters[j].RequestMirror.BackendRef.Name = gwapiv1.ObjectName(kubelb.GenerateName(r.EnvoyProxyTopology.IsGlobalTopology(), string(service.UID), service.Name, service.Namespace))
 							// Set the namespace to nil since all the services are created in the same namespace as the Route.
 							object.Spec.Rules[i].Filters[j].RequestMirror.BackendRef.Namespace = nil
 						}
@@ -462,7 +462,7 @@ func (r *RouteReconciler) createOrUpdateHTTPRoute(ctx context.Context, log logr.
 						ns := ref.Namespace
 						// Corresponding service found, update the name.
 						if ns != nil && ns == (*gwapiv1.Namespace)(&service.Namespace) {
-							object.Spec.Rules[i].BackendRefs[j].Name = gwapiv1.ObjectName(kubelb.GenerateName(false, string(service.UID), service.Name, service.Namespace))
+							object.Spec.Rules[i].BackendRefs[j].Name = gwapiv1.ObjectName(kubelb.GenerateName(r.EnvoyProxyTopology.IsGlobalTopology(), string(service.UID), service.Name, service.Namespace))
 							// Set the namespace to nil since all the services are created in the same namespace as the Route.
 							object.Spec.Rules[i].BackendRefs[j].Namespace = nil
 						}
@@ -479,7 +479,7 @@ func (r *RouteReconciler) createOrUpdateHTTPRoute(ctx context.Context, log logr.
 								ns := ref.Namespace
 								// Corresponding service found, update the name.
 								if ns != nil && ns == (*gwapiv1.Namespace)(&service.Namespace) {
-									object.Spec.Rules[i].Filters[j].RequestMirror.BackendRef.Name = gwapiv1.ObjectName(kubelb.GenerateName(false, string(service.UID), service.Name, service.Namespace))
+									object.Spec.Rules[i].Filters[j].RequestMirror.BackendRef.Name = gwapiv1.ObjectName(kubelb.GenerateName(r.EnvoyProxyTopology.IsGlobalTopology(), string(service.UID), service.Name, service.Namespace))
 									// Set the namespace to nil since all the services are created in the same namespace as the Route.
 									object.Spec.Rules[i].Filters[j].RequestMirror.BackendRef.Namespace = nil
 								}
@@ -535,7 +535,7 @@ func (r *RouteReconciler) createOrUpdateGRPCRoute(ctx context.Context, log logr.
 						ns := ref.Namespace
 						// Corresponding service found, update the name.
 						if ns != nil && ns == (*gwapiv1.Namespace)(&service.Namespace) {
-							object.Spec.Rules[i].Filters[j].RequestMirror.BackendRef.Name = gwapiv1.ObjectName(kubelb.GenerateName(false, string(service.UID), service.Name, service.Namespace))
+							object.Spec.Rules[i].Filters[j].RequestMirror.BackendRef.Name = gwapiv1.ObjectName(kubelb.GenerateName(r.EnvoyProxyTopology.IsGlobalTopology(), string(service.UID), service.Name, service.Namespace))
 							// Set the namespace to nil since all the services are created in the same namespace as the Route.
 							object.Spec.Rules[i].Filters[j].RequestMirror.BackendRef.Namespace = nil
 						}
@@ -551,7 +551,7 @@ func (r *RouteReconciler) createOrUpdateGRPCRoute(ctx context.Context, log logr.
 						ns := ref.Namespace
 						// Corresponding service found, update the name.
 						if ns != nil && ns == (*gwapiv1.Namespace)(&service.Namespace) {
-							object.Spec.Rules[i].BackendRefs[j].Name = gwapiv1.ObjectName(kubelb.GenerateName(false, string(service.UID), service.Name, service.Namespace))
+							object.Spec.Rules[i].BackendRefs[j].Name = gwapiv1.ObjectName(kubelb.GenerateName(r.EnvoyProxyTopology.IsGlobalTopology(), string(service.UID), service.Name, service.Namespace))
 							// Set the namespace to nil since all the services are created in the same namespace as the Route.
 							object.Spec.Rules[i].BackendRefs[j].Namespace = nil
 						}
@@ -568,7 +568,7 @@ func (r *RouteReconciler) createOrUpdateGRPCRoute(ctx context.Context, log logr.
 								ns := ref.Namespace
 								// Corresponding service found, update the name.
 								if ns != nil && ns == (*gwapiv1.Namespace)(&service.Namespace) {
-									object.Spec.Rules[i].Filters[j].RequestMirror.BackendRef.Name = gwapiv1.ObjectName(kubelb.GenerateName(false, string(service.UID), service.Name, service.Namespace))
+									object.Spec.Rules[i].Filters[j].RequestMirror.BackendRef.Name = gwapiv1.ObjectName(kubelb.GenerateName(r.EnvoyProxyTopology.IsGlobalTopology(), string(service.UID), service.Name, service.Namespace))
 									// Set the namespace to nil since all the services are created in the same namespace as the Route.
 									object.Spec.Rules[i].Filters[j].RequestMirror.BackendRef.Namespace = nil
 								}
@@ -619,7 +619,7 @@ func (r *RouteReconciler) createOrUpdateIngress(ctx context.Context, log logr.Lo
 		for j, path := range rule.HTTP.Paths {
 			for _, service := range referencedServices {
 				if path.Backend.Service.Name == service.Name {
-					object.Spec.Rules[i].HTTP.Paths[j].Backend.Service.Name = kubelb.GenerateName(false, string(service.UID), service.Name, service.Namespace)
+					object.Spec.Rules[i].HTTP.Paths[j].Backend.Service.Name = kubelb.GenerateName(r.EnvoyProxyTopology.IsGlobalTopology(), string(service.UID), service.Name, service.Namespace)
 				}
 			}
 		}
@@ -628,13 +628,13 @@ func (r *RouteReconciler) createOrUpdateIngress(ctx context.Context, log logr.Lo
 	if object.Spec.DefaultBackend != nil && object.Spec.DefaultBackend.Service != nil {
 		for _, service := range referencedServices {
 			if object.Spec.DefaultBackend.Service.Name == service.Name {
-				object.Spec.DefaultBackend.Service.Name = kubelb.GenerateName(false, string(service.UID), service.Name, service.Namespace)
+				object.Spec.DefaultBackend.Service.Name = kubelb.GenerateName(r.EnvoyProxyTopology.IsGlobalTopology(), string(service.UID), service.Name, service.Namespace)
 			}
 		}
 	}
 
 	object.Spec.IngressClassName = config.GetConfig().Spec.IngressClassName
-	object.Name = kubelb.GenerateName(false, string(object.UID), object.Name, object.Namespace)
+	object.Name = kubelb.GenerateName(r.EnvoyProxyTopology.IsGlobalTopology(), string(object.UID), object.Name, object.Namespace)
 	object.Namespace = namespace
 	object.SetUID("") // Reset UID to generate a new UID for the object
 

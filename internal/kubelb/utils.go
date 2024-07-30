@@ -52,16 +52,16 @@ const ServiceKind = "Service"
 
 const NameSuffixLength = 4
 
-func GenerateName(useUID bool, uid, name, namespace string) string {
-	if useUID {
-		return uid
-	}
-
+func GenerateName(appendUID bool, uid, name, namespace string) string {
 	output := fmt.Sprintf("%s-%s", namespace, name)
+	uidSuffix := uid[len(uid)-NameSuffixLength:]
+
 	// If the output is longer than 63 characters, truncate the name and append a suffix
-	if len(output) > 63 {
+	if len(output) > 63 || (appendUID && len(output)+len(uidSuffix) > 63) {
 		output = output[:63-NameSuffixLength+1]
-		output = fmt.Sprintf("%s-%s", output, uid[len(uid)-NameSuffixLength:])
+		output = fmt.Sprintf("%s-%s", output, uidSuffix)
+	} else if appendUID {
+		output = fmt.Sprintf("%s-%s", output, uidSuffix)
 	}
 
 	return output
