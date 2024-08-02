@@ -64,6 +64,10 @@ const (
 	EnvoyProxyTopologyGlobal    EnvoyProxyTopology = "global"
 )
 
+func (e EnvoyProxyTopology) IsGlobalTopology() bool {
+	return e == EnvoyProxyTopologyGlobal
+}
+
 // LoadBalancerReconciler reconciles a LoadBalancer object
 type LoadBalancerReconciler struct {
 	ctrlruntimeclient.Client

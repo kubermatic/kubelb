@@ -185,6 +185,7 @@ func main() {
 		Recorder:           mgr.GetEventRecorderFor(kubelb.RouteControllerName),
 		EnvoyProxyTopology: kubelb.EnvoyProxyTopology(config.GetEnvoyProxyTopology()),
 		PortAllocator:      portAllocator,
+		Namespace:          opt.namespace,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", kubelb.RouteControllerName)
 		os.Exit(1)
