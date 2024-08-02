@@ -25,17 +25,26 @@ import (
 
 // TenantSpec defines the desired state of Tenant
 type TenantSpec struct {
-	// TODO: To be structured and implemented
-	// LoadBalancer *LoadBalancerSettings `json:"loadBalancer,omitempty"`
-	// Ingress      *IngressSettings      `json:"ingress,omitempty"`
-	// GatewayAPI   *GatewayAPISettings   `json:"gatewayAPI,omitempty"`
+	LoadBalancer LoadBalancerSettings `json:"loadBalancer,omitempty"`
+	// Ingress      IngressSettings      `json:"ingress,omitempty"`
+	// GatewayAPI   GatewayAPISettings   `json:"gatewayAPI,omitempty"`
 }
 
-// type LoadBalancerSettings struct {
-// 	// Class is the class of the load balancer to use.
-// 	// +optional
-// 	Class *string `json:"class,omitempty"`
-// }
+type LoadBalancerSettings struct {
+	// Class is the class of the load balancer to use.
+	// +optional
+	Class *string `json:"class,omitempty"`
+
+	// PropagatedAnnotations defines the list of annotations(key-value pairs) that will be propagated to the LoadBalancer service. Keep the `value` field empty in the key-value pair to allow any value.
+	// This will have a higher precedence than the annotations specified at the Config level.
+	// +optional
+	PropagatedAnnotations *map[string]string `json:"propagatedAnnotations,omitempty"`
+
+	// PropagateAllAnnotations defines whether all annotations will be propagated to the LoadBalancer service. If set to true, PropagatedAnnotations will be ignored.
+	// This will have a higher precedence than the value specified at the Config level.
+	// +optional
+	PropagateAllAnnotations *bool `json:"propagateAllAnnotations,omitempty"`
+}
 
 // type IngressSettings struct {
 // 	// Class is the class of the ingress to use.

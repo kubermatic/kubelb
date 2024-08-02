@@ -20,7 +20,6 @@ import (
 	"context"
 	"fmt"
 	"reflect"
-	"strings"
 
 	kubelbv1alpha1 "k8c.io/kubelb/api/kubelb.k8c.io/v1alpha1"
 	"k8c.io/kubelb/internal/config"
@@ -180,9 +179,10 @@ func (r *LoadBalancerReconciler) reconcileService(ctx context.Context, loadBalan
 
 	log.V(2).Info("verify service")
 
-	ns := &corev1.Namespace{}
-	if err := r.Get(ctx, types.NamespacedName{Name: loadBalancer.Namespace}, ns); err != nil {
-		return err
+	tenant, err := getTenantForNamespace(ctx, r.Client, namespace)
+	if err != nil {
+		// This should never happen as the namespace should always have a tenant owner. We simply log this and continue.
+		log.V(5).Info("Tenant not found for namespace", "namespace", namespace)
 	}
 
 	labels := map[string]string{
@@ -205,10 +205,10 @@ func (r *LoadBalancerReconciler) reconcileService(ctx context.Context, loadBalan
 			Name:        svcName,
 			Namespace:   namespace,
 			Labels:      labels,
-			Annotations: propagateAnnotations(ns.Annotations, loadBalancer.Annotations),
+			Annotations: propagateAnnotations(tenant, loadBalancer.Annotations),
 		},
 	}
-	err := r.Get(ctx, types.NamespacedName{
+	err = r.Get(ctx, types.NamespacedName{
 		Name:      svcName,
 		Namespace: namespace,
 	}, service)
@@ -254,7 +254,7 @@ func (r *LoadBalancerReconciler) reconcileService(ctx context.Context, loadBalan
 			ports = append(ports, allocatedPort)
 		}
 
-		for k, v := range propagateAnnotations(ns.Annotations, loadBalancer.Annotations) {
+		for k, v := range propagateAnnotations(tenant, loadBalancer.Annotations) {
 			service.Annotations[k] = v
 		}
 		service.Spec.Ports = ports
@@ -441,36 +441,29 @@ func filterServicesPredicate() predicate.TypedPredicate[client.Object] {
 	}
 }
 
-func propagateAnnotations(permitted map[string]string, loadbalancer map[string]string) map[string]string {
-	if config.GetConfig().Spec.PropagateAllAnnotations {
-		return loadbalancer
+func propagateAnnotations(tenant *kubelbv1alpha1.Tenant, loadbalancer map[string]string) map[string]string {
+	permitted := make(map[string]string)
+	if tenant != nil {
+		if tenant.Spec.LoadBalancer.PropagateAllAnnotations != nil && *tenant.Spec.LoadBalancer.PropagateAllAnnotations {
+			return loadbalancer
+		}
+		if tenant.Spec.LoadBalancer.PropagatedAnnotations != nil {
+			permitted = *tenant.Spec.LoadBalancer.PropagatedAnnotations
+		}
+	}
+
+	if permitted == nil {
+		if config.GetConfig().Spec.PropagateAllAnnotations {
+			return loadbalancer
+		}
+		permitted = config.GetConfig().Spec.PropagatedAnnotations
 	}
 
 	a := make(map[string]string)
 	permittedMap := make(map[string][]string)
 	for k, v := range permitted {
-		if strings.HasPrefix(k, kubelbv1alpha1.PropagateAnnotation) {
-			filter := strings.SplitN(k, "=", 2)
-			if len(filter) <= 1 {
-				permittedMap[v] = []string{}
-			} else {
-				// optional value filter provided
-				filterValues := strings.Split(filter[1], ",")
-				for i, v := range filterValues {
-					filterValues[i] = strings.TrimSpace(v)
-				}
-				permittedMap[filter[0]] = filterValues
-			}
-		}
-	}
-
-	if config.GetConfig().Spec.PropagatedAnnotations != nil {
-		globallyPermitted := config.GetConfig().Spec.PropagatedAnnotations
-		for k, v := range globallyPermitted {
-			// Annotations specified at namespace level have a higher precedence.
-			if _, found := permittedMap[k]; !found {
-				permittedMap[k] = []string{v}
-			}
+		if _, found := permittedMap[k]; !found {
+			permittedMap[k] = []string{v}
 		}
 	}
 
@@ -523,4 +516,24 @@ func (r *LoadBalancerReconciler) enqueueLoadBalancersForConfig() handler.MapFunc
 
 		return result
 	}
+}
+
+func getTenantForNamespace(ctx context.Context, client ctrlruntimeclient.Client, namespace string) (*kubelbv1alpha1.Tenant, error) {
+	ns := &corev1.Namespace{}
+	err := client.Get(ctx, types.NamespacedName{Name: namespace}, ns)
+	if err != nil {
+		return nil, err
+	}
+
+	for _, owner := range ns.GetOwnerReferences() {
+		if owner.Kind == "Tenant" {
+			tenant := &kubelbv1alpha1.Tenant{}
+			err := client.Get(ctx, types.NamespacedName{Name: owner.Name}, tenant)
+			if err != nil {
+				return nil, err
+			}
+			return tenant, nil
+		}
+	}
+	return nil, fmt.Errorf("no tenant found for namespace %s", namespace)
 }
