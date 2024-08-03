@@ -331,6 +331,7 @@ func (r *EnvoyCPReconciler) getEnvoyProxyPodSpec(namespace, appName, snapshotNam
 func envoySnapshotAndAppName(topology EnvoyProxyTopology, req ctrl.Request) (string, string) {
 	switch topology {
 	case EnvoyProxyTopologyShared, EnvoyProxyTopologyDedicated:
+		return req.Namespace, req.Namespace
 	case EnvoyProxyTopologyGlobal:
 		return EnvoyGlobalCache, EnvoyGlobalCache
 	}

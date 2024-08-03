@@ -1087,10 +1087,11 @@ spec:
                   topology:
                     default: shared
                     description: |-
-                      Topology defines the deployment topology for Envoy Proxy. Valid values are: shared, and global.
+                      Topology defines the deployment topology for Envoy Proxy. Valid values are: shared and global.
                       DEPRECATION NOTICE: The value "dedicated" is deprecated and will be removed in a future release. Dedicated topology will now default to shared topology.
                     enum:
                     - shared
+                    - dedicated
                     - global
                     type: string
                     x-kubernetes-validations:
