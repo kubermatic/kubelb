@@ -19,6 +19,7 @@ rules:
   resources:
   - services
   verbs:
+  - create
   - get
   - list
   - patch
@@ -32,6 +33,38 @@ rules:
   - get
   - patch
   - update
+- apiGroups:
+  - gateway.networking.k8s.io
+  resources:
+  - gateways
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - gateway.networking.k8s.io
+  resources:
+  - grpcroutes
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - gateway.networking.k8s.io
+  resources:
+  - httproutes
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - networking.k8s.io
+  resources:
+  - ingresses
+  verbs:
+  - get
+  - list
+  - watch
 ---
 {{- if .Values.rbac.allowProxyRole }}
 apiVersion: rbac.authorization.k8s.io/v1
