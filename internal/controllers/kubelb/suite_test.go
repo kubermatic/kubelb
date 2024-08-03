@@ -116,7 +116,7 @@ var _ = BeforeSuite(func() {
 		Client:             k8sManager.GetClient(),
 		Cache:              k8sManager.GetCache(),
 		Scheme:             k8sManager.GetScheme(),
-		EnvoyProxyTopology: EnvoyProxyTopologyDedicated,
+		EnvoyProxyTopology: EnvoyProxyTopologyShared,
 		Namespace:          LBNamespace,
 		PortAllocator:      portAllocator,
 	}
@@ -126,7 +126,7 @@ var _ = BeforeSuite(func() {
 	ecpr = &EnvoyCPReconciler{
 		Client:             k8sManager.GetClient(),
 		EnvoyCache:         envoyServer.Cache,
-		EnvoyProxyTopology: EnvoyProxyTopologyDedicated,
+		EnvoyProxyTopology: EnvoyProxyTopologyShared,
 		EnvoyBootstrap:     envoyServer.GenerateBootstrap(),
 		Namespace:          LBNamespace,
 		PortAllocator:      portAllocator,

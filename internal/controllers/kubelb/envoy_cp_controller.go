@@ -140,16 +140,7 @@ func (r *EnvoyCPReconciler) ListLoadBalancersAndRoutes(ctx context.Context, req 
 	var err error
 
 	switch r.EnvoyProxyTopology {
-	case EnvoyProxyTopologyDedicated:
-		if req.Name != RequeueAllResources {
-			lb := kubelbv1alpha1.LoadBalancer{}
-			err = r.Get(ctx, req.NamespacedName, &lb)
-			if err != nil {
-				return nil, nil, err
-			}
-			loadBalancers.Items = append(loadBalancers.Items, lb)
-		}
-	case EnvoyProxyTopologyShared:
+	case EnvoyProxyTopologyShared, EnvoyProxyTopologyDedicated:
 		err = r.List(ctx, &loadBalancers, client.InNamespace(req.Namespace))
 		if err != nil {
 			return nil, nil, err
@@ -339,10 +330,7 @@ func (r *EnvoyCPReconciler) getEnvoyProxyPodSpec(namespace, appName, snapshotNam
 
 func envoySnapshotAndAppName(topology EnvoyProxyTopology, req ctrl.Request) (string, string) {
 	switch topology {
-	case EnvoyProxyTopologyShared:
-		return req.Namespace, req.Namespace
-	case EnvoyProxyTopologyDedicated:
-		return fmt.Sprintf("%s-%s", req.Namespace, req.Name), req.Name
+	case EnvoyProxyTopologyShared, EnvoyProxyTopologyDedicated:
 	case EnvoyProxyTopologyGlobal:
 		return EnvoyGlobalCache, EnvoyGlobalCache
 	}

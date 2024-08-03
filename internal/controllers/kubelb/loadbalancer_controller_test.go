@@ -53,16 +53,6 @@ var testMatrix = []struct {
 		envoySnapshotName: func(lb types.NamespacedName) string { return lb.Namespace },
 	},
 	{
-		topology: EnvoyProxyTopologyDedicated,
-		envoyProxyDeploymentName: func(lb types.NamespacedName) types.NamespacedName {
-			return types.NamespacedName{Name: fmt.Sprintf(envoyResourcePattern, lb.Name), Namespace: lb.Namespace}
-		},
-		envoyProxyServiceName: func(lb types.NamespacedName) types.NamespacedName {
-			return types.NamespacedName{Name: fmt.Sprintf(envoyResourcePattern, lb.Name), Namespace: lb.Namespace}
-		},
-		envoySnapshotName: func(lb types.NamespacedName) string { return fmt.Sprintf("%s-%s", lb.Namespace, lb.Name) },
-	},
-	{
 		topology: EnvoyProxyTopologyGlobal,
 		envoyProxyDeploymentName: func(lb types.NamespacedName) types.NamespacedName {
 			return types.NamespacedName{Name: "envoy-global", Namespace: LBNamespace}

@@ -120,7 +120,7 @@ func (r *LoadBalancerReconciler) Reconcile(ctx context.Context, req ctrl.Request
 	)
 
 	switch r.EnvoyProxyTopology {
-	case EnvoyProxyTopologyShared:
+	case EnvoyProxyTopologyShared, EnvoyProxyTopologyDedicated:
 		err = r.List(ctx, &loadBalancers, ctrlruntimeclient.InNamespace(req.Namespace))
 		if err != nil {
 			log.Error(err, "unable to fetch LoadBalancer list")
@@ -136,9 +136,6 @@ func (r *LoadBalancerReconciler) Reconcile(ctx context.Context, req ctrl.Request
 			return ctrl.Result{}, err
 		}
 		resourceNamespace = r.Namespace
-	case EnvoyProxyTopologyDedicated:
-		loadBalancers.Items = []kubelbv1alpha1.LoadBalancer{loadBalancer}
-		resourceNamespace = req.Namespace
 	}
 	// Resource is marked for deletion.
 	if loadBalancer.DeletionTimestamp != nil {

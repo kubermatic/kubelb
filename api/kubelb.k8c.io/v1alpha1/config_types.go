@@ -56,10 +56,12 @@ type ConfigSpec struct {
 
 // EnvoyProxy defines the desired state of the EnvoyProxy
 type EnvoyProxy struct {
-	// Topology defines the deployment topology for Envoy Proxy. Valid values are: shared, dedicated, and global.
 	// +kubebuilder:validation:Enum=shared;dedicated;global
 	// +kubebuilder:default=shared
 	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="Value is immutable"
+
+	// Topology defines the deployment topology for Envoy Proxy. Valid values are: shared and global.
+	// DEPRECATION NOTICE: The value "dedicated" is deprecated and will be removed in a future release. Dedicated topology will now default to shared topology.
 	// +optional
 	Topology EnvoyProxyTopology `json:"topology,omitempty"`
 
