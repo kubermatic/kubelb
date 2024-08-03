@@ -76,6 +76,10 @@ func main() {
 	var kubeconfig string
 	var useIngressClass bool
 	var useGatewayClass bool
+	var disableIngressController bool
+	var disableGatewayController bool
+	var disableHTTPRouteController bool
+	var disableGRPCRouteController bool
 
 	if flag.Lookup("kubeconfig") == nil {
 		flag.StringVar(&kubeconfig, "kubeconfig", "", "Path to a kubeconfig. Only required if out-of-cluster.")
@@ -94,6 +98,11 @@ func main() {
 	flag.BoolVar(&useIngressClass, "use-ingress-class", true, "Use IngressClass `kubelb` to filter Ingress objects. Ingresses should have `ingressClassName: kubelb` set in the spec.")
 	flag.BoolVar(&useLoadbalancerClass, "use-loadbalancer-class", false, "Use LoadBalancerClass `kubelb` to filter services. If false, all load balancer services will be managed by KubeLB.")
 	flag.BoolVar(&useGatewayClass, "use-gateway-class", true, "Use Gateway Class `kubelb` to filter Gateway objects. Gateway should have `gatewayClassName: kubelb` set in the spec.")
+
+	flag.BoolVar(&disableIngressController, "disable-ingress-controller", false, "Disable the Ingress controller.")
+	flag.BoolVar(&disableGatewayController, "disable-gateway-controller", false, "Disable the Gateway controller.")
+	flag.BoolVar(&disableHTTPRouteController, "disable-httproute-controller", false, "Disable the HTTPRoute controller.")
+	flag.BoolVar(&disableGRPCRouteController, "disable-grpcroute-controller", false, "Disable the GRPCRoute controller.")
 
 	opts := zap.Options{
 		Development: false,
@@ -202,54 +211,63 @@ func main() {
 		os.Exit(1)
 	}
 
-	if err = (&ccm.IngressReconciler{
-		Client:          mgr.GetClient(),
-		LBClient:        kubeLBMgr.GetClient(),
-		ClusterName:     clusterName,
-		Log:             ctrl.Log.WithName("controllers").WithName(ccm.IngressControllerName),
-		Scheme:          mgr.GetScheme(),
-		Recorder:        mgr.GetEventRecorderFor(ccm.IngressControllerName),
-		UseIngressClass: useIngressClass,
-	}).SetupWithManager(mgr); err != nil {
-		setupLog.Error(err, "unable to create controller", "controller", ccm.IngressControllerName)
-		os.Exit(1)
+	if !disableIngressController {
+		if err = (&ccm.IngressReconciler{
+			Client:          mgr.GetClient(),
+			LBClient:        kubeLBMgr.GetClient(),
+			ClusterName:     clusterName,
+			Log:             ctrl.Log.WithName("controllers").WithName(ccm.IngressControllerName),
+			Scheme:          mgr.GetScheme(),
+			Recorder:        mgr.GetEventRecorderFor(ccm.IngressControllerName),
+			UseIngressClass: useIngressClass,
+		}).SetupWithManager(mgr); err != nil {
+			setupLog.Error(err, "unable to create controller", "controller", ccm.IngressControllerName)
+			os.Exit(1)
+		}
 	}
 
-	if err = (&ccm.GatewayReconciler{
-		Client:          mgr.GetClient(),
-		LBClient:        kubeLBMgr.GetClient(),
-		ClusterName:     clusterName,
-		Log:             ctrl.Log.WithName("controllers").WithName(ccm.GatewayControllerName),
-		Scheme:          mgr.GetScheme(),
-		Recorder:        mgr.GetEventRecorderFor(ccm.GatewayControllerName),
-		UseGatewayClass: useGatewayClass,
-	}).SetupWithManager(mgr); err != nil {
-		setupLog.Error(err, "unable to create controller", "controller", ccm.GatewayControllerName)
-		os.Exit(1)
+	if !disableGatewayController {
+
+		if err = (&ccm.GatewayReconciler{
+			Client:          mgr.GetClient(),
+			LBClient:        kubeLBMgr.GetClient(),
+			ClusterName:     clusterName,
+			Log:             ctrl.Log.WithName("controllers").WithName(ccm.GatewayControllerName),
+			Scheme:          mgr.GetScheme(),
+			Recorder:        mgr.GetEventRecorderFor(ccm.GatewayControllerName),
+			UseGatewayClass: useGatewayClass,
+		}).SetupWithManager(mgr); err != nil {
+			setupLog.Error(err, "unable to create controller", "controller", ccm.GatewayControllerName)
+			os.Exit(1)
+		}
 	}
 
-	if err = (&ccm.HTTPRouteReconciler{
-		Client:      mgr.GetClient(),
-		LBClient:    kubeLBMgr.GetClient(),
-		ClusterName: clusterName,
-		Log:         ctrl.Log.WithName("controllers").WithName(ccm.GatewayHTTPRouteControllerName),
-		Scheme:      mgr.GetScheme(),
-		Recorder:    mgr.GetEventRecorderFor(ccm.GatewayHTTPRouteControllerName),
-	}).SetupWithManager(mgr); err != nil {
-		setupLog.Error(err, "unable to create controller", "controller", ccm.GatewayHTTPRouteControllerName)
-		os.Exit(1)
+	if !disableHTTPRouteController {
+		if err = (&ccm.HTTPRouteReconciler{
+			Client:      mgr.GetClient(),
+			LBClient:    kubeLBMgr.GetClient(),
+			ClusterName: clusterName,
+			Log:         ctrl.Log.WithName("controllers").WithName(ccm.GatewayHTTPRouteControllerName),
+			Scheme:      mgr.GetScheme(),
+			Recorder:    mgr.GetEventRecorderFor(ccm.GatewayHTTPRouteControllerName),
+		}).SetupWithManager(mgr); err != nil {
+			setupLog.Error(err, "unable to create controller", "controller", ccm.GatewayHTTPRouteControllerName)
+			os.Exit(1)
+		}
 	}
 
-	if err = (&ccm.GRPCRouteReconciler{
-		Client:      mgr.GetClient(),
-		LBClient:    kubeLBMgr.GetClient(),
-		ClusterName: clusterName,
-		Log:         ctrl.Log.WithName("controllers").WithName(ccm.GatewayGRPCRouteControllerName),
-		Scheme:      mgr.GetScheme(),
-		Recorder:    mgr.GetEventRecorderFor(ccm.GatewayGRPCRouteControllerName),
-	}).SetupWithManager(mgr); err != nil {
-		setupLog.Error(err, "unable to create controller", "controller", ccm.GatewayGRPCRouteControllerName)
-		os.Exit(1)
+	if !disableGRPCRouteController {
+		if err = (&ccm.GRPCRouteReconciler{
+			Client:      mgr.GetClient(),
+			LBClient:    kubeLBMgr.GetClient(),
+			ClusterName: clusterName,
+			Log:         ctrl.Log.WithName("controllers").WithName(ccm.GatewayGRPCRouteControllerName),
+			Scheme:      mgr.GetScheme(),
+			Recorder:    mgr.GetEventRecorderFor(ccm.GatewayGRPCRouteControllerName),
+		}).SetupWithManager(mgr); err != nil {
+			setupLog.Error(err, "unable to create controller", "controller", ccm.GatewayGRPCRouteControllerName)
+			os.Exit(1)
+		}
 	}
 
 	// this is a copy and paste of SetupSignalHandler which only returns a context

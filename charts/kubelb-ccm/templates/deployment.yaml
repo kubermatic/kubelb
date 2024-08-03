@@ -51,6 +51,25 @@ spec:
           args:
             - --enable-leader-election={{ .Values.kubelb.enableLeaderElection }}
             - --node-address-type={{ default "InternalIP" .Values.kubelb.nodeAddressType }}
+            - --use-loadbalancer-class={{ default false .Values.kubelb.useLoadBalancerClass }}
+            {{ if not .Values.kubelb.useGatewayClass -}}
+            - --use-gateway-class=false
+            {{ end -}}
+            {{ if not .Values.kubelb.useIngressClass -}}
+            - --use-ingress-clas=false
+            {{ end -}}
+            {{ if .Values.kubelb.disableIngressController -}}
+            - --disable-ingress-controller=true
+            {{ end -}}
+            {{ if .Values.kubelb.disableGatewayController -}}
+            - --disable-gateway-controller=true
+            {{ end -}}
+            {{ if .Values.kubelb.disableHTTPRouteController -}}
+            - --disable-httproute-controller=true
+            {{ end -}}
+            {{ if .Values.kubelb.disableGRPCRouteController -}}
+            - --disable-grpcroute-controller=true
+            {{ end -}}
             - --cluster-name={{ required "A valid .Values.kubelb.tenantName to specify the tenant name is required!" .Values.kubelb.tenantName }}
           env:
           - name: NAMESPACE

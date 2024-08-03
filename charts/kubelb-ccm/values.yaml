@@ -7,10 +7,26 @@ image:
 imagePullSecrets: []
 
 kubelb:
+  ## -- Name of the tenant, must be unique against a load balancer cluster.
   tenantName: null
   enableLeaderElection: true
   nodeAddressType: InternalIP
+  ## -- Name of the secret that contains kubeconfig for the loadbalancer cluster
   clusterSecretName: kubelb-cluster
+  # -- useIngressClass specifies whether to target resources with `kubelb` ingress class or all resources.
+  useIngressClass: true
+  # -- useGatewayClass specifies whether to target resources with `kubelb` gateway class or all resources.
+  useGatewayClass: true
+  # -- useLoadBalancerClass specifies whether to target services of type LoadBalancer with `kubelb` load balancer class or all services of type LoadBalancer.
+  useLoadBalancerClass: false
+  # -- disableIngressController specifies whether to disable the Ingress Controller.
+  disableIngressController: false
+  # -- disableGatewayController specifies whether to disable the Gateway Controller.
+  disableGatewayController: false
+  ## -- disableHTTPRouteController specifies whether to disable the HTTPRoute Controller.
+  disableHTTPRouteController: false
+  ## -- disableGRPCRouteController specifies whether to disable the GRPCRoute Controller.
+  disableGRPCRouteController: false
 
 extraVolumes: []
 extraVolumeMounts: []

@@ -58,7 +58,7 @@ type ConfigSpec struct {
 type EnvoyProxy struct {
 	// +kubebuilder:validation:Enum=shared;dedicated;global
 	// +kubebuilder:default=shared
-	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="Value is immutable"
+	// +kubebuilder:validation:XValidation:rule="self == oldSelf || (self != oldSelf && oldSelf == 'dedicated')",message="Value is immutable and only allowed change is from dedicated(deprecated) to shared/global"
 
 	// Topology defines the deployment topology for Envoy Proxy. Valid values are: shared and global.
 	// DEPRECATION NOTICE: The value "dedicated" is deprecated and will be removed in a future release. Dedicated topology will now default to shared topology.
@@ -72,7 +72,7 @@ type EnvoyProxy struct {
 
 	// Replicas defines the number of replicas for Envoy Proxy. This field is ignored if UseDaemonset is set to true.
 	// +kubebuilder:validation:Minimum=1
-	// +kubeblider:default=3
+	// +kubebuilder:default=3
 	// +optional
 	Replicas int32 `json:"replicas,omitempty"`
 

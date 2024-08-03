@@ -978,6 +978,7 @@ spec:
                       Proxy. If specified, the node must have all the indicated labels.
                     type: object
                   replicas:
+                    default: 3
                     description: Replicas defines the number of replicas for Envoy
                       Proxy. This field is ignored if UseDaemonset is set to true.
                     format: int32
@@ -1095,8 +1096,9 @@ spec:
                     - global
                     type: string
                     x-kubernetes-validations:
-                    - message: Value is immutable
-                      rule: self == oldSelf
+                    - message: Value is immutable and only allowed change is from
+                        dedicated(deprecated) to shared/global
+                      rule: self == oldSelf || (self != oldSelf && oldSelf == 'dedicated')
                   useDaemonset:
                     description: |-
                       UseDaemonset defines whether Envoy Proxy will run as daemonset. By default, Envoy Proxy will run as deployment.
