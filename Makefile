@@ -20,6 +20,9 @@ export GIT_TAG ?= $(shell git tag --points-at HEAD)
 
 IMAGE_TAG = \
 		$(shell echo $$(git rev-parse HEAD && if [[ -n $$(git status --porcelain) ]]; then echo '-dirty'; fi)|tr -d ' ')
+
+VERSION = $(shell cat VERSION)
+
 CCM_IMAGE_NAME ?= $(KUBELB_CCM_IMG):$(IMAGE_TAG)
 KUBELB_IMAGE_NAME ?= $(KUBELB_IMG):$(IMAGE_TAG)
 
@@ -209,7 +212,10 @@ HELM_DOCS ?= $(LOCALBIN)/helm-docs
 .PHONY: helm-docs
 helm-docs: $(HELM_DOCS) ## Download helm-docs locally if necessary.
 $(HELM_DOCS): $(LOCALBIN)
-	test -s $(LOCALBIN)/helm-docs || GOBIN=$(LOCALBIN) go install github.com/norwoodj/helm-docs/cmd/helm-docs@v1.11.2
+	test -s $(LOCALBIN)/helm-docs || GOBIN=$(LOCALBIN) go install github.com/norwoodj/helm-docs/cmd/helm-docs@v1.14.2
+
+helm-lint:
+	helm lint charts/*
 
 generate-helm-docs: helm-docs
 	$(LOCALBIN)/helm-docs charts/
@@ -220,6 +226,6 @@ bump-chart:
 	$(SED) -i "s/^appVersion:.*/appVersion: $(IMAGE_TAG)/" charts/*/Chart.yaml
 	$(SED) -i "s/tag:.*/tag: $(IMAGE_TAG)/" charts/*/values.yaml
 
-.PHONY: release-charts helm-docs generate-helm-docs
-release-charts: bump-chart
+.PHONY: release-charts cshelm-do generate-helm-docs
+release-charts: helm-lint generate-helm-docs bump-chart
 	CHART_VERSION=$(IMAGE_TAG) ./hack/release-helm-charts.sh
