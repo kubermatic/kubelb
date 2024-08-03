@@ -169,3 +169,47 @@ presubmits:
             limits:
               memory: 16Gi
               cpu: 4
+
+  - name: pull-kubelb-verify-shfmt
+    run_if_changed: "^hack/"
+    decorate: true
+    clone_uri: "ssh://git@github.com/kubermatic/kubelb.git"
+    spec:
+      containers:
+        - image: quay.io/kubermatic/build:go-1.22-node-20-kind-0.23-11
+          command:
+            - shfmt
+          args:
+            #   -l        list files whose formatting differs from shfmt's
+            #   -d        error with a diff when the formatting differs
+            #   -i uint   indent: 0 for tabs (default), >0 for number of spaces
+            #   -sr       redirect operators will be followed by a space
+            - "-l"
+            - "-sr"
+            - "-i"
+            - "2"
+            - "-d"
+            - "hack"
+          resources:
+            requests:
+              memory: 32Mi
+              cpu: 50m
+            limits:
+              memory: 256Mi
+              cpu: 250m
+
+  - name: pull-kubelb-license-validation
+    always_run: true
+    decorate: true
+    clone_uri: "ssh://git@github.com/kubermatic/kubelb.git"
+    labels:
+      preset-goproxy: "true"
+    spec:
+      containers:
+        - image: quay.io/kubermatic/build:go-1.22-node-20-kind-0.23-11
+          command:
+            - ./hack/verify-licenses.sh
+          resources:
+            requests:
+              memory: 2Gi
+              cpu: 2

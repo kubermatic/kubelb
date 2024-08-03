@@ -13,10 +13,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-if [ $# -ne 1 ] ; then
-    echo 'No cluster ID provided'
-    echo './create-kubelb-sa.sh <cluster-id>'
-    exit 1
+if [ $# -ne 1 ]; then
+  echo 'No cluster ID provided'
+  echo './create-kubelb-sa.sh <cluster-id>'
+  exit 1
 fi
 
 clusterId=$1
@@ -24,7 +24,7 @@ namespace="cluster-$clusterId"
 
 kubectl create namespace "$namespace"
 kubectl label namespace "$namespace" kubelb.k8c.io/managed-by=kubelb
-cat <<EOF | kubectl apply -n "$namespace" -f -
+cat << EOF | kubectl apply -n "$namespace" -f -
 ---
 apiVersion: v1
 kind: ServiceAccount
@@ -85,7 +85,6 @@ roleRef:
   name: kubelb-agent-role
   apiGroup: rbac.authorization.k8s.io
 EOF
-
 
 # your server name goes here
 server=$(kubectl config view --minify -o jsonpath='{.clusters[0].cluster.server}')

@@ -29,7 +29,7 @@ kubectl wait --namespace metallb-system --for=condition=ready pod --selector=app
 
 gw=$(docker network inspect -f json kind | jq --raw-output '.[].IPAM.Config[1].Gateway' | sed -e 's/\(.*\..*\).*\..*\..*/\1/')
 
-cat <<EOF | kubectl apply -f -
+cat << EOF | kubectl apply -f -
 apiVersion: metallb.io/v1beta1
 kind: IPAddressPool
 metadata:
@@ -57,10 +57,10 @@ echodate "Install kubelb"
 make install
 make e2e-deploy-kubelb
 for i in 1 2; do
-    echodate "Install ccm for cluster-tenant${i}"
-    kubectl create ns "cluster-tenant${i}"
-    kubectl label ns "cluster-tenant${i}" kubelb.k8c.io/managed-by=kubelb
-    kubectl config set-context $(kubectl config current-context) --namespace="cluster-tenant${i}"
-    kubectl create secret generic kubelb-cluster --from-file=kubelb="${TMPDIR}"/kubelb.kubeconfig --from-file=tenant="${TMPDIR}/tenant${i}.kubeconfig"
-    make "e2e-deploy-ccm-tenant-${i}"
+  echodate "Install ccm for cluster-tenant${i}"
+  kubectl create ns "cluster-tenant${i}"
+  kubectl label ns "cluster-tenant${i}" kubelb.k8c.io/managed-by=kubelb
+  kubectl config set-context $(kubectl config current-context) --namespace="cluster-tenant${i}"
+  kubectl create secret generic kubelb-cluster --from-file=kubelb="${TMPDIR}"/kubelb.kubeconfig --from-file=tenant="${TMPDIR}/tenant${i}.kubeconfig"
+  make "e2e-deploy-ccm-tenant-${i}"
 done

@@ -1,5 +1,4 @@
-#!/usr/bin/env bash
-# Copyright 2020 The KubeLB Authors.
+# Copyright 2024 The KubeLB Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -13,12 +12,19 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-set -eu
+blacklist:
+  - GPL-2.0
 
-cd $(dirname $0)/..
+whitelist:
+  - Apache-2.0
+  - BSD-2-Clause
+  - BSD-3-Clause
+  - FreeBSD
+  - ISC
+  - LGPL-3.0
+  - MIT
+  - MPL-2.0
+  - NewBSD
 
-boilerplate \
-  -boilerplates hack/boilerplate/ \
-  -exclude config \
-  -exclude charts \
-  -exclude Makefile
+exceptions:
+  - github.com/ajeddeloh/go-json # Since it's a fork, https://github.com/golang/go/blob/master/LICENSE

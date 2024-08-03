@@ -227,7 +227,6 @@ func main() {
 	}
 
 	if !disableGatewayController {
-
 		if err = (&ccm.GatewayReconciler{
 			Client:          mgr.GetClient(),
 			LBClient:        kubeLBMgr.GetClient(),

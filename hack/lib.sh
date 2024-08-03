@@ -101,3 +101,41 @@ write_junit() {
 </testsuites>
 EOF
 }
+
+is_containerized() {
+  # we're inside a Kubernetes pod/container or inside a container launched by containerize()
+  [ -n "${KUBERNETES_SERVICE_HOST:-}" ] || [ -n "${CONTAINERIZED:-}" ]
+}
+
+containerize() {
+  local cmd="$1"
+  local image="${CONTAINERIZE_IMAGE:-quay.io/kubermatic/util:2.0.0}"
+  local gocache="${CONTAINERIZE_GOCACHE:-/tmp/.gocache}"
+  local gomodcache="${CONTAINERIZE_GOMODCACHE:-/tmp/.gomodcache}"
+  local skip="${NO_CONTAINERIZE:-}"
+
+  # short-circuit containerize when in some cases it needs to be avoided
+  [ -n "$skip" ] && return
+
+  if ! is_containerized; then
+    echodate "Running $cmd in a Docker container using $image..."
+    mkdir -p "$gocache"
+    mkdir -p "$gomodcache"
+
+    exec docker run \
+      -v "$PWD":/go/src/k8c.io/kubelb \
+      -v "$gocache":"$gocache" \
+      -v "$gomodcache":"$gomodcache" \
+      -w /go/src/k8c.io/kubelb \
+      -e "GOCACHE=$gocache" \
+      -e "GOMODCACHE=$gomodcache" \
+      -e "CONTAINERIZED=1" \
+      -u "$(id -u):$(id -g)" \
+      --entrypoint="$cmd" \
+      --rm \
+      -it \
+      $image $@
+
+    exit $?
+  fi
+}

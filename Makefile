@@ -77,6 +77,8 @@ manifests: generate controller-gen ## Generate WebhookConfiguration, ClusterRole
 generate: controller-gen ## Generate code containing DeepCopy, DeepCopyInto, and DeepCopyObject method implementations.
 	$(CONTROLLER_GEN) object:headerFile="hack/boilerplate/boilerplate.go.txt" paths="./..."
 
+update-codegen: generate controller-gen manifests fmt 
+
 .PHONY: fmt
 fmt: ## Run go fmt against code.
 	go fmt ./...
@@ -206,6 +208,10 @@ $(CONTROLLER_GEN): $(LOCALBIN)
 envtest: $(ENVTEST) ## Download envtest-setup locally if necessary.
 $(ENVTEST): $(LOCALBIN)
 	test -s $(LOCALBIN)/setup-envtest || GOBIN=$(LOCALBIN) go install sigs.k8s.io/controller-runtime/tools/setup-envtest@latest
+
+.PHONY: shfmt
+shfmt:
+	shfmt -w -sr -i 2 hack
 
 HELM_DOCS ?= $(LOCALBIN)/helm-docs
 
