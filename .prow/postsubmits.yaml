@@ -68,27 +68,27 @@ postsubmits:
               cpu: 100m
               memory: 1Gi
 
-  - name: ci-push-kubelb-charts
-    always_run: true
-    decorate: true
-    clone_uri: "ssh://git@github.com/kubermatic/kubelb.git"
-    branches:
-      # Match on tags
-      - ^v\d+\.\d+\.\d+.*
-    reporter_config:
-      slack:
-        channel: dev-kubelb
-    labels:
-      preset-docker-push: "true"
-      preset-goproxy: "true"
-    spec:
-      containers:
-        - image: quay.io/kubermatic/build:go-1.22-node-20-kind-0.23-11
-          command:
-            - make
-          args:
-            - release-charts
-          resources:
-            requests:
-              cpu: 100m
-              memory: 500m
+  # - name: ci-push-kubelb-charts
+  #   always_run: true
+  #   decorate: true
+  #   clone_uri: "ssh://git@github.com/kubermatic/kubelb.git"
+  #   branches:
+  #     # Match on tags
+  #     - ^v\d+\.\d+\.\d+.*
+  #   reporter_config:
+  #     slack:
+  #       channel: dev-kubelb
+  #   labels:
+  #     preset-docker-push: "true"
+  #     preset-goproxy: "true"
+  #   spec:
+  #     containers:
+  #       - image: quay.io/kubermatic/build:go-1.22-node-20-kind-0.23-11
+  #         command:
+  #           - make
+  #         args:
+  #           - release-charts
+  #         resources:
+  #           requests:
+  #             cpu: 100m
+  #             memory: 500m
