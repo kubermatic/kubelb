@@ -26,6 +26,7 @@ RUN go mod download
 COPY cmd/ cmd/
 COPY api/ api/
 COPY internal/ internal/
+COPY Makefile Makefile
 
 RUN make build-ccm
 
