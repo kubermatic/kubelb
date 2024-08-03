@@ -25,7 +25,6 @@ import (
 
 	kubelbv1alpha1 "k8c.io/kubelb/api/kubelb.k8c.io/v1alpha1"
 	"k8c.io/kubelb/internal/kubelb"
-	kuberneteshelper "k8c.io/kubelb/internal/kubernetes"
 
 	corev1 "k8s.io/api/core/v1"
 	kerrors "k8s.io/apimachinery/pkg/api/errors"
@@ -76,14 +75,6 @@ func (r *TenantMigrationReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 
 	if !r.shouldReconcile(resource) {
 		return reconcile.Result{}, nil
-	}
-
-	// Add finalizer if it doesn't exist
-	if !kuberneteshelper.HasFinalizer(resource, CleanupFinalizer) {
-		kuberneteshelper.AddFinalizer(resource, CleanupFinalizer)
-		if err := r.Update(ctx, resource); err != nil {
-			return reconcile.Result{}, fmt.Errorf("failed to add finalizer: %w", err)
-		}
 	}
 
 	err := r.reconcile(ctx, log, resource)

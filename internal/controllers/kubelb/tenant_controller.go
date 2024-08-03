@@ -27,7 +27,6 @@ import (
 
 	kubelbv1alpha1 "k8c.io/kubelb/api/kubelb.k8c.io/v1alpha1"
 	tenantresources "k8c.io/kubelb/internal/controllers/kubelb/resources/tenant"
-	kuberneteshelper "k8c.io/kubelb/internal/kubernetes"
 	"k8c.io/reconciler/pkg/reconciling"
 
 	corev1 "k8s.io/api/core/v1"
@@ -41,6 +40,7 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	ctrlclient "sigs.k8s.io/controller-runtime/pkg/client"
 	ctrlruntimeclient "sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 )
 
@@ -102,7 +102,7 @@ func (r *TenantReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 
 	// Resource is marked for deletion
 	if resource.DeletionTimestamp != nil {
-		if kuberneteshelper.HasFinalizer(resource, CleanupFinalizer) {
+		if controllerutil.ContainsFinalizer(resource, CleanupFinalizer) {
 			return r.cleanup(ctx, resource)
 		}
 		// Finalizer doesn't exist so clean up is already done
@@ -110,8 +110,11 @@ func (r *TenantReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 	}
 
 	// Add finalizer if it doesn't exist
-	if !kuberneteshelper.HasFinalizer(resource, CleanupFinalizer) {
-		kuberneteshelper.AddFinalizer(resource, CleanupFinalizer)
+	if !controllerutil.ContainsFinalizer(resource, CleanupFinalizer) {
+		if ok := controllerutil.AddFinalizer(resource, CleanupFinalizer); !ok {
+			log.Error(nil, "Failed to add finalizer for the Tenant")
+			return ctrl.Result{Requeue: true}, nil
+		}
 		if err := r.Update(ctx, resource); err != nil {
 			return reconcile.Result{}, fmt.Errorf("failed to add finalizer: %w", err)
 		}
@@ -242,7 +245,7 @@ func (r *TenantReconciler) cleanup(ctx context.Context, tenant *kubelbv1alpha1.T
 	}
 
 	// Clean up is complete so remove the finalizer.
-	kuberneteshelper.RemoveFinalizer(tenant, CleanupFinalizer)
+	controllerutil.RemoveFinalizer(tenant, CleanupFinalizer)
 	if err := r.Update(ctx, tenant); err != nil {
 		return reconcile.Result{}, fmt.Errorf("failed to remove finalizer: %w", err)
 	}

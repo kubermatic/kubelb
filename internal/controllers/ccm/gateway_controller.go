@@ -26,7 +26,6 @@ import (
 
 	kubelbv1alpha1 "k8c.io/kubelb/api/kubelb.k8c.io/v1alpha1"
 	"k8c.io/kubelb/internal/kubelb"
-	kuberneteshelper "k8c.io/kubelb/internal/kubernetes"
 
 	kerrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -36,6 +35,7 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	ctrlclient "sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
@@ -83,7 +83,7 @@ func (r *GatewayReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 
 	// Resource is marked for deletion
 	if resource.DeletionTimestamp != nil {
-		if kuberneteshelper.HasFinalizer(resource, CleanupFinalizer) {
+		if controllerutil.ContainsFinalizer(resource, CleanupFinalizer) {
 			return r.cleanup(ctx, resource)
 		}
 		// Finalizer doesn't exist so clean up is already done
@@ -95,8 +95,12 @@ func (r *GatewayReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 	}
 
 	// Add finalizer if it doesn't exist
-	if !kuberneteshelper.HasFinalizer(resource, CleanupFinalizer) {
-		kuberneteshelper.AddFinalizer(resource, CleanupFinalizer)
+	if !controllerutil.ContainsFinalizer(resource, CleanupFinalizer) {
+		if ok := controllerutil.AddFinalizer(resource, CleanupFinalizer); !ok {
+			log.Error(nil, "Failed to add finalizer for the Gateway")
+			return ctrl.Result{Requeue: true}, nil
+		}
+
 		if err := r.Update(ctx, resource); err != nil {
 			return reconcile.Result{}, fmt.Errorf("failed to add finalizer: %w", err)
 		}
@@ -164,7 +168,7 @@ func (r *GatewayReconciler) cleanup(ctx context.Context, gateway *gwapiv1.Gatewa
 		return reconcile.Result{}, fmt.Errorf("failed to cleanup route: %w", err)
 	}
 
-	kuberneteshelper.RemoveFinalizer(gateway, CleanupFinalizer)
+	controllerutil.RemoveFinalizer(gateway, CleanupFinalizer)
 	if err := r.Update(ctx, gateway); err != nil {
 		return reconcile.Result{}, fmt.Errorf("failed to remove finalizer: %w", err)
 	}

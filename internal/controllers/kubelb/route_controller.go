@@ -28,7 +28,6 @@ import (
 	kubelbv1alpha1 "k8c.io/kubelb/api/kubelb.k8c.io/v1alpha1"
 	"k8c.io/kubelb/internal/config"
 	"k8c.io/kubelb/internal/kubelb"
-	kuberneteshelper "k8c.io/kubelb/internal/kubernetes"
 	portlookup "k8c.io/kubelb/internal/port-lookup"
 	serviceHelpers "k8c.io/kubelb/internal/resources/service"
 	"k8c.io/kubelb/internal/resources/unstructured"
@@ -45,6 +44,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	ctrlclient "sigs.k8s.io/controller-runtime/pkg/client"
 	ctrlruntimeclient "sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
@@ -93,7 +93,7 @@ func (r *RouteReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 
 	// Resource is marked for deletion
 	if resource.DeletionTimestamp != nil {
-		if kuberneteshelper.HasFinalizer(resource, CleanupFinalizer) {
+		if controllerutil.ContainsFinalizer(resource, CleanupFinalizer) {
 			return r.cleanup(ctx, resource)
 		}
 		// Finalizer doesn't exist so clean up is already done
@@ -101,8 +101,11 @@ func (r *RouteReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 	}
 
 	// Add finalizer if it doesn't exist
-	if !kuberneteshelper.HasFinalizer(resource, CleanupFinalizer) {
-		kuberneteshelper.AddFinalizer(resource, CleanupFinalizer)
+	if !controllerutil.ContainsFinalizer(resource, CleanupFinalizer) {
+		if ok := controllerutil.AddFinalizer(resource, CleanupFinalizer); !ok {
+			log.Error(nil, "Failed to add finalizer for the Route")
+			return ctrl.Result{Requeue: true}, nil
+		}
 		if err := r.Update(ctx, resource); err != nil {
 			return reconcile.Result{}, fmt.Errorf("failed to add finalizer: %w", err)
 		}
@@ -171,7 +174,7 @@ func (r *RouteReconciler) cleanup(ctx context.Context, route *kubelbv1alpha1.Rou
 		return reconcile.Result{}, fmt.Errorf("failed to deallocate ports: %w", err)
 	}
 
-	kuberneteshelper.RemoveFinalizer(route, CleanupFinalizer)
+	controllerutil.RemoveFinalizer(route, CleanupFinalizer)
 	if err := r.Update(ctx, route); err != nil {
 		return reconcile.Result{}, fmt.Errorf("failed to remove finalizer: %w", err)
 	}

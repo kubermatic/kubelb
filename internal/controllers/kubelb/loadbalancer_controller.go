@@ -25,7 +25,6 @@ import (
 	"k8c.io/kubelb/internal/config"
 	utils "k8c.io/kubelb/internal/controllers"
 	"k8c.io/kubelb/internal/kubelb"
-	kuberneteshelper "k8c.io/kubelb/internal/kubernetes"
 	portlookup "k8c.io/kubelb/internal/port-lookup"
 
 	corev1 "k8s.io/api/core/v1"
@@ -40,6 +39,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/cache"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	ctrlruntimeclient "sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
@@ -139,7 +139,7 @@ func (r *LoadBalancerReconciler) Reconcile(ctx context.Context, req ctrl.Request
 	}
 	// Resource is marked for deletion.
 	if loadBalancer.DeletionTimestamp != nil {
-		if kuberneteshelper.HasFinalizer(&loadBalancer, envoyProxyCleanupFinalizer) {
+		if controllerutil.ContainsFinalizer(&loadBalancer, envoyProxyCleanupFinalizer) {
 			return reconcile.Result{}, r.handleEnvoyProxyCleanup(ctx, loadBalancer, resourceNamespace)
 		}
 		// Finalizer doesn't exist so clean up is already done
@@ -147,8 +147,12 @@ func (r *LoadBalancerReconciler) Reconcile(ctx context.Context, req ctrl.Request
 	}
 
 	// Add finalizer if it doesn't exist
-	if !kuberneteshelper.HasFinalizer(&loadBalancer, envoyProxyCleanupFinalizer) {
-		kuberneteshelper.AddFinalizer(&loadBalancer, envoyProxyCleanupFinalizer)
+	if !controllerutil.ContainsFinalizer(&loadBalancer, envoyProxyCleanupFinalizer) {
+		if ok := controllerutil.AddFinalizer(&loadBalancer, envoyProxyCleanupFinalizer); !ok {
+			log.Error(nil, "Failed to add finalizer for the LoadBalancer")
+			return ctrl.Result{Requeue: true}, nil
+		}
+
 		if err := r.Update(ctx, &loadBalancer); err != nil {
 			return reconcile.Result{}, fmt.Errorf("failed to add finalizer: %w", err)
 		}
@@ -352,7 +356,7 @@ func (r *LoadBalancerReconciler) handleEnvoyProxyCleanup(ctx context.Context, lb
 	}
 
 	// Remove finalizer
-	kuberneteshelper.RemoveFinalizer(&lb, envoyProxyCleanupFinalizer)
+	controllerutil.RemoveFinalizer(&lb, envoyProxyCleanupFinalizer)
 
 	// Update instance
 	err := r.Update(ctx, &lb)
