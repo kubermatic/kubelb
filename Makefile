@@ -226,6 +226,6 @@ bump-chart:
 	$(SED) -i "s/^appVersion:.*/appVersion: $(IMAGE_TAG)/" charts/*/Chart.yaml
 	$(SED) -i "s/tag:.*/tag: $(IMAGE_TAG)/" charts/*/values.yaml
 
-.PHONY: release-charts cshelm-do generate-helm-docs
+.PHONY: release-charts helm-docs generate-helm-docs
 release-charts: helm-lint generate-helm-docs bump-chart
 	CHART_VERSION=$(IMAGE_TAG) ./hack/release-helm-charts.sh
