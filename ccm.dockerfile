@@ -26,15 +26,12 @@ RUN go mod download
 COPY cmd/ cmd/
 COPY api/ api/
 COPY internal/ internal/
-COPY Makefile Makefile
-# Required for code generation.
-COPY hack/boilerplate/boilerplate.go.txt hack/boilerplate/boilerplate.go.txt
 
-RUN make build-ccm
+RUN CGO_ENABLED=0 go build -a -o ccm cmd/ccm/main.go
 
 FROM gcr.io/distroless/static:nonroot
 WORKDIR /
-COPY --from=builder /workspace/bin/ccm .
+COPY --from=builder /workspace/ccm .
 USER 65532:65532
 
 ENTRYPOINT ["/ccm"]

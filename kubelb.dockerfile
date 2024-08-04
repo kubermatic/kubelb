@@ -26,15 +26,12 @@ RUN go mod download
 COPY cmd/ cmd/
 COPY api/ api/
 COPY internal/ internal/
-COPY Makefile Makefile
-# Required for code generation.
-COPY hack/boilerplate/boilerplate.go.txt hack/boilerplate/boilerplate.go.txt
 
-RUN make build-kubelb
+RUN CGO_ENABLED=0 go build -a -o kubelb cmd/kubelb/main.go
 
 FROM gcr.io/distroless/static:nonroot
 WORKDIR /
-COPY --from=builder /workspace/bin/kubelb .
+COPY --from=builder /workspace/kubelb .
 USER 65532:65532
 
 ENTRYPOINT ["/kubelb"]

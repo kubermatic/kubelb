@@ -186,7 +186,6 @@ func expectHTTPGet(url, serverHeader string) {
 	Eventually(func() error {
 		resp, err := http.Get(url)
 		if err != nil {
-			log.Printf("failed %v: %v", url, err)
 			return err
 		}
 		if resp.StatusCode != http.StatusOK {
