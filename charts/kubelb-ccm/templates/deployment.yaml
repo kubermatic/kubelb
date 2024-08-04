@@ -56,7 +56,7 @@ spec:
             - --use-gateway-class=false
             {{ end -}}
             {{ if not .Values.kubelb.useIngressClass -}}
-            - --use-ingress-clas=false
+            - --use-ingress-class=false
             {{ end -}}
             {{ if .Values.kubelb.disableIngressController -}}
             - --disable-ingress-controller=true
