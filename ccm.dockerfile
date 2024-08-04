@@ -27,9 +27,10 @@ COPY cmd/ cmd/
 COPY api/ api/
 COPY internal/ internal/
 COPY Makefile Makefile
+# Required for code generation.
+COPY hack/boilerplate/boilerplate.go.txt hack/boilerplate/boilerplate.go.txt
 
 RUN make build-ccm
-
 
 FROM gcr.io/distroless/static:nonroot
 WORKDIR /
