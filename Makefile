@@ -77,7 +77,7 @@ manifests: generate controller-gen ## Generate WebhookConfiguration, ClusterRole
 generate: controller-gen ## Generate code containing DeepCopy, DeepCopyInto, and DeepCopyObject method implementations.
 	$(CONTROLLER_GEN) object:headerFile="hack/boilerplate/boilerplate.go.txt" paths="./..."
 
-update-codegen: generate controller-gen manifests fmt vet go-mod-tidy
+update-codegen: generate controller-gen manifests generate-helm-docs fmt vet go-mod-tidy
 
 .PHONY: fmt
 fmt: ## Run go fmt against code.
