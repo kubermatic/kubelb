@@ -37,6 +37,8 @@ func GetServicesFromHTTPRoute(httpRoute *gwapiv1.HTTPRoute) []types.NamespacedNa
 
 				if ref.Namespace != nil {
 					serviceReference.Namespace = string(*ref.Namespace)
+				} else {
+					serviceReference.Namespace = httpRoute.Namespace
 				}
 				serviceReferences = append(serviceReferences, serviceReference)
 			}
@@ -51,6 +53,8 @@ func GetServicesFromHTTPRoute(httpRoute *gwapiv1.HTTPRoute) []types.NamespacedNa
 
 				if ref.Namespace != nil {
 					serviceReference.Namespace = string(*ref.Namespace)
+				} else {
+					serviceReference.Namespace = httpRoute.Namespace
 				}
 				serviceReferences = append(serviceReferences, serviceReference)
 			}
@@ -66,6 +70,8 @@ func GetServicesFromHTTPRoute(httpRoute *gwapiv1.HTTPRoute) []types.NamespacedNa
 
 						if ref.Namespace != nil {
 							serviceReference.Namespace = string(*ref.Namespace)
+						} else {
+							serviceReference.Namespace = httpRoute.Namespace
 						}
 						serviceReferences = append(serviceReferences, serviceReference)
 					}
