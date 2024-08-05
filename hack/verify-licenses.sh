@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Copyright 2020 The KubeLB Authors.
+
+# Copyright 2024 The KubeLB Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -13,12 +14,15 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-set -eu
+set -euo pipefail
 
 cd $(dirname $0)/..
+source hack/lib.sh
 
-boilerplate \
-  -boilerplates hack/boilerplate/ \
-  -exclude config \
-  -exclude charts \
-  -exclude Makefile
+CONTAINERIZE_IMAGE=quay.io/kubermatic/build:go-1.22-node-20-kind-0.23-11 containerize ./hack/verify-licenses.sh
+
+go mod vendor
+
+echodate "Checking licenses..."
+wwhrd check -q
+echodate "Check successful."

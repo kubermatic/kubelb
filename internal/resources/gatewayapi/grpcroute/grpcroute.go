@@ -37,6 +37,8 @@ func GetServicesFromGRPCRoute(grpcroute *gwapiv1.GRPCRoute) []types.NamespacedNa
 
 				if ref.Namespace != nil {
 					serviceReference.Namespace = string(*ref.Namespace)
+				} else {
+					serviceReference.Namespace = grpcroute.Namespace
 				}
 				serviceReferences = append(serviceReferences, serviceReference)
 			}
@@ -51,6 +53,8 @@ func GetServicesFromGRPCRoute(grpcroute *gwapiv1.GRPCRoute) []types.NamespacedNa
 
 				if ref.Namespace != nil {
 					serviceReference.Namespace = string(*ref.Namespace)
+				} else {
+					serviceReference.Namespace = grpcroute.Namespace
 				}
 				serviceReferences = append(serviceReferences, serviceReference)
 			}
@@ -66,6 +70,8 @@ func GetServicesFromGRPCRoute(grpcroute *gwapiv1.GRPCRoute) []types.NamespacedNa
 
 						if ref.Namespace != nil {
 							serviceReference.Namespace = string(*ref.Namespace)
+						} else {
+							serviceReference.Namespace = grpcroute.Namespace
 						}
 						serviceReferences = append(serviceReferences, serviceReference)
 					}

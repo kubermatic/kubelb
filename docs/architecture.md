@@ -22,7 +22,7 @@ At its core, the KubeLB manager hosts the envoy xDS server and implements the [e
 
 KubeLB manager supports three different deployment topologies for envoy proxy:
 
-#### Dedicated
+#### Dedicated (Deprecated with release v1.1.0)
 
 In this topology, the envoy proxy is deployed per load balancer service.
 

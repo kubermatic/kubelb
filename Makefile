@@ -3,8 +3,13 @@ SHELL = /bin/bash -eu -o pipefail
 # Image URL to use all building/pushing image targets
 KUBELB_IMG ?= quay.io/kubermatic/kubelb-manager
 KUBELB_CCM_IMG ?= quay.io/kubermatic/kubelb-ccm
+
+## Tool Versions
 # ENVTEST_K8S_VERSION refers to the version of kubebuilder assets to be downloaded by envtest binary.
-ENVTEST_K8S_VERSION = 1.28.0
+ENVTEST_K8S_VERSION = 1.30.0
+KUSTOMIZE_VERSION ?= v5.4.3
+CONTROLLER_TOOLS_VERSION ?= v0.15.0
+GO_VERSION = 1.22.5
 
 export GOPATH?=$(shell go env GOPATH)
 export CGO_ENABLED=0
@@ -13,10 +18,11 @@ export GO111MODULE=on
 export GOFLAGS?=-mod=readonly -trimpath
 export GIT_TAG ?= $(shell git tag --points-at HEAD)
 
-GO_VERSION = 1.22.2
-
 IMAGE_TAG = \
 		$(shell echo $$(git rev-parse HEAD && if [[ -n $$(git status --porcelain) ]]; then echo '-dirty'; fi)|tr -d ' ')
+
+VERSION = $(shell cat VERSION)
+
 CCM_IMAGE_NAME ?= $(KUBELB_CCM_IMG):$(IMAGE_TAG)
 KUBELB_IMAGE_NAME ?= $(KUBELB_IMG):$(IMAGE_TAG)
 
@@ -71,6 +77,8 @@ manifests: generate controller-gen ## Generate WebhookConfiguration, ClusterRole
 generate: controller-gen ## Generate code containing DeepCopy, DeepCopyInto, and DeepCopyObject method implementations.
 	$(CONTROLLER_GEN) object:headerFile="hack/boilerplate/boilerplate.go.txt" paths="./..."
 
+update-codegen: generate controller-gen manifests fmt vet go-mod-tidy
+
 .PHONY: fmt
 fmt: ## Run go fmt against code.
 	go fmt ./...
@@ -87,6 +95,9 @@ yamllint:  ## Run yamllint against code.
 
 check-dependencies: ## Verify go.mod.
 	go mod verify
+
+go-mod-tidy:
+	go mod tidy
 
 verify-boilerplate:  ## Run verify-boilerplate code.
 	./hack/verify-boilerplate.sh
@@ -185,10 +196,6 @@ KUSTOMIZE ?= $(LOCALBIN)/kustomize
 CONTROLLER_GEN ?= $(LOCALBIN)/controller-gen
 ENVTEST ?= $(LOCALBIN)/setup-envtest
 
-## Tool Versions
-KUSTOMIZE_VERSION ?= v5.3.0
-CONTROLLER_TOOLS_VERSION ?= v0.14.0
-
 KUSTOMIZE_INSTALL_SCRIPT ?= "https://raw.githubusercontent.com/kubernetes-sigs/kustomize/master/hack/install_kustomize.sh"
 .PHONY: kustomize
 kustomize: $(KUSTOMIZE) ## Download kustomize locally if necessary.
@@ -205,12 +212,19 @@ envtest: $(ENVTEST) ## Download envtest-setup locally if necessary.
 $(ENVTEST): $(LOCALBIN)
 	test -s $(LOCALBIN)/setup-envtest || GOBIN=$(LOCALBIN) go install sigs.k8s.io/controller-runtime/tools/setup-envtest@latest
 
+.PHONY: shfmt
+shfmt:
+	shfmt -w -sr -i 2 hack
+
 HELM_DOCS ?= $(LOCALBIN)/helm-docs
 
 .PHONY: helm-docs
 helm-docs: $(HELM_DOCS) ## Download helm-docs locally if necessary.
 $(HELM_DOCS): $(LOCALBIN)
-	test -s $(LOCALBIN)/helm-docs || GOBIN=$(LOCALBIN) go install github.com/norwoodj/helm-docs/cmd/helm-docs@v1.11.2
+	test -s $(LOCALBIN)/helm-docs || GOBIN=$(LOCALBIN) go install github.com/norwoodj/helm-docs/cmd/helm-docs@v1.14.2
+
+helm-lint:
+	helm lint charts/*
 
 generate-helm-docs: helm-docs
 	$(LOCALBIN)/helm-docs charts/
@@ -222,5 +236,5 @@ bump-chart:
 	$(SED) -i "s/tag:.*/tag: $(IMAGE_TAG)/" charts/*/values.yaml
 
 .PHONY: release-charts helm-docs generate-helm-docs
-release-charts: bump-chart
+release-charts: helm-lint generate-helm-docs bump-chart
 	CHART_VERSION=$(IMAGE_TAG) ./hack/release-helm-charts.sh

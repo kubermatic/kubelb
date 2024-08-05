@@ -23,44 +23,44 @@ cd "$DIR"
 source "${ROOT_DIR}/hack/lib.sh"
 
 function cleanup() {
-    echodate "Executing cleanup"
-    kind delete clusters --all ||:
-    if [[ ! -z "${TMPDIR+x}" ]]; then
-        rm -rf "$TMPDIR"
-    fi
+  echodate "Executing cleanup"
+  kind delete clusters --all || :
+  if [[ ! -z "${TMPDIR+x}" ]]; then
+    rm -rf "$TMPDIR"
+  fi
 }
 
 function kubectl_get_debug_resources() {
-    kubectl -v9 get po -A -o wide > "$ARTIFACTS/kubectl/$1.po.a.wide.out" 2>&1 ||:
-    kubectl -v9 get svc -A -o wide > "$ARTIFACTS/kubectl/$1.svc.a.wide.out" 2>&1 ||:
-    kubectl -v9 get node -o wide > "$ARTIFACTS/kubectl/$1.node.wide.out" 2>&1 ||:
+  kubectl -v9 get po -A -o wide > "$ARTIFACTS/kubectl/$1.po.a.wide.out" 2>&1 || :
+  kubectl -v9 get svc -A -o wide > "$ARTIFACTS/kubectl/$1.svc.a.wide.out" 2>&1 || :
+  kubectl -v9 get node -o wide > "$ARTIFACTS/kubectl/$1.node.wide.out" 2>&1 || :
 
-    kubectl -v9 get po -A -o yaml > "$ARTIFACTS/kubectl/$1.po.yaml" 2>&1 ||:
-    kubectl -v9 get svc -A -o yaml > "$ARTIFACTS/kubectl/$1.svc.yaml" 2>&1 ||:
-    kubectl -v9 get node -o yaml > "$ARTIFACTS/kubectl/$1.node.yaml" 2>&1 ||:
+  kubectl -v9 get po -A -o yaml > "$ARTIFACTS/kubectl/$1.po.yaml" 2>&1 || :
+  kubectl -v9 get svc -A -o yaml > "$ARTIFACTS/kubectl/$1.svc.yaml" 2>&1 || :
+  kubectl -v9 get node -o yaml > "$ARTIFACTS/kubectl/$1.node.yaml" 2>&1 || :
 }
 
 function dump_logs() {
-    if [[ ! -z  "${ARTIFACTS+x}" ]]; then
-        echodate "Dumping logs"
-        mkdir -p "$ARTIFACTS/kubectl"
-        export KUBECONFIG="${TMPDIR}"/kubelb.kubeconfig
-        kubectl_get_debug_resources kubelb
-        export KUBECONFIG="${TMPDIR}"/tenant1.kubeconfig
-        kubectl_get_debug_resources tenant1
-        export KUBECONFIG="${TMPDIR}"/tenant2.kubeconfig
-        kubectl_get_debug_resources tenant2
+  if [[ ! -z "${ARTIFACTS+x}" ]]; then
+    echodate "Dumping logs"
+    mkdir -p "$ARTIFACTS/kubectl"
+    export KUBECONFIG="${TMPDIR}"/kubelb.kubeconfig
+    kubectl_get_debug_resources kubelb
+    export KUBECONFIG="${TMPDIR}"/tenant1.kubeconfig
+    kubectl_get_debug_resources tenant1
+    export KUBECONFIG="${TMPDIR}"/tenant2.kubeconfig
+    kubectl_get_debug_resources tenant2
 
-        mkdir -p "$ARTIFACTS/kind_logs/{kubelb,tenant1}"
-        kind export logs "$ARTIFACTS/kind_logs/kubelb" --name kubelb ||:
-        kind export logs "$ARTIFACTS/kind_logs/tenant1" --name tenant1 ||:
-        kind export logs "$ARTIFACTS/kind_logs/tenant2" --name tenant2 ||:
+    mkdir -p "$ARTIFACTS/kind_logs/{kubelb,tenant1}"
+    kind export logs "$ARTIFACTS/kind_logs/kubelb" --name kubelb || :
+    kind export logs "$ARTIFACTS/kind_logs/tenant1" --name tenant1 || :
+    kind export logs "$ARTIFACTS/kind_logs/tenant2" --name tenant2 || :
 
-        mkdir -p "$ARTIFACTS/pod_logs"
-        protokol --kubeconfig "${TMPDIR}"/kubelb.kubeconfig --flat --oneshot --output "$ARTIFACTS/pod_logs" --namespace kubelb 'kubelb-*' ||:
-        protokol --kubeconfig "${TMPDIR}"/kubelb.kubeconfig --flat --oneshot --output "$ARTIFACTS/pod_logs" --namespace tenant1 'kubelb-ccm-*' ||:
-        protokol --kubeconfig "${TMPDIR}"/kubelb.kubeconfig --flat --oneshot --output "$ARTIFACTS/pod_logs" --namespace tenant2 'kubelb-ccm-*' ||:
-    fi
+    mkdir -p "$ARTIFACTS/pod_logs"
+    protokol --kubeconfig "${TMPDIR}"/kubelb.kubeconfig --flat --oneshot --output "$ARTIFACTS/pod_logs" --namespace kubelb 'kubelb-*' || :
+    protokol --kubeconfig "${TMPDIR}"/kubelb.kubeconfig --flat --oneshot --output "$ARTIFACTS/pod_logs" --namespace tenant1 'kubelb-ccm-*' || :
+    protokol --kubeconfig "${TMPDIR}"/kubelb.kubeconfig --flat --oneshot --output "$ARTIFACTS/pod_logs" --namespace tenant2 'kubelb-ccm-*' || :
+  fi
 }
 
 trap dump_logs ERR
@@ -68,7 +68,7 @@ trap cleanup EXIT SIGINT SIGTERM
 
 export TMPDIR=$(mktemp -d)
 if [[ -z "${local_ip+x}" ]]; then
-    local_ip=$(ip -j route show | jq -r '.[] | select(.dst == "default") | .prefsrc' | head -n1)
+  local_ip=$(ip -j route show | jq -r '.[] | select(.dst == "default") | .prefsrc' | head -n1)
 fi
 
 echodate "Pre-pulling base image in the background"
@@ -78,11 +78,12 @@ echodate "Pre-pulling base image in the background"
   line=$(grep "as builder" $dockerfile)
   dockerImage=$(echo $line | awk -F'FROM | as builder' '{print $2}')
   echodate "Pulling image: $dockerImage"
-  docker pull $dockerImage &>/dev/null &
+  docker pull $dockerImage &> /dev/null &
 )
 
 echodate "Creating kubelb kind cluster"
-KUBECONFIG="${TMPDIR}"/kubelb.kubeconfig kind create cluster --retain --name kubelb --config <(cat <<EOF
+KUBECONFIG="${TMPDIR}"/kubelb.kubeconfig kind create cluster --retain --name kubelb --config <(
+  cat << EOF
 kind: Cluster
 apiVersion: kind.x-k8s.io/v1alpha4
 networking:
@@ -91,7 +92,8 @@ EOF
 ) &
 
 echodate "Creating tenant1 kind cluster"
-KUBECONFIG="${TMPDIR}"/tenant1.kubeconfig kind create cluster --retain --name tenant1 --config <(cat <<EOF
+KUBECONFIG="${TMPDIR}"/tenant1.kubeconfig kind create cluster --retain --name tenant1 --config <(
+  cat << EOF
 kind: Cluster
 apiVersion: kind.x-k8s.io/v1alpha4
 networking:
@@ -100,7 +102,8 @@ EOF
 ) &
 
 echodate "Creating tenant2 kind cluster"
-KUBECONFIG="${TMPDIR}"/tenant2.kubeconfig kind create cluster --retain --name tenant2 --config <(cat <<EOF
+KUBECONFIG="${TMPDIR}"/tenant2.kubeconfig kind create cluster --retain --name tenant2 --config <(
+  cat << EOF
 kind: Cluster
 apiVersion: kind.x-k8s.io/v1alpha4
 networking:

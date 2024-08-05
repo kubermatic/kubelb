@@ -1,6 +1,7 @@
 apiVersion: v2
 name: kubelb-manager
 description: Helm chart for KubeLB Manager
+icon: https://raw.githubusercontent.com/kubermatic/kubelb/main/docs/kubelb-logo.png
 type: application
 maintainers:
   - name: Kubermatic

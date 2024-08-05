@@ -48,9 +48,16 @@ helm install kubelb-ccm kubelb-ccm --namespace kubelb -f values.yaml
 | image.tag | string | `"v1.0.0"` |  |
 | imagePullSecrets | list | `[]` |  |
 | kubelb.clusterSecretName | string | `"kubelb-cluster"` |  |
+| kubelb.disableGRPCRouteController | bool | `false` |  |
+| kubelb.disableGatewayController | bool | `false` | disableGatewayController specifies whether to disable the Gateway Controller. |
+| kubelb.disableHTTPRouteController | bool | `false` |  |
+| kubelb.disableIngressController | bool | `false` | disableIngressController specifies whether to disable the Ingress Controller. |
 | kubelb.enableLeaderElection | bool | `true` |  |
 | kubelb.nodeAddressType | string | `"InternalIP"` |  |
 | kubelb.tenantName | string | `nil` |  |
+| kubelb.useGatewayClass | bool | `true` | useGatewayClass specifies whether to target resources with `kubelb` gateway class or all resources. |
+| kubelb.useIngressClass | bool | `true` | useIngressClass specifies whether to target resources with `kubelb` ingress class or all resources. |
+| kubelb.useLoadBalancerClass | bool | `false` | useLoadBalancerClass specifies whether to target services of type LoadBalancer with `kubelb` load balancer class or all services of type LoadBalancer. |
 | nameOverride | string | `""` |  |
 | nodeSelector | object | `{}` |  |
 | podAnnotations | object | `{}` |  |

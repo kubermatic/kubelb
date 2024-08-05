@@ -12,20 +12,26 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-FROM docker.io/golang:1.22.2 as builder
+FROM docker.io/golang:1.22.5 as builder
 
-WORKDIR /go/src/k8c.io/kubelb
-COPY . .
-RUN make build-kubelb
+WORKDIR /workspace
+# Copy the Go Modules manifests
+COPY go.mod go.mod
+COPY go.sum go.sum
+# cache deps before building and copying source so that we don't need to re-download as much
+# and so that source changes don't invalidate our downloaded layer
+RUN go mod download
+
+# Copy the go source
+COPY cmd/ cmd/
+COPY api/ api/
+COPY internal/ internal/
+
+RUN CGO_ENABLED=0 go build -a -o kubelb cmd/kubelb/main.go
 
 FROM gcr.io/distroless/static:nonroot
-
 WORKDIR /
-
-COPY --from=builder \
-    /go/src/k8c.io/kubelb/bin/kubelb \
-    /usr/local/bin/
-
+COPY --from=builder /workspace/kubelb .
 USER 65532:65532
 
-ENTRYPOINT ["/usr/local/bin/kubelb"]
+ENTRYPOINT ["/kubelb"]

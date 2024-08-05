@@ -14,7 +14,17 @@ spec:
     singular: route
   scope: Namespaced
   versions:
-  - name: v1alpha1
+  - additionalPrinterColumns:
+    - jsonPath: .metadata.labels.kubelb.k8c.io/origin-name
+      name: OriginName
+      type: string
+    - jsonPath: .metadata.labels.kubelb.k8c.io/origin-ns
+      name: OriginNamespace
+      type: string
+    - jsonPath: .metadata.labels.kubelb.k8c.io/origin-resource-kind
+      name: OriginResource
+      type: string
+    name: v1alpha1
     schema:
       openAPIV3Schema:
         description: Route is the object that represents a route in the cluster.

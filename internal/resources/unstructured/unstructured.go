@@ -24,6 +24,7 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
 )
 
 func NormalizeUnstructured(obj *unstructured.Unstructured) *unstructured.Unstructured {
@@ -64,6 +65,12 @@ func ConvertUnstructuredToObject(unstruct *unstructured.Unstructured) (client.Ob
 		object = &networkingv1.Ingress{}
 	case corev1.SchemeGroupVersion.WithKind("Service"):
 		object = &corev1.Service{}
+	case gwapiv1.SchemeGroupVersion.WithKind("Gateway"):
+		object = &gwapiv1.Gateway{}
+	case gwapiv1.SchemeGroupVersion.WithKind("HTTPRoute"):
+		object = &gwapiv1.HTTPRoute{}
+	case gwapiv1.SchemeGroupVersion.WithKind("GRPCRoute"):
+		object = &gwapiv1.GRPCRoute{}
 	}
 
 	err := runtime.DefaultUnstructuredConverter.FromUnstructured(unstruct.UnstructuredContent(), object)

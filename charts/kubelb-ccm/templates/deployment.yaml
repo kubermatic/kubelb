@@ -36,7 +36,7 @@ spec:
           - --upstream=http://127.0.0.1:8080/
           - --logtostderr=true
           - --v=0
-          image: gcr.io/kubebuilder/kube-rbac-proxy:v0.13.1
+          image: gcr.io/kubebuilder/kube-rbac-proxy:v0.16.0
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           name: kube-rbac-proxy
           ports:
@@ -51,6 +51,28 @@ spec:
           args:
             - --enable-leader-election={{ .Values.kubelb.enableLeaderElection }}
             - --node-address-type={{ default "InternalIP" .Values.kubelb.nodeAddressType }}
+            - --use-loadbalancer-class={{ default false .Values.kubelb.useLoadBalancerClass }}
+            {{ if not .Values.kubelb.useGatewayClass -}}
+            - --use-gateway-class=false
+            {{ end -}}
+            {{ if not .Values.kubelb.useIngressClass -}}
+            - --use-ingress-class=false
+            {{ end -}}
+            {{ if .Values.kubelb.disableIngressController -}}
+            - --disable-ingress-controller=true
+            {{ end -}}
+            {{ if .Values.kubelb.disableGatewayController -}}
+            - --disable-gateway-controller=true
+            {{ end -}}
+            {{ if .Values.kubelb.disableHTTPRouteController -}}
+            - --disable-httproute-controller=true
+            {{ end -}}
+            {{ if .Values.kubelb.disableGRPCRouteController -}}
+            - --disable-grpcroute-controller=true
+            {{ end -}}
+            {{ if .Values.kubelb.disableGatewayAPI -}}
+            - --disable-gateway-api=true
+            {{ end -}}
             - --cluster-name={{ required "A valid .Values.kubelb.tenantName to specify the tenant name is required!" .Values.kubelb.tenantName }}
           env:
           - name: NAMESPACE
