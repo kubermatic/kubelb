@@ -431,6 +431,10 @@ func (r *RouteReconciler) createOrUpdateGateway(ctx context.Context, log logr.Lo
 		return nil
 	}
 
+	// Required to update the object.
+	gateway.ResourceVersion = existingGateway.ResourceVersion
+	gateway.UID = existingGateway.UID
+
 	if err := r.Client.Update(ctx, gateway); err != nil {
 		return fmt.Errorf("failed to update Gateway: %w", err)
 	}
