@@ -36,6 +36,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
+	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
+	gwapiv1alpha2 "sigs.k8s.io/gateway-api/apis/v1alpha2"
 )
 
 type options struct {
@@ -48,6 +50,7 @@ type options struct {
 	enableDebugMode                 bool
 	namespace                       string
 	enableTenantMigrationController bool
+	disableGatewayAPI               bool
 }
 
 var (
@@ -73,9 +76,15 @@ func main() {
 	flag.StringVar(&opt.namespace, "namespace", "", "The namespace where the controller will run.")
 
 	flag.BoolVar(&opt.enableTenantMigrationController, "enable-tenant-migration", true, "Enables a controller that performs automated migration from namespaces to tenants")
+	flag.BoolVar(&opt.disableGatewayAPI, "disable-gateway-api", false, "Disable the Gateway APIs and controllers.")
 
 	if flag.Lookup("kubeconfig") == nil {
 		flag.StringVar(&opt.kubeconfig, "kubeconfig", "", "Path to a kubeconfig. Only required if out-of-cluster.")
+	}
+
+	if !opt.disableGatewayAPI {
+		utilruntime.Must(gwapiv1alpha2.Install(scheme))
+		utilruntime.Must(gwapiv1.Install(scheme))
 	}
 
 	if len(opt.namespace) == 0 {

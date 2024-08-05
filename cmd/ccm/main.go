@@ -57,8 +57,6 @@ var (
 func init() {
 	utilruntime.Must(clientgoscheme.AddToScheme(scheme))
 	utilruntime.Must(kubelbv1alpha1.AddToScheme(scheme))
-	utilruntime.Must(gwapiv1alpha2.Install(scheme))
-	utilruntime.Must(gwapiv1.Install(scheme))
 
 	// +kubebuilder:scaffold:scheme
 }
@@ -80,6 +78,7 @@ func main() {
 	var disableGatewayController bool
 	var disableHTTPRouteController bool
 	var disableGRPCRouteController bool
+	var disableGatewayAPI bool
 
 	if flag.Lookup("kubeconfig") == nil {
 		flag.StringVar(&kubeconfig, "kubeconfig", "", "Path to a kubeconfig. Only required if out-of-cluster.")
@@ -100,9 +99,15 @@ func main() {
 	flag.BoolVar(&useGatewayClass, "use-gateway-class", true, "Use Gateway Class `kubelb` to filter Gateway objects. Gateway should have `gatewayClassName: kubelb` set in the spec.")
 
 	flag.BoolVar(&disableIngressController, "disable-ingress-controller", false, "Disable the Ingress controller.")
+	flag.BoolVar(&disableGatewayAPI, "disable-gateway-api", false, "Disable the Gateway APIs and controllers.")
 	flag.BoolVar(&disableGatewayController, "disable-gateway-controller", false, "Disable the Gateway controller.")
 	flag.BoolVar(&disableHTTPRouteController, "disable-httproute-controller", false, "Disable the HTTPRoute controller.")
 	flag.BoolVar(&disableGRPCRouteController, "disable-grpcroute-controller", false, "Disable the GRPCRoute controller.")
+
+	if !disableGatewayAPI {
+		utilruntime.Must(gwapiv1alpha2.Install(scheme))
+		utilruntime.Must(gwapiv1.Install(scheme))
+	}
 
 	opts := zap.Options{
 		Development: false,
@@ -226,7 +231,7 @@ func main() {
 		}
 	}
 
-	if !disableGatewayController {
+	if !disableGatewayController && !disableGatewayAPI {
 		if err = (&ccm.GatewayReconciler{
 			Client:          mgr.GetClient(),
 			LBClient:        kubeLBMgr.GetClient(),
@@ -241,7 +246,7 @@ func main() {
 		}
 	}
 
-	if !disableHTTPRouteController {
+	if !disableHTTPRouteController && !disableGatewayAPI {
 		if err = (&ccm.HTTPRouteReconciler{
 			Client:      mgr.GetClient(),
 			LBClient:    kubeLBMgr.GetClient(),
@@ -255,7 +260,7 @@ func main() {
 		}
 	}
 
-	if !disableGRPCRouteController {
+	if !disableGRPCRouteController && !disableGatewayAPI {
 		if err = (&ccm.GRPCRouteReconciler{
 			Client:      mgr.GetClient(),
 			LBClient:    kubeLBMgr.GetClient(),
