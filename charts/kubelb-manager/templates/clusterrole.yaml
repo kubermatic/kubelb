@@ -10,41 +10,8 @@ rules:
   - ""
   resources:
   - namespaces
-  verbs:
-  - create
-  - delete
-  - get
-  - list
-  - patch
-  - update
-  - watch
-- apiGroups:
-  - ""
-  resources:
   - secrets
-  verbs:
-  - create
-  - delete
-  - get
-  - list
-  - patch
-  - update
-  - watch
-- apiGroups:
-  - ""
-  resources:
   - serviceaccounts
-  verbs:
-  - create
-  - delete
-  - get
-  - list
-  - patch
-  - update
-  - watch
-- apiGroups:
-  - ""
-  resources:
   - services
   verbs:
   - create
@@ -175,6 +142,8 @@ rules:
 - apiGroups:
   - kubelb.k8c.io
   resources:
+  - routes
+  - tenants
   - loadbalancers
   verbs:
   - create
@@ -195,35 +164,11 @@ rules:
 - apiGroups:
   - kubelb.k8c.io
   resources:
-  - routes
-  verbs:
-  - create
-  - delete
-  - get
-  - list
-  - patch
-  - update
-  - watch
-- apiGroups:
-  - kubelb.k8c.io
-  resources:
   - routes/status
   verbs:
   - get
   - patch
   - update
-- apiGroups:
-  - kubelb.k8c.io
-  resources:
-  - tenants
-  verbs:
-  - create
-  - delete
-  - get
-  - list
-  - patch
-  - update
-  - watch
 - apiGroups:
   - kubelb.k8c.io
   resources:
@@ -256,19 +201,11 @@ rules:
   - rbac.authorization.k8s.io
   resources:
   - rolebindings
-  verbs:
-  - create
-  - delete
-  - get
-  - list
-  - patch
-  - update
-  - watch
-- apiGroups:
-  - rbac.authorization.k8s.io
-  resources:
+  - clusterroles
   - roles
   verbs:
+  - bind
+  - escalate
   - create
   - delete
   - get
