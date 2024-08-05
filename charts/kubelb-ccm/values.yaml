@@ -7,12 +7,15 @@ image:
 imagePullSecrets: []
 
 kubelb:
+  # Required to be configured.
   # -- Name of the tenant, must be unique against a load balancer cluster.
   tenantName: null
-  enableLeaderElection: true
-  nodeAddressType: InternalIP
   # -- Name of the secret that contains kubeconfig for the loadbalancer cluster
   clusterSecretName: kubelb-cluster
+
+  # -- Enable the leader election.
+  enableLeaderElection: true
+  nodeAddressType: InternalIP
   # -- useIngressClass specifies whether to target resources with `kubelb` ingress class or all resources.
   useIngressClass: true
   # -- useGatewayClass specifies whether to target resources with `kubelb` gateway class or all resources.

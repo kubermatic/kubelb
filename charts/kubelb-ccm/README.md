@@ -27,7 +27,7 @@ Now, we can install the helm chart:
 ```sh
 helm pull oci://quay.io/kubermatic/helm-charts/kubelb-ccm --version=v1.0.0 --untardir "kubelb-ccm" --untar
 ## Create and update values.yaml with the required values.
-helm install kubelb-ccm kubelb-ccm --namespace kubelb -f values.yaml
+helm install kubelb-ccm kubelb-ccm --namespace kubelb -f values.yaml --create-namespace
 ```
 
 ## Values
@@ -53,7 +53,7 @@ helm install kubelb-ccm kubelb-ccm --namespace kubelb -f values.yaml
 | kubelb.disableGatewayController | bool | `false` | disableGatewayController specifies whether to disable the Gateway Controller. |
 | kubelb.disableHTTPRouteController | bool | `false` | disableHTTPRouteController specifies whether to disable the HTTPRoute Controller. |
 | kubelb.disableIngressController | bool | `false` | disableIngressController specifies whether to disable the Ingress Controller. |
-| kubelb.enableLeaderElection | bool | `true` |  |
+| kubelb.enableLeaderElection | bool | `true` | Enable the leader election. |
 | kubelb.nodeAddressType | string | `"InternalIP"` |  |
 | kubelb.tenantName | string | `nil` | Name of the tenant, must be unique against a load balancer cluster. |
 | kubelb.useGatewayClass | bool | `true` | useGatewayClass specifies whether to target resources with `kubelb` gateway class or all resources. |
