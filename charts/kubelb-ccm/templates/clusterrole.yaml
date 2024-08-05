@@ -62,10 +62,10 @@ rules:
   - get
   - list
   - watch
-- apiGroups:
-  - networking.k8s.io
 {{- end }}
 {{- if not .Values.kubelb.disableIngressController }}
+- apiGroups:
+  - networking.k8s.io
   resources:
   - ingresses
   verbs:
