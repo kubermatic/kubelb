@@ -92,6 +92,9 @@ type UpstreamReferenceGrant struct {
 
 //+kubebuilder:object:root=true
 //+kubebuilder:subresource:status
+// +kubebuilder:printcolumn:JSONPath=".metadata.labels.kubelb.k8c.io/origin-name",name="OriginName",type="string"
+// +kubebuilder:printcolumn:JSONPath=".metadata.labels.kubelb.k8c.io/origin-ns",name="OriginNamespace",type="string"
+// +kubebuilder:printcolumn:JSONPath=".metadata.labels.kubelb.k8c.io/origin-resource-kind",name="OriginResource",type="string"
 
 // Route is the object that represents a route in the cluster.
 type Route struct {
