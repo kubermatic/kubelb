@@ -17,10 +17,10 @@ spec:
   scope: Namespaced
   versions:
   - additionalPrinterColumns:
-    - jsonPath: .metadata.labels.kubelb.k8c.io/origin-name
+    - jsonPath: .metadata.labels.kubelb\.k8c\.io/origin-name
       name: OriginName
       type: string
-    - jsonPath: .metadata.labels.kubelb.k8c.io/origin-ns
+    - jsonPath: .metadata.labels.kubelb\.k8c\.io/origin-ns
       name: OriginNamespace
       type: string
     name: v1alpha1

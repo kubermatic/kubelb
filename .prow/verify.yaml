@@ -133,7 +133,6 @@ presubmits:
               cpu: 4
 
   - name: pull-kubelb-e2e-tests
-    optional: true
     always_run: true
     decorate: true
     clone_uri: "ssh://git@github.com/kubermatic/kubelb.git"

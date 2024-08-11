@@ -207,8 +207,15 @@ func (r *TenantReconciler) generateKubeconfig(ctx context.Context, client ctrlru
 	}
 
 	serverURL := r.Config.Host
-	ca := r.Config.TLSClientConfig.CAData
+	ca := secret.Data[corev1.ServiceAccountRootCAKey]
 	token := secret.Data[corev1.ServiceAccountTokenKey]
+
+	if len(token) == 0 {
+		return "", fmt.Errorf("failed to get ServiceAccount token")
+	}
+	if len(ca) == 0 {
+		return "", fmt.Errorf("failed to get CA certificate")
+	}
 
 	// Generate kubeconfig.
 	data := struct {

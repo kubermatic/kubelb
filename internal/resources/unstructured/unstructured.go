@@ -71,6 +71,10 @@ func ConvertUnstructuredToObject(unstruct *unstructured.Unstructured) (client.Ob
 		object = &gwapiv1.HTTPRoute{}
 	case gwapiv1.SchemeGroupVersion.WithKind("GRPCRoute"):
 		object = &gwapiv1.GRPCRoute{}
+
+	default:
+		// Not a known type, we can't process further.
+		return nil, fmt.Errorf("unsupported type: %s", gvk)
 	}
 
 	err := runtime.DefaultUnstructuredConverter.FromUnstructured(unstruct.UnstructuredContent(), object)

@@ -22,6 +22,7 @@ import (
 
 	"github.com/go-logr/logr"
 
+	kubelbv1alpha1 "k8c.io/kubelb/api/kubelb.k8c.io/v1alpha1"
 	"k8c.io/kubelb/internal/kubelb"
 	portlookup "k8c.io/kubelb/internal/port-lookup"
 	"k8c.io/reconciler/pkg/equality"
@@ -107,7 +108,7 @@ func NormalizeAndReplicateServices(ctx context.Context, log logr.Logger, client 
 	return services, nil
 }
 
-func GenerateServiceForLBCluster(service corev1.Service, appName, namespace, resourceNamespace string, portAllocator *portlookup.PortAllocator, globalTopology bool) corev1.Service {
+func GenerateServiceForLBCluster(service corev1.Service, appName, namespace, resourceNamespace string, portAllocator *portlookup.PortAllocator, globalTopology bool, annotations kubelbv1alpha1.AnnotationSettings) corev1.Service {
 	endpointKey := fmt.Sprintf(kubelb.EnvoyEndpointRoutePattern, namespace, service.Namespace, service.Name)
 
 	service.Name = kubelb.GenerateName(globalTopology, string(service.UID), GetServiceName(service), service.Namespace)
@@ -134,6 +135,7 @@ func GenerateServiceForLBCluster(service corev1.Service, appName, namespace, res
 	service.Spec.Selector = map[string]string{
 		kubelb.LabelAppKubernetesName: appName,
 	}
+	service.Annotations = kubelb.PropagateAnnotations(service.Annotations, annotations)
 
 	return service
 }

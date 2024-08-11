@@ -58,7 +58,6 @@ func GenerateRoute(resource unstructured.Unstructured, resources Subresources, n
 			},
 		},
 		Spec: kubelbv1alpha1.RouteSpec{
-			// TODO(waleed): Once we have everything in place, figure out how this should look like.
 			Endpoints: []kubelbv1alpha1.LoadBalancerEndpoints{
 				{
 					Name: "default",
@@ -69,9 +68,8 @@ func GenerateRoute(resource unstructured.Unstructured, resources Subresources, n
 			},
 			Source: kubelbv1alpha1.RouteSource{
 				Kubernetes: &kubelbv1alpha1.KubernetesSource{
-					Route:           resource,
-					Services:        kubelbv1alpha1.ConvertServicesToUpstreamServices(resources.Services),
-					ReferenceGrants: kubelbv1alpha1.ConvertReferenceGrantsToUpstreamReferenceGrants(resources.ReferenceGrants),
+					Route:    resource,
+					Services: kubelbv1alpha1.ConvertServicesToUpstreamServices(resources.Services),
 				},
 			},
 		},

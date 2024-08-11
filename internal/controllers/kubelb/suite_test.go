@@ -24,7 +24,7 @@ import (
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 
-	v1alpha12 "k8c.io/kubelb/api/kubelb.k8c.io/v1alpha1"
+	v1alpha1 "k8c.io/kubelb/api/kubelb.k8c.io/v1alpha1"
 	"k8c.io/kubelb/internal/envoy"
 	"k8c.io/kubelb/internal/kubelb"
 	portlookup "k8c.io/kubelb/internal/port-lookup"
@@ -58,6 +58,7 @@ const (
 	APIVersion  = "kubelb.k8c.io/v1alpha1"
 	Kind        = "LoadBalancer"
 	LBNamespace = "tenant-uno"
+	Tenant      = "uno"
 )
 
 func TestLoadBalancerCustomResource(t *testing.T) {
@@ -79,7 +80,7 @@ var _ = BeforeSuite(func() {
 	Expect(err).ToNot(HaveOccurred())
 	Expect(cfg).ToNot(BeNil())
 
-	err = v1alpha12.AddToScheme(scheme.Scheme)
+	err = v1alpha1.AddToScheme(scheme.Scheme)
 	Expect(err).NotTo(HaveOccurred())
 
 	ctrl.SetLogger(zap.New(zap.UseDevMode(false)))
@@ -90,7 +91,7 @@ var _ = BeforeSuite(func() {
 
 	Expect(err).ToNot(HaveOccurred())
 
-	//+kubebuilder:scaffold:scheme
+	// +kubebuilder:scaffold:scheme
 
 	k8sManager, err := ctrl.NewManager(cfg, ctrl.Options{
 		Scheme: scheme.Scheme,
@@ -109,7 +110,26 @@ var _ = BeforeSuite(func() {
 			},
 		},
 	}
+
+	tenant := &v1alpha1.Tenant{
+		ObjectMeta: v1.ObjectMeta{
+			Name: Tenant,
+		},
+	}
+
+	config := &v1alpha1.Config{
+		ObjectMeta: v1.ObjectMeta{
+			Name:      "default",
+			Namespace: LBNamespace,
+		},
+	}
+
+	err = k8sManager.GetClient().Create(ctx, tenant)
+	Expect(err).ToNot(HaveOccurred())
+
 	err = k8sManager.GetClient().Create(ctx, ns)
+	Expect(err).ToNot(HaveOccurred())
+	err = k8sManager.GetClient().Create(ctx, config)
 	Expect(err).ToNot(HaveOccurred())
 
 	lbr = &LoadBalancerReconciler{
@@ -151,8 +171,8 @@ var _ = AfterSuite(func() {
 	Expect(err).ToNot(HaveOccurred())
 })
 
-func GetDefaultLoadBalancer(name string, namespace string) *v1alpha12.LoadBalancer {
-	return &v1alpha12.LoadBalancer{
+func GetDefaultLoadBalancer(name string, namespace string) *v1alpha1.LoadBalancer {
+	return &v1alpha1.LoadBalancer{
 		TypeMeta: v1.TypeMeta{
 			APIVersion: APIVersion,
 			Kind:       Kind,
@@ -161,10 +181,10 @@ func GetDefaultLoadBalancer(name string, namespace string) *v1alpha12.LoadBalanc
 			Name:      name,
 			Namespace: namespace,
 		},
-		Spec: v1alpha12.LoadBalancerSpec{
-			Endpoints: []v1alpha12.LoadBalancerEndpoints{
+		Spec: v1alpha1.LoadBalancerSpec{
+			Endpoints: []v1alpha1.LoadBalancerEndpoints{
 				{
-					Addresses: []v1alpha12.EndpointAddress{
+					Addresses: []v1alpha1.EndpointAddress{
 						{
 							IP: "123.123.123.123",
 						},
@@ -172,14 +192,14 @@ func GetDefaultLoadBalancer(name string, namespace string) *v1alpha12.LoadBalanc
 							IP: "123.123.123.124",
 						},
 					},
-					Ports: []v1alpha12.EndpointPort{
+					Ports: []v1alpha1.EndpointPort{
 						{
 							Port: 8080,
 						},
 					},
 				},
 			},
-			Ports: []v1alpha12.LoadBalancerPort{
+			Ports: []v1alpha1.LoadBalancerPort{
 				{
 					Port: 80,
 				},

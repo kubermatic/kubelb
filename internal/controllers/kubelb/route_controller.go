@@ -26,18 +26,21 @@ import (
 	"github.com/go-logr/logr"
 
 	kubelbv1alpha1 "k8c.io/kubelb/api/kubelb.k8c.io/v1alpha1"
-	"k8c.io/kubelb/internal/config"
 	"k8c.io/kubelb/internal/kubelb"
 	portlookup "k8c.io/kubelb/internal/port-lookup"
+	gatewayHelpers "k8c.io/kubelb/internal/resources/gatewayapi/gateway"
+	grpcrouteHelpers "k8c.io/kubelb/internal/resources/gatewayapi/grpcroute"
+	httprouteHelpers "k8c.io/kubelb/internal/resources/gatewayapi/httproute"
+	ingressHelpers "k8c.io/kubelb/internal/resources/ingress"
 	serviceHelpers "k8c.io/kubelb/internal/resources/service"
 	"k8c.io/kubelb/internal/resources/unstructured"
 
 	corev1 "k8s.io/api/core/v1"
 	v1 "k8s.io/api/networking/v1"
-	"k8s.io/apimachinery/pkg/api/equality"
 	kerrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/client-go/util/retry"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -45,6 +48,7 @@ import (
 	ctrlclient "sigs.k8s.io/controller-runtime/pkg/client"
 	ctrlruntimeclient "sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
+	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
@@ -65,6 +69,7 @@ type RouteReconciler struct {
 	Namespace          string
 	PortAllocator      *portlookup.PortAllocator
 	EnvoyProxyTopology EnvoyProxyTopology
+	DisableGatewayAPI  bool
 }
 
 // +kubebuilder:rbac:groups=kubelb.k8c.io,resources=routes,verbs=get;list;watch;create;update;patch;delete
@@ -91,12 +96,39 @@ func (r *RouteReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 		return reconcile.Result{}, err
 	}
 
+	// Before proceeding further we need to make sure that the resource is reconcilable.
+	tenant, config, err := GetTenantAndConfig(ctx, r.Client, r.Namespace, RemoveTenantPrefix(resource.Namespace))
+	if err != nil {
+		log.Error(err, "unable to fetch Tenant and Config, cannot proceed")
+		return reconcile.Result{}, err
+	}
+
+	resourceNamespace := resource.Namespace
+	if config.Spec.EnvoyProxy.Topology == kubelbv1alpha1.EnvoyProxyTopologyGlobal {
+		resourceNamespace = r.Namespace
+	}
+
 	// Resource is marked for deletion
 	if resource.DeletionTimestamp != nil {
 		if controllerutil.ContainsFinalizer(resource, CleanupFinalizer) {
-			return r.cleanup(ctx, resource)
+			return r.cleanup(ctx, resource, resourceNamespace)
 		}
 		// Finalizer doesn't exist so clean up is already done
+		return reconcile.Result{}, nil
+	}
+
+	shouldReconcile, disabled, err := r.shouldReconcile(ctx, resource, tenant, config)
+	if err != nil {
+		log.Error(err, "unable to determine if the Route should be reconciled")
+		return reconcile.Result{}, err
+	}
+
+	// If the resource is disabled, we need to clean up the resources
+	if controllerutil.ContainsFinalizer(resource, CleanupFinalizer) && disabled {
+		return r.cleanup(ctx, resource, resourceNamespace)
+	}
+
+	if !shouldReconcile {
 		return reconcile.Result{}, nil
 	}
 
@@ -111,7 +143,7 @@ func (r *RouteReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 		}
 	}
 
-	err := r.reconcile(ctx, log, resource)
+	err = r.reconcile(ctx, log, resource, resourceNamespace, config, tenant)
 	if err != nil {
 		log.Error(err, "reconciling failed")
 	}
@@ -119,20 +151,17 @@ func (r *RouteReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 	return reconcile.Result{}, err
 }
 
-func (r *RouteReconciler) reconcile(ctx context.Context, log logr.Logger, route *kubelbv1alpha1.Route) error {
-	resourceNamespace := route.Namespace
-	if config.IsGlobalTopology() {
-		resourceNamespace = r.Namespace
-	}
+func (r *RouteReconciler) reconcile(ctx context.Context, log logr.Logger, route *kubelbv1alpha1.Route, resourceNamespace string, config *kubelbv1alpha1.Config, tenant *kubelbv1alpha1.Tenant) error {
+	annotations := GetAnnotations(tenant, config)
 
 	// Create or update services based on the route.
-	err := r.manageServices(ctx, log, route, resourceNamespace)
+	err := r.manageServices(ctx, log, route, resourceNamespace, annotations)
 	if err != nil {
 		return fmt.Errorf("failed to create or update services: %w", err)
 	}
 
 	// Create or update the route object.
-	err = r.manageRoutes(ctx, log, route, resourceNamespace)
+	err = r.manageRoutes(ctx, log, route, resourceNamespace, config, tenant, annotations)
 	if err != nil {
 		return fmt.Errorf("failed to create or update route: %w", err)
 	}
@@ -140,17 +169,12 @@ func (r *RouteReconciler) reconcile(ctx context.Context, log logr.Logger, route 
 	return nil
 }
 
-func (r *RouteReconciler) cleanup(ctx context.Context, route *kubelbv1alpha1.Route) (ctrl.Result, error) {
+func (r *RouteReconciler) cleanup(ctx context.Context, route *kubelbv1alpha1.Route, ns string) (ctrl.Result, error) {
 	// Route will be removed automatically because of owner reference. We need to take care of removing
 	// the services while ensuring that the services are not being used by other routes.
 
 	if route.Status.Resources.Services == nil {
 		return reconcile.Result{}, nil
-	}
-
-	ns := route.Namespace
-	if config.IsGlobalTopology() {
-		ns = r.Namespace
 	}
 
 	for _, value := range route.Status.Resources.Services {
@@ -182,7 +206,7 @@ func (r *RouteReconciler) cleanup(ctx context.Context, route *kubelbv1alpha1.Rou
 	return reconcile.Result{}, nil
 }
 
-func (r *RouteReconciler) manageServices(ctx context.Context, log logr.Logger, route *kubelbv1alpha1.Route, resourceNamespace string) error {
+func (r *RouteReconciler) manageServices(ctx context.Context, log logr.Logger, route *kubelbv1alpha1.Route, resourceNamespace string, annotations kubelbv1alpha1.AnnotationSettings) error {
 	if route.Spec.Source.Kubernetes == nil {
 		return nil
 	}
@@ -202,7 +226,7 @@ func (r *RouteReconciler) manageServices(ctx context.Context, log logr.Logger, r
 	services := []corev1.Service{}
 	for _, service := range route.Spec.Source.Kubernetes.Services {
 		// Transform the service into desired state.
-		svc := serviceHelpers.GenerateServiceForLBCluster(service.Service, appName, route.Namespace, resourceNamespace, r.PortAllocator, r.EnvoyProxyTopology.IsGlobalTopology())
+		svc := serviceHelpers.GenerateServiceForLBCluster(service.Service, appName, route.Namespace, resourceNamespace, r.PortAllocator, r.EnvoyProxyTopology.IsGlobalTopology(), annotations)
 		services = append(services, svc)
 	}
 
@@ -281,7 +305,7 @@ func (r *RouteReconciler) UpdateRouteStatus(ctx context.Context, route *kubelbv1
 	})
 }
 
-func (r *RouteReconciler) manageRoutes(ctx context.Context, log logr.Logger, route *kubelbv1alpha1.Route, resourceNamespace string) error {
+func (r *RouteReconciler) manageRoutes(ctx context.Context, log logr.Logger, route *kubelbv1alpha1.Route, resourceNamespace string, config *kubelbv1alpha1.Config, tenant *kubelbv1alpha1.Tenant, annotations kubelbv1alpha1.AnnotationSettings) error {
 	if route.Spec.Source.Kubernetes == nil {
 		return nil
 	}
@@ -318,7 +342,7 @@ func (r *RouteReconciler) manageRoutes(ctx context.Context, log logr.Logger, rou
 	// Determine the type of the resource and call the appropriate method
 	switch v := resource.(type) {
 	case *v1.Ingress: // v1 "k8s.io/api/networking/v1"
-		err = r.createOrUpdateIngress(ctx, log, v, referencedServices, resourceNamespace)
+		err = ingressHelpers.CreateOrUpdateIngress(ctx, log, r.Client, v, referencedServices, resourceNamespace, config, tenant, annotations)
 		if err == nil {
 			// Retrieve updated object to get the status.
 			key := client.ObjectKey{Namespace: v.Namespace, Name: v.Name}
@@ -332,7 +356,7 @@ func (r *RouteReconciler) manageRoutes(ctx context.Context, log logr.Logger, rou
 		}
 
 	case *gwapiv1.Gateway: // v1 "sigs.k8s.io/gateway-api/apis/v1"
-		err = r.createOrUpdateGateway(ctx, log, v, resourceNamespace)
+		err = gatewayHelpers.CreateOrUpdateGateway(ctx, log, r.Client, v, resourceNamespace, config, tenant, annotations, config.IsGlobalTopology())
 		if err == nil {
 			// Retrieve updated object to get the status.
 			key := client.ObjectKey{Namespace: v.Namespace, Name: v.Name}
@@ -346,7 +370,7 @@ func (r *RouteReconciler) manageRoutes(ctx context.Context, log logr.Logger, rou
 		}
 
 	case *gwapiv1.HTTPRoute: // v1 "sigs.k8s.io/gateway-api/apis/v1"
-		err = r.createOrUpdateHTTPRoute(ctx, log, v, referencedServices, resourceNamespace)
+		err = httprouteHelpers.CreateOrUpdateHTTPRoute(ctx, log, r.Client, v, referencedServices, resourceNamespace, tenant, annotations, config.IsGlobalTopology())
 		if err == nil {
 			// Retrieve updated object to get the status.
 			key := client.ObjectKey{Namespace: v.Namespace, Name: v.Name}
@@ -360,7 +384,7 @@ func (r *RouteReconciler) manageRoutes(ctx context.Context, log logr.Logger, rou
 		}
 
 	case *gwapiv1.GRPCRoute: // v1 "sigs.k8s.io/gateway-api/apis/v1"
-		err = r.createOrUpdateGRPCRoute(ctx, log, v, referencedServices, resourceNamespace)
+		err = grpcrouteHelpers.CreateOrUpdateGRPCRoute(ctx, log, r.Client, v, referencedServices, resourceNamespace, tenant, annotations, config.IsGlobalTopology())
 		if err == nil {
 			// Retrieve updated object to get the status.
 			key := client.ObjectKey{Namespace: v.Namespace, Name: v.Name}
@@ -380,309 +404,71 @@ func (r *RouteReconciler) manageRoutes(ctx context.Context, log logr.Logger, rou
 	return r.UpdateRouteStatus(ctx, route, *routeStatus)
 }
 
-func (r *RouteReconciler) createOrUpdateGateway(ctx context.Context, log logr.Logger, gateway *gwapiv1.Gateway, namespace string) error {
-	// Check if Gateway with the same name but different namespace already exists. If it does, log an error as we don't support
-	// multiple Gateway objects.
-	gateways := &gwapiv1.GatewayList{}
-	if err := r.Client.List(ctx, gateways, client.InNamespace(namespace)); err != nil {
-		return fmt.Errorf("failed to list Gateways: %w", err)
-	}
+func (r *RouteReconciler) shouldReconcile(ctx context.Context, route *kubelbv1alpha1.Route, tenant *kubelbv1alpha1.Tenant, config *kubelbv1alpha1.Config) (bool, bool, error) {
+	log := ctrl.LoggerFrom(ctx)
 
-	found := false
-	for _, existingGateway := range gateways.Items {
-		if existingGateway.Name == gateway.Name {
-			found = true
-			break
+	// First step is to determine the route type.
+	if route.Spec.Source.Kubernetes == nil {
+		// There is no source defined.
+		return false, false, nil
+	}
+	//nolint:gosimple
+	var resource client.Object
+	resource = &route.Spec.Source.Kubernetes.Route
+	switch resource := resource.(type) {
+	case *v1.Ingress:
+		// Ensure that Ingress is enabled
+		if config.Spec.Ingress.Disable {
+			log.Error(fmt.Errorf("Ingress is disabled at the global level"), "cannot proceed")
+			return false, true, nil
+		} else if tenant.Spec.Ingress.Disable {
+			log.Error(fmt.Errorf("Ingress is disabled at the tenant level"), "cannot proceed")
+			return false, true, nil
 		}
-	}
 
-	if !found && len(gateways.Items) >= 1 {
-		return fmt.Errorf("multiple Gateway objects are not supported")
-	}
-
-	// Create/Update the Gateway object in the cluster.
-	gateway.Namespace = namespace
-	gateway.SetUID("") // Reset UID to generate a new UID for the Gateway object
-
-	// Set the GatewayClassName if it is specified in the configuration.
-	if config.GetConfig().Spec.GatewayClassName != nil {
-		gateway.Spec.GatewayClassName = gwapiv1.ObjectName(*config.GetConfig().Spec.GatewayClassName)
-	}
-
-	log.V(4).Info("Creating/Updating Gateway", "name", gateway.Name, "namespace", gateway.Namespace)
-	// Check if it already exists.
-	gatewayKey := client.ObjectKey{Namespace: gateway.Namespace, Name: gateway.Name}
-	existingGateway := &gwapiv1.Gateway{}
-	if err := r.Client.Get(ctx, gatewayKey, existingGateway); err != nil {
-		if !kerrors.IsNotFound(err) {
-			return fmt.Errorf("failed to get Gateway: %w", err)
+	case *gwapiv1.Gateway:
+		// Ensure that Gateway is enabled
+		if isGatewayAPIDisabled(log, r.DisableGatewayAPI, *config, *tenant) {
+			return false, true, nil
 		}
-		err := r.Client.Create(ctx, gateway)
-		if err != nil {
-			return fmt.Errorf("failed to create Gateway: %w", err)
+
+		if resource.Name != "kubelb" {
+			return false, false, nil
 		}
-		return nil
-	}
 
-	// Update the Gateway object if it is different from the existing one.
-	if equality.Semantic.DeepEqual(existingGateway.Spec, gateway.Spec) &&
-		equality.Semantic.DeepEqual(existingGateway.Labels, gateway.Labels) &&
-		equality.Semantic.DeepEqual(existingGateway.Annotations, gateway.Annotations) {
-		return nil
-	}
+	case *gwapiv1.GRPCRoute:
+		// Ensure that Gateway is enabled
+		if isGatewayAPIDisabled(log, r.DisableGatewayAPI, *config, *tenant) {
+			return false, true, nil
+		}
 
-	// Required to update the object.
-	gateway.ResourceVersion = existingGateway.ResourceVersion
-	gateway.UID = existingGateway.UID
+	case *gwapiv1.HTTPRoute:
+		// Ensure that Gateway is enabled
+		if isGatewayAPIDisabled(log, r.DisableGatewayAPI, *config, *tenant) {
+			return false, true, nil
+		}
 
-	if err := r.Client.Update(ctx, gateway); err != nil {
-		return fmt.Errorf("failed to update Gateway: %w", err)
+	default:
+		log.Error(fmt.Errorf("Resource %v is not supported", resource.GetObjectKind().GroupVersionKind().GroupKind().String()), "cannot proceed")
+		return false, false, nil
 	}
-	return nil
+	return true, false, nil
 }
 
-// createOrUpdateHTTPRoute creates or updates the HTTPRoute object in the cluster.
-func (r *RouteReconciler) createOrUpdateHTTPRoute(ctx context.Context, log logr.Logger, object *gwapiv1.HTTPRoute, referencedServices []metav1.ObjectMeta, namespace string) error {
-	// Name of the services referenced by the Object have to be updated to match the services created against the Route in the LB cluster.
-	for i, rule := range object.Spec.Rules {
-		for j, filter := range rule.Filters {
-			if filter.RequestMirror != nil && (filter.RequestMirror.BackendRef.Kind == nil || *filter.RequestMirror.BackendRef.Kind == kubelb.ServiceKind) {
-				ref := filter.RequestMirror.BackendRef
-				for _, service := range referencedServices {
-					if string(ref.Name) == service.Name {
-						ns := ref.Namespace
-						// Corresponding service found, update the name.
-						if ns == nil || ns == (*gwapiv1.Namespace)(&service.Namespace) {
-							object.Spec.Rules[i].Filters[j].RequestMirror.BackendRef.Name = gwapiv1.ObjectName(kubelb.GenerateName(r.EnvoyProxyTopology.IsGlobalTopology(), string(service.UID), service.Name, service.Namespace))
-							// Set the namespace to nil since all the services are created in the same namespace as the Route.
-							object.Spec.Rules[i].Filters[j].RequestMirror.BackendRef.Namespace = nil
-						}
-					}
-				}
-			}
-		}
-
-		for j, ref := range rule.BackendRefs {
-			if ref.Kind == nil || *ref.Kind == kubelb.ServiceKind {
-				for _, service := range referencedServices {
-					if string(ref.Name) == service.Name {
-						ns := ref.Namespace
-						// Corresponding service found, update the name.
-						if ns == nil || ns == (*gwapiv1.Namespace)(&service.Namespace) {
-							object.Spec.Rules[i].BackendRefs[j].Name = gwapiv1.ObjectName(kubelb.GenerateName(r.EnvoyProxyTopology.IsGlobalTopology(), string(service.UID), service.Name, service.Namespace))
-							// Set the namespace to nil since all the services are created in the same namespace as the Route.
-							object.Spec.Rules[i].BackendRefs[j].Namespace = nil
-						}
-					}
-				}
-			}
-			// Collect services from the filters.
-			if ref.Filters != nil {
-				for _, filter := range ref.Filters {
-					if filter.RequestMirror != nil && (filter.RequestMirror.BackendRef.Kind == nil || *filter.RequestMirror.BackendRef.Kind == kubelb.ServiceKind) {
-						ref := filter.RequestMirror.BackendRef
-						for _, service := range referencedServices {
-							if string(ref.Name) == service.Name {
-								ns := ref.Namespace
-								// Corresponding service found, update the name.
-								if ns == nil || ns == (*gwapiv1.Namespace)(&service.Namespace) {
-									object.Spec.Rules[i].Filters[j].RequestMirror.BackendRef.Name = gwapiv1.ObjectName(kubelb.GenerateName(r.EnvoyProxyTopology.IsGlobalTopology(), string(service.UID), service.Name, service.Namespace))
-									// Set the namespace to nil since all the services are created in the same namespace as the Route.
-									object.Spec.Rules[i].Filters[j].RequestMirror.BackendRef.Namespace = nil
-								}
-							}
-						}
-					}
-				}
-			}
-		}
+func isGatewayAPIDisabled(log logr.Logger, disableGatewayAPI bool, config kubelbv1alpha1.Config, tenant kubelbv1alpha1.Tenant) bool {
+	if disableGatewayAPI {
+		log.Error(fmt.Errorf("Gateway API is disabled at the global level"), "cannot proceed")
+		return true
 	}
-
-	object.Name = kubelb.GenerateName(false, string(object.UID), object.Name, object.Namespace)
-	object.Namespace = namespace
-	object.SetUID("") // Reset UID to generate a new UID for the object
-
-	log.V(4).Info("Creating/Updating HTTPRoute", "name", object.Name, "namespace", object.Namespace)
-	// Check if it already exists.
-	key := client.ObjectKey{Namespace: object.Namespace, Name: object.Name}
-	existingObject := &gwapiv1.HTTPRoute{}
-	if err := r.Client.Get(ctx, key, existingObject); err != nil {
-		if !kerrors.IsNotFound(err) {
-			return fmt.Errorf("failed to get HTTPRoute: %w", err)
-		}
-		err := r.Client.Create(ctx, object)
-		if err != nil {
-			return fmt.Errorf("failed to create HTTPRoute: %w", err)
-		}
-		return nil
+	// Ensure that Gateway API is enabled
+	if config.Spec.GatewayAPI.Disable {
+		log.Error(fmt.Errorf("Gateway API is disabled at the global level"), "cannot proceed")
+		return true
+	} else if tenant.Spec.GatewayAPI.Disable {
+		log.Error(fmt.Errorf("Gateway API is disabled at the tenant level"), "cannot proceed")
+		return true
 	}
-
-	// Update the Ingress object if it is different from the existing one.
-	if equality.Semantic.DeepEqual(existingObject.Spec, object.Spec) &&
-		equality.Semantic.DeepEqual(existingObject.Labels, object.Labels) &&
-		equality.Semantic.DeepEqual(existingObject.Annotations, object.Annotations) {
-		return nil
-	}
-
-	// Required to update the object.
-	object.ResourceVersion = existingObject.ResourceVersion
-	object.UID = existingObject.UID
-
-	if err := r.Client.Update(ctx, object); err != nil {
-		return fmt.Errorf("failed to update HTTPRoute: %w", err)
-	}
-	return nil
-}
-
-// createOrUpdateGRPCRoute creates or updates the GRPCRoute object in the cluster.
-func (r *RouteReconciler) createOrUpdateGRPCRoute(ctx context.Context, log logr.Logger, object *gwapiv1.GRPCRoute, referencedServices []metav1.ObjectMeta, namespace string) error {
-	// Name of the services referenced by the Object have to be updated to match the services created against the Route in the LB cluster.
-	for i, rule := range object.Spec.Rules {
-		for j, filter := range rule.Filters {
-			if filter.RequestMirror != nil && (filter.RequestMirror.BackendRef.Kind == nil || *filter.RequestMirror.BackendRef.Kind == kubelb.ServiceKind) {
-				ref := filter.RequestMirror.BackendRef
-				for _, service := range referencedServices {
-					if string(ref.Name) == service.Name {
-						ns := ref.Namespace
-						// Corresponding service found, update the name.
-						if ns == nil || ns == (*gwapiv1.Namespace)(&service.Namespace) {
-							object.Spec.Rules[i].Filters[j].RequestMirror.BackendRef.Name = gwapiv1.ObjectName(kubelb.GenerateName(r.EnvoyProxyTopology.IsGlobalTopology(), string(service.UID), service.Name, service.Namespace))
-							// Set the namespace to nil since all the services are created in the same namespace as the Route.
-							object.Spec.Rules[i].Filters[j].RequestMirror.BackendRef.Namespace = nil
-						}
-					}
-				}
-			}
-		}
-
-		for j, ref := range rule.BackendRefs {
-			if ref.Kind == nil || *ref.Kind == kubelb.ServiceKind {
-				for _, service := range referencedServices {
-					if string(ref.Name) == service.Name {
-						ns := ref.Namespace
-						// Corresponding service found, update the name.
-						if ns == nil || ns == (*gwapiv1.Namespace)(&service.Namespace) {
-							object.Spec.Rules[i].BackendRefs[j].Name = gwapiv1.ObjectName(kubelb.GenerateName(r.EnvoyProxyTopology.IsGlobalTopology(), string(service.UID), service.Name, service.Namespace))
-							// Set the namespace to nil since all the services are created in the same namespace as the Route.
-							object.Spec.Rules[i].BackendRefs[j].Namespace = nil
-						}
-					}
-				}
-			}
-			// Collect services from the filters.
-			if ref.Filters != nil {
-				for _, filter := range ref.Filters {
-					if filter.RequestMirror != nil && (filter.RequestMirror.BackendRef.Kind == nil || *filter.RequestMirror.BackendRef.Kind == kubelb.ServiceKind) {
-						ref := filter.RequestMirror.BackendRef
-						for _, service := range referencedServices {
-							if string(ref.Name) == service.Name {
-								ns := ref.Namespace
-								// Corresponding service found, update the name.
-								if ns == nil || ns == (*gwapiv1.Namespace)(&service.Namespace) {
-									object.Spec.Rules[i].Filters[j].RequestMirror.BackendRef.Name = gwapiv1.ObjectName(kubelb.GenerateName(r.EnvoyProxyTopology.IsGlobalTopology(), string(service.UID), service.Name, service.Namespace))
-									// Set the namespace to nil since all the services are created in the same namespace as the Route.
-									object.Spec.Rules[i].Filters[j].RequestMirror.BackendRef.Namespace = nil
-								}
-							}
-						}
-					}
-				}
-			}
-		}
-	}
-
-	object.Name = kubelb.GenerateName(false, string(object.UID), object.Name, object.Namespace)
-	object.Namespace = namespace
-	object.SetUID("") // Reset UID to generate a new UID for the object
-
-	log.V(4).Info("Creating/Updating GRPCRoute", "name", object.Name, "namespace", object.Namespace)
-	// Check if it already exists.
-	key := client.ObjectKey{Namespace: object.Namespace, Name: object.Name}
-	existingObject := &gwapiv1.GRPCRoute{}
-	if err := r.Client.Get(ctx, key, existingObject); err != nil {
-		if !kerrors.IsNotFound(err) {
-			return fmt.Errorf("failed to get GRPCRoute: %w", err)
-		}
-		err := r.Client.Create(ctx, object)
-		if err != nil {
-			return fmt.Errorf("failed to create GRPCRoute: %w", err)
-		}
-		return nil
-	}
-
-	// Update the Ingress object if it is different from the existing one.
-	if equality.Semantic.DeepEqual(existingObject.Spec, object.Spec) &&
-		equality.Semantic.DeepEqual(existingObject.Labels, object.Labels) &&
-		equality.Semantic.DeepEqual(existingObject.Annotations, object.Annotations) {
-		return nil
-	}
-
-	// Required to update the object.
-	object.ResourceVersion = existingObject.ResourceVersion
-	object.UID = existingObject.UID
-
-	if err := r.Client.Update(ctx, object); err != nil {
-		return fmt.Errorf("failed to update GRPCRoute: %w", err)
-	}
-	return nil
-}
-
-// createOrUpdateIngress creates or updates the Ingress object in the cluster.
-func (r *RouteReconciler) createOrUpdateIngress(ctx context.Context, log logr.Logger, object *v1.Ingress, referencedServices []metav1.ObjectMeta, namespace string) error {
-	// Name of the services referenced by the Ingress have to be updated to match the services created against the Route in the LB cluster.
-	for i, rule := range object.Spec.Rules {
-		for j, path := range rule.HTTP.Paths {
-			for _, service := range referencedServices {
-				if path.Backend.Service.Name == service.Name {
-					object.Spec.Rules[i].HTTP.Paths[j].Backend.Service.Name = kubelb.GenerateName(r.EnvoyProxyTopology.IsGlobalTopology(), string(service.UID), service.Name, service.Namespace)
-				}
-			}
-		}
-	}
-
-	if object.Spec.DefaultBackend != nil && object.Spec.DefaultBackend.Service != nil {
-		for _, service := range referencedServices {
-			if object.Spec.DefaultBackend.Service.Name == service.Name {
-				object.Spec.DefaultBackend.Service.Name = kubelb.GenerateName(r.EnvoyProxyTopology.IsGlobalTopology(), string(service.UID), service.Name, service.Namespace)
-			}
-		}
-	}
-
-	object.Spec.IngressClassName = config.GetConfig().Spec.IngressClassName
-	object.Name = kubelb.GenerateName(r.EnvoyProxyTopology.IsGlobalTopology(), string(object.UID), object.Name, object.Namespace)
-	object.Namespace = namespace
-	object.SetUID("") // Reset UID to generate a new UID for the object
-
-	log.V(4).Info("Creating/Updating Ingress", "name", object.Name, "namespace", object.Namespace)
-	// Check if it already exists.
-	key := client.ObjectKey{Namespace: object.Namespace, Name: object.Name}
-	existingObject := &v1.Ingress{}
-	if err := r.Client.Get(ctx, key, existingObject); err != nil {
-		if !kerrors.IsNotFound(err) {
-			return fmt.Errorf("failed to get Ingress: %w", err)
-		}
-		err := r.Client.Create(ctx, object)
-		if err != nil {
-			return fmt.Errorf("failed to create Ingress: %w", err)
-		}
-		return nil
-	}
-
-	// Update the Ingress object if it is different from the existing one.
-	if equality.Semantic.DeepEqual(existingObject.Spec, object.Spec) &&
-		equality.Semantic.DeepEqual(existingObject.Labels, object.Labels) &&
-		equality.Semantic.DeepEqual(existingObject.Annotations, object.Annotations) {
-		return nil
-	}
-
-	// Required to update the object.
-	object.ResourceVersion = existingObject.ResourceVersion
-	object.UID = existingObject.UID
-
-	if err := r.Client.Update(ctx, object); err != nil {
-		return fmt.Errorf("failed to update Ingress: %w", err)
-	}
-	return nil
+	return false
 }
 
 func updateServiceStatus(routeStatus *kubelbv1alpha1.RouteStatus, svc *corev1.Service, err error) {
@@ -789,5 +575,66 @@ func (r *RouteReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&kubelbv1alpha1.Route{}).
 		WithEventFilter(predicate.GenerationChangedPredicate{}).
+		Watches(
+			&kubelbv1alpha1.Config{},
+			handler.EnqueueRequestsFromMapFunc(r.enqueueRoutesForConfig()),
+		).
+		Watches(
+			&kubelbv1alpha1.Tenant{},
+			handler.EnqueueRequestsFromMapFunc(r.enqueueRoutesForTenant()),
+		).
 		Complete(r)
+}
+
+// enqueueRoutesForConfig is a handler.MapFunc to be used to enqeue requests for reconciliation
+// for Routes if some change is made to the controller config.
+func (r *RouteReconciler) enqueueRoutesForConfig() handler.MapFunc {
+	return func(ctx context.Context, _ ctrlruntimeclient.Object) []ctrl.Request {
+		result := []reconcile.Request{}
+
+		// List all routes. We don't care about the namespace here.
+		routes := &kubelbv1alpha1.RouteList{}
+		err := r.List(ctx, routes)
+		if err != nil {
+			return result
+		}
+
+		for _, route := range routes.Items {
+			result = append(result, reconcile.Request{
+				NamespacedName: types.NamespacedName{
+					Name:      route.Name,
+					Namespace: route.Namespace,
+				},
+			})
+		}
+		return result
+	}
+}
+
+// enqueueRoutesForTenant is a handler.MapFunc to be used to enqeue requests for reconciliation
+// for Routes if some change is made to the tenant config.
+func (r *RouteReconciler) enqueueRoutesForTenant() handler.MapFunc {
+	return func(ctx context.Context, o ctrlruntimeclient.Object) []ctrl.Request {
+		result := []reconcile.Request{}
+
+		namespace := fmt.Sprintf(tenantNamespacePattern, o.GetName())
+
+		// List all routes in tenant namespace
+		routes := &kubelbv1alpha1.RouteList{}
+		err := r.List(ctx, routes, ctrlruntimeclient.InNamespace(namespace))
+		if err != nil {
+			return result
+		}
+
+		for _, lb := range routes.Items {
+			result = append(result, reconcile.Request{
+				NamespacedName: types.NamespacedName{
+					Name:      lb.Name,
+					Namespace: lb.Namespace,
+				},
+			})
+		}
+
+		return result
+	}
 }

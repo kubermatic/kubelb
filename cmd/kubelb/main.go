@@ -145,7 +145,7 @@ func main() {
 	ctx := ctrl.SetupSignalHandler()
 
 	// Load the Config for controller
-	err = config.LoadConfig(ctx, mgr.GetAPIReader(), opt.namespace)
+	conf, err := config.GetConfig(ctx, mgr.GetAPIReader(), opt.namespace)
 	if err != nil {
 		setupLog.Error(err, "unable to load controller config")
 		os.Exit(1)
@@ -162,7 +162,7 @@ func main() {
 		Cache:              mgr.GetCache(),
 		Scheme:             mgr.GetScheme(),
 		Namespace:          opt.namespace,
-		EnvoyProxyTopology: kubelb.EnvoyProxyTopology(config.GetEnvoyProxyTopology()),
+		EnvoyProxyTopology: kubelb.EnvoyProxyTopology(conf.GetEnvoyProxyTopology()),
 		PortAllocator:      portAllocator,
 	}).SetupWithManager(ctx, mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "LoadBalancer")
@@ -181,10 +181,11 @@ func main() {
 	if err = (&kubelb.EnvoyCPReconciler{
 		Client:             envoyMgr.GetClient(),
 		EnvoyCache:         envoyServer.Cache,
-		EnvoyProxyTopology: kubelb.EnvoyProxyTopology(config.GetEnvoyProxyTopology()),
+		EnvoyProxyTopology: kubelb.EnvoyProxyTopology(conf.GetEnvoyProxyTopology()),
 		PortAllocator:      portAllocator,
 		Namespace:          opt.namespace,
 		EnvoyBootstrap:     envoyServer.GenerateBootstrap(),
+		DisableGatewayAPI:  opt.disableGatewayAPI,
 	}).SetupWithManager(ctx, envoyMgr); err != nil {
 		setupLog.Error(err, "unable to create envoy control-plane controller", "controller", "LoadBalancer")
 		os.Exit(1)
@@ -195,9 +196,10 @@ func main() {
 		Scheme:             mgr.GetScheme(),
 		Log:                ctrl.Log.WithName("controllers").WithName(kubelb.RouteControllerName),
 		Recorder:           mgr.GetEventRecorderFor(kubelb.RouteControllerName),
-		EnvoyProxyTopology: kubelb.EnvoyProxyTopology(config.GetEnvoyProxyTopology()),
+		EnvoyProxyTopology: kubelb.EnvoyProxyTopology(conf.GetEnvoyProxyTopology()),
 		PortAllocator:      portAllocator,
 		Namespace:          opt.namespace,
+		DisableGatewayAPI:  opt.disableGatewayAPI,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", kubelb.RouteControllerName)
 		os.Exit(1)

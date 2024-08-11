@@ -42,7 +42,7 @@ type LoadBalancerEndpoints struct {
 
 	// IP addresses which offer the related ports that are marked as ready. These endpoints
 	// should be considered safe for load balancers and clients to utilize.
-	//+kubebuilder:validation:MinItems:=1
+	// +kubebuilder:validation:MinItems:=1
 	Addresses []EndpointAddress `json:"addresses,omitempty" protobuf:"bytes,1,rep,name=addresses"`
 
 	// AddressesReference is a reference to the Addresses object that contains the IP addresses.
@@ -53,7 +53,7 @@ type LoadBalancerEndpoints struct {
 	// Port numbers available on the related IP addresses.
 	// This field is ignored for routes that are using kubernetes resources as the source.
 	// +optional
-	//+kubebuilder:validation:MinItems=1
+	// +kubebuilder:validation:MinItems=1
 	Ports []EndpointPort `json:"ports,omitempty" protobuf:"bytes,3,rep,name=ports"`
 }
 
@@ -84,4 +84,16 @@ type EndpointAddress struct {
 	// The Hostname of this endpoint
 	// +optional
 	Hostname string `json:"hostname,omitempty" protobuf:"bytes,3,opt,name=hostname"`
+}
+
+type AnnotationSettings struct {
+	// PropagatedAnnotations defines the list of annotations(key-value pairs) that will be propagated to the LoadBalancer service. Keep the `value` field empty in the key-value pair to allow any value.
+	// This will have a higher precedence than the annotations specified at the Config level.
+	// +optional
+	PropagatedAnnotations *map[string]string `json:"propagatedAnnotations,omitempty"`
+
+	// PropagateAllAnnotations defines whether all annotations will be propagated to the LoadBalancer service. If set to true, PropagatedAnnotations will be ignored.
+	// This will have a higher precedence than the value specified at the Config level.
+	// +optional
+	PropagateAllAnnotations *bool `json:"propagateAllAnnotations,omitempty"`
 }

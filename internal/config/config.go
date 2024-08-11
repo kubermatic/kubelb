@@ -29,32 +29,13 @@ const (
 	DefaultConfigResourceName string = "default"
 )
 
-var config v1alpha1.Config
-
-func LoadConfig(ctx context.Context, apiReader client.Reader, namespace string) error {
+func GetConfig(ctx context.Context, apiReader client.Reader, namespace string) (v1alpha1.Config, error) {
 	conf := v1alpha1.Config{}
 	if err := apiReader.Get(ctx, client.ObjectKey{
 		Namespace: namespace,
 		Name:      DefaultConfigResourceName,
 	}, &conf); err != nil {
-		return err
+		return conf, err
 	}
-	config = conf
-	return nil
-}
-
-func GetConfig() v1alpha1.Config {
-	return config
-}
-
-func SetConfig(conf v1alpha1.Config) {
-	config = conf
-}
-
-func GetEnvoyProxyTopology() v1alpha1.EnvoyProxyTopology {
-	return config.Spec.EnvoyProxy.Topology
-}
-
-func IsGlobalTopology() bool {
-	return GetEnvoyProxyTopology() == v1alpha1.EnvoyProxyTopologyGlobal
+	return conf, nil
 }

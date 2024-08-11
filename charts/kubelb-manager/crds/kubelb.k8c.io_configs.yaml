@@ -1105,27 +1105,58 @@ spec:
                       If set to true, Replicas will be ignored.
                     type: boolean
                 type: object
-              gatewayClassName:
-                description: |-
-                  GatewayClassName is the name of the GatewayClass that will be used for the routes created by KubeLB.
-                  If not specified, KubeLB will replace the GatewayClassName with an empty value in the Gateway resource which would result in the default GatewayClass being used.
-                type: string
-              ingressClassName:
-                description: |-
-                  IngressClassName is the name of the IngressClass that will be used for the routes created by KubeLB. If not specified, KubeLB will replace the IngressClassName
-                  with an empty value in the Ingress resource which would result in the default IngressClass being used.
-                type: string
+              gatewayAPI:
+                description: GatewayAPISettings defines the settings for the gateway
+                  API.
+                properties:
+                  class:
+                    description: |-
+                      Class is the class of the gateway API to use. This can be used to specify a specific gateway API implementation.
+                      This has higher precedence than the value specified in the Config.
+                    type: string
+                  disable:
+                    description: Disable is a flag that can be used to disable Gateway
+                      API for a tenant.
+                    type: boolean
+                type: object
+              ingress:
+                description: IngressSettings defines the settings for the ingress.
+                properties:
+                  class:
+                    description: |-
+                      Class is the class of the ingress to use.
+                      This has higher precedence than the value specified in the Config.
+                    type: string
+                  disable:
+                    description: Disable is a flag that can be used to disable Ingress
+                      for a tenant.
+                    type: boolean
+                type: object
+              loadBalancer:
+                description: LoadBalancerSettings defines the settings for the load
+                  balancers.
+                properties:
+                  class:
+                    description: |-
+                      Class is the class of the load balancer to use.
+                      This has higher precedence than the value specified in the Config.
+                    type: string
+                  disable:
+                    description: Disable is a flag that can be used to disable L4
+                      load balancing for a tenant.
+                    type: boolean
+                type: object
               propagateAllAnnotations:
-                description: PropagateAllAnnotations defines whether all annotations
-                  will be propagated to the LoadBalancer service. If set to true,
-                  PropagatedAnnotations will be ignored.
+                description: |-
+                  PropagateAllAnnotations defines whether all annotations will be propagated to the LoadBalancer service. If set to true, PropagatedAnnotations will be ignored.
+                  This will have a higher precedence than the value specified at the Config level.
                 type: boolean
               propagatedAnnotations:
                 additionalProperties:
                   type: string
                 description: |-
-                  PropagatedAnnotations defines the list of annotations(key-value pairs) that will be propagated to the LoadBalancer service. Keep the value empty to allow any value.
-                  Annotations specified at the namespace level will have a higher precedence than the annotations specified at the Config level.
+                  PropagatedAnnotations defines the list of annotations(key-value pairs) that will be propagated to the LoadBalancer service. Keep the `value` field empty in the key-value pair to allow any value.
+                  This will have a higher precedence than the annotations specified at the Config level.
                 type: object
             type: object
         type: object

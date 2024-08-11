@@ -33,6 +33,7 @@ rules:
   - get
   - patch
   - update
+{{- if not .Values.kubelb.disableGatewayAPI }}
 {{- if not .Values.kubelb.disableGatewayController }}
 - apiGroups:
   - gateway.networking.k8s.io
@@ -62,6 +63,7 @@ rules:
   - get
   - list
   - watch
+{{- end }}
 {{- end }}
 {{- if not .Values.kubelb.disableIngressController }}
 - apiGroups:
