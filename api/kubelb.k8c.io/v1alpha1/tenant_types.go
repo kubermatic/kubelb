@@ -20,43 +20,47 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-// EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
-// NOTE: json tags are required.  Any new fields you add must have json tags for the fields to be serialized.
-
 // TenantSpec defines the desired state of Tenant
 type TenantSpec struct {
+	AnnotationSettings `json:",inline"`
+
 	LoadBalancer LoadBalancerSettings `json:"loadBalancer,omitempty"`
-	// Ingress      IngressSettings      `json:"ingress,omitempty"`
-	// GatewayAPI   GatewayAPISettings   `json:"gatewayAPI,omitempty"`
+	Ingress      IngressSettings      `json:"ingress,omitempty"`
+	GatewayAPI   GatewayAPISettings   `json:"gatewayAPI,omitempty"`
 }
 
+// LoadBalancerSettings defines the settings for the load balancers.
 type LoadBalancerSettings struct {
 	// Class is the class of the load balancer to use.
+	// This has higher precedence than the value specified in the Config.
 	// +optional
 	Class *string `json:"class,omitempty"`
 
-	// PropagatedAnnotations defines the list of annotations(key-value pairs) that will be propagated to the LoadBalancer service. Keep the `value` field empty in the key-value pair to allow any value.
-	// This will have a higher precedence than the annotations specified at the Config level.
-	// +optional
-	PropagatedAnnotations *map[string]string `json:"propagatedAnnotations,omitempty"`
-
-	// PropagateAllAnnotations defines whether all annotations will be propagated to the LoadBalancer service. If set to true, PropagatedAnnotations will be ignored.
-	// This will have a higher precedence than the value specified at the Config level.
-	// +optional
-	PropagateAllAnnotations *bool `json:"propagateAllAnnotations,omitempty"`
+	// Disable is a flag that can be used to disable L4 load balancing for a tenant.
+	Disable bool `json:"disable,omitempty"`
 }
 
-// type IngressSettings struct {
-// 	// Class is the class of the ingress to use.
-// 	// +optional
-// 	Class *string `json:"class,omitempty"`
-// }
+// IngressSettings defines the settings for the ingress.
+type IngressSettings struct {
+	// Class is the class of the ingress to use.
+	// This has higher precedence than the value specified in the Config.
+	// +optional
+	Class *string `json:"class,omitempty"`
 
-// type GatewayAPISettings struct {
-// 	// Class is the class of the gateway API to use. This can be used to
-// 	// +optional
-// 	Class *string `json:"class,omitempty"`
-// }
+	// Disable is a flag that can be used to disable Ingress for a tenant.
+	Disable bool `json:"disable,omitempty"`
+}
+
+// GatewayAPISettings defines the settings for the gateway API.
+type GatewayAPISettings struct {
+	// Class is the class of the gateway API to use. This can be used to specify a specific gateway API implementation.
+	// This has higher precedence than the value specified in the Config.
+	// +optional
+	Class *string `json:"class,omitempty"`
+
+	// Disable is a flag that can be used to disable Gateway API for a tenant.
+	Disable bool `json:"disable,omitempty"`
+}
 
 // TenantStatus defines the observed state of Tenant
 type TenantStatus struct {

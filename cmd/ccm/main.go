@@ -285,7 +285,7 @@ func main() {
 		os.Exit(1) // second signal. Exit directly.
 	}()
 
-	//+kubebuilder:scaffold:builder
+	// +kubebuilder:scaffold:builder
 
 	if err := mgr.AddHealthzCheck("healthz", healthz.Ping); err != nil {
 		setupLog.Error(err, "unable to set up health check")

@@ -23,7 +23,7 @@ import (
 // AddressesSpec defines the desired state of Addresses
 type AddressesSpec struct {
 	// Addresses contains a list of addresses.
-	//+kubebuilder:validation:MinItems:=1
+	// +kubebuilder:validation:MinItems:=1
 	Addresses []EndpointAddress `json:"addresses,omitempty" protobuf:"bytes,1,rep,name=addresses"`
 }
 

@@ -25,7 +25,6 @@ import (
 	envoyresource "github.com/envoyproxy/go-control-plane/pkg/resource/v3"
 
 	kubelbv1alpha1 "k8c.io/kubelb/api/kubelb.k8c.io/v1alpha1"
-	"k8c.io/kubelb/internal/config"
 	utils "k8c.io/kubelb/internal/controllers"
 	envoycp "k8c.io/kubelb/internal/envoy"
 	"k8c.io/kubelb/internal/kubelb"
@@ -40,6 +39,7 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	ctrlruntimeclient "sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 )
@@ -55,6 +55,8 @@ type EnvoyCPReconciler struct {
 	PortAllocator      *portlookup.PortAllocator
 	Namespace          string
 	EnvoyBootstrap     string
+	DisableGatewayAPI  bool
+	Config             *kubelbv1alpha1.Config
 }
 
 // +kubebuilder:rbac:groups=kubelb.k8c.io,resources=loadbalancers,verbs=get;list;watch
@@ -63,6 +65,13 @@ func (r *EnvoyCPReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 	log := ctrl.LoggerFrom(ctx)
 
 	log.V(2).Info("reconciling LoadBalancer")
+
+	// Retrieve updated config.
+	config, err := GetConfig(ctx, r.Client, r.Namespace)
+	if err != nil {
+		return ctrl.Result{}, fmt.Errorf("failed to retrieve config: %w", err)
+	}
+	r.Config = config
 
 	return ctrl.Result{}, r.reconcile(ctx, req)
 }
@@ -164,14 +173,14 @@ func (r *EnvoyCPReconciler) ListLoadBalancersAndRoutes(ctx context.Context, req 
 
 	lbs := make([]kubelbv1alpha1.LoadBalancer, 0, len(loadBalancers.Items))
 	for _, lb := range loadBalancers.Items {
-		if lb.DeletionTimestamp.IsZero() {
+		if lb.DeletionTimestamp.IsZero() && controllerutil.ContainsFinalizer(&lb, envoyProxyCleanupFinalizer) {
 			lbs = append(lbs, lb)
 		}
 	}
 
 	routeList := make([]kubelbv1alpha1.Route, 0, len(routes.Items))
 	for _, route := range routes.Items {
-		if route.DeletionTimestamp.IsZero() {
+		if route.DeletionTimestamp.IsZero() && controllerutil.ContainsFinalizer(&route, CleanupFinalizer) {
 			routeList = append(routeList, route)
 		}
 	}
@@ -192,7 +201,7 @@ func (r *EnvoyCPReconciler) cleanupEnvoyProxy(ctx context.Context, appName strin
 		Namespace: namespace,
 	}
 	var envoyProxy ctrlruntimeclient.Object
-	if config.GetConfig().Spec.EnvoyProxy.UseDaemonset {
+	if r.Config.Spec.EnvoyProxy.UseDaemonset {
 		envoyProxy = &appsv1.DaemonSet{
 			ObjectMeta: objMeta,
 		}
@@ -218,7 +227,7 @@ func (r *EnvoyCPReconciler) ensureEnvoyProxy(ctx context.Context, namespace, app
 		Name:      fmt.Sprintf(envoyResourcePattern, appName),
 		Namespace: namespace,
 	}
-	if config.GetConfig().Spec.EnvoyProxy.UseDaemonset {
+	if r.Config.Spec.EnvoyProxy.UseDaemonset {
 		envoyProxy = &appsv1.DaemonSet{
 			ObjectMeta: objMeta,
 		}
@@ -238,7 +247,7 @@ func (r *EnvoyCPReconciler) ensureEnvoyProxy(ctx context.Context, namespace, app
 	}
 
 	original := envoyProxy.DeepCopyObject()
-	if config.GetConfig().Spec.EnvoyProxy.UseDaemonset {
+	if r.Config.Spec.EnvoyProxy.UseDaemonset {
 		daemonset := envoyProxy.(*appsv1.DaemonSet)
 		daemonset.Spec.Selector = &metav1.LabelSelector{
 			MatchLabels: map[string]string{kubelb.LabelAppKubernetesName: appName},
@@ -247,7 +256,7 @@ func (r *EnvoyCPReconciler) ensureEnvoyProxy(ctx context.Context, namespace, app
 		envoyProxy = daemonset
 	} else {
 		deployment := envoyProxy.(*appsv1.Deployment)
-		var replicas = config.GetConfig().Spec.EnvoyProxy.Replicas
+		var replicas = r.Config.Spec.EnvoyProxy.Replicas
 		deployment.Spec.Replicas = &replicas
 		deployment.Spec.Selector = &metav1.LabelSelector{
 			MatchLabels: map[string]string{kubelb.LabelAppKubernetesName: appName},
@@ -275,7 +284,7 @@ func (r *EnvoyCPReconciler) ensureEnvoyProxy(ctx context.Context, namespace, app
 }
 
 func (r *EnvoyCPReconciler) getEnvoyProxyPodSpec(namespace, appName, snapshotName string) corev1.PodTemplateSpec {
-	envoyProxy := config.GetConfig().Spec.EnvoyProxy
+	envoyProxy := r.Config.Spec.EnvoyProxy
 	template := corev1.PodTemplateSpec{
 		ObjectMeta: v1.ObjectMeta{
 			Name:      appName,

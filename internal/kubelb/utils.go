@@ -19,10 +19,11 @@ package kubelb
 import (
 	"fmt"
 
+	kubelbv1alpha1 "k8c.io/kubelb/api/kubelb.k8c.io/v1alpha1"
+
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
-// TODO(waleed): Rename to origin-namespace
 const LabelOriginNamespace = "kubelb.k8c.io/origin-ns"
 const LabelOriginName = "kubelb.k8c.io/origin-name"
 const LabelOriginResourceKind = "kubelb.k8c.io/origin-resource-kind"
@@ -85,4 +86,43 @@ func GetNamespace(obj client.Object) string {
 		}
 	}
 	return namespace
+}
+
+func PropagateAnnotations(loadbalancer map[string]string, annotations kubelbv1alpha1.AnnotationSettings) map[string]string {
+	if loadbalancer == nil {
+		loadbalancer = make(map[string]string)
+	}
+
+	if annotations.PropagateAllAnnotations != nil && *annotations.PropagateAllAnnotations {
+		return loadbalancer
+	}
+	permitted := make(map[string]string)
+
+	if annotations.PropagatedAnnotations != nil {
+		permitted = *annotations.PropagatedAnnotations
+	}
+
+	a := make(map[string]string)
+	permittedMap := make(map[string][]string)
+	for k, v := range permitted {
+		if _, found := permittedMap[k]; !found {
+			permittedMap[k] = []string{v}
+		}
+	}
+
+	for k, v := range loadbalancer {
+		if valuesFilter, ok := permittedMap[k]; ok {
+			if len(valuesFilter) == 0 {
+				a[k] = v
+			} else {
+				for _, vf := range valuesFilter {
+					if v == vf {
+						a[k] = v
+						break
+					}
+				}
+			}
+		}
+	}
+	return a
 }

@@ -28,7 +28,7 @@ import (
 type RouteSpec struct {
 	// Sets of addresses and ports that comprise an exposed user service on a cluster.
 	// +required
-	//+kubebuilder:validation:MinItems=1
+	// +kubebuilder:validation:MinItems=1
 	Endpoints []LoadBalancerEndpoints `json:"endpoints,omitempty"`
 
 	// Source contains the information about the source of the route. This is used when the route is created from external sources.
@@ -58,13 +58,6 @@ type KubernetesSource struct {
 	// Services contains the list of services that are used as the source for the Route.
 	// +kubebuilder:pruning:PreserveUnknownFields
 	Services []UpstreamService `json:"services,omitempty"`
-
-	// ReferenceGrants contains the list of ReferenceGrants that are used as the source for the Route.
-	// ReferenceGrant identifies kinds of resources in other namespaces that are
-	// trusted to reference the specified kinds of resources in the same namespace
-	// as the policy.
-	// +kubebuilder:pruning:PreserveUnknownFields
-	ReferenceGrants []UpstreamReferenceGrant `json:"referenceGrants,omitempty"`
 }
 
 // TODO(waleed): Evaluate if this is really worth it, semantically it makes sense but it adds a lot of boilerplate. Alternatively,
@@ -90,11 +83,11 @@ type UpstreamReferenceGrant struct {
 	gwapiv1alpha2.ReferenceGrant `json:",inline"`
 }
 
-//+kubebuilder:object:root=true
-//+kubebuilder:subresource:status
-// +kubebuilder:printcolumn:JSONPath=".metadata.labels.kubelb.k8c.io/origin-name",name="OriginName",type="string"
-// +kubebuilder:printcolumn:JSONPath=".metadata.labels.kubelb.k8c.io/origin-ns",name="OriginNamespace",type="string"
-// +kubebuilder:printcolumn:JSONPath=".metadata.labels.kubelb.k8c.io/origin-resource-kind",name="OriginResource",type="string"
+// +kubebuilder:object:root=true
+// +kubebuilder:subresource:status
+// +kubebuilder:printcolumn:JSONPath=".metadata.labels.kubelb\\.k8c\\.io/origin-name",name="OriginName",type="string"
+// +kubebuilder:printcolumn:JSONPath=".metadata.labels.kubelb\\.k8c\\.io/origin-ns",name="OriginNamespace",type="string"
+// +kubebuilder:printcolumn:JSONPath=".metadata.labels.kubelb\\.k8c\\.io/origin-resource-kind",name="OriginResource",type="string"
 
 // Route is the object that represents a route in the cluster.
 type Route struct {
@@ -115,8 +108,6 @@ type RouteResourcesStatus struct {
 	Source string `json:"source,omitempty"`
 
 	Services map[string]RouteServiceStatus `json:"services,omitempty"`
-
-	ReferenceGrants map[string]ResourceState `json:"referenceGrants,omitempty"`
 
 	Route ResourceState `json:"route,omitempty"`
 }
@@ -158,7 +149,7 @@ func (t ConditionType) String() string {
 	return string(t)
 }
 
-//+kubebuilder:object:root=true
+// +kubebuilder:object:root=true
 
 // RouteList contains a list of Routes
 type RouteList struct {

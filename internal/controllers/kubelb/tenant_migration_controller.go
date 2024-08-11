@@ -88,7 +88,7 @@ func (r *TenantMigrationReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 func (r *TenantMigrationReconciler) reconcile(ctx context.Context, _ logr.Logger, namespace *corev1.Namespace) error {
 	// We need to create tenant resource corresponding to the namespace. All the other aspects are handled by the tenant controller
 	// Remove `tenant-` prefix from namespace name if it exists
-	tenantName := removeTenantPrefix(namespace.Name)
+	tenantName := RemoveTenantPrefix(namespace.Name)
 
 	// Copy `kubelb.k8c.io/propagate-annotation` from namespace to the tenant resource
 	permittedMap := make(map[string]string)
@@ -103,16 +103,14 @@ func (r *TenantMigrationReconciler) reconcile(ctx context.Context, _ logr.Logger
 		}
 	}
 
-	lb := kubelbv1alpha1.LoadBalancerSettings{
-		PropagatedAnnotations: &permittedMap,
-	}
-
 	tenant := &kubelbv1alpha1.Tenant{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: tenantName,
 		},
 		Spec: kubelbv1alpha1.TenantSpec{
-			LoadBalancer: lb,
+			AnnotationSettings: kubelbv1alpha1.AnnotationSettings{
+				PropagatedAnnotations: &permittedMap,
+			},
 		},
 	}
 
@@ -172,7 +170,7 @@ func (r *TenantMigrationReconciler) shouldReconcile(ns *corev1.Namespace) bool {
 	return reconcile
 }
 
-func removeTenantPrefix(namespace string) string {
+func RemoveTenantPrefix(namespace string) string {
 	prefix := "tenant-"
 	if strings.HasPrefix(namespace, prefix) {
 		return strings.TrimPrefix(namespace, prefix)

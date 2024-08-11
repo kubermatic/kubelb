@@ -72,7 +72,7 @@ type LoadBalancerSpec struct {
 
 	// Sets of addresses and ports that comprise an exposed user service on a cluster.
 	// +required
-	//+kubebuilder:validation:MinItems=1
+	// +kubebuilder:validation:MinItems=1
 	Endpoints []LoadBalancerEndpoints `json:"endpoints,omitempty"`
 
 	// The list of ports that are exposed by the load balancer service.
@@ -102,8 +102,8 @@ type LoadBalancerSpec struct {
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
 // +kubebuilder:resource:shortName=lb
-// +kubebuilder:printcolumn:JSONPath=".metadata.labels.kubelb.k8c.io/origin-name",name="OriginName",type="string"
-// +kubebuilder:printcolumn:JSONPath=".metadata.labels.kubelb.k8c.io/origin-ns",name="OriginNamespace",type="string"
+// +kubebuilder:printcolumn:JSONPath=".metadata.labels.kubelb\\.k8c\\.io/origin-name",name="OriginName",type="string"
+// +kubebuilder:printcolumn:JSONPath=".metadata.labels.kubelb\\.k8c\\.io/origin-ns",name="OriginNamespace",type="string"
 // +genclient
 
 // LoadBalancer is the Schema for the loadbalancers API

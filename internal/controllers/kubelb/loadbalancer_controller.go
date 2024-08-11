@@ -22,7 +22,6 @@ import (
 	"reflect"
 
 	kubelbv1alpha1 "k8c.io/kubelb/api/kubelb.k8c.io/v1alpha1"
-	"k8c.io/kubelb/internal/config"
 	utils "k8c.io/kubelb/internal/controllers"
 	"k8c.io/kubelb/internal/kubelb"
 	portlookup "k8c.io/kubelb/internal/port-lookup"
@@ -129,7 +128,6 @@ func (r *LoadBalancerReconciler) Reconcile(ctx context.Context, req ctrl.Request
 		resourceNamespace = req.Namespace
 	case EnvoyProxyTopologyGlobal:
 		// List all loadbalancers. We don't care about the namespace here.
-		// TODO: ideally we should only process the load balancer that is being reconciled.
 		err = r.List(ctx, &loadBalancers)
 		if err != nil {
 			log.Error(err, "unable to fetch LoadBalancer list")
@@ -145,6 +143,38 @@ func (r *LoadBalancerReconciler) Reconcile(ctx context.Context, req ctrl.Request
 		// Finalizer doesn't exist so clean up is already done
 		return reconcile.Result{}, nil
 	}
+
+	// Before proceeding further we need to make sure that the resource is reconcilable.
+	tenant, config, err := GetTenantAndConfig(ctx, r.Client, r.Namespace, RemoveTenantPrefix(loadBalancer.Namespace))
+	if err != nil {
+		log.Error(err, "unable to fetch Tenant and Config, cannot proceed")
+		return reconcile.Result{}, err
+	}
+
+	shouldReconcile, disabled, err := r.shouldReconcile(ctx, &loadBalancer, tenant, config)
+	if err != nil {
+		log.Error(err, "unable to determine if the LoadBalancer should be reconciled")
+		return reconcile.Result{}, err
+	}
+
+	// If the resource is disabled, we need to clean up the resources
+	if controllerutil.ContainsFinalizer(&loadBalancer, envoyProxyCleanupFinalizer) && disabled {
+		log.V(3).Info("Removing load balancer as load balancing is disabled")
+		return reconcile.Result{}, r.handleEnvoyProxyCleanup(ctx, loadBalancer, resourceNamespace)
+	}
+
+	if !shouldReconcile {
+		return reconcile.Result{}, nil
+	}
+
+	var className *string
+	if tenant.Spec.LoadBalancer.Class != nil {
+		className = tenant.Spec.LoadBalancer.Class
+	} else if config.Spec.LoadBalancer.Class != nil {
+		className = config.Spec.LoadBalancer.Class
+	}
+
+	annotations := GetAnnotations(tenant, config)
 
 	// Add finalizer if it doesn't exist
 	if !controllerutil.ContainsFinalizer(&loadBalancer, envoyProxyCleanupFinalizer) {
@@ -166,7 +196,7 @@ func (r *LoadBalancerReconciler) Reconcile(ctx context.Context, req ctrl.Request
 	}
 
 	_, appName := envoySnapshotAndAppName(r.EnvoyProxyTopology, req)
-	err = r.reconcileService(ctx, &loadBalancer, appName, resourceNamespace, r.PortAllocator)
+	err = r.reconcileService(ctx, &loadBalancer, appName, resourceNamespace, r.PortAllocator, className, annotations)
 	if err != nil {
 		log.Error(err, "Unable to reconcile service")
 		return ctrl.Result{}, err
@@ -175,16 +205,11 @@ func (r *LoadBalancerReconciler) Reconcile(ctx context.Context, req ctrl.Request
 	return ctrl.Result{}, nil
 }
 
-func (r *LoadBalancerReconciler) reconcileService(ctx context.Context, loadBalancer *kubelbv1alpha1.LoadBalancer, appName, namespace string, portAllocator *portlookup.PortAllocator) error {
+func (r *LoadBalancerReconciler) reconcileService(ctx context.Context, loadBalancer *kubelbv1alpha1.LoadBalancer, appName, namespace string, portAllocator *portlookup.PortAllocator, className *string,
+	annotations kubelbv1alpha1.AnnotationSettings) error {
 	log := ctrl.LoggerFrom(ctx).WithValues("reconcile", "service")
 
 	log.V(2).Info("verify service")
-
-	tenant, err := getTenantForNamespace(ctx, r.Client, namespace)
-	if err != nil {
-		// This should never happen as the namespace should always have a tenant owner. We simply log this and continue.
-		log.V(5).Info("Tenant not found for namespace", "namespace", namespace)
-	}
 
 	labels := map[string]string{
 		kubelb.LabelAppKubernetesName: appName,
@@ -206,10 +231,10 @@ func (r *LoadBalancerReconciler) reconcileService(ctx context.Context, loadBalan
 			Name:        svcName,
 			Namespace:   namespace,
 			Labels:      labels,
-			Annotations: propagateAnnotations(tenant, loadBalancer.Annotations),
+			Annotations: kubelb.PropagateAnnotations(loadBalancer.Annotations, annotations),
 		},
 	}
-	err = r.Get(ctx, types.NamespacedName{
+	err := r.Get(ctx, types.NamespacedName{
 		Name:      svcName,
 		Namespace: namespace,
 	}, service)
@@ -255,13 +280,19 @@ func (r *LoadBalancerReconciler) reconcileService(ctx context.Context, loadBalan
 			ports = append(ports, allocatedPort)
 		}
 
-		for k, v := range propagateAnnotations(tenant, loadBalancer.Annotations) {
+		for k, v := range kubelb.PropagateAnnotations(loadBalancer.Annotations, annotations) {
 			service.Annotations[k] = v
 		}
 		service.Spec.Ports = ports
 
 		service.Spec.Selector = map[string]string{kubelb.LabelAppKubernetesName: appName}
 		service.Spec.Type = loadBalancer.Spec.Type
+
+		// Set the LoadBalancerClassName if it is specified in the configuration.
+		if className != nil {
+			service.Spec.LoadBalancerClass = className
+		}
+
 		return nil
 	})
 
@@ -367,6 +398,20 @@ func (r *LoadBalancerReconciler) handleEnvoyProxyCleanup(ctx context.Context, lb
 	return nil
 }
 
+func (r *LoadBalancerReconciler) shouldReconcile(ctx context.Context, _ *kubelbv1alpha1.LoadBalancer, tenant *kubelbv1alpha1.Tenant, config *kubelbv1alpha1.Config) (bool, bool, error) {
+	log := ctrl.LoggerFrom(ctx)
+
+	// 1. Ensure that L4 loadbalancing is enabled.
+	if config.Spec.LoadBalancer.Disable {
+		log.Error(fmt.Errorf("L4 loadbalancing is disabled at the global level"), "cannot proceed")
+		return false, true, nil
+	} else if tenant.Spec.LoadBalancer.Disable {
+		log.Error(fmt.Errorf("L4 loadbalancing is disabled at the tenant level"), "cannot proceed")
+		return false, true, nil
+	}
+	return true, false, nil
+}
+
 func (r *LoadBalancerReconciler) SetupWithManager(ctx context.Context, mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&kubelbv1alpha1.LoadBalancer{}).
@@ -375,6 +420,10 @@ func (r *LoadBalancerReconciler) SetupWithManager(ctx context.Context, mgr ctrl.
 			&kubelbv1alpha1.Config{},
 			handler.EnqueueRequestsFromMapFunc(r.enqueueLoadBalancersForConfig()),
 			builder.WithPredicates(filterServicesPredicate()),
+		).
+		Watches(
+			&kubelbv1alpha1.Tenant{},
+			handler.EnqueueRequestsFromMapFunc(r.enqueueLoadBalancersForTenant()),
 		).
 		Watches(
 			&corev1.Service{},
@@ -442,66 +491,15 @@ func filterServicesPredicate() predicate.TypedPredicate[client.Object] {
 	}
 }
 
-func propagateAnnotations(tenant *kubelbv1alpha1.Tenant, loadbalancer map[string]string) map[string]string {
-	permitted := make(map[string]string)
-	if tenant != nil {
-		if tenant.Spec.LoadBalancer.PropagateAllAnnotations != nil && *tenant.Spec.LoadBalancer.PropagateAllAnnotations {
-			return loadbalancer
-		}
-		if tenant.Spec.LoadBalancer.PropagatedAnnotations != nil {
-			permitted = *tenant.Spec.LoadBalancer.PropagatedAnnotations
-		}
-	}
-
-	if permitted == nil {
-		if config.GetConfig().Spec.PropagateAllAnnotations {
-			return loadbalancer
-		}
-		permitted = config.GetConfig().Spec.PropagatedAnnotations
-	}
-
-	a := make(map[string]string)
-	permittedMap := make(map[string][]string)
-	for k, v := range permitted {
-		if _, found := permittedMap[k]; !found {
-			permittedMap[k] = []string{v}
-		}
-	}
-
-	for k, v := range loadbalancer {
-		if valuesFilter, ok := permittedMap[k]; ok {
-			if len(valuesFilter) == 0 {
-				a[k] = v
-			} else {
-				for _, vf := range valuesFilter {
-					if v == vf {
-						a[k] = v
-						break
-					}
-				}
-			}
-		}
-	}
-	return a
-}
-
 // enqueueLoadBalancersForConfig is a handler.MapFunc to be used to enqeue requests for reconciliation
 // for LoadBalancers if some change is made to the controller config.
 func (r *LoadBalancerReconciler) enqueueLoadBalancersForConfig() handler.MapFunc {
 	return func(ctx context.Context, _ ctrlruntimeclient.Object) []ctrl.Request {
 		result := []reconcile.Request{}
 
-		// Reload the Config for the controller.
-		conf := &kubelbv1alpha1.Config{}
-		err := r.Get(ctx, types.NamespacedName{Name: config.DefaultConfigResourceName, Namespace: r.Namespace}, conf)
-		if err != nil {
-			return result
-		}
-		config.SetConfig(*conf)
-
 		// List all loadbalancers. We don't care about the namespace here.
 		loadBalancers := &kubelbv1alpha1.LoadBalancerList{}
-		err = r.List(ctx, loadBalancers)
+		err := r.List(ctx, loadBalancers)
 		if err != nil {
 			return result
 		}
@@ -519,22 +517,30 @@ func (r *LoadBalancerReconciler) enqueueLoadBalancersForConfig() handler.MapFunc
 	}
 }
 
-func getTenantForNamespace(ctx context.Context, client ctrlruntimeclient.Client, namespace string) (*kubelbv1alpha1.Tenant, error) {
-	ns := &corev1.Namespace{}
-	err := client.Get(ctx, types.NamespacedName{Name: namespace}, ns)
-	if err != nil {
-		return nil, err
-	}
+// enqueueLoadBalancersForTenant is a handler.MapFunc to be used to enqeue requests for reconciliation
+// for e changLoadBalancers if some is made to the tenant config.
+func (r *LoadBalancerReconciler) enqueueLoadBalancersForTenant() handler.MapFunc {
+	return func(ctx context.Context, o ctrlruntimeclient.Object) []ctrl.Request {
+		result := []reconcile.Request{}
 
-	for _, owner := range ns.GetOwnerReferences() {
-		if owner.Kind == "Tenant" {
-			tenant := &kubelbv1alpha1.Tenant{}
-			err := client.Get(ctx, types.NamespacedName{Name: owner.Name}, tenant)
-			if err != nil {
-				return nil, err
-			}
-			return tenant, nil
+		namespace := fmt.Sprintf(tenantNamespacePattern, o.GetName())
+
+		// List all loadbalancers in tenant namespace
+		loadBalancers := &kubelbv1alpha1.LoadBalancerList{}
+		err := r.List(ctx, loadBalancers, ctrlruntimeclient.InNamespace(namespace))
+		if err != nil {
+			return result
 		}
+
+		for _, lb := range loadBalancers.Items {
+			result = append(result, reconcile.Request{
+				NamespacedName: types.NamespacedName{
+					Name:      lb.Name,
+					Namespace: lb.Namespace,
+				},
+			})
+		}
+
+		return result
 	}
-	return nil, fmt.Errorf("no tenant found for namespace %s", namespace)
 }

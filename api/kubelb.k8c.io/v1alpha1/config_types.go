@@ -31,27 +31,14 @@ const (
 
 // ConfigSpec defines the desired state of the Config
 type ConfigSpec struct {
+	AnnotationSettings `json:",inline"`
+
 	// EnvoyProxy defines the desired state of the Envoy Proxy
 	EnvoyProxy EnvoyProxy `json:"envoyProxy,omitempty"`
 
-	// PropagatedAnnotations defines the list of annotations(key-value pairs) that will be propagated to the LoadBalancer service. Keep the value empty to allow any value.
-	// Annotations specified at the namespace level will have a higher precedence than the annotations specified at the Config level.
-	// +optional
-	PropagatedAnnotations map[string]string `json:"propagatedAnnotations,omitempty"`
-
-	// PropagateAllAnnotations defines whether all annotations will be propagated to the LoadBalancer service. If set to true, PropagatedAnnotations will be ignored.
-	// +optional
-	PropagateAllAnnotations bool `json:"propagateAllAnnotations,omitempty"`
-
-	// IngressClassName is the name of the IngressClass that will be used for the routes created by KubeLB. If not specified, KubeLB will replace the IngressClassName
-	// with an empty value in the Ingress resource which would result in the default IngressClass being used.
-	// +optional
-	IngressClassName *string `json:"ingressClassName,omitempty"`
-
-	// GatewayClassName is the name of the GatewayClass that will be used for the routes created by KubeLB.
-	// If not specified, KubeLB will replace the GatewayClassName with an empty value in the Gateway resource which would result in the default GatewayClass being used.
-	// +optional
-	GatewayClassName *string `json:"gatewayClassName,omitempty"`
+	LoadBalancer LoadBalancerSettings `json:"loadBalancer,omitempty"`
+	Ingress      IngressSettings      `json:"ingress,omitempty"`
+	GatewayAPI   GatewayAPISettings   `json:"gatewayAPI,omitempty"`
 }
 
 // EnvoyProxy defines the desired state of the EnvoyProxy
@@ -97,8 +84,8 @@ type EnvoyProxy struct {
 	Affinity *corev1.Affinity `json:"affinity,omitempty"`
 }
 
-//+kubebuilder:object:root=true
-//+kubebuilder:subresource:status
+// +kubebuilder:object:root=true
+// +kubebuilder:subresource:status
 
 // Config is the object that represents the Config for the KubeLB management controller.
 type Config struct {
@@ -108,7 +95,15 @@ type Config struct {
 	Spec ConfigSpec `json:"spec,omitempty"`
 }
 
-//+kubebuilder:object:root=true
+func (c *Config) GetEnvoyProxyTopology() EnvoyProxyTopology {
+	return c.Spec.EnvoyProxy.Topology
+}
+
+func (c *Config) IsGlobalTopology() bool {
+	return c.Spec.EnvoyProxy.Topology == EnvoyProxyTopologyGlobal
+}
+
+// +kubebuilder:object:root=true
 
 // ConfigList contains a list of Config
 type ConfigList struct {
