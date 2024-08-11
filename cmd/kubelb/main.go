@@ -205,6 +205,18 @@ func main() {
 		os.Exit(1)
 	}
 
+	if err = (&kubelb.SyncSecretReconciler{
+		Client:             mgr.GetClient(),
+		Scheme:             mgr.GetScheme(),
+		Log:                ctrl.Log.WithName("controllers").WithName(kubelb.SyncSecretControllerName),
+		Recorder:           mgr.GetEventRecorderFor(kubelb.SyncSecretControllerName),
+		EnvoyProxyTopology: kubelb.EnvoyProxyTopology(conf.GetEnvoyProxyTopology()),
+		Namespace:          opt.namespace,
+	}).SetupWithManager(mgr); err != nil {
+		setupLog.Error(err, "unable to create controller", "controller", kubelb.SyncSecretControllerName)
+		os.Exit(1)
+	}
+
 	if err = (&kubelb.TenantReconciler{
 		Client:   mgr.GetClient(),
 		Scheme:   mgr.GetScheme(),

@@ -24,6 +24,7 @@ import (
 
 	kubelbv1alpha1 "k8c.io/kubelb/api/kubelb.k8c.io/v1alpha1"
 	"k8c.io/kubelb/internal/kubelb"
+	util "k8c.io/kubelb/internal/util/kubernetes"
 
 	"k8s.io/apimachinery/pkg/api/equality"
 	kerrors "k8s.io/apimachinery/pkg/api/errors"
@@ -63,6 +64,19 @@ func CreateOrUpdateGateway(ctx context.Context, log logr.Logger, client ctrlclie
 
 	// Process annotations.
 	object.Annotations = kubelb.PropagateAnnotations(object.Annotations, annotations)
+
+	// Process secrets.
+	for i, listener := range object.Spec.Listeners {
+		if listener.TLS != nil {
+			for _, reference := range listener.TLS.CertificateRefs {
+				secretName := util.GetSecretNameIfExists(ctx, client, string(reference.Name), namespace)
+				if secretName != "" {
+					object.Spec.Listeners[i].TLS.CertificateRefs[0].Name = gwapiv1.ObjectName(secretName)
+				}
+			}
+		}
+	}
+
 	object.Namespace = namespace
 	object.SetUID("") // Reset UID to generate a new UID for the Gateway object
 

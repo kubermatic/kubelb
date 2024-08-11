@@ -213,6 +213,18 @@ rules:
 - apiGroups:
   - kubelb.k8c.io
   resources:
+  - syncsecrets
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - kubelb.k8c.io
+  resources:
   - tenants
   verbs:
   - create

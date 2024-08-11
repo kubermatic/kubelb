@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package ccm
+package kubelb
 
 import (
 	"context"
@@ -23,8 +23,8 @@ import (
 	"github.com/go-logr/logr"
 
 	kubelbv1alpha1 "k8c.io/kubelb/api/kubelb.k8c.io/v1alpha1"
-	"k8c.io/kubelb/internal/kubelb"
 
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/equality"
 	kerrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -43,16 +43,15 @@ const (
 // SyncSecretReconciler reconciles an Ingress Object
 type SyncSecretReconciler struct {
 	ctrlclient.Client
-
-	LBClient    ctrlclient.Client
-	ClusterName string
-
-	Log      logr.Logger
-	Scheme   *runtime.Scheme
-	Recorder record.EventRecorder
+	Namespace          string
+	EnvoyProxyTopology EnvoyProxyTopology
+	Log                logr.Logger
+	Scheme             *runtime.Scheme
+	Recorder           record.EventRecorder
 }
 
 // +kubebuilder:rbac:groups=kubelb.k8c.io,resources=syncsecrets,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups="",resources=secrets,verbs=get;list;watch;create;update;patch;delete
 
 func (r *SyncSecretReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	log := r.Log.WithValues("name", req.NamespacedName)
@@ -97,30 +96,44 @@ func (r *SyncSecretReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 }
 
 func (r *SyncSecretReconciler) reconcile(ctx context.Context, _ logr.Logger, object *kubelbv1alpha1.SyncSecret) error {
-	if object.Labels == nil {
-		object.Labels = make(map[string]string)
+	secret := &corev1.Secret{}
+	// Copy the SyncSecret to a Secret
+	secret.Data = object.Data
+	secret.StringData = object.StringData
+	secret.Type = object.Type
+	secret.Labels = object.Labels
+	secret.Annotations = object.Annotations
+
+	if r.EnvoyProxyTopology.IsGlobalTopology() {
+		secret.Namespace = r.Namespace
 	}
-	object.Labels[kubelb.LabelOriginNamespace] = object.Namespace
-	object.Labels[kubelb.LabelOriginName] = object.Name
 
-	object.Namespace = r.ClusterName
-	object.Finalizers = []string{}
-	object.Name = string(object.UID)
-	object.SetUID("") // Reset UID to generate a new UID for the object
+	// Name needs to be randomized so using the UID of the SyncSecret.
+	secret.Name = string(object.UID)
 
-	return CreateOrUpdateSyncSecret(ctx, r.LBClient, object)
+	ownerReference := metav1.OwnerReference{
+		APIVersion: object.APIVersion,
+		Kind:       object.Kind,
+		Name:       object.Name,
+		UID:        object.UID,
+	}
+
+	// Set owner reference for the resource.
+	secret.SetOwnerReferences([]metav1.OwnerReference{ownerReference})
+
+	return CreateOrUpdateSecret(ctx, r.Client, secret)
 }
 
-func CreateOrUpdateSyncSecret(ctx context.Context, client ctrlclient.Client, obj *kubelbv1alpha1.SyncSecret) error {
+func CreateOrUpdateSecret(ctx context.Context, client ctrlclient.Client, obj *corev1.Secret) error {
 	key := ctrlclient.ObjectKey{Namespace: obj.Namespace, Name: obj.Name}
-	existingObj := &kubelbv1alpha1.SyncSecret{}
+	existingObj := &corev1.Secret{}
 	if err := client.Get(ctx, key, existingObj); err != nil {
 		if !kerrors.IsNotFound(err) {
-			return fmt.Errorf("failed to get SyncSecret: %w", err)
+			return fmt.Errorf("failed to get Secret: %w", err)
 		}
 		err := client.Create(ctx, obj)
 		if err != nil {
-			return fmt.Errorf("failed to create SyncSecret: %w", err)
+			return fmt.Errorf("failed to create Secret: %w", err)
 		}
 		return nil
 	}
@@ -139,19 +152,23 @@ func CreateOrUpdateSyncSecret(ctx context.Context, client ctrlclient.Client, obj
 	obj.UID = existingObj.UID
 
 	if err := client.Update(ctx, obj); err != nil {
-		return fmt.Errorf("failed to update SyncSecret: %w", err)
+		return fmt.Errorf("failed to update Secret: %w", err)
 	}
 	return nil
 }
 
 func (r *SyncSecretReconciler) cleanup(ctx context.Context, object *kubelbv1alpha1.SyncSecret) (ctrl.Result, error) {
-	resource := &kubelbv1alpha1.SyncSecret{
-		ObjectMeta: metav1.ObjectMeta{Name: string(object.UID), Namespace: r.ClusterName},
+	resource := &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{Name: string(object.UID), Namespace: object.Namespace},
 	}
 
-	err := r.LBClient.Delete(ctx, resource)
+	if r.EnvoyProxyTopology.IsGlobalTopology() {
+		resource.Namespace = r.Namespace
+	}
+
+	err := r.Delete(ctx, resource)
 	if err != nil && !kerrors.IsNotFound(err) {
-		return reconcile.Result{}, fmt.Errorf("failed to delete object %s from LB cluster: %w", object.Name, err)
+		return reconcile.Result{}, fmt.Errorf("failed to delete secret %s from LB cluster: %w", resource.Name, err)
 	}
 
 	controllerutil.RemoveFinalizer(object, CleanupFinalizer)
