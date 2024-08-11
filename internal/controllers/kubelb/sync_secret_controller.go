@@ -103,7 +103,7 @@ func (r *SyncSecretReconciler) reconcile(ctx context.Context, _ logr.Logger, obj
 	secret.Type = object.Type
 	secret.Labels = object.Labels
 	secret.Annotations = object.Annotations
-
+	secret.Namespace = object.Namespace
 	if r.EnvoyProxyTopology.IsGlobalTopology() {
 		secret.Namespace = r.Namespace
 	}

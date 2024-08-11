@@ -107,6 +107,7 @@ func (r *SyncSecretReconciler) reconcile(ctx context.Context, _ logr.Logger, obj
 	object.Finalizers = []string{}
 	object.Name = string(object.UID)
 	object.SetUID("") // Reset UID to generate a new UID for the object
+	object.SetResourceVersion("")
 
 	return CreateOrUpdateSyncSecret(ctx, r.LBClient, object)
 }

@@ -75,7 +75,7 @@ func CreateOrUpdateIngress(ctx context.Context, log logr.Logger, client ctrlclie
 	// Process secrets.
 	if object.Spec.TLS != nil {
 		for i := range object.Spec.TLS {
-			secretName := util.GetSecretNameIfExists(ctx, client, object.Spec.TLS[i].SecretName, namespace)
+			secretName := util.GetSecretNameIfExists(ctx, client, object.Spec.TLS[i].SecretName, object.Namespace)
 			if secretName != "" {
 				object.Spec.TLS[i].SecretName = secretName
 			}

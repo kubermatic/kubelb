@@ -69,7 +69,7 @@ func CreateOrUpdateGateway(ctx context.Context, log logr.Logger, client ctrlclie
 	for i, listener := range object.Spec.Listeners {
 		if listener.TLS != nil {
 			for _, reference := range listener.TLS.CertificateRefs {
-				secretName := util.GetSecretNameIfExists(ctx, client, string(reference.Name), namespace)
+				secretName := util.GetSecretNameIfExists(ctx, client, string(reference.Name), object.Namespace)
 				if secretName != "" {
 					object.Spec.Listeners[i].TLS.CertificateRefs[0].Name = gwapiv1.ObjectName(secretName)
 				}
