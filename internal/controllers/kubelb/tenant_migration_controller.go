@@ -43,7 +43,7 @@ const (
 	TenantMigrationControllerName = "tenant-migration-controller"
 )
 
-// TenantMigrationReconciler reconciles an Ingress Object
+// TenantMigrationReconciler is responsible for migrating namespace to a 1:1 tenant mapping.
 type TenantMigrationReconciler struct {
 	ctrlclient.Client
 

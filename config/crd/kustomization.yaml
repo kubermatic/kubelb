@@ -7,6 +7,7 @@ resources:
   - bases/kubelb.k8c.io_routes.yaml
   - bases/kubelb.k8c.io_addresses.yaml
   - bases/kubelb.k8c.io_tenants.yaml
+  - bases/kubelb.k8c.io_syncsecrets.yaml
 #+kubebuilder:scaffold:crdkustomizeresource
 
 patchesStrategicMerge:

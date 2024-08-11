@@ -59,8 +59,8 @@ helm install kubelb-manager kubelb-manager --namespace kubelb -f values.yaml --c
 | rbac.allowProxyRole | bool | `true` |  |
 | rbac.enabled | bool | `true` |  |
 | replicaCount | int | `1` |  |
-| resources.limits.cpu | string | `"100m"` |  |
-| resources.limits.memory | string | `"128Mi"` |  |
+| resources.limits.cpu | string | `"500m"` |  |
+| resources.limits.memory | string | `"512Mi"` |  |
 | resources.requests.cpu | string | `"100m"` |  |
 | resources.requests.memory | string | `"128Mi"` |  |
 | securityContext.allowPrivilegeEscalation | bool | `false` |  |

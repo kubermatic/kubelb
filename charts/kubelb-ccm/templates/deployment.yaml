@@ -72,6 +72,9 @@ spec:
             {{ if .Values.kubelb.disableGatewayAPI -}}
             - --disable-gateway-api=true
             {{ end -}}
+            {{ if .Values.kubelb.enableSecretSynchronizer -}}
+            - --enable-secret-synchronizer=true
+            {{ end -}}
             - --cluster-name={{ required "A valid .Values.kubelb.tenantName to specify the tenant name is required!" .Values.kubelb.tenantName }}
           env:
           - name: NAMESPACE
