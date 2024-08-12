@@ -27,6 +27,7 @@ import (
 
 	"k8s.io/apimachinery/pkg/api/equality"
 	kerrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/utils/ptr"
 	ctrlclient "sigs.k8s.io/controller-runtime/pkg/client"
 	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
 )
@@ -59,6 +60,14 @@ func CreateOrUpdateGateway(ctx context.Context, log logr.Logger, client ctrlclie
 
 	if !found && len(gateways.Items) >= 1 {
 		return fmt.Errorf("multiple Gateway objects are not supported")
+	}
+
+	// We scope the listeners for the gateway down to the same namespace
+	for i, listener := range object.Spec.Listeners {
+		if listener.AllowedRoutes != nil && listener.AllowedRoutes.Namespaces != nil {
+			object.Spec.Listeners[i].AllowedRoutes.Namespaces.Selector = nil
+			object.Spec.Listeners[i].AllowedRoutes.Namespaces.From = ptr.To(gwapiv1.NamespacesFromSame)
+		}
 	}
 
 	// Process annotations.
