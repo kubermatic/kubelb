@@ -35,11 +35,29 @@ resources:
   version: v1alpha1
 - api:
     crdVersion: v1
-    namespaced: true
+    namespaced: false
   controller: true
   domain: k8c.io
   group: kubelb.k8c.io
   kind: Tenant
   path: github.com/kubermatic/kubelb/api/v1alpha1
+  version: v1alpha1
+- api:
+    crdVersion: v1
+    namespaced: true
+  controller: true
+  domain: k8c.io
+  group: kubelb.k8c.io
+  kind: Addresses
+  path: github.com/kubermatic/kubelb/api/kubelb.k8c.io/v1alpha1
+  version: v1alpha1
+- api:
+    crdVersion: v1
+    namespaced: true
+  controller: true
+  domain: k8c.io
+  group: kubelb.k8c.io
+  kind: SyncSecret
+  path: github.com/kubermatic/kubelb/api/kubelb.k8c.io/v1alpha1
   version: v1alpha1
 version: "3"

@@ -79,6 +79,7 @@ func main() {
 	var disableHTTPRouteController bool
 	var disableGRPCRouteController bool
 	var disableGatewayAPI bool
+	var enableSecretSynchronizer bool
 
 	if flag.Lookup("kubeconfig") == nil {
 		flag.StringVar(&kubeconfig, "kubeconfig", "", "Path to a kubeconfig. Only required if out-of-cluster.")
@@ -103,6 +104,8 @@ func main() {
 	flag.BoolVar(&disableGatewayController, "disable-gateway-controller", false, "Disable the Gateway controller.")
 	flag.BoolVar(&disableHTTPRouteController, "disable-httproute-controller", false, "Disable the HTTPRoute controller.")
 	flag.BoolVar(&disableGRPCRouteController, "disable-grpcroute-controller", false, "Disable the GRPCRoute controller.")
+
+	flag.BoolVar(&enableSecretSynchronizer, "enable-secret-synchronizer", false, "Enable to automatically convert Secrets labelled with `kubelb.k8c.io/managed-by: kubelb` to Sync Secrets.  This is used to sync secrets from tenants to the LB cluster in a controlled and secure way.")
 
 	if !disableGatewayAPI {
 		utilruntime.Must(gwapiv1alpha2.Install(scheme))
@@ -161,6 +164,16 @@ func main() {
 					},
 				},
 				&kubelbv1alpha1.Route{}: {
+					Namespaces: map[string]cache.Config{
+						clusterName: {},
+					},
+				},
+				&kubelbv1alpha1.Addresses{}: {
+					Namespaces: map[string]cache.Config{
+						clusterName: {},
+					},
+				},
+				&kubelbv1alpha1.SyncSecret{}: {
 					Namespaces: map[string]cache.Config{
 						clusterName: {},
 					},
@@ -272,6 +285,30 @@ func main() {
 			setupLog.Error(err, "unable to create controller", "controller", ccm.GatewayGRPCRouteControllerName)
 			os.Exit(1)
 		}
+	}
+
+	if enableSecretSynchronizer {
+		if err = (&ccm.SecretConversionReconciler{
+			Client:   mgr.GetClient(),
+			Log:      ctrl.Log.WithName("controllers").WithName(ccm.SecretConversionControllerName),
+			Scheme:   mgr.GetScheme(),
+			Recorder: mgr.GetEventRecorderFor(ccm.SecretConversionControllerName),
+		}).SetupWithManager(mgr); err != nil {
+			setupLog.Error(err, "unable to create controller", "controller", ccm.SecretConversionControllerName)
+			os.Exit(1)
+		}
+	}
+
+	if err = (&ccm.SyncSecretReconciler{
+		Client:      mgr.GetClient(),
+		LBClient:    kubeLBMgr.GetClient(),
+		Log:         ctrl.Log.WithName("controllers").WithName(ccm.SyncSecretControllerName),
+		Scheme:      mgr.GetScheme(),
+		ClusterName: clusterName,
+		Recorder:    mgr.GetEventRecorderFor(ccm.SyncSecretControllerName),
+	}).SetupWithManager(mgr); err != nil {
+		setupLog.Error(err, "unable to create controller", "controller", ccm.SyncSecretControllerName)
+		os.Exit(1)
 	}
 
 	// this is a copy and paste of SetupSignalHandler which only returns a context

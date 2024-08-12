@@ -17,6 +17,6 @@ kind: Kustomization
 
 namespace: kubelb
 resources:
-- ccm.yaml
-- rbac
-- ../rbac
+  - ccm.yaml
+  - rbac
+  - ../rbac

@@ -16,6 +16,8 @@ kubelb:
   # -- Enable the leader election.
   enableLeaderElection: true
   nodeAddressType: InternalIP
+  # -- Enable to automatically convert Secrets labelled with `kubelb.k8c.io/managed-by: kubelb` to Sync Secrets. This is used to sync secrets from tenants to the LB cluster in a controlled and secure way.
+  enableSecretSynchronizer: false
   # -- useIngressClass specifies whether to target resources with `kubelb` ingress class or all resources.
   useIngressClass: true
   # -- useGatewayClass specifies whether to target resources with `kubelb` gateway class or all resources.
@@ -76,12 +78,11 @@ service:
 
 resources:
   limits:
-    cpu: 100m
-    memory: 128Mi
+    cpu: 500m
+    memory: 512Mi
   requests:
     cpu: 100m
     memory: 128Mi
-
 autoscaling:
   enabled: false
   minReplicas: 1

@@ -24,6 +24,7 @@ import (
 
 	kubelbv1alpha1 "k8c.io/kubelb/api/kubelb.k8c.io/v1alpha1"
 	"k8c.io/kubelb/internal/kubelb"
+	util "k8c.io/kubelb/internal/util/kubernetes"
 
 	networkingv1 "k8s.io/api/networking/v1"
 	v1 "k8s.io/api/networking/v1"
@@ -70,6 +71,16 @@ func CreateOrUpdateIngress(ctx context.Context, log logr.Logger, client ctrlclie
 
 	// Process annotations.
 	object.Annotations = kubelb.PropagateAnnotations(object.Annotations, annotations)
+
+	// Process secrets.
+	if object.Spec.TLS != nil {
+		for i := range object.Spec.TLS {
+			secretName := util.GetSecretNameIfExists(ctx, client, object.Spec.TLS[i].SecretName, object.Namespace)
+			if secretName != "" {
+				object.Spec.TLS[i].SecretName = secretName
+			}
+		}
+	}
 
 	// Update name and other fields before creating/updating the object.
 	object.Name = kubelb.GenerateName(globalTopology, string(object.UID), object.Name, object.Namespace)

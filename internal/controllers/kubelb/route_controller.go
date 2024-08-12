@@ -412,10 +412,13 @@ func (r *RouteReconciler) shouldReconcile(ctx context.Context, route *kubelbv1al
 		// There is no source defined.
 		return false, false, nil
 	}
-	//nolint:gosimple
-	var resource client.Object
-	resource = &route.Spec.Source.Kubernetes.Route
-	switch resource := resource.(type) {
+
+	resource, err := unstructured.ConvertUnstructuredToObject(&route.Spec.Source.Kubernetes.Route)
+	if err != nil {
+		return false, false, fmt.Errorf("failed to convert route to object: %w", err)
+	}
+
+	switch v := resource.(type) {
 	case *v1.Ingress:
 		// Ensure that Ingress is enabled
 		if config.Spec.Ingress.Disable {
@@ -432,7 +435,7 @@ func (r *RouteReconciler) shouldReconcile(ctx context.Context, route *kubelbv1al
 			return false, true, nil
 		}
 
-		if resource.Name != "kubelb" {
+		if v.Name != "kubelb" {
 			return false, false, nil
 		}
 
@@ -449,7 +452,7 @@ func (r *RouteReconciler) shouldReconcile(ctx context.Context, route *kubelbv1al
 		}
 
 	default:
-		log.Error(fmt.Errorf("Resource %v is not supported", resource.GetObjectKind().GroupVersionKind().GroupKind().String()), "cannot proceed")
+		log.Error(fmt.Errorf("Resource %v is not supported", v.GetObjectKind().GroupVersionKind().GroupKind().String()), "cannot proceed")
 		return false, false, nil
 	}
 	return true, false, nil

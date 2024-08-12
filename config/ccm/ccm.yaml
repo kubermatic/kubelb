@@ -35,36 +35,39 @@ spec:
         seccompProfile:
           type: RuntimeDefault
       containers:
-      - name: kubelb-ccm
-        args:
-        - --enable-leader-election
-        - --node-address-type=InternalIP
-        image: controller:latest
-        securityContext:
-          allowPrivilegeEscalation: false
-          runAsUser: 65532
-          capabilities:
-            drop:
-              - "ALL"
-        livenessProbe:
-          httpGet:
-            path: /healthz
-            port: 8081
-          initialDelaySeconds: 15
-          periodSeconds: 20
-        readinessProbe:
-          httpGet:
-            path: /readyz
-            port: 8081
-          initialDelaySeconds: 5
-          periodSeconds: 10
-        resources:
-          requests:
-            cpu: 10m
-            memory: 64Mi
-        volumeMounts:
-          - mountPath: /home/nonroot/.kube
-            name: kubelb-cluster
+        - name: kubelb-ccm
+          args:
+            - --enable-leader-election
+            - --node-address-type=InternalIP
+          image: controller:latest
+          securityContext:
+            allowPrivilegeEscalation: false
+            runAsUser: 65532
+            capabilities:
+              drop:
+                - "ALL"
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8081
+            initialDelaySeconds: 15
+            periodSeconds: 20
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: 8081
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          resources:
+            limits:
+              cpu: 500m
+              memory: 512Mi
+            requests:
+              cpu: 100m
+              memory: 128Mi
+          volumeMounts:
+            - mountPath: /home/nonroot/.kube
+              name: kubelb-cluster
       serviceAccountName: kubelb
       terminationGracePeriodSeconds: 10
       volumes:

@@ -49,7 +49,7 @@ const (
 	ParentGatewayName     = "kubelb"
 )
 
-// GatewayReconciler reconciles an Ingress Object
+// GatewayReconciler reconciles a Gateway Object
 type GatewayReconciler struct {
 	ctrlclient.Client
 

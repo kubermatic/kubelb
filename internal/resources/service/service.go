@@ -161,6 +161,10 @@ func CreateOrUpdateService(ctx context.Context, client ctrlclient.Client, obj *c
 		return nil
 	}
 
+	// Required to update the object.
+	obj.ResourceVersion = existingObj.ResourceVersion
+	obj.UID = existingObj.UID
+
 	if err := client.Update(ctx, obj); err != nil {
 		return fmt.Errorf("failed to update Service: %w", err)
 	}
