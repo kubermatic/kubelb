@@ -137,8 +137,9 @@ func (r *LoadBalancerReconciler) Reconcile(ctx context.Context, req ctrl.Request
 	}
 	// Resource is marked for deletion.
 	if loadBalancer.DeletionTimestamp != nil {
-		if controllerutil.ContainsFinalizer(&loadBalancer, envoyProxyCleanupFinalizer) {
-			return reconcile.Result{}, r.handleEnvoyProxyCleanup(ctx, loadBalancer, resourceNamespace)
+		if controllerutil.ContainsFinalizer(&loadBalancer, envoyProxyCleanupFinalizer) ||
+			controllerutil.ContainsFinalizer(&loadBalancer, CleanupFinalizer) {
+			return reconcile.Result{}, r.cleanup(ctx, loadBalancer, resourceNamespace)
 		}
 		// Finalizer doesn't exist so clean up is already done
 		return reconcile.Result{}, nil
@@ -158,9 +159,9 @@ func (r *LoadBalancerReconciler) Reconcile(ctx context.Context, req ctrl.Request
 	}
 
 	// If the resource is disabled, we need to clean up the resources
-	if controllerutil.ContainsFinalizer(&loadBalancer, envoyProxyCleanupFinalizer) && disabled {
+	if controllerutil.ContainsFinalizer(&loadBalancer, CleanupFinalizer) && disabled {
 		log.V(3).Info("Removing load balancer as load balancing is disabled")
-		return reconcile.Result{}, r.handleEnvoyProxyCleanup(ctx, loadBalancer, resourceNamespace)
+		return reconcile.Result{}, r.cleanup(ctx, loadBalancer, resourceNamespace)
 	}
 
 	if !shouldReconcile {
@@ -177,11 +178,14 @@ func (r *LoadBalancerReconciler) Reconcile(ctx context.Context, req ctrl.Request
 	annotations := GetAnnotations(tenant, config)
 
 	// Add finalizer if it doesn't exist
-	if !controllerutil.ContainsFinalizer(&loadBalancer, envoyProxyCleanupFinalizer) {
-		if ok := controllerutil.AddFinalizer(&loadBalancer, envoyProxyCleanupFinalizer); !ok {
+	if !controllerutil.ContainsFinalizer(&loadBalancer, CleanupFinalizer) {
+		if ok := controllerutil.AddFinalizer(&loadBalancer, CleanupFinalizer); !ok {
 			log.Error(nil, "Failed to add finalizer for the LoadBalancer")
 			return ctrl.Result{Requeue: true}, nil
 		}
+
+		// Remove old finalizer since it is not used anymore.
+		controllerutil.RemoveFinalizer(&loadBalancer, envoyProxyCleanupFinalizer)
 
 		if err := r.Update(ctx, &loadBalancer); err != nil {
 			return reconcile.Result{}, fmt.Errorf("failed to add finalizer: %w", err)
@@ -358,7 +362,7 @@ func (r *LoadBalancerReconciler) reconcileService(ctx context.Context, loadBalan
 	})
 }
 
-func (r *LoadBalancerReconciler) handleEnvoyProxyCleanup(ctx context.Context, lb kubelbv1alpha1.LoadBalancer, resourceNamespace string) error {
+func (r *LoadBalancerReconciler) cleanup(ctx context.Context, lb kubelbv1alpha1.LoadBalancer, resourceNamespace string) error {
 	log := ctrl.LoggerFrom(ctx).WithValues("cleanup", "LoadBalancer")
 	log.V(2).Info("Cleaning up LoadBalancer", "name", lb.Name, "namespace", lb.Namespace)
 
@@ -387,6 +391,7 @@ func (r *LoadBalancerReconciler) handleEnvoyProxyCleanup(ctx context.Context, lb
 	}
 
 	// Remove finalizer
+	controllerutil.RemoveFinalizer(&lb, CleanupFinalizer)
 	controllerutil.RemoveFinalizer(&lb, envoyProxyCleanupFinalizer)
 
 	// Update instance

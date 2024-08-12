@@ -173,7 +173,7 @@ func (r *EnvoyCPReconciler) ListLoadBalancersAndRoutes(ctx context.Context, req 
 
 	lbs := make([]kubelbv1alpha1.LoadBalancer, 0, len(loadBalancers.Items))
 	for _, lb := range loadBalancers.Items {
-		if lb.DeletionTimestamp.IsZero() && controllerutil.ContainsFinalizer(&lb, envoyProxyCleanupFinalizer) {
+		if lb.DeletionTimestamp.IsZero() && controllerutil.ContainsFinalizer(&lb, CleanupFinalizer) {
 			lbs = append(lbs, lb)
 		}
 	}
