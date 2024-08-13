@@ -35,7 +35,7 @@ helm install kubelb-manager kubelb-manager --namespace kubelb -f values.yaml --c
 | image.repository | string | `"quay.io/kubermatic/kubelb-manager"` |  |
 | image.tag | string | `"v1.0.0"` |  |
 | imagePullSecrets | list | `[]` |  |
-| kubelb.debug | bool | `false` |  |
+| kubelb.debug | bool | `true` |  |
 | kubelb.enableLeaderElection | bool | `true` |  |
 | kubelb.envoyProxy.affinity | object | `{}` |  |
 | kubelb.envoyProxy.nodeSelector | object | `{}` |  |

@@ -43,6 +43,16 @@ rules:
   - get
   - list
   - watch
+  - patch
+  - update
+- apiGroups:
+  - gateway.networking.k8s.io
+  resources:
+  - gateways/status
+  verbs:
+  - get
+  - update
+  - patch
 {{- end }}
 {{- if not .Values.kubelb.disableGRPCRouteController }}
 - apiGroups:
@@ -53,6 +63,16 @@ rules:
   - get
   - list
   - watch
+  - patch
+  - update
+- apiGroups:
+  - gateway.networking.k8s.io
+  resources:
+  - grpcroutes/status
+  verbs:
+  - get
+  - update
+  - patch
 {{- end }}
 {{- if not .Values.kubelb.disableHTTPRouteController }}
 - apiGroups:
@@ -63,6 +83,16 @@ rules:
   - get
   - list
   - watch
+  - patch
+  - update
+- apiGroups:
+  - gateway.networking.k8s.io
+  resources:
+  - httproutes/status
+  verbs:
+  - get
+  - update
+  - patch
 {{- end }}
 {{- end }}
 {{- if not .Values.kubelb.disableIngressController }}
@@ -74,6 +104,16 @@ rules:
   - get
   - list
   - watch
+  - patch
+  - update
+- apiGroups:
+  - networking.k8s.io
+  resources:
+  - ingresses/status
+  verbs:
+  - get
+  - update
+  - patch
 {{- end }}
 {{ if .Values.kubelb.enableSecretSynchronizer -}}
 - apiGroups:
@@ -88,6 +128,14 @@ rules:
   - patch
   - update
   - watch
+- apiGroups:
+  - ""
+  resources:
+  - secrets/finalizers
+  verbs:
+  - get
+  - update
+  - patch
 {{- end }}
 - apiGroups:
   - kubelb.k8c.io
