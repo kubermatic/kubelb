@@ -10,3 +10,4 @@ _build
 cover.out
 kubelb-*.tgz
 __debug*
+charts/*/charts
