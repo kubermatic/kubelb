@@ -20,8 +20,11 @@ import (
 	"bytes"
 	"context"
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"html/template"
+	"net"
+	"strconv"
 
 	"github.com/go-logr/logr"
 
@@ -36,6 +39,8 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/rest"
+	"k8s.io/client-go/tools/clientcmd"
+	clientcmdapi "k8s.io/client-go/tools/clientcmd/api"
 	"k8s.io/client-go/tools/record"
 	ctrl "sigs.k8s.io/controller-runtime"
 	ctrlclient "sigs.k8s.io/controller-runtime/pkg/client"
@@ -45,8 +50,11 @@ import (
 )
 
 const (
-	TenantControllerName   = "tenant-controller"
-	tenantNamespacePattern = "tenant-%s"
+	TenantControllerName    = "tenant-controller"
+	tenantNamespacePattern  = "tenant-%s"
+	configMapName           = "cluster-info"
+	kubernetesEndpointsName = "kubernetes"
+	securePortName          = "https"
 )
 
 const kubeconfigTemplate = `apiVersion: v1
@@ -128,7 +136,7 @@ func (r *TenantReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 	return reconcile.Result{}, err
 }
 
-func (r *TenantReconciler) reconcile(ctx context.Context, _ logr.Logger, tenant *kubelbv1alpha1.Tenant) error {
+func (r *TenantReconciler) reconcile(ctx context.Context, log logr.Logger, tenant *kubelbv1alpha1.Tenant) error {
 	ownerReference := metav1.OwnerReference{
 		APIVersion: tenant.APIVersion,
 		Kind:       tenant.Kind,
@@ -182,7 +190,7 @@ func (r *TenantReconciler) reconcile(ctx context.Context, _ logr.Logger, tenant 
 	}
 
 	// 4. Create secret with kubeconfig for the tenant.
-	tenantKubeconfig, err := r.generateKubeconfig(ctx, r.Client, namespace)
+	tenantKubeconfig, err := r.generateKubeconfig(ctx, r.Client, log, namespace)
 	if err != nil {
 		return fmt.Errorf("failed to generate kubeconfig: %w", err)
 	}
@@ -199,7 +207,7 @@ func (r *TenantReconciler) reconcile(ctx context.Context, _ logr.Logger, tenant 
 	return nil
 }
 
-func (r *TenantReconciler) generateKubeconfig(ctx context.Context, client ctrlruntimeclient.Client, namespace string) (string, error) {
+func (r *TenantReconciler) generateKubeconfig(ctx context.Context, client ctrlruntimeclient.Client, log logr.Logger, namespace string) (string, error) {
 	secret := corev1.Secret{}
 	err := client.Get(ctx, types.NamespacedName{Namespace: namespace, Name: tenantresources.ServiceAccountTokenSecretName}, &secret)
 	if err != nil {
@@ -207,6 +215,17 @@ func (r *TenantReconciler) generateKubeconfig(ctx context.Context, client ctrlru
 	}
 
 	serverURL := r.Config.Host
+	conf, err := GetKubeconfig(ctx, client, log)
+	if err != nil || conf == nil {
+		return "", fmt.Errorf("failed to compute the server URL for kubeconfig: %w", err)
+	}
+	for key := range conf.Clusters {
+		if conf.Clusters[key].Server != "" {
+			serverURL = conf.Clusters[key].Server
+			break
+		}
+	}
+
 	ca := secret.Data[corev1.ServiceAccountRootCAKey]
 	token := secret.Data[corev1.ServiceAccountTokenKey]
 
@@ -240,6 +259,76 @@ func (r *TenantReconciler) generateKubeconfig(ctx context.Context, client ctrlru
 		return "", fmt.Errorf("failed to execute kubeconfig template: %w", err)
 	}
 	return buf.String(), nil
+}
+
+func GetKubeconfig(ctx context.Context, client ctrlruntimeclient.Client, log logr.Logger) (*clientcmdapi.Config, error) {
+	cm, err := getKubeconfigFromConfigMap(ctx, client)
+	if err != nil {
+		log.V(3).Info(fmt.Sprintf("could not get cluster-info kubeconfig from configmap: %v", err))
+		log.V(3).Info("falling back to retrieval via endpoint")
+		return buildKubeconfigFromEndpoint(ctx, client)
+	}
+	return cm, nil
+}
+
+func getKubeconfigFromConfigMap(ctx context.Context, client ctrlruntimeclient.Client) (*clientcmdapi.Config, error) {
+	cm := &corev1.ConfigMap{}
+	if err := client.Get(ctx, types.NamespacedName{Name: configMapName, Namespace: metav1.NamespacePublic}, cm); err != nil {
+		return nil, err
+	}
+
+	data, found := cm.Data["kubeconfig"]
+	if !found {
+		return nil, errors.New("no kubeconfig found in cluster-info configmap")
+	}
+	return clientcmd.Load([]byte(data))
+}
+
+func buildKubeconfigFromEndpoint(ctx context.Context, client ctrlruntimeclient.Client) (*clientcmdapi.Config, error) {
+	endpoint := &corev1.Endpoints{}
+	if err := client.Get(ctx, types.NamespacedName{Name: kubernetesEndpointsName, Namespace: metav1.NamespaceDefault}, endpoint); err != nil {
+		return nil, err
+	}
+
+	if len(endpoint.Subsets) == 0 {
+		return nil, errors.New("no subsets in the kubernetes endpoints resource")
+	}
+	subset := endpoint.Subsets[0]
+
+	if len(subset.Addresses) == 0 {
+		return nil, errors.New("no addresses in the first subset of the kubernetes endpoints resource")
+	}
+	address := subset.Addresses[0]
+
+	ip := net.ParseIP(address.IP)
+	if ip == nil {
+		return nil, errors.New("could not parse ip from ")
+	}
+
+	getSecurePort := func(_ corev1.EndpointSubset) *corev1.EndpointPort {
+		for _, p := range subset.Ports {
+			if p.Name == securePortName {
+				return &p
+			}
+		}
+		return nil
+	}
+
+	port := getSecurePort(subset)
+	if port == nil {
+		return nil, errors.New("no secure port in the subset")
+	}
+	url := fmt.Sprintf("https://%s", net.JoinHostPort(ip.String(), strconv.Itoa(int(port.Port))))
+
+	return &clientcmdapi.Config{
+		Kind:       "Config",
+		APIVersion: "v1",
+		Clusters: map[string]*clientcmdapi.Cluster{
+			"": {
+				Server: url,
+			},
+		},
+	}, nil
 }
 
 func (r *TenantReconciler) cleanup(ctx context.Context, tenant *kubelbv1alpha1.Tenant) (ctrl.Result, error) {

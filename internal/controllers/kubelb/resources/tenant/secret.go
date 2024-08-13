@@ -45,7 +45,7 @@ func TenantKubeconfigSecretReconciler(data string) reconciling.NamedSecretReconc
 	return func() (string, reconciling.SecretReconciler) {
 		return KubeLBCCMKubeconfigSecretName, func(s *corev1.Secret) (*corev1.Secret, error) {
 			s.Data = map[string][]byte{
-				"kubeconfig": []byte(data),
+				"kubelb": []byte(data),
 			}
 			return s, nil
 		}

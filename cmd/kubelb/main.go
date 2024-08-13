@@ -73,7 +73,7 @@ func main() {
 	flag.BoolVar(&opt.enableLeaderElection, "enable-leader-election", true,
 		"Enable leader election for controller kubelb. Enabling this will ensure there is only one active controller kubelb.")
 	flag.BoolVar(&opt.enableDebugMode, "debug", false, "Enables debug mode")
-	flag.StringVar(&opt.namespace, "namespace", "", "The namespace where the controller will run.")
+	flag.StringVar(&opt.namespace, "namespace", "kubelb", "The namespace where the controller will run.")
 
 	flag.BoolVar(&opt.enableTenantMigrationController, "enable-tenant-migration", true, "Enables a controller that performs automated migration from namespaces to tenants")
 	flag.BoolVar(&opt.disableGatewayAPI, "disable-gateway-api", false, "Disable the Gateway APIs and controllers.")

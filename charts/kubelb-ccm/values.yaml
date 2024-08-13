@@ -13,19 +13,22 @@ kubelb:
   # -- Name of the secret that contains kubeconfig for the loadbalancer cluster
   clusterSecretName: kubelb-cluster
 
-  # -- Enable the leader election.
-  enableLeaderElection: true
-  nodeAddressType: InternalIP
-  # -- Enable to automatically convert Secrets labelled with `kubelb.k8c.io/managed-by: kubelb` to Sync Secrets. This is used to sync secrets from tenants to the LB cluster in a controlled and secure way.
-  enableSecretSynchronizer: false
-  # -- useIngressClass specifies whether to target resources with `kubelb` ingress class or all resources.
-  useIngressClass: true
-  # -- useGatewayClass specifies whether to target resources with `kubelb` gateway class or all resources.
-  useGatewayClass: true
+  # Important configurations.
+  # Address type to use for routing traffic to node ports. Values are ExternalIP, InternalIP.
+  nodeAddressType: ExternalIP
   # -- useLoadBalancerClass specifies whether to target services of type LoadBalancer with `kubelb` load balancer class or all services of type LoadBalancer.
   useLoadBalancerClass: false
   # -- disableGatewayAPI specifies whether to disable the Gateway API and Gateway Controllers.
   disableGatewayAPI: false
+  # -- Enable to automatically convert Secrets labelled with `kubelb.k8c.io/managed-by: kubelb` to Sync Secrets. This is used to sync secrets from tenants to the LB cluster in a controlled and secure way.
+  enableSecretSynchronizer: false
+
+  # -- Enable the leader election.
+  enableLeaderElection: true
+  # -- useIngressClass specifies whether to target resources with `kubelb` ingress class or all resources.
+  useIngressClass: true
+  # -- useGatewayClass specifies whether to target resources with `kubelb` gateway class or all resources.
+  useGatewayClass: true
   # -- disableIngressController specifies whether to disable the Ingress Controller.
   disableIngressController: false
   # -- disableGatewayController specifies whether to disable the Gateway Controller.

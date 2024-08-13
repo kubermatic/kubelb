@@ -8,7 +8,7 @@ imagePullSecrets: []
 
 kubelb:
   enableLeaderElection: true
-  debug: false
+  debug: true
   # -- Set to true to skip the generation of the Config CR. Useful when the config CR needs to be managed manually.
   skipConfigGeneration: false
   envoyProxy:

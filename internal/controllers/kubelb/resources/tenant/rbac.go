@@ -43,7 +43,7 @@ func RoleReconciler() reconciling.NamedRoleReconcilerFactory {
 			r.Rules = []rbacv1.PolicyRule{
 				{
 					APIGroups: []string{"kubelb.k8c.io"},
-					Resources: []string{"loadbalancers,routes,addresses"},
+					Resources: []string{"loadbalancers", "routes", "addresses", "syncsecrets"},
 					Verbs: []string{
 						"create",
 						"update",
@@ -56,7 +56,7 @@ func RoleReconciler() reconciling.NamedRoleReconcilerFactory {
 				},
 				{
 					APIGroups: []string{"kubelb.k8c.io"},
-					Resources: []string{"loadbalancers/status,routes/status,addresses/status"},
+					Resources: []string{"loadbalancers/status", "routes/status", "addresses/status", "syncsecrets/status"},
 					Verbs: []string{
 						"update",
 						"get",

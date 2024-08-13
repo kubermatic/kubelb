@@ -31,18 +31,7 @@ spec:
       securityContext:
         {{- toYaml .Values.podSecurityContext | nindent 8 }}
       containers:
-        - args:
-          - --secure-listen-address=0.0.0.0:8443
-          - --upstream=http://127.0.0.1:8080/
-          - --v=0
-          image: gcr.io/kubebuilder/kube-rbac-proxy:v0.16.0
-          imagePullPolicy: {{ .Values.image.pullPolicy }}
-          name: kube-rbac-proxy
-          ports:
-          - protocol: TCP
-            containerPort: 8443
-            name: https
-        - name: {{ .Chart.Name }}
+        - name: manager
           securityContext:
             {{- toYaml .Values.securityContext | nindent 12 }}
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
@@ -55,10 +44,6 @@ spec:
             valueFrom:
               fieldRef:
                 fieldPath: metadata.namespace
-          ports:
-            - name: http
-              containerPort: {{ .Values.service.port }}
-              protocol: TCP
           livenessProbe:
             httpGet:
               path: /healthz
@@ -77,6 +62,17 @@ spec:
           volumeMounts:
             {{- toYaml . | nindent 12 }}
           {{- end }}
+        - args:
+          - --secure-listen-address=0.0.0.0:8443
+          - --upstream=http://127.0.0.1:8080/
+          - --v=0
+          image: gcr.io/kubebuilder/kube-rbac-proxy:v0.16.0
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          name: kube-rbac-proxy
+          ports:
+          - protocol: TCP
+            containerPort: 8443
+            name: https
       {{- with .Values.volumes }}
       volumes:
         {{- toYaml . | nindent 8 }}
