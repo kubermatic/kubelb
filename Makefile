@@ -8,8 +8,8 @@ KUBELB_CCM_IMG ?= quay.io/kubermatic/kubelb-ccm
 # ENVTEST_K8S_VERSION refers to the version of kubebuilder assets to be downloaded by envtest binary.
 ENVTEST_K8S_VERSION = 1.30.0
 KUSTOMIZE_VERSION ?= v5.4.3
-CONTROLLER_TOOLS_VERSION ?= v0.15.0
-GO_VERSION = 1.22.6
+CONTROLLER_TOOLS_VERSION ?= v0.16.1
+GO_VERSION = 1.23.0
 HELM_DOCS_VERSION ?= v1.14.2
 CRD_REF_DOCS_VERSION ?= v0.1.0
 
@@ -74,10 +74,10 @@ help: ## Display this help.
 
 .PHONY: manifests
 manifests: generate controller-gen ## Generate WebhookConfiguration, ClusterRole and CustomResourceDefinition objects.
-	$(CONTROLLER_GEN) crd webhook paths="./..." output:crd:artifacts:config=config/crd/bases
+	$(CONTROLLER_GEN) crd:generateEmbeddedObjectMeta=true webhook paths="./..." output:crd:artifacts:config=config/crd/bases
 	$(CONTROLLER_GEN) rbac:roleName=kubelb-ccm paths="./internal/controllers/ccm/..." output:artifacts:config=config/ccm/rbac
 	$(CONTROLLER_GEN) rbac:roleName=kubelb paths="./internal/controllers/kubelb/..." output:artifacts:config=config/kubelb/rbac
-	$(CONTROLLER_GEN) crd webhook paths="./..." output:crd:artifacts:config=charts/kubelb-manager/crds
+	$(CONTROLLER_GEN) crd:generateEmbeddedObjectMeta=true webhook paths="./..." output:crd:artifacts:config=charts/kubelb-manager/crds
 	cp charts/kubelb-manager/crds/kubelb.k8c.io_syncsecrets.yaml charts/kubelb-ccm/crds/kubelb.k8c.io_syncsecrets.yaml
 
 .PHONY: generate

@@ -198,8 +198,8 @@ func (r *KubeLBServiceReconciler) cleanupService(ctx context.Context, log logr.L
 	return ctrl.Result{}, nil
 }
 
-func (r *KubeLBServiceReconciler) enqueueLoadBalancer() handler.TypedMapFunc[*kubelbv1alpha1.LoadBalancer] {
-	return handler.TypedMapFunc[*kubelbv1alpha1.LoadBalancer](func(_ context.Context, lb *kubelbv1alpha1.LoadBalancer) []reconcile.Request {
+func (r *KubeLBServiceReconciler) enqueueLoadBalancer() func(context.Context, *kubelbv1alpha1.LoadBalancer) []reconcile.Request {
+	return func(_ context.Context, lb *kubelbv1alpha1.LoadBalancer) []reconcile.Request {
 		if lb.GetNamespace() != r.ClusterName {
 			return []reconcile.Request{}
 		}
@@ -230,7 +230,7 @@ func (r *KubeLBServiceReconciler) enqueueLoadBalancer() handler.TypedMapFunc[*ku
 				},
 			},
 		}
-	})
+	}
 }
 
 func (r *KubeLBServiceReconciler) getEndpoints(service *corev1.Service) ([]string, bool) {
@@ -268,7 +268,7 @@ func (r *KubeLBServiceReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		For(&corev1.Service{}).
 		WatchesRawSource(
 			source.Kind(r.KubeLBManager.GetCache(), &kubelbv1alpha1.LoadBalancer{},
-				handler.TypedEnqueueRequestsFromMapFunc[*kubelbv1alpha1.LoadBalancer](r.enqueueLoadBalancer())),
+				handler.TypedEnqueueRequestsFromMapFunc(r.enqueueLoadBalancer())),
 		).
 		Complete(r)
 }
