@@ -94,6 +94,9 @@ func CreateOrUpdateGRPCRoute(ctx context.Context, log logr.Logger, client ctrlcl
 	// Process annotations.
 	object.Annotations = kubelb.PropagateAnnotations(object.Annotations, annotations)
 
+	// Process labels
+	object.Labels = kubelb.AddKubeLBLabels(object.Labels, object.Name, object.Namespace, "")
+
 	object.Name = kubelb.GenerateName(globalTopology, string(object.UID), object.Name, object.Namespace)
 	object.Namespace = namespace
 	object.SetUID("") // Reset UID to generate a new UID for the object

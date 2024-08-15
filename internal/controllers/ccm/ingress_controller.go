@@ -246,10 +246,7 @@ func (r *IngressReconciler) resourceFilter() predicate.Predicate {
 		},
 		UpdateFunc: func(e event.UpdateEvent) bool {
 			if obj, ok := e.ObjectNew.(*networkingv1.Ingress); ok {
-				if !r.shouldReconcile(obj) {
-					return false
-				}
-				return e.ObjectOld.GetResourceVersion() != e.ObjectNew.GetResourceVersion()
+				return r.shouldReconcile(obj)
 			}
 			return false
 		},

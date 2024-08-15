@@ -131,10 +131,7 @@ func (r *TenantMigrationReconciler) resourceFilter() predicate.Predicate {
 		},
 		UpdateFunc: func(e event.UpdateEvent) bool {
 			if obj, ok := e.ObjectNew.(*corev1.Namespace); ok {
-				if !r.shouldReconcile(obj) {
-					return false
-				}
-				return e.ObjectOld.GetResourceVersion() != e.ObjectNew.GetResourceVersion()
+				return r.shouldReconcile(obj)
 			}
 			return false
 		},

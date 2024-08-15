@@ -3,7 +3,7 @@ replicaCount: 1
 image:
   repository: quay.io/kubermatic/kubelb-ccm
   pullPolicy: IfNotPresent
-  tag: v1.0.0
+  tag: v1.1.0
 imagePullSecrets: []
 
 kubelb:
@@ -45,6 +45,10 @@ resources:
   requests:
     cpu: 100m
     memory: 128Mi
+
+#################################################################################
+# Further configurations for the KubeLB Manager.
+#################################################################################
 
 extraVolumes: []
 extraVolumeMounts: []

@@ -244,10 +244,7 @@ func (r *HTTPRouteReconciler) resourceFilter() predicate.Predicate {
 		},
 		UpdateFunc: func(e event.UpdateEvent) bool {
 			if obj, ok := e.ObjectNew.(*gwapiv1.HTTPRoute); ok {
-				if !r.shouldReconcile(obj) {
-					return false
-				}
-				return e.ObjectOld.GetResourceVersion() != e.ObjectNew.GetResourceVersion()
+				return r.shouldReconcile(obj)
 			}
 			return false
 		},

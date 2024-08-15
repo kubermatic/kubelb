@@ -82,6 +82,9 @@ func CreateOrUpdateIngress(ctx context.Context, log logr.Logger, client ctrlclie
 		}
 	}
 
+	// Process labels
+	object.Labels = kubelb.AddKubeLBLabels(object.Labels, object.Name, object.Namespace, "")
+
 	// Update name and other fields before creating/updating the object.
 	object.Name = kubelb.GenerateName(globalTopology, string(object.UID), object.Name, object.Namespace)
 	object.Namespace = namespace

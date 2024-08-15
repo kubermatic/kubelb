@@ -38,6 +38,12 @@ spec:
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           args:
             - --enable-leader-election={{ .Values.kubelb.enableLeaderElection }}
+            {{ if .Values.kubelb.disableGatewayAPI -}}
+            - --disable-gateway-api=true
+            {{ end -}}
+            {{ if .Values.kubelb.enableTenantMigration -}}
+            - --enable-tenant-migration=true
+            {{ end -}}
             - --debug={{ .Values.kubelb.debug }}
           env:
           - name: NAMESPACE

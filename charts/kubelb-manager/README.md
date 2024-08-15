@@ -2,7 +2,7 @@
 
 Helm chart for KubeLB Manager. This is used to deploy the KubeLB CCM to a Kubernetes cluster. The CCM is responsible for propagating the load balancer configurations to the management cluster.
 
-![Version: v1.0.0](https://img.shields.io/badge/Version-v1.0.0-informational?style=flat-square) ![Type: application](https://img.shields.io/badge/Type-application-informational?style=flat-square) ![AppVersion: v1.0.0](https://img.shields.io/badge/AppVersion-v1.0.0-informational?style=flat-square)
+![Version: v1.1.0](https://img.shields.io/badge/Version-v1.1.0-informational?style=flat-square) ![Type: application](https://img.shields.io/badge/Type-application-informational?style=flat-square) ![AppVersion: v1.1.0](https://img.shields.io/badge/AppVersion-v1.1.0-informational?style=flat-square)
 
 ## Installing the chart
 
@@ -15,7 +15,7 @@ Helm chart for KubeLB Manager. This is used to deploy the KubeLB CCM to a Kubern
 Now, we can install the helm chart:
 
 ```sh
-helm pull oci://quay.io/kubermatic/helm-charts/kubelb-manager --version=v1.0.0 --untardir "kubelb-manager" --untar
+helm pull oci://quay.io/kubermatic/helm-charts/kubelb-manager --version=v1.1.0 --untardir "kubelb-manager" --untar
 ## Create and update values.yaml with the required values.
 helm install kubelb-manager kubelb-manager --namespace kubelb -f values.yaml --create-namespace
 ```
@@ -33,10 +33,12 @@ helm install kubelb-manager kubelb-manager --namespace kubelb -f values.yaml --c
 | fullnameOverride | string | `""` |  |
 | image.pullPolicy | string | `"IfNotPresent"` |  |
 | image.repository | string | `"quay.io/kubermatic/kubelb-manager"` |  |
-| image.tag | string | `"v1.0.0"` |  |
+| image.tag | string | `"v1.1.0"` |  |
 | imagePullSecrets | list | `[]` |  |
 | kubelb.debug | bool | `true` |  |
+| kubelb.disableGatewayAPI | bool | `false` | disableGatewayAPI specifies whether to disable the Gateway API and Gateway Controllers. |
 | kubelb.enableLeaderElection | bool | `true` |  |
+| kubelb.enableTenantMigration | bool | `true` |  |
 | kubelb.envoyProxy.affinity | object | `{}` |  |
 | kubelb.envoyProxy.nodeSelector | object | `{}` |  |
 | kubelb.envoyProxy.replicas | int | `3` | The number of replicas for the Envoy Proxy deployment. |
@@ -74,3 +76,9 @@ helm install kubelb-manager kubelb-manager --namespace kubelb -f values.yaml --c
 | serviceAccount.name | string | `""` |  |
 | serviceMonitor.enabled | bool | `false` |  |
 | tolerations | list | `[]` |  |
+
+## Maintainers
+
+| Name | Email | Url |
+| ---- | ------ | --- |
+| Kubermatic | <support@kubermatic.com> | <https://kubermatic.com> |

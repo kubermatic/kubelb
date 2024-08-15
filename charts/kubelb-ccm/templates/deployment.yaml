@@ -38,7 +38,7 @@ spec:
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           args:
             - --enable-leader-election={{ .Values.kubelb.enableLeaderElection }}
-            - --node-address-type={{ default "InternalIP" .Values.kubelb.nodeAddressType }}
+            - --node-address-type={{ default "ExternalIP" .Values.kubelb.nodeAddressType }}
             - --use-loadbalancer-class={{ default false .Values.kubelb.useLoadBalancerClass }}
             {{ if not .Values.kubelb.useGatewayClass -}}
             - --use-gateway-class=false
