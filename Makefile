@@ -244,7 +244,7 @@ bump-chart:
 	$(SED) -i "s/tag:.*/tag: $(IMAGE_TAG)/" charts/*/values.yaml
 
 .PHONY: release-charts helm-docs generate-helm-docs
-release-charts: helm-lint generate-helm-docs bump-chart
+release-charts: bump-chart helm-lint generate-helm-docs
 	CHART_VERSION=$(IMAGE_TAG) ./hack/release-helm-charts.sh
 
 .PHONY: crd-ref-docs

@@ -81,13 +81,21 @@ postsubmits:
     labels:
       preset-docker-push: "true"
       preset-goproxy: "true"
+      preset-vault: "true"
     spec:
       containers:
         - image: quay.io/kubermatic/build:go-1.23-node-20-kind-0.23-0
           command:
-            - make
-          args:
-            - release-charts
+            - /bin/bash
+            - -c
+            - |
+              set -euo pipefail
+
+              # Calculate Git Tag.
+              GIT_HEAD_TAG="$(git tag -l "${PULL_BASE_REF:-}")"
+              RELEASE_TAG="${TAG:-$GIT_HEAD_TAG}"
+
+              make IMAGE_TAG=$RELEASE_TAG release-charts
           resources:
             requests:
               cpu: 100m
