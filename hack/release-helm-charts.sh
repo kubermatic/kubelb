@@ -19,6 +19,17 @@ set -euo pipefail
 cd $(dirname $0)/..
 source hack/lib.sh
 
+## When running out of CI, it's expected that the user has already configured vault
+if [ -n "$JOB_NAME" ] || [ -n "$PROW_JOB_ID" ]; then
+  echodate "Getting secrets from Vault"
+  retry 5 vault_ci_login
+fi
+
+if [ -z "$CHART_VERSION" ]; then
+  echo "CHART_VERSION is empty, cannot proceed"
+  exit 1
+fi
+
 REGISTRY_HOST="${REGISTRY_HOST:-quay.io}"
 REPOSITORY_PREFIX="${REPOSITORY_PREFIX:-kubermatic/helm-charts}"
 
@@ -38,6 +49,10 @@ CHART_PACKAGE_MANAGER="${MANAGER}-${CHART_VERSION}.tgz"
 CHART_PACKAGE_CCM="${CCM}-${CHART_VERSION}.tgz"
 
 echodate "Packaging helm charts ${CHART_PACKAGE_MANAGER} and ${CHART_PACKAGE_CCM}"
+
+helm dependency build charts/kubelb-manager
+helm dependency build charts/kubelb-ccm
+
 helm package charts/${MANAGER} --version ${CHART_VERSION} --destination ./
 helm package charts/${CCM} --version ${CHART_VERSION} --destination ./
 
