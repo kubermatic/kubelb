@@ -1,0 +1,7 @@
+processor:
+  ignoreFields:
+    - "TypeMeta$"
+    - "kind$"
+    - "apiversion$"
+render:
+  kubernetesVersion: "1.30"

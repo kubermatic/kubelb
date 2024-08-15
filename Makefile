@@ -10,6 +10,12 @@ ENVTEST_K8S_VERSION = 1.30.0
 KUSTOMIZE_VERSION ?= v5.4.3
 CONTROLLER_TOOLS_VERSION ?= v0.15.0
 GO_VERSION = 1.22.6
+HELM_DOCS_VERSION ?= v1.14.2
+CRD_REF_DOCS_VERSION ?= v0.1.0
+
+GATEWAY_RELEASE_CHANNEL ?= stable
+GATEWAY_API_VERSION ?= $(shell go list -m -f '{{.Version}}' sigs.k8s.io/gateway-api)
+GATEWAY_RELEASE_URL ?= https://github.com/kubernetes-sigs/gateway-api/releases/download/${GATEWAY_API_VERSION}/${GATEWAY_RELEASE_CHANNEL}-install.yaml
 
 export GOPATH?=$(shell go env GOPATH)
 export CGO_ENABLED=0
@@ -218,11 +224,12 @@ shfmt:
 	shfmt -w -sr -i 2 hack
 
 HELM_DOCS ?= $(LOCALBIN)/helm-docs
+CRD_REF_DOCS ?= $(LOCALBIN)/crd-ref-docs
 
 .PHONY: helm-docs
 helm-docs: $(HELM_DOCS) ## Download helm-docs locally if necessary.
 $(HELM_DOCS): $(LOCALBIN)
-	test -s $(LOCALBIN)/helm-docs || GOBIN=$(LOCALBIN) go install github.com/norwoodj/helm-docs/cmd/helm-docs@v1.14.2
+	test -s $(LOCALBIN)/helm-docs || GOBIN=$(LOCALBIN) go install github.com/norwoodj/helm-docs/cmd/helm-docs@$(HELM_DOCS_VERSION)
 
 helm-lint:
 	helm lint charts/*
@@ -239,3 +246,22 @@ bump-chart:
 .PHONY: release-charts helm-docs generate-helm-docs
 release-charts: helm-lint generate-helm-docs bump-chart
 	CHART_VERSION=$(IMAGE_TAG) ./hack/release-helm-charts.sh
+
+.PHONY: crd-ref-docs
+crd-ref-docs: $(CRD_REF_DOCS) ## Download crd-ref-docs locally if necessary.
+$(CRD_REF_DOCS): $(LOCALBIN)
+	test -s $(LOCALBIN)/crd-ref-docs || GOBIN=$(LOCALBIN) go install github.com/elastic/crd-ref-docs@$(CRD_REF_DOCS_VERSION)
+
+generate-crd-docs: crd-ref-docs ## Generate API reference documentation.
+	$(LOCALBIN)/crd-ref-docs --renderer=markdown \
+		--source-path ./api/kubelb.k8c.io \
+		--config=./hack/crd-ref-docs.yaml \
+		--output-path ./docs/api-reference.md
+
+.PHONY: gateway-crds-copy
+gateway-crds-copy:
+	curl -sLo $(LOCALBIN)/gatewayapi-crds.yaml ${GATEWAY_RELEASE_URL}
+	# echo '{{- if .Values.gatewayAPICRDs -}}' > charts/kubelb-manager/crds/gatewayapi.yaml
+	# cat $(LOCALBIN)/gatewayapi-crds.yaml >> charts/kubelb-manager/crds/gatewayapi.yaml
+	# echo '{{- end }}' >> charts/kubelb-manager/crds/gatewayapi.yaml
+	mv $(LOCALBIN)/gatewayapi-crds.yaml charts/kubelb-ccm/crds/gatewayapi.yaml
