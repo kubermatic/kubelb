@@ -3,7 +3,7 @@ replicaCount: 1
 image:
   repository: quay.io/kubermatic/kubelb-ccm
   pullPolicy: IfNotPresent
-  tag: v1.0.0
+  tag: v1.1.0
 imagePullSecrets: []
 
 kubelb:
@@ -14,7 +14,7 @@ kubelb:
   clusterSecretName: kubelb-cluster
 
   # Important configurations.
-  # Address type to use for routing traffic to node ports. Values are ExternalIP, InternalIP.
+  # -- Address type to use for routing traffic to node ports. Values are ExternalIP, InternalIP.
   nodeAddressType: ExternalIP
   # -- useLoadBalancerClass specifies whether to target services of type LoadBalancer with `kubelb` load balancer class or all services of type LoadBalancer.
   useLoadBalancerClass: false
@@ -37,6 +37,18 @@ kubelb:
   disableHTTPRouteController: false
   # -- disableGRPCRouteController specifies whether to disable the GRPCRoute Controller.
   disableGRPCRouteController: false
+
+resources:
+  limits:
+    cpu: 500m
+    memory: 512Mi
+  requests:
+    cpu: 100m
+    memory: 128Mi
+
+#################################################################################
+# Further configurations for the KubeLB Manager.
+#################################################################################
 
 extraVolumes: []
 extraVolumeMounts: []
@@ -79,13 +91,6 @@ service:
   port: 8443
   protocol: TCP
 
-resources:
-  limits:
-    cpu: 500m
-    memory: 512Mi
-  requests:
-    cpu: 100m
-    memory: 128Mi
 autoscaling:
   enabled: false
   minReplicas: 1

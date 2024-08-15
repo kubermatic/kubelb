@@ -314,7 +314,7 @@ func (r *EnvoyCPReconciler) getEnvoyProxyPodSpec(namespace, appName, snapshotNam
 		template.Spec.Affinity = envoyProxy.Affinity
 	}
 
-	if envoyProxy.Tolerations != nil && len(envoyProxy.Tolerations) > 0 {
+	if len(envoyProxy.Tolerations) > 0 {
 		template.Spec.Tolerations = envoyProxy.Tolerations
 	}
 

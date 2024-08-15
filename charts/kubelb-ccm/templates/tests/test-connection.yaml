@@ -9,7 +9,7 @@ metadata:
 spec:
   containers:
     - name: wget
-      image: busybox
+      image: busybox:1.35.0
       command: ['wget']
       args: ['{{ include "kubelb-ccm.fullname" . }}:{{ .Values.service.port }}']
   restartPolicy: Never

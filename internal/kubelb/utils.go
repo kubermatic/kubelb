@@ -126,3 +126,17 @@ func PropagateAnnotations(loadbalancer map[string]string, annotations kubelbv1al
 	}
 	return a
 }
+
+func AddKubeLBLabels(labels map[string]string, name, namespace, gvk string) map[string]string {
+	if labels == nil {
+		labels = make(map[string]string)
+	}
+	labels[LabelOriginName] = name
+	labels[LabelOriginNamespace] = namespace
+	labels[LabelManagedBy] = LabelControllerName
+
+	if gvk != "" {
+		labels[LabelOriginResourceKind] = gvk
+	}
+	return labels
+}

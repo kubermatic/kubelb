@@ -86,6 +86,9 @@ func CreateOrUpdateGateway(ctx context.Context, log logr.Logger, client ctrlclie
 		}
 	}
 
+	// Process labels
+	object.Labels = kubelb.AddKubeLBLabels(object.Labels, object.Name, object.Namespace, "")
+
 	object.Namespace = namespace
 	object.SetUID("") // Reset UID to generate a new UID for the Gateway object
 

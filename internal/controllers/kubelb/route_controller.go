@@ -172,11 +172,6 @@ func (r *RouteReconciler) reconcile(ctx context.Context, log logr.Logger, route 
 func (r *RouteReconciler) cleanup(ctx context.Context, route *kubelbv1alpha1.Route, ns string) (ctrl.Result, error) {
 	// Route will be removed automatically because of owner reference. We need to take care of removing
 	// the services while ensuring that the services are not being used by other routes.
-
-	if route.Status.Resources.Services == nil {
-		return reconcile.Result{}, nil
-	}
-
 	for _, value := range route.Status.Resources.Services {
 		log := r.Log.WithValues("name", value.Name, "namespace", value.Namespace)
 		log.V(1).Info("Deleting service", "name", value.GeneratedName, "namespace", ns)
