@@ -32,6 +32,8 @@ type SyncSecret struct {
 	// Source: https://pkg.go.dev/k8s.io/api/core/v1#Secret
 
 	// +optional
+	Immutable *bool `json:"immutable,omitempty" protobuf:"varint,5,opt,name=immutable"`
+	// +optional
 	Data map[string][]byte `json:"data,omitempty" protobuf:"bytes,2,rep,name=data"`
 
 	// +k8s:conversion-gen=false

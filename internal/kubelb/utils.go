@@ -33,8 +33,10 @@ const LabelLoadBalancerName = "kubelb.k8c.io/lb-name"
 const LabelTenantName = "kubelb.k8c.io/tenant"
 const LabelManagedBy = "kubelb.k8c.io/managed-by"
 const LabelControllerName = "kubelb"
+const LabelBridgeService = "bridge-service"
 
 const LabelAppKubernetesName = "app.kubernetes.io/name"            // mysql
+const LabelAppKubernetesType = "app.kubernetes.io/type"            // mysql
 const LabelAppKubernetesInstance = "app.kubernetes.io/instance"    // mysql-abcxzy"
 const LabelAppKubernetesVersion = "app.kubernetes.io/version"      // 5.7.21
 const LabelAppKubernetesComponent = "app.kubernetes.io/component"  // database

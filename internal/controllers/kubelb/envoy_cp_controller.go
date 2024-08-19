@@ -37,10 +37,13 @@ import (
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	ctrlruntimeclient "sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
+	"sigs.k8s.io/controller-runtime/pkg/predicate"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 )
 
@@ -84,12 +87,17 @@ func (r *EnvoyCPReconciler) reconcile(ctx context.Context, req ctrl.Request) err
 		return fmt.Errorf("failed to list LoadBalancers and Routes: %w", err)
 	}
 
-	if len(lbs) == 0 && len(routes) == 0 {
-		r.EnvoyCache.ClearSnapshot(snapshotName)
-		return r.cleanupEnvoyProxy(ctx, appName, req.Namespace)
+	namespace := req.Namespace
+	if r.EnvoyProxyTopology.IsGlobalTopology() {
+		namespace = r.Namespace
 	}
 
-	if err := r.ensureEnvoyProxy(ctx, req.Namespace, appName, snapshotName); err != nil {
+	if len(lbs) == 0 && len(routes) == 0 {
+		r.EnvoyCache.ClearSnapshot(snapshotName)
+		return r.cleanupEnvoyProxy(ctx, appName, namespace)
+	}
+
+	if err := r.ensureEnvoyProxy(ctx, namespace, appName, snapshotName); err != nil {
 		return fmt.Errorf("failed to update Envoy proxy: %w", err)
 	}
 
@@ -191,10 +199,6 @@ func (r *EnvoyCPReconciler) ListLoadBalancersAndRoutes(ctx context.Context, req 
 func (r *EnvoyCPReconciler) cleanupEnvoyProxy(ctx context.Context, appName string, namespace string) error {
 	log := ctrl.LoggerFrom(ctx).WithValues("reconcile", "envoy-proxy")
 	log.V(2).Info("cleanup envoy-proxy")
-
-	if r.EnvoyProxyTopology == EnvoyProxyTopologyGlobal {
-		namespace = r.Namespace
-	}
 
 	objMeta := v1.ObjectMeta{
 		Name:      fmt.Sprintf(envoyResourcePattern, appName),
@@ -371,10 +375,13 @@ func (r *EnvoyCPReconciler) SetupWithManager(ctx context.Context, mgr ctrl.Manag
 	// find an alternative for this since it is more of a "hack".
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&kubelbv1alpha1.LoadBalancer{}).
+		// Disable concurrency to ensure that only one snapshot is created at a time.
+		WithOptions(controller.Options{MaxConcurrentReconciles: 1}).
 		WithEventFilter(utils.ByLabelExistsOnNamespace(ctx, mgr.GetClient())).
 		Watches(
 			&kubelbv1alpha1.Route{},
 			handler.EnqueueRequestsFromMapFunc(r.enqueueLoadBalancers()),
+			builder.WithPredicates(predicate.GenerationChangedPredicate{}),
 		).
 		Watches(
 			&kubelbv1alpha1.Addresses{},

@@ -28,7 +28,6 @@ import (
 
 	"k8s.io/apimachinery/pkg/api/equality"
 	kerrors "k8s.io/apimachinery/pkg/api/errors"
-	"k8s.io/utils/ptr"
 	ctrlclient "sigs.k8s.io/controller-runtime/pkg/client"
 	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
 )
@@ -63,25 +62,19 @@ func CreateOrUpdateGateway(ctx context.Context, log logr.Logger, client ctrlclie
 		return fmt.Errorf("multiple Gateway objects are not supported")
 	}
 
-	// We scope the listeners for the gateway down to the same namespace
-	for i, listener := range object.Spec.Listeners {
-		if listener.AllowedRoutes != nil && listener.AllowedRoutes.Namespaces != nil {
-			object.Spec.Listeners[i].AllowedRoutes.Namespaces.Selector = nil
-			object.Spec.Listeners[i].AllowedRoutes.Namespaces.From = ptr.To(gwapiv1.NamespacesFromSame)
-		}
-	}
-
 	// Process annotations.
 	object.Annotations = kubelb.PropagateAnnotations(object.Annotations, annotations)
 
 	// Process secrets.
 	for i, listener := range object.Spec.Listeners {
 		if listener.TLS != nil {
-			for _, reference := range listener.TLS.CertificateRefs {
-				secretName := util.GetSecretNameIfExists(ctx, client, string(reference.Name), object.Namespace)
+			for j, reference := range listener.TLS.CertificateRefs {
+				secretName := util.GetSecretNameIfExists(ctx, client, string(reference.Name), object.Namespace, namespace)
 				if secretName != "" {
-					object.Spec.Listeners[i].TLS.CertificateRefs[0].Name = gwapiv1.ObjectName(secretName)
+					object.Spec.Listeners[i].TLS.CertificateRefs[j].Name = gwapiv1.ObjectName(secretName)
 				}
+				// cross namespace references are not allowed
+				object.Spec.Listeners[i].TLS.CertificateRefs[j].Namespace = nil
 			}
 		}
 	}

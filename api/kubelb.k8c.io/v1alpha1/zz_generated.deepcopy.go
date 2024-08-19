@@ -759,6 +759,11 @@ func (in *SyncSecret) DeepCopyInto(out *SyncSecret) {
 	*out = *in
 	out.TypeMeta = in.TypeMeta
 	in.ObjectMeta.DeepCopyInto(&out.ObjectMeta)
+	if in.Immutable != nil {
+		in, out := &in.Immutable, &out.Immutable
+		*out = new(bool)
+		**out = **in
+	}
 	if in.Data != nil {
 		in, out := &in.Data, &out.Data
 		*out = make(map[string][]byte, len(*in))

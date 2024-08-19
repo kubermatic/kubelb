@@ -108,6 +108,7 @@ func (r *SecretConversionReconciler) reconcile(ctx context.Context, _ logr.Logge
 	syncSecret.Labels[kubelb.LabelOriginName] = secret.Name
 	syncSecret.Data = secret.Data
 	syncSecret.StringData = secret.StringData
+	syncSecret.Immutable = secret.Immutable
 	syncSecret.Type = secret.Type
 	return CreateOrUpdateSyncSecret(ctx, r.Client, syncSecret)
 }

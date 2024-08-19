@@ -104,9 +104,6 @@ func (r *SyncSecretReconciler) reconcile(ctx context.Context, _ logr.Logger, obj
 	secret.Labels = object.Labels
 	secret.Annotations = object.Annotations
 	secret.Namespace = object.Namespace
-	if r.EnvoyProxyTopology.IsGlobalTopology() {
-		secret.Namespace = r.Namespace
-	}
 
 	// Name needs to be randomized so using the UID of the SyncSecret.
 	secret.Name = string(object.UID)
@@ -160,10 +157,6 @@ func CreateOrUpdateSecret(ctx context.Context, client ctrlclient.Client, obj *co
 func (r *SyncSecretReconciler) cleanup(ctx context.Context, object *kubelbv1alpha1.SyncSecret) (ctrl.Result, error) {
 	resource := &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{Name: string(object.UID), Namespace: object.Namespace},
-	}
-
-	if r.EnvoyProxyTopology.IsGlobalTopology() {
-		resource.Namespace = r.Namespace
 	}
 
 	err := r.Delete(ctx, resource)
