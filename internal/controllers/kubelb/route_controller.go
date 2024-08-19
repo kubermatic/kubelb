@@ -43,7 +43,9 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/client-go/util/retry"
+	"k8s.io/utils/ptr"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	ctrlclient "sigs.k8s.io/controller-runtime/pkg/client"
 	ctrlruntimeclient "sigs.k8s.io/controller-runtime/pkg/client"
@@ -103,15 +105,10 @@ func (r *RouteReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 		return reconcile.Result{}, err
 	}
 
-	resourceNamespace := resource.Namespace
-	if config.Spec.EnvoyProxy.Topology == kubelbv1alpha1.EnvoyProxyTopologyGlobal {
-		resourceNamespace = r.Namespace
-	}
-
 	// Resource is marked for deletion
 	if resource.DeletionTimestamp != nil {
 		if controllerutil.ContainsFinalizer(resource, CleanupFinalizer) {
-			return r.cleanup(ctx, resource, resourceNamespace)
+			return r.cleanup(ctx, resource)
 		}
 		// Finalizer doesn't exist so clean up is already done
 		return reconcile.Result{}, nil
@@ -125,7 +122,7 @@ func (r *RouteReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 
 	// If the resource is disabled, we need to clean up the resources
 	if controllerutil.ContainsFinalizer(resource, CleanupFinalizer) && disabled {
-		return r.cleanup(ctx, resource, resourceNamespace)
+		return r.cleanup(ctx, resource)
 	}
 
 	if !shouldReconcile {
@@ -143,7 +140,7 @@ func (r *RouteReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 		}
 	}
 
-	err = r.reconcile(ctx, log, resource, resourceNamespace, config, tenant)
+	err = r.reconcile(ctx, log, resource, config, tenant)
 	if err != nil {
 		log.Error(err, "reconciling failed")
 	}
@@ -151,17 +148,17 @@ func (r *RouteReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 	return reconcile.Result{}, err
 }
 
-func (r *RouteReconciler) reconcile(ctx context.Context, log logr.Logger, route *kubelbv1alpha1.Route, resourceNamespace string, config *kubelbv1alpha1.Config, tenant *kubelbv1alpha1.Tenant) error {
+func (r *RouteReconciler) reconcile(ctx context.Context, log logr.Logger, route *kubelbv1alpha1.Route, config *kubelbv1alpha1.Config, tenant *kubelbv1alpha1.Tenant) error {
 	annotations := GetAnnotations(tenant, config)
 
 	// Create or update services based on the route.
-	err := r.manageServices(ctx, log, route, resourceNamespace, annotations)
+	err := r.manageServices(ctx, log, route, annotations)
 	if err != nil {
 		return fmt.Errorf("failed to create or update services: %w", err)
 	}
 
 	// Create or update the route object.
-	err = r.manageRoutes(ctx, log, route, resourceNamespace, config, tenant, annotations)
+	err = r.manageRoutes(ctx, log, route, config, tenant, annotations)
 	if err != nil {
 		return fmt.Errorf("failed to create or update route: %w", err)
 	}
@@ -169,18 +166,26 @@ func (r *RouteReconciler) reconcile(ctx context.Context, log logr.Logger, route 
 	return nil
 }
 
-func (r *RouteReconciler) cleanup(ctx context.Context, route *kubelbv1alpha1.Route, ns string) (ctrl.Result, error) {
+func (r *RouteReconciler) cleanup(ctx context.Context, route *kubelbv1alpha1.Route) (ctrl.Result, error) {
 	// Route will be removed automatically because of owner reference. We need to take care of removing
 	// the services while ensuring that the services are not being used by other routes.
 	for _, value := range route.Status.Resources.Services {
 		log := r.Log.WithValues("name", value.Name, "namespace", value.Namespace)
-		log.V(1).Info("Deleting service", "name", value.GeneratedName, "namespace", ns)
 		svc := corev1.Service{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      value.GeneratedName,
-				Namespace: ns,
+				Namespace: route.Namespace,
 			},
 		}
+
+		if r.EnvoyProxyTopology.IsGlobalTopology() {
+			// Bridge services exist in the controller namespace.
+			if value.Namespace == r.Namespace {
+				svc.Namespace = r.Namespace
+			}
+		}
+		log.V(1).Info("Deleting service", "name", value.GeneratedName, "namespace", value.Namespace)
+
 		if err := r.Client.Delete(ctx, &svc); err != nil {
 			if !kerrors.IsNotFound(err) {
 				return reconcile.Result{}, fmt.Errorf("failed to delete service: %w", err)
@@ -201,13 +206,13 @@ func (r *RouteReconciler) cleanup(ctx context.Context, route *kubelbv1alpha1.Rou
 	return reconcile.Result{}, nil
 }
 
-func (r *RouteReconciler) manageServices(ctx context.Context, log logr.Logger, route *kubelbv1alpha1.Route, resourceNamespace string, annotations kubelbv1alpha1.AnnotationSettings) error {
+func (r *RouteReconciler) manageServices(ctx context.Context, log logr.Logger, route *kubelbv1alpha1.Route, annotations kubelbv1alpha1.AnnotationSettings) error {
 	if route.Spec.Source.Kubernetes == nil {
 		return nil
 	}
 
 	// Before creating/updating services, ensure that the orphaned services are cleaned up.
-	err := r.cleanupOrphanedServices(ctx, log, route, resourceNamespace)
+	err := r.cleanupOrphanedServices(ctx, log, route, r.EnvoyProxyTopology.IsGlobalTopology())
 	if err != nil {
 		return fmt.Errorf("failed to cleanup orphaned services: %w", err)
 	}
@@ -221,7 +226,14 @@ func (r *RouteReconciler) manageServices(ctx context.Context, log logr.Logger, r
 	services := []corev1.Service{}
 	for _, service := range route.Spec.Source.Kubernetes.Services {
 		// Transform the service into desired state.
-		svc := serviceHelpers.GenerateServiceForLBCluster(service.Service, appName, route.Namespace, resourceNamespace, r.PortAllocator, r.EnvoyProxyTopology.IsGlobalTopology(), annotations)
+		svc := serviceHelpers.GenerateServiceForLBCluster(service.Service, appName, route.Namespace, r.PortAllocator, r.EnvoyProxyTopology.IsGlobalTopology(), annotations)
+
+		// We need a bridge service in the controller namespace.
+		if r.EnvoyProxyTopology.IsGlobalTopology() {
+			bridgeService := serviceHelpers.GenerateBridgeService(svc, appName, r.Namespace)
+			services = append(services, bridgeService)
+		}
+
 		services = append(services, svc)
 	}
 
@@ -240,7 +252,7 @@ func (r *RouteReconciler) manageServices(ctx context.Context, log logr.Logger, r
 	return r.UpdateRouteStatus(ctx, route, *routeStatus)
 }
 
-func (r *RouteReconciler) cleanupOrphanedServices(ctx context.Context, log logr.Logger, route *kubelbv1alpha1.Route, resourceNamespace string) error {
+func (r *RouteReconciler) cleanupOrphanedServices(ctx context.Context, log logr.Logger, route *kubelbv1alpha1.Route, globalTopology bool) error {
 	// Get all the services based on route.
 	desiredServices := map[string]bool{}
 	for _, service := range route.Spec.Source.Kubernetes.Services {
@@ -254,13 +266,30 @@ func (r *RouteReconciler) cleanupOrphanedServices(ctx context.Context, log logr.
 	}
 
 	for key, value := range route.Status.Resources.Services {
+		ns := route.Namespace
 		if _, ok := desiredServices[key]; !ok {
+			found := false
+			if globalTopology && value.Namespace == r.Namespace {
+				// Bridged services don't have any references in the spec.
+				for _, statusService := range route.Status.Resources.Services {
+					if statusService.GeneratedName == value.GeneratedName && statusService.Namespace != value.Namespace {
+						found = true
+						break
+					}
+				}
+				if found {
+					continue
+				}
+
+				ns = r.Namespace
+			}
+
 			// Service is not desired, so delete it.
-			log.V(4).Info("Deleting orphaned service", "name", value.GeneratedName, "namespace", resourceNamespace)
+			log.V(4).Info("Deleting orphaned service", "name", value.GeneratedName, "namespace", route.Namespace)
 			svc := corev1.Service{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      value.GeneratedName,
-					Namespace: resourceNamespace,
+					Namespace: ns,
 				},
 			}
 			if err := r.Client.Delete(ctx, &svc); err != nil {
@@ -300,7 +329,7 @@ func (r *RouteReconciler) UpdateRouteStatus(ctx context.Context, route *kubelbv1
 	})
 }
 
-func (r *RouteReconciler) manageRoutes(ctx context.Context, log logr.Logger, route *kubelbv1alpha1.Route, resourceNamespace string, config *kubelbv1alpha1.Config, tenant *kubelbv1alpha1.Tenant, annotations kubelbv1alpha1.AnnotationSettings) error {
+func (r *RouteReconciler) manageRoutes(ctx context.Context, log logr.Logger, route *kubelbv1alpha1.Route, config *kubelbv1alpha1.Config, tenant *kubelbv1alpha1.Tenant, annotations kubelbv1alpha1.AnnotationSettings) error {
 	if route.Spec.Source.Kubernetes == nil {
 		return nil
 	}
@@ -315,6 +344,7 @@ func (r *RouteReconciler) manageRoutes(ctx context.Context, log logr.Logger, rou
 		Kind:       route.Kind,
 		Name:       route.Name,
 		UID:        route.UID,
+		Controller: ptr.To(true),
 	}
 
 	// Set owner reference for the resource.
@@ -337,7 +367,7 @@ func (r *RouteReconciler) manageRoutes(ctx context.Context, log logr.Logger, rou
 	// Determine the type of the resource and call the appropriate method
 	switch v := resource.(type) {
 	case *v1.Ingress: // v1 "k8s.io/api/networking/v1"
-		err = ingressHelpers.CreateOrUpdateIngress(ctx, log, r.Client, v, referencedServices, resourceNamespace, config, tenant, annotations)
+		err = ingressHelpers.CreateOrUpdateIngress(ctx, log, r.Client, v, referencedServices, route.Namespace, config, tenant, annotations)
 		if err == nil {
 			// Retrieve updated object to get the status.
 			key := client.ObjectKey{Namespace: v.Namespace, Name: v.Name}
@@ -351,7 +381,7 @@ func (r *RouteReconciler) manageRoutes(ctx context.Context, log logr.Logger, rou
 		}
 
 	case *gwapiv1.Gateway: // v1 "sigs.k8s.io/gateway-api/apis/v1"
-		err = gatewayHelpers.CreateOrUpdateGateway(ctx, log, r.Client, v, resourceNamespace, config, tenant, annotations, config.IsGlobalTopology())
+		err = gatewayHelpers.CreateOrUpdateGateway(ctx, log, r.Client, v, route.Namespace, config, tenant, annotations, config.IsGlobalTopology())
 		if err == nil {
 			// Retrieve updated object to get the status.
 			key := client.ObjectKey{Namespace: v.Namespace, Name: v.Name}
@@ -365,7 +395,7 @@ func (r *RouteReconciler) manageRoutes(ctx context.Context, log logr.Logger, rou
 		}
 
 	case *gwapiv1.HTTPRoute: // v1 "sigs.k8s.io/gateway-api/apis/v1"
-		err = httprouteHelpers.CreateOrUpdateHTTPRoute(ctx, log, r.Client, v, referencedServices, resourceNamespace, tenant, annotations, config.IsGlobalTopology())
+		err = httprouteHelpers.CreateOrUpdateHTTPRoute(ctx, log, r.Client, v, referencedServices, route.Namespace, tenant, annotations, config.IsGlobalTopology())
 		if err == nil {
 			// Retrieve updated object to get the status.
 			key := client.ObjectKey{Namespace: v.Namespace, Name: v.Name}
@@ -379,7 +409,7 @@ func (r *RouteReconciler) manageRoutes(ctx context.Context, log logr.Logger, rou
 		}
 
 	case *gwapiv1.GRPCRoute: // v1 "sigs.k8s.io/gateway-api/apis/v1"
-		err = grpcrouteHelpers.CreateOrUpdateGRPCRoute(ctx, log, r.Client, v, referencedServices, resourceNamespace, tenant, annotations, config.IsGlobalTopology())
+		err = grpcrouteHelpers.CreateOrUpdateGRPCRoute(ctx, log, r.Client, v, referencedServices, route.Namespace, tenant, annotations, config.IsGlobalTopology())
 		if err == nil {
 			// Retrieve updated object to get the status.
 			key := client.ObjectKey{Namespace: v.Namespace, Name: v.Name}
@@ -472,6 +502,11 @@ func isGatewayAPIDisabled(log logr.Logger, disableGatewayAPI bool, config kubelb
 func updateServiceStatus(routeStatus *kubelbv1alpha1.RouteStatus, svc *corev1.Service, err error) {
 	originalName := serviceHelpers.GetServiceName(*svc)
 	originalNamespace := serviceHelpers.GetServiceNamespace(*svc)
+
+	if val, ok := svc.Labels[kubelb.LabelAppKubernetesType]; ok && val == kubelb.LabelBridgeService {
+		originalNamespace = svc.Namespace
+	}
+
 	status := kubelbv1alpha1.RouteServiceStatus{
 		ResourceState: kubelbv1alpha1.ResourceState{
 			GeneratedName: svc.GetName(),
@@ -571,8 +606,7 @@ func (r *RouteReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	// 1. Watch for changes in Route object.
 	// 2. Skip reconciliation if generation is not changed; only status/metadata changed.
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&kubelbv1alpha1.Route{}).
-		WithEventFilter(predicate.GenerationChangedPredicate{}).
+		For(&kubelbv1alpha1.Route{}, builder.WithPredicates(predicate.GenerationChangedPredicate{})).
 		Watches(
 			&kubelbv1alpha1.Config{},
 			handler.EnqueueRequestsFromMapFunc(r.enqueueRoutesForConfig()),
@@ -581,6 +615,10 @@ func (r *RouteReconciler) SetupWithManager(mgr ctrl.Manager) error {
 			&kubelbv1alpha1.Tenant{},
 			handler.EnqueueRequestsFromMapFunc(r.enqueueRoutesForTenant()),
 		).
+		Owns(&v1.Ingress{}).
+		Owns(&gwapiv1.Gateway{}).
+		Owns(&gwapiv1.HTTPRoute{}).
+		Owns(&gwapiv1.GRPCRoute{}).
 		Complete(r)
 }
 
@@ -632,7 +670,6 @@ func (r *RouteReconciler) enqueueRoutesForTenant() handler.MapFunc {
 				},
 			})
 		}
-
 		return result
 	}
 }

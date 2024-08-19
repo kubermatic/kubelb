@@ -23,6 +23,7 @@ import (
 	"github.com/go-logr/logr"
 
 	kubelbv1alpha1 "k8c.io/kubelb/api/kubelb.k8c.io/v1alpha1"
+	"k8c.io/kubelb/internal/kubelb"
 	"k8c.io/kubelb/internal/resources/route"
 	serviceHelpers "k8c.io/kubelb/internal/resources/service"
 	"k8c.io/kubelb/internal/resources/unstructured"
@@ -30,6 +31,8 @@ import (
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/types"
 	ctrlclient "sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/handler"
+	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 	gwapiv1alpha2 "sigs.k8s.io/gateway-api/apis/v1alpha2"
 )
 
@@ -78,4 +81,44 @@ func cleanupRoute(ctx context.Context, client ctrlclient.Client, resourceUID str
 		}
 	}
 	return nil
+}
+
+func enqueueRoutes(gvk, clusterNamespace string) handler.TypedMapFunc[*kubelbv1alpha1.Route] {
+	return handler.TypedMapFunc[*kubelbv1alpha1.Route](func(_ context.Context, route *kubelbv1alpha1.Route) []reconcile.Request {
+		if route.GetNamespace() != clusterNamespace {
+			return []reconcile.Request{}
+		}
+
+		originalNamespace, ok := route.GetLabels()[kubelb.LabelOriginNamespace]
+		if !ok || originalNamespace == "" {
+			// Can't process further
+			return []reconcile.Request{}
+		}
+
+		originalName, ok := route.GetLabels()[kubelb.LabelOriginName]
+		if !ok || originalName == "" {
+			// Can't process further
+			return []reconcile.Request{}
+		}
+
+		resourceGVK, ok := route.GetLabels()[kubelb.LabelOriginResourceKind]
+		if !ok || originalName == "" {
+			// Can't process further
+			return []reconcile.Request{}
+		}
+
+		if gvk != resourceGVK {
+			// Can't process further
+			return []reconcile.Request{}
+		}
+
+		return []reconcile.Request{
+			{
+				NamespacedName: types.NamespacedName{
+					Name:      originalName,
+					Namespace: originalNamespace,
+				},
+			},
+		}
+	})
 }

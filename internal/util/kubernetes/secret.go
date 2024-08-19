@@ -25,9 +25,9 @@ import (
 	ctrlclient "sigs.k8s.io/controller-runtime/pkg/client"
 )
 
-func GetSecretNameIfExists(ctx context.Context, client ctrlclient.Client, name, namespace string) string {
+func GetSecretNameIfExists(ctx context.Context, client ctrlclient.Client, name, namespace string, tenantNamespace string) string {
 	secrets := corev1.SecretList{}
-	err := client.List(ctx, &secrets, ctrlclient.MatchingLabels{kubelb.LabelOriginName: name, kubelb.LabelOriginNamespace: namespace})
+	err := client.List(ctx, &secrets, ctrlclient.InNamespace(tenantNamespace), ctrlclient.MatchingLabels{kubelb.LabelOriginName: name, kubelb.LabelOriginNamespace: namespace})
 	if err != nil {
 		return ""
 	}

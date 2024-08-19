@@ -232,7 +232,7 @@ func main() {
 	if !disableIngressController {
 		if err = (&ccm.IngressReconciler{
 			Client:          mgr.GetClient(),
-			LBClient:        kubeLBMgr.GetClient(),
+			LBManager:       kubeLBMgr,
 			ClusterName:     clusterName,
 			Log:             ctrl.Log.WithName("controllers").WithName(ccm.IngressControllerName),
 			Scheme:          mgr.GetScheme(),
@@ -247,7 +247,7 @@ func main() {
 	if !disableGatewayController && !disableGatewayAPI {
 		if err = (&ccm.GatewayReconciler{
 			Client:          mgr.GetClient(),
-			LBClient:        kubeLBMgr.GetClient(),
+			LBManager:       kubeLBMgr,
 			ClusterName:     clusterName,
 			Log:             ctrl.Log.WithName("controllers").WithName(ccm.GatewayControllerName),
 			Scheme:          mgr.GetScheme(),
@@ -262,7 +262,7 @@ func main() {
 	if !disableHTTPRouteController && !disableGatewayAPI {
 		if err = (&ccm.HTTPRouteReconciler{
 			Client:      mgr.GetClient(),
-			LBClient:    kubeLBMgr.GetClient(),
+			LBManager:   kubeLBMgr,
 			ClusterName: clusterName,
 			Log:         ctrl.Log.WithName("controllers").WithName(ccm.GatewayHTTPRouteControllerName),
 			Scheme:      mgr.GetScheme(),
@@ -276,7 +276,7 @@ func main() {
 	if !disableGRPCRouteController && !disableGatewayAPI {
 		if err = (&ccm.GRPCRouteReconciler{
 			Client:      mgr.GetClient(),
-			LBClient:    kubeLBMgr.GetClient(),
+			LBManager:   kubeLBMgr,
 			ClusterName: clusterName,
 			Log:         ctrl.Log.WithName("controllers").WithName(ccm.GatewayGRPCRouteControllerName),
 			Scheme:      mgr.GetScheme(),

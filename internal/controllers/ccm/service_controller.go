@@ -24,17 +24,18 @@ import (
 	"github.com/go-logr/logr"
 
 	kubelbv1alpha1 "k8c.io/kubelb/api/kubelb.k8c.io/v1alpha1"
-	utils "k8c.io/kubelb/internal/controllers"
 	"k8c.io/kubelb/internal/kubelb"
 
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	kerrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/util/retry"
 	ctrl "sigs.k8s.io/controller-runtime"
 	ctrlclient "sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 	"sigs.k8s.io/controller-runtime/pkg/source"
@@ -76,34 +77,35 @@ func (r *KubeLBServiceReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 		return ctrl.Result{}, nil
 	}
 
+	// Resource is marked for deletion
+	if service.DeletionTimestamp != nil {
+		if controllerutil.ContainsFinalizer(&service, CleanupFinalizer) || controllerutil.ContainsFinalizer(&service, LBFinalizerName) {
+			return r.cleanupService(ctx, log, &service)
+		}
+		// Finalizer doesn't exist so clean up is already done
+		return reconcile.Result{}, nil
+	}
+
 	if !r.shouldReconcile(service) {
 		return ctrl.Result{}, nil
 	}
 
-	clusterEndpoints, useAddressesReference := r.getEndpoints(&service)
+	// Add finalizer if it doesn't exist
+	if !controllerutil.ContainsFinalizer(&service, CleanupFinalizer) {
+		if ok := controllerutil.AddFinalizer(&service, CleanupFinalizer); !ok {
+			log.Error(nil, "Failed to add finalizer for the LB Service")
+			return ctrl.Result{Requeue: true}, nil
+		}
 
-	// examine DeletionTimestamp to determine if object is under deletion
-	if !service.ObjectMeta.DeletionTimestamp.IsZero() {
-		// The object is being deleted
-		// our finalizer is present, so lets handle any external dependency
-		// if fail to delete the external dependency here, return with error
-		// so that it can be retried
-		// remove our finalizer from the list and update it.
-		// Stop reconciliation as the item is being deleted
-		return r.cleanupService(ctx, log, &service)
-	}
-
-	// If it does not have our finalizer, then lets add the finalizer and update the object. This is equivalent
-	// registering our finalizer.
-	if !utils.ContainsString(service.ObjectMeta.Finalizers, LBFinalizerName) {
-		service.ObjectMeta.Finalizers = append(service.ObjectMeta.Finalizers, LBFinalizerName)
-		log.V(4).Info("setting finalizer")
+		// Remove old finalizer since it is not used anymore.
+		controllerutil.RemoveFinalizer(&service, LBFinalizerName)
 
 		if err := r.Update(ctx, &service); err != nil {
-			return ctrl.Result{}, err
+			return reconcile.Result{}, fmt.Errorf("failed to add finalizer: %w", err)
 		}
 	}
 
+	clusterEndpoints, useAddressesReference := r.getEndpoints(&service)
 	log.V(5).Info("proceeding with", "endpoints", clusterEndpoints)
 
 	desiredLB := kubelb.MapLoadBalancer(&service, clusterEndpoints, useAddressesReference, r.ClusterName)
@@ -166,10 +168,6 @@ func (r *KubeLBServiceReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 }
 
 func (r *KubeLBServiceReconciler) cleanupService(ctx context.Context, log logr.Logger, service *corev1.Service) (reconcile.Result, error) {
-	if !utils.ContainsString(service.ObjectMeta.Finalizers, LBFinalizerName) {
-		return ctrl.Result{}, nil
-	}
-
 	lb := &kubelbv1alpha1.LoadBalancer{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      string(service.UID),
@@ -177,22 +175,17 @@ func (r *KubeLBServiceReconciler) cleanupService(ctx context.Context, log logr.L
 		},
 	}
 	err := r.KubeLBManager.GetClient().Delete(ctx, lb)
-	switch {
-	case apierrors.IsNotFound(err):
-		return ctrl.Result{}, nil
-	case err != nil:
+	if err != nil && !kerrors.IsNotFound(err) {
 		return ctrl.Result{}, fmt.Errorf("deleting LoadBalancer: %w", err)
-	default:
-		// proceed
 	}
 
 	log.V(1).Info("deleting Service LoadBalancer finalizer", "name", lb.Name)
 
-	service.ObjectMeta.Finalizers = utils.RemoveString(service.ObjectMeta.Finalizers, LBFinalizerName)
+	controllerutil.RemoveFinalizer(service, LBFinalizerName)
+	controllerutil.RemoveFinalizer(service, CleanupFinalizer)
 	if err := r.Update(ctx, service); err != nil {
-		return ctrl.Result{}, err
+		return reconcile.Result{}, fmt.Errorf("failed to remove finalizer: %w", err)
 	}
-
 	log.V(4).Info("removed finalizer")
 
 	return ctrl.Result{}, nil

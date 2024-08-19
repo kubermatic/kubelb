@@ -240,6 +240,19 @@ func main() {
 		}
 	}
 
+	// This is only required when using global topology.
+	if conf.IsGlobalTopology() {
+		if err = (&kubelb.BridgeServiceReconciler{
+			Client:   mgr.GetClient(),
+			Scheme:   mgr.GetScheme(),
+			Log:      ctrl.Log.WithName("controllers").WithName(kubelb.BridgeServiceControllerName),
+			Recorder: mgr.GetEventRecorderFor(kubelb.BridgeServiceControllerName),
+		}).SetupWithManager(mgr); err != nil {
+			setupLog.Error(err, "unable to create controller", "controller", kubelb.BridgeServiceControllerName)
+			os.Exit(1)
+		}
+	}
+
 	go func() {
 		setupLog.Info("starting kubelb envoy manager")
 

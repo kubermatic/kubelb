@@ -44,6 +44,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
+	"sigs.k8s.io/controller-runtime/pkg/source"
 	"sigs.k8s.io/yaml"
 )
 
@@ -56,7 +57,7 @@ const (
 type IngressReconciler struct {
 	ctrlclient.Client
 
-	LBClient        ctrlclient.Client
+	LBManager       ctrl.Manager
 	ClusterName     string
 	UseIngressClass bool
 
@@ -121,14 +122,14 @@ func (r *IngressReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 func (r *IngressReconciler) reconcile(ctx context.Context, log logr.Logger, ingress *networkingv1.Ingress) error {
 	// We need to traverse the Ingress, find all the services associated with it, create/update the corresponding Route in LB cluster.
 	originalServices := ingressHelpers.GetServicesFromIngress(*ingress)
-	err := reconcileSourceForRoute(ctx, log, r.Client, r.LBClient, ingress, originalServices, nil, r.ClusterName)
+	err := reconcileSourceForRoute(ctx, log, r.Client, r.LBManager.GetClient(), ingress, originalServices, nil, r.ClusterName)
 	if err != nil {
 		return fmt.Errorf("failed to reconcile source for route: %w", err)
 	}
 
 	// Route was reconciled successfully, now we need to update the status of the Ingress.
 	route := kubelbv1alpha1.Route{}
-	err = r.LBClient.Get(ctx, types.NamespacedName{Name: string(ingress.UID), Namespace: r.ClusterName}, &route)
+	err = r.LBManager.GetClient().Get(ctx, types.NamespacedName{Name: string(ingress.UID), Namespace: r.ClusterName}, &route)
 	if err != nil {
 		return fmt.Errorf("failed to get Route from LB cluster: %w", err)
 	}
@@ -192,7 +193,7 @@ func (r *IngressReconciler) cleanup(ctx context.Context, ingress *networkingv1.I
 	}
 
 	// Find the Route in LB cluster and delete it
-	err = cleanupRoute(ctx, r.LBClient, string(ingress.UID), r.ClusterName)
+	err = cleanupRoute(ctx, r.LBManager.GetClient(), string(ingress.UID), r.ClusterName)
 	if err != nil {
 		return reconcile.Result{}, fmt.Errorf("failed to cleanup route: %w", err)
 	}
@@ -278,6 +279,10 @@ func (r *IngressReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		Watches(
 			&corev1.Service{},
 			handler.EnqueueRequestsFromMapFunc(r.enqueueResources()),
+		).
+		WatchesRawSource(
+			source.Kind(r.LBManager.GetCache(), &kubelbv1alpha1.Route{},
+				handler.TypedEnqueueRequestsFromMapFunc[*kubelbv1alpha1.Route](enqueueRoutes("Ingress.networking.k8s.io", r.ClusterName))),
 		).
 		Complete(r)
 }
