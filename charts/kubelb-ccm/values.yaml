@@ -18,8 +18,8 @@ kubelb:
   nodeAddressType: ExternalIP
   # -- useLoadBalancerClass specifies whether to target services of type LoadBalancer with `kubelb` load balancer class or all services of type LoadBalancer.
   useLoadBalancerClass: false
-  # -- disableGatewayAPI specifies whether to disable the Gateway API and Gateway Controllers.
-  disableGatewayAPI: false
+  # -- disableGatewayAPI specifies whether to disable the Gateway API and Gateway Controllers. By default Gateway API is disabled since without Gateway APIs installed the controller cannot start.
+  disableGatewayAPI: true
   # -- Enable to automatically convert Secrets labelled with `kubelb.k8c.io/managed-by: kubelb` to Sync Secrets. This is used to sync secrets from tenants to the LB cluster in a controlled and secure way.
   enableSecretSynchronizer: false
 

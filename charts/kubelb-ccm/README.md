@@ -49,7 +49,7 @@ helm install kubelb-ccm kubelb-ccm --namespace kubelb -f values.yaml --create-na
 | imagePullSecrets | list | `[]` |  |
 | kubelb.clusterSecretName | string | `"kubelb-cluster"` | Name of the secret that contains kubeconfig for the loadbalancer cluster |
 | kubelb.disableGRPCRouteController | bool | `false` | disableGRPCRouteController specifies whether to disable the GRPCRoute Controller. |
-| kubelb.disableGatewayAPI | bool | `false` | disableGatewayAPI specifies whether to disable the Gateway API and Gateway Controllers. |
+| kubelb.disableGatewayAPI | bool | `true` | disableGatewayAPI specifies whether to disable the Gateway API and Gateway Controllers. By default Gateway API is disabled since without Gateway APIs installed the controller cannot start. |
 | kubelb.disableGatewayController | bool | `false` | disableGatewayController specifies whether to disable the Gateway Controller. |
 | kubelb.disableHTTPRouteController | bool | `false` | disableHTTPRouteController specifies whether to disable the HTTPRoute Controller. |
 | kubelb.disableIngressController | bool | `false` | disableIngressController specifies whether to disable the Ingress Controller. |

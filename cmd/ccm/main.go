@@ -100,7 +100,7 @@ func main() {
 	flag.BoolVar(&useGatewayClass, "use-gateway-class", true, "Use Gateway Class `kubelb` to filter Gateway objects. Gateway should have `gatewayClassName: kubelb` set in the spec.")
 
 	flag.BoolVar(&disableIngressController, "disable-ingress-controller", false, "Disable the Ingress controller.")
-	flag.BoolVar(&disableGatewayAPI, "disable-gateway-api", false, "Disable the Gateway APIs and controllers.")
+	flag.BoolVar(&disableGatewayAPI, "disable-gateway-api", true, "Disable the Gateway APIs and controllers. By default Gateway API is disabled since without Gateway APIs installed the controller cannot start.")
 	flag.BoolVar(&disableGatewayController, "disable-gateway-controller", false, "Disable the Gateway controller.")
 	flag.BoolVar(&disableHTTPRouteController, "disable-httproute-controller", false, "Disable the HTTPRoute controller.")
 	flag.BoolVar(&disableGRPCRouteController, "disable-grpcroute-controller", false, "Disable the GRPCRoute controller.")
