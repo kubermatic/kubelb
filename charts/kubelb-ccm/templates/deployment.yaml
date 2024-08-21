@@ -40,6 +40,7 @@ spec:
             - --enable-leader-election={{ .Values.kubelb.enableLeaderElection }}
             - --node-address-type={{ default "ExternalIP" .Values.kubelb.nodeAddressType }}
             - --use-loadbalancer-class={{ default false .Values.kubelb.useLoadBalancerClass }}
+            - --disable-gateway-api={{ default true .Values.kubelb.disableGatewayAPI }}
             {{ if not .Values.kubelb.useGatewayClass -}}
             - --use-gateway-class=false
             {{ end -}}
@@ -57,9 +58,6 @@ spec:
             {{ end -}}
             {{ if .Values.kubelb.disableGRPCRouteController -}}
             - --disable-grpcroute-controller=true
-            {{ end -}}
-            {{ if .Values.kubelb.disableGatewayAPI -}}
-            - --disable-gateway-api=true
             {{ end -}}
             {{ if .Values.kubelb.enableSecretSynchronizer -}}
             - --enable-secret-synchronizer=true
