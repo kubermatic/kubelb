@@ -19,6 +19,10 @@ set -euo pipefail
 cd $(dirname $0)/..
 source hack/lib.sh
 
+JOB_NAME=${JOB_NAME:-}
+PROW_JOB_ID=${PROW_JOB_ID:-}
+CHART_VERSION=${CHART_VERSION:-}
+
 ## When running out of CI, it's expected that the user has already configured vault
 if [ -n "$JOB_NAME" ] || [ -n "$PROW_JOB_ID" ]; then
   echodate "Getting secrets from Vault"
