@@ -43,7 +43,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
-	gwapiv1alpha2 "sigs.k8s.io/gateway-api/apis/v1alpha2"
 )
 
 var (
@@ -100,7 +99,7 @@ func main() {
 	flag.BoolVar(&useGatewayClass, "use-gateway-class", true, "Use Gateway Class `kubelb` to filter Gateway objects. Gateway should have `gatewayClassName: kubelb` set in the spec.")
 
 	flag.BoolVar(&disableIngressController, "disable-ingress-controller", false, "Disable the Ingress controller.")
-	flag.BoolVar(&disableGatewayAPI, "disable-gateway-api", true, "Disable the Gateway APIs and controllers. By default Gateway API is disabled since without Gateway APIs installed the controller cannot start.")
+	flag.BoolVar(&disableGatewayAPI, "disable-gateway-api", false, "Disable the Gateway APIs and controllers. By default Gateway API is enabled although without Gateway API CRDs installed the controller cannot start.")
 	flag.BoolVar(&disableGatewayController, "disable-gateway-controller", false, "Disable the Gateway controller.")
 	flag.BoolVar(&disableHTTPRouteController, "disable-httproute-controller", false, "Disable the HTTPRoute controller.")
 	flag.BoolVar(&disableGRPCRouteController, "disable-grpcroute-controller", false, "Disable the GRPCRoute controller.")
@@ -108,7 +107,6 @@ func main() {
 	flag.BoolVar(&enableSecretSynchronizer, "enable-secret-synchronizer", false, "Enable to automatically convert Secrets labelled with `kubelb.k8c.io/managed-by: kubelb` to Sync Secrets.  This is used to sync secrets from tenants to the LB cluster in a controlled and secure way.")
 
 	if !disableGatewayAPI {
-		utilruntime.Must(gwapiv1alpha2.Install(scheme))
 		utilruntime.Must(gwapiv1.Install(scheme))
 	}
 
@@ -244,7 +242,7 @@ func main() {
 		}
 	}
 
-	if !disableGatewayController && !disableGatewayAPI {
+	if !(disableGatewayController || disableGatewayAPI) {
 		if err = (&ccm.GatewayReconciler{
 			Client:          mgr.GetClient(),
 			LBManager:       kubeLBMgr,
@@ -259,7 +257,7 @@ func main() {
 		}
 	}
 
-	if !disableHTTPRouteController && !disableGatewayAPI {
+	if !(disableHTTPRouteController || disableGatewayAPI) {
 		if err = (&ccm.HTTPRouteReconciler{
 			Client:      mgr.GetClient(),
 			LBManager:   kubeLBMgr,
@@ -273,7 +271,7 @@ func main() {
 		}
 	}
 
-	if !disableGRPCRouteController && !disableGatewayAPI {
+	if !(disableGRPCRouteController || disableGatewayAPI) {
 		if err = (&ccm.GRPCRouteReconciler{
 			Client:      mgr.GetClient(),
 			LBManager:   kubeLBMgr,

@@ -605,7 +605,7 @@ func envoyApplicationName(topology EnvoyProxyTopology, namespace string) string 
 func (r *RouteReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	// 1. Watch for changes in Route object.
 	// 2. Skip reconciliation if generation is not changed; only status/metadata changed.
-	return ctrl.NewControllerManagedBy(mgr).
+	controller := ctrl.NewControllerManagedBy(mgr).
 		For(&kubelbv1alpha1.Route{}, builder.WithPredicates(predicate.GenerationChangedPredicate{})).
 		Watches(
 			&kubelbv1alpha1.Config{},
@@ -615,11 +615,14 @@ func (r *RouteReconciler) SetupWithManager(mgr ctrl.Manager) error {
 			&kubelbv1alpha1.Tenant{},
 			handler.EnqueueRequestsFromMapFunc(r.enqueueRoutesForTenant()),
 		).
-		Owns(&v1.Ingress{}).
-		Owns(&gwapiv1.Gateway{}).
-		Owns(&gwapiv1.HTTPRoute{}).
-		Owns(&gwapiv1.GRPCRoute{}).
-		Complete(r)
+		Owns(&v1.Ingress{})
+
+	if !r.DisableGatewayAPI {
+		controller = controller.Owns(&gwapiv1.Gateway{}).
+			Owns(&gwapiv1.HTTPRoute{}).
+			Owns(&gwapiv1.GRPCRoute{})
+	}
+	return controller.Complete(r)
 }
 
 // enqueueRoutesForConfig is a handler.MapFunc to be used to enqeue requests for reconciliation
