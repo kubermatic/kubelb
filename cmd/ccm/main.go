@@ -77,8 +77,8 @@ func main() {
 	var disableGatewayController bool
 	var disableHTTPRouteController bool
 	var disableGRPCRouteController bool
-	var disableGatewayAPI bool
 	var enableSecretSynchronizer bool
+	var enableGatewayAPI bool
 
 	if flag.Lookup("kubeconfig") == nil {
 		flag.StringVar(&kubeconfig, "kubeconfig", "", "Path to a kubeconfig. Only required if out-of-cluster.")
@@ -99,16 +99,18 @@ func main() {
 	flag.BoolVar(&useGatewayClass, "use-gateway-class", true, "Use Gateway Class `kubelb` to filter Gateway objects. Gateway should have `gatewayClassName: kubelb` set in the spec.")
 
 	flag.BoolVar(&disableIngressController, "disable-ingress-controller", false, "Disable the Ingress controller.")
-	flag.BoolVar(&disableGatewayAPI, "disable-gateway-api", false, "Disable the Gateway APIs and controllers. By default Gateway API is enabled although without Gateway API CRDs installed the controller cannot start.")
 	flag.BoolVar(&disableGatewayController, "disable-gateway-controller", false, "Disable the Gateway controller.")
 	flag.BoolVar(&disableHTTPRouteController, "disable-httproute-controller", false, "Disable the HTTPRoute controller.")
 	flag.BoolVar(&disableGRPCRouteController, "disable-grpcroute-controller", false, "Disable the GRPCRoute controller.")
 
 	flag.BoolVar(&enableSecretSynchronizer, "enable-secret-synchronizer", false, "Enable to automatically convert Secrets labelled with `kubelb.k8c.io/managed-by: kubelb` to Sync Secrets.  This is used to sync secrets from tenants to the LB cluster in a controlled and secure way.")
+	flag.BoolVar(&enableGatewayAPI, "enable-gateway-api", false, "Enable the Gateway APIs and controllers. By default Gateway API is disabled since without Gateway API CRDs installed the controller cannot start.")
 
-	if !disableGatewayAPI {
+	if enableGatewayAPI {
 		utilruntime.Must(gwapiv1.Install(scheme))
 	}
+
+	disableGatewayAPI := !enableGatewayAPI
 
 	opts := zap.Options{
 		Development: false,

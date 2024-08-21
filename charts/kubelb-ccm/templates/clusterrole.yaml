@@ -34,7 +34,7 @@ rules:
   - get
   - patch
   - update
-{{- if not .Values.kubelb.disableGatewayAPI }}
+{{- if .Values.kubelb.enableGatewayAPI }}
 {{- if not .Values.kubelb.disableGatewayController }}
 - apiGroups:
   - gateway.networking.k8s.io
