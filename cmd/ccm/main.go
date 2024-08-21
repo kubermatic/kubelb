@@ -106,18 +106,18 @@ func main() {
 	flag.BoolVar(&enableSecretSynchronizer, "enable-secret-synchronizer", false, "Enable to automatically convert Secrets labelled with `kubelb.k8c.io/managed-by: kubelb` to Sync Secrets.  This is used to sync secrets from tenants to the LB cluster in a controlled and secure way.")
 	flag.BoolVar(&enableGatewayAPI, "enable-gateway-api", false, "Enable the Gateway APIs and controllers. By default Gateway API is disabled since without Gateway API CRDs installed the controller cannot start.")
 
-	if enableGatewayAPI {
-		utilruntime.Must(gwapiv1.Install(scheme))
-	}
-
-	disableGatewayAPI := !enableGatewayAPI
-
 	opts := zap.Options{
 		Development: false,
 		TimeEncoder: zapcore.ISO8601TimeEncoder,
 	}
 	opts.BindFlags(flag.CommandLine)
 	flag.Parse()
+
+	if enableGatewayAPI {
+		utilruntime.Must(gwapiv1.Install(scheme))
+	}
+
+	disableGatewayAPI := !enableGatewayAPI
 
 	kubeconfig = flag.Lookup("kubeconfig").Value.(flag.Getter).Get().(string)
 
