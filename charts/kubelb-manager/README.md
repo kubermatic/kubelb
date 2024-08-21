@@ -36,7 +36,7 @@ helm install kubelb-manager kubelb-manager --namespace kubelb -f values.yaml --c
 | image.tag | string | `"v1.1.0"` |  |
 | imagePullSecrets | list | `[]` |  |
 | kubelb.debug | bool | `true` |  |
-| kubelb.disableGatewayAPI | bool | `false` | disableGatewayAPI specifies whether to disable the Gateway API and Gateway Controllers. |
+| kubelb.disableGatewayAPI | bool | `true` | disableGatewayAPI specifies whether to disable the Gateway API and Gateway Controllers. By default Gateway API is disabled since without Gateway APIs installed the controller cannot start. |
 | kubelb.enableLeaderElection | bool | `true` |  |
 | kubelb.enableTenantMigration | bool | `true` |  |
 | kubelb.envoyProxy.affinity | object | `{}` |  |
