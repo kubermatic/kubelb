@@ -38,7 +38,8 @@ spec:
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           args:
             - --enable-leader-election={{ .Values.kubelb.enableLeaderElection }}
-            - --disable-gateway-api={{ default true .Values.kubelb.disableGatewayAPI }}
+            {{ if .Values.kubelb.enableGatewayAPI -}}
+            - --enable-gateway-api=true
             {{ end -}}
             {{ if .Values.kubelb.enableTenantMigration -}}
             - --enable-tenant-migration=true

@@ -40,7 +40,9 @@ spec:
             - --enable-leader-election={{ .Values.kubelb.enableLeaderElection }}
             - --node-address-type={{ default "ExternalIP" .Values.kubelb.nodeAddressType }}
             - --use-loadbalancer-class={{ default false .Values.kubelb.useLoadBalancerClass }}
-            - --disable-gateway-api={{ default true .Values.kubelb.disableGatewayAPI }}
+            {{ if .Values.kubelb.enableGatewayAPI -}}
+            - --enable-gateway-api=true
+            {{ end -}}
             {{ if not .Values.kubelb.useGatewayClass -}}
             - --use-gateway-class=false
             {{ end -}}

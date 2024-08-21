@@ -49,7 +49,7 @@ type options struct {
 	enableDebugMode                 bool
 	namespace                       string
 	enableTenantMigrationController bool
-	disableGatewayAPI               bool
+	enableGatewayAPI                bool
 }
 
 var (
@@ -75,15 +75,17 @@ func main() {
 	flag.StringVar(&opt.namespace, "namespace", "kubelb", "The namespace where the controller will run.")
 
 	flag.BoolVar(&opt.enableTenantMigrationController, "enable-tenant-migration", true, "Enables a controller that performs automated migration from namespaces to tenants")
-	flag.BoolVar(&opt.disableGatewayAPI, "disable-gateway-api", false, "Disable the Gateway APIs and controllers. By default Gateway API is enabled although without Gateway API CRDs installed the controller cannot start.")
+	flag.BoolVar(&opt.enableGatewayAPI, "enable-gateway-api", false, "Enable the Gateway APIs and controllers. By default Gateway API is disabled since without Gateway API CRDs installed the controller cannot start.")
 
 	if flag.Lookup("kubeconfig") == nil {
 		flag.StringVar(&opt.kubeconfig, "kubeconfig", "", "Path to a kubeconfig. Only required if out-of-cluster.")
 	}
 
-	if !opt.disableGatewayAPI {
+	if opt.enableGatewayAPI {
 		utilruntime.Must(gwapiv1.Install(scheme))
 	}
+
+	disableGatewayAPI := !opt.enableGatewayAPI
 
 	if len(opt.namespace) == 0 {
 		// Retrieve controller namespace
@@ -183,7 +185,7 @@ func main() {
 		PortAllocator:      portAllocator,
 		Namespace:          opt.namespace,
 		EnvoyBootstrap:     envoyServer.GenerateBootstrap(),
-		DisableGatewayAPI:  opt.disableGatewayAPI,
+		DisableGatewayAPI:  disableGatewayAPI,
 	}).SetupWithManager(ctx, envoyMgr); err != nil {
 		setupLog.Error(err, "unable to create envoy control-plane controller", "controller", "LoadBalancer")
 		os.Exit(1)
@@ -197,7 +199,7 @@ func main() {
 		EnvoyProxyTopology: kubelb.EnvoyProxyTopology(conf.GetEnvoyProxyTopology()),
 		PortAllocator:      portAllocator,
 		Namespace:          opt.namespace,
-		DisableGatewayAPI:  opt.disableGatewayAPI,
+		DisableGatewayAPI:  disableGatewayAPI,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", kubelb.RouteControllerName)
 		os.Exit(1)
