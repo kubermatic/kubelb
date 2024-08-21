@@ -81,12 +81,6 @@ func main() {
 		flag.StringVar(&opt.kubeconfig, "kubeconfig", "", "Path to a kubeconfig. Only required if out-of-cluster.")
 	}
 
-	if opt.enableGatewayAPI {
-		utilruntime.Must(gwapiv1.Install(scheme))
-	}
-
-	disableGatewayAPI := !opt.enableGatewayAPI
-
 	if len(opt.namespace) == 0 {
 		// Retrieve controller namespace
 		ns, _ := os.LookupEnv("NAMESPACE")
@@ -104,6 +98,12 @@ func main() {
 	}
 	opts.BindFlags(flag.CommandLine)
 	flag.Parse()
+
+	if opt.enableGatewayAPI {
+		utilruntime.Must(gwapiv1.Install(scheme))
+	}
+
+	disableGatewayAPI := !opt.enableGatewayAPI
 
 	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&opts)))
 	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
