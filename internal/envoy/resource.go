@@ -38,7 +38,7 @@ import (
 	"github.com/golang/protobuf/ptypes/wrappers"
 	"google.golang.org/protobuf/types/known/anypb"
 	"google.golang.org/protobuf/types/known/durationpb"
-
+        ctrl "sigs.k8s.io/controller-runtime"
 	kubelbv1alpha1 "k8c.io/kubelb/api/kubelb.k8c.io/v1alpha1"
 	"k8c.io/kubelb/internal/kubelb"
 	portlookup "k8c.io/kubelb/internal/port-lookup"
@@ -54,7 +54,8 @@ const (
 func MapSnapshot(ctx context.Context, client ctrlclient.Client, loadBalancers []kubelbv1alpha1.LoadBalancer, routes []kubelbv1alpha1.Route, portAllocator *portlookup.PortAllocator, globalEnvoyProxyTopology bool) (*envoycache.Snapshot, error) {
 	var listener []types.Resource
 	var cluster []types.Resource
-
+	
+        log := ctrl.LoggerFrom(ctx)
 	addressesMap := make(map[string][]kubelbv1alpha1.EndpointAddress)
 	for _, lb := range loadBalancers {
 		// multiple endpoints represent multiple clusters
@@ -99,6 +100,7 @@ func MapSnapshot(ctx context.Context, client ctrlclient.Client, loadBalancers []
 				} else if lbEndpointPort.Protocol == corev1.ProtocolUDP {
 					listener = append(listener, makeUDPListener(key, key, port))
 				}
+				log.V(2).Info("adding cluster", "key", key, "ports", len(lbEndpoint.Ports))
 				cluster = append(cluster, makeCluster(key, lbEndpoints))
 			}
 		}
