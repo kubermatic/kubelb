@@ -61,8 +61,9 @@ func MapSnapshot(ctx context.Context, client ctrlclient.Client, loadBalancers []
 		for i, lbEndpoint := range lb.Spec.Endpoints {
 			if lbEndpoint.AddressesReference != nil {
 				// Check if map already contains the key
-				if val, ok := addressesMap[fmt.Sprintf(endpointAddressReferencePattern, lb.Namespace, lbEndpoint.AddressesReference.Name)]; ok && len(loadBalancers) == 1 {
+				if val, ok := addressesMap[fmt.Sprintf(endpointAddressReferencePattern, lb.Namespace, lbEndpoint.AddressesReference.Name)]; ok {
 					lb.Spec.Endpoints[i].Addresses = val
+					lbEndpoint.Addresses = val
 				} else {
 					// Load addresses from reference
 					var addresses kubelbv1alpha1.Addresses
