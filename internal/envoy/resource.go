@@ -61,19 +61,18 @@ func MapSnapshot(ctx context.Context, client ctrlclient.Client, loadBalancers []
 		for i, lbEndpoint := range lb.Spec.Endpoints {
 			if lbEndpoint.AddressesReference != nil {
 				// Check if map already contains the key
-				if val, ok := addressesMap[fmt.Sprintf(endpointAddressReferencePattern, lb.Namespace, lbEndpoint.AddressesReference.Name)]; ok {
+				if val, ok := addressesMap[fmt.Sprintf(endpointAddressReferencePattern, lb.Namespace, lbEndpoint.AddressesReference.Name)]; ok && len(loadBalancers) == 1 {
 					lb.Spec.Endpoints[i].Addresses = val
-					continue
+				} else {
+					// Load addresses from reference
+					var addresses kubelbv1alpha1.Addresses
+					if err := client.Get(ctx, ctrlclient.ObjectKey{Namespace: lb.Namespace, Name: lbEndpoint.AddressesReference.Name}, &addresses); err != nil {
+						return nil, fmt.Errorf("failed to get addresses: %w", err)
+					}
+					addressesMap[fmt.Sprintf(endpointAddressReferencePattern, lb.Namespace, lbEndpoint.AddressesReference.Name)] = addresses.Spec.Addresses
+					lb.Spec.Endpoints[i].Addresses = addresses.Spec.Addresses
+					lbEndpoint.Addresses = addresses.Spec.Addresses
 				}
-
-				// Load addresses from reference
-				var addresses kubelbv1alpha1.Addresses
-				if err := client.Get(ctx, ctrlclient.ObjectKey{Namespace: lb.Namespace, Name: lbEndpoint.AddressesReference.Name}, &addresses); err != nil {
-					return nil, fmt.Errorf("failed to get addresses: %w", err)
-				}
-				addressesMap[fmt.Sprintf(endpointAddressReferencePattern, lb.Namespace, lbEndpoint.AddressesReference.Name)] = addresses.Spec.Addresses
-				lb.Spec.Endpoints[i].Addresses = addresses.Spec.Addresses
-				lbEndpoint.Addresses = addresses.Spec.Addresses
 			}
 
 			for _, lbEndpointPort := range lbEndpoint.Ports {
