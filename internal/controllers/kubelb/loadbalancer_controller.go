@@ -284,6 +284,10 @@ func (r *LoadBalancerReconciler) reconcileService(ctx context.Context, loadBalan
 			ports = append(ports, allocatedPort)
 		}
 
+		if service.Annotations == nil {
+			service.Annotations = make(map[string]string)
+		}
+
 		for k, v := range kubelb.PropagateAnnotations(loadBalancer.Annotations, annotations) {
 			service.Annotations[k] = v
 		}
