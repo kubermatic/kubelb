@@ -61,15 +61,16 @@ func GetConfig(ctx context.Context, client ctrlclient.Client, configNamespace st
 
 func GetAnnotations(tenant *kubelbv1alpha1.Tenant, config *kubelbv1alpha1.Config) kubelbv1alpha1.AnnotationSettings {
 	var annotations kubelbv1alpha1.AnnotationSettings
-	if tenant.Spec.AnnotationSettings.PropagatedAnnotations != nil {
+	if tenant.Spec.AnnotationSettings.PropagateAllAnnotations != nil && *tenant.Spec.AnnotationSettings.PropagateAllAnnotations {
+		annotations.PropagateAllAnnotations = tenant.Spec.AnnotationSettings.PropagateAllAnnotations
+	} else if tenant.Spec.AnnotationSettings.PropagatedAnnotations != nil {
 		annotations.PropagatedAnnotations = tenant.Spec.AnnotationSettings.PropagatedAnnotations
+	}
+
+	if config.Spec.AnnotationSettings.PropagateAllAnnotations != nil && *config.Spec.AnnotationSettings.PropagateAllAnnotations {
+		annotations.PropagateAllAnnotations = config.Spec.AnnotationSettings.PropagateAllAnnotations
 	} else if config.Spec.AnnotationSettings.PropagatedAnnotations != nil {
 		annotations.PropagatedAnnotations = config.Spec.AnnotationSettings.PropagatedAnnotations
-	}
-	if tenant.Spec.AnnotationSettings.PropagateAllAnnotations == nil {
-		annotations.PropagateAllAnnotations = tenant.Spec.AnnotationSettings.PropagateAllAnnotations
-	} else if config.Spec.AnnotationSettings.PropagateAllAnnotations == nil {
-		annotations.PropagateAllAnnotations = config.Spec.AnnotationSettings.PropagateAllAnnotations
 	}
 	return annotations
 }
