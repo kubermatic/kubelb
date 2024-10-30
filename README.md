@@ -62,7 +62,7 @@ Feedback and discussion are available on [the mailing list][5].
 
 ## Changelog
 
-See [the list of releases][3] to find out about feature changes.
+See [the list of releases][9] to find out about feature changes.
 
 [1]: https://github.com/kubermatic/kubelb/issues
 [2]: https://metallb.universe.tf
@@ -72,3 +72,4 @@ See [the list of releases][3] to find out about feature changes.
 [6]: https://kubermatic.slack.com/messages/kubermatic
 [7]: http://slack.kubermatic.io/
 [8]: https://docs.kubermatic.com/kubelb
+[9]: https://github.com/kubermatic/kubelb/releases
