@@ -56,11 +56,15 @@ kind load docker-image --name=kubelb kubermatic.io/ccm:e2e
 echodate "Install kubelb"
 make install
 make e2e-deploy-kubelb
-for i in 1 2; do
-  echodate "Install ccm for cluster-tenant${i}"
-  kubectl create ns "cluster-tenant${i}"
-  kubectl label ns "cluster-tenant${i}" kubelb.k8c.io/managed-by=kubelb
-  kubectl config set-context $(kubectl config current-context) --namespace="cluster-tenant${i}"
+
+tenants=("tenant-primary" "tenant-secondary")
+i=1
+for tenant in "${tenants[@]}"; do
+  echodate "Install ccm for $tenant"
+  kubectl create ns "$tenant"
+  kubectl label ns "$tenant" kubelb.k8c.io/managed-by=kubelb
+  kubectl config set-context $(kubectl config current-context) --namespace="$tenant"
   kubectl create secret generic kubelb-cluster --from-file=kubelb="${TMPDIR}"/kubelb.kubeconfig --from-file=tenant="${TMPDIR}/tenant${i}.kubeconfig"
   make "e2e-deploy-ccm-tenant-${i}"
+  i=$((i + 1))
 done
