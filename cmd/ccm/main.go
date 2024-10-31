@@ -23,6 +23,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strings"
 	"syscall"
 
 	"go.uber.org/zap/zapcore"
@@ -112,6 +113,11 @@ func main() {
 	}
 	opts.BindFlags(flag.CommandLine)
 	flag.Parse()
+
+	// If clusterName is not prefixed with "tenant-" then prefix it
+	if !strings.HasPrefix(clusterName, "tenant-") {
+		clusterName = "tenant-" + clusterName
+	}
 
 	if enableGatewayAPI {
 		utilruntime.Must(gwapiv1.Install(scheme))
