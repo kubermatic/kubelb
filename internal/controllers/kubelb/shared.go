@@ -72,5 +72,12 @@ func GetAnnotations(tenant *kubelbv1alpha1.Tenant, config *kubelbv1alpha1.Config
 	} else if config.Spec.AnnotationSettings.PropagatedAnnotations != nil {
 		annotations.PropagatedAnnotations = config.Spec.AnnotationSettings.PropagatedAnnotations
 	}
+
+	if tenant.Spec.AnnotationSettings.DefaultAnnotations != nil {
+		annotations.DefaultAnnotations = tenant.Spec.AnnotationSettings.DefaultAnnotations
+	} else if config.Spec.AnnotationSettings.DefaultAnnotations != nil {
+		annotations.DefaultAnnotations = config.Spec.AnnotationSettings.DefaultAnnotations
+	}
+
 	return annotations
 }

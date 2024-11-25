@@ -140,7 +140,7 @@ func GenerateServiceForLBCluster(service corev1.Service, appName, namespace stri
 			kubelb.LabelAppKubernetesName: appName,
 		}
 	}
-	service.Annotations = kubelb.PropagateAnnotations(service.Annotations, annotations)
+	service.Annotations = kubelb.PropagateAnnotations(service.Annotations, annotations, kubelbv1alpha1.AnnotatedResourceService)
 	return service
 }
 

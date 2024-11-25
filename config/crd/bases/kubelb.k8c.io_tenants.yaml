@@ -39,6 +39,16 @@ spec:
           spec:
             description: TenantSpec defines the desired state of Tenant
             properties:
+              defaultAnnotations:
+                additionalProperties:
+                  additionalProperties:
+                    type: string
+                  type: object
+                description: |-
+                  DefaultAnnotations defines the list of annotations(key-value pairs) that will be set on the load balancing resources if not already present. A special key `all` can be used to apply the same
+                  set of annotations to all resources.
+                  Tenant configuration has higher precedence than the annotations specified at the Config level.
+                type: object
               gatewayAPI:
                 description: GatewayAPISettings defines the settings for the gateway
                   API.
@@ -83,14 +93,14 @@ spec:
               propagateAllAnnotations:
                 description: |-
                   PropagateAllAnnotations defines whether all annotations will be propagated to the LoadBalancer service. If set to true, PropagatedAnnotations will be ignored.
-                  This will have a higher precedence than the value specified at the Config level.
+                  Tenant configuration has higher precedence than the value specified at the Config level.
                 type: boolean
               propagatedAnnotations:
                 additionalProperties:
                   type: string
                 description: |-
                   PropagatedAnnotations defines the list of annotations(key-value pairs) that will be propagated to the LoadBalancer service. Keep the `value` field empty in the key-value pair to allow any value.
-                  This will have a higher precedence than the annotations specified at the Config level.
+                  Tenant configuration has higher precedence than the annotations specified at the Config level.
                 type: object
             type: object
           status:
