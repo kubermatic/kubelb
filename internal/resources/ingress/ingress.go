@@ -70,7 +70,7 @@ func CreateOrUpdateIngress(ctx context.Context, log logr.Logger, client ctrlclie
 	object.Spec.IngressClassName = className
 
 	// Process annotations.
-	object.Annotations = kubelb.PropagateAnnotations(object.Annotations, annotations)
+	object.Annotations = kubelb.PropagateAnnotations(object.Annotations, annotations, kubelbv1alpha1.AnnotatedResourceIngress)
 
 	// Process secrets.
 	if object.Spec.TLS != nil {

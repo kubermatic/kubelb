@@ -86,14 +86,37 @@ type EndpointAddress struct {
 	Hostname string `json:"hostname,omitempty" protobuf:"bytes,3,opt,name=hostname"`
 }
 
+type Annotations map[string]string
+
+// +kubebuilder:validation:Enum=all;service;ingress;gateway;httproute;grpcroute;tcproute;udproute;tlsroute
+type AnnotatedResource string
+
+const (
+	AnnotatedResourceAll       AnnotatedResource = "all"
+	AnnotatedResourceService   AnnotatedResource = "service"
+	AnnotatedResourceIngress   AnnotatedResource = "ingress"
+	AnnotatedResourceGateway   AnnotatedResource = "gateway"
+	AnnotatedResourceHTTPRoute AnnotatedResource = "httproute"
+	AnnotatedResourceGRPCRoute AnnotatedResource = "grpcroute"
+	AnnotatedResourceTCPRoute  AnnotatedResource = "tcproute"
+	AnnotatedResourceUDPRoute  AnnotatedResource = "udproute"
+	AnnotatedResourceTLSRoute  AnnotatedResource = "tlsroute"
+)
+
 type AnnotationSettings struct {
 	// PropagatedAnnotations defines the list of annotations(key-value pairs) that will be propagated to the LoadBalancer service. Keep the `value` field empty in the key-value pair to allow any value.
-	// This will have a higher precedence than the annotations specified at the Config level.
+	// Tenant configuration has higher precedence than the annotations specified at the Config level.
 	// +optional
 	PropagatedAnnotations *map[string]string `json:"propagatedAnnotations,omitempty"`
 
 	// PropagateAllAnnotations defines whether all annotations will be propagated to the LoadBalancer service. If set to true, PropagatedAnnotations will be ignored.
-	// This will have a higher precedence than the value specified at the Config level.
+	// Tenant configuration has higher precedence than the value specified at the Config level.
 	// +optional
 	PropagateAllAnnotations *bool `json:"propagateAllAnnotations,omitempty"`
+
+	// DefaultAnnotations defines the list of annotations(key-value pairs) that will be set on the load balancing resources if not already present. A special key `all` can be used to apply the same
+	// set of annotations to all resources.
+	// Tenant configuration has higher precedence than the annotations specified at the Config level.
+	// +optional
+	DefaultAnnotations map[AnnotatedResource]Annotations `json:"defaultAnnotations,omitempty"`
 }

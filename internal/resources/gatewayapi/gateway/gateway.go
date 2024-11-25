@@ -63,7 +63,7 @@ func CreateOrUpdateGateway(ctx context.Context, log logr.Logger, client ctrlclie
 	}
 
 	// Process annotations.
-	object.Annotations = kubelb.PropagateAnnotations(object.Annotations, annotations)
+	object.Annotations = kubelb.PropagateAnnotations(object.Annotations, annotations, kubelbv1alpha1.AnnotatedResourceGateway)
 
 	// Process secrets.
 	for i, listener := range object.Spec.Listeners {

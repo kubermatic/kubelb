@@ -90,13 +90,13 @@ func GetNamespace(obj client.Object) string {
 	return namespace
 }
 
-func PropagateAnnotations(loadbalancer map[string]string, annotations kubelbv1alpha1.AnnotationSettings) map[string]string {
+func PropagateAnnotations(loadbalancer map[string]string, annotations kubelbv1alpha1.AnnotationSettings, resource kubelbv1alpha1.AnnotatedResource) map[string]string {
 	if loadbalancer == nil {
 		loadbalancer = make(map[string]string)
 	}
 
 	if annotations.PropagateAllAnnotations != nil && *annotations.PropagateAllAnnotations {
-		return loadbalancer
+		return applyDefaultAnnotations(loadbalancer, annotations, resource)
 	}
 	permitted := make(map[string]string)
 
@@ -126,7 +126,33 @@ func PropagateAnnotations(loadbalancer map[string]string, annotations kubelbv1al
 			}
 		}
 	}
-	return a
+	return applyDefaultAnnotations(a, annotations, resource)
+}
+
+func applyDefaultAnnotations(loadbalancer map[string]string, annotations kubelbv1alpha1.AnnotationSettings, resource kubelbv1alpha1.AnnotatedResource) map[string]string {
+	if annotations.DefaultAnnotations != nil {
+		if _, ok := annotations.DefaultAnnotations[resource]; ok {
+			// Merge the default annotations with the loadbalancer annotations while giving precedence to the loadbalancer annotations. If an annotation
+			// already exists in the loadbalancer, it will not be overridden by the default annotations.
+			for k, v := range annotations.DefaultAnnotations[resource] {
+				if _, ok := loadbalancer[k]; !ok {
+					loadbalancer[k] = v
+				}
+			}
+		}
+
+		// Apply the default annotations for all resources if they are set.
+		if _, ok := annotations.DefaultAnnotations[kubelbv1alpha1.AnnotatedResourceAll]; ok {
+			// Merge the default annotations with the loadbalancer annotations while giving precedence to the loadbalancer annotations. If an annotation
+			// already exists in the loadbalancer, it will not be overridden by the default annotations.
+			for k, v := range annotations.DefaultAnnotations[kubelbv1alpha1.AnnotatedResourceAll] {
+				if _, ok := loadbalancer[k]; !ok {
+					loadbalancer[k] = v
+				}
+			}
+		}
+	}
+	return loadbalancer
 }
 
 func AddKubeLBLabels(labels map[string]string, name, namespace, gvk string) map[string]string {

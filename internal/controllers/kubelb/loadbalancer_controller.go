@@ -235,7 +235,7 @@ func (r *LoadBalancerReconciler) reconcileService(ctx context.Context, loadBalan
 			Name:        svcName,
 			Namespace:   namespace,
 			Labels:      labels,
-			Annotations: kubelb.PropagateAnnotations(loadBalancer.Annotations, annotations),
+			Annotations: kubelb.PropagateAnnotations(loadBalancer.Annotations, annotations, kubelbv1alpha1.AnnotatedResourceService),
 		},
 	}
 	err := r.Get(ctx, types.NamespacedName{
@@ -288,7 +288,7 @@ func (r *LoadBalancerReconciler) reconcileService(ctx context.Context, loadBalan
 			service.Annotations = make(map[string]string)
 		}
 
-		for k, v := range kubelb.PropagateAnnotations(loadBalancer.Annotations, annotations) {
+		for k, v := range kubelb.PropagateAnnotations(loadBalancer.Annotations, annotations, kubelbv1alpha1.AnnotatedResourceService) {
 			service.Annotations[k] = v
 		}
 		service.Spec.Ports = ports

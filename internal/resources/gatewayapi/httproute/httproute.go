@@ -92,7 +92,7 @@ func CreateOrUpdateHTTPRoute(ctx context.Context, log logr.Logger, client ctrlcl
 	}
 
 	// Process annotations.
-	object.Annotations = kubelb.PropagateAnnotations(object.Annotations, annotations)
+	object.Annotations = kubelb.PropagateAnnotations(object.Annotations, annotations, kubelbv1alpha1.AnnotatedResourceHTTPRoute)
 
 	// Process labels
 	object.Labels = kubelb.AddKubeLBLabels(object.Labels, object.Name, object.Namespace, "")
