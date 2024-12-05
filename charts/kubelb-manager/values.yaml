@@ -33,6 +33,11 @@ kubelb:
   # -- Propagate all annotations from the LB resource to the LB service.
   propagateAllAnnotations: false
 
+# Create required resources for KKP integration.
+kkpintegration:
+  # -- Create RBAC for KKP integration.
+  rbac: false
+
 #################################################################################
 # Further configurations for the KubeLB Manager.
 #################################################################################

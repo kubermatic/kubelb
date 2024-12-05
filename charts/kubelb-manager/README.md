@@ -35,6 +35,7 @@ helm install kubelb-manager kubelb-manager --namespace kubelb -f values.yaml --c
 | image.repository | string | `"quay.io/kubermatic/kubelb-manager"` |  |
 | image.tag | string | `"v1.1.0"` |  |
 | imagePullSecrets | list | `[]` |  |
+| kkpintegration.rbac | bool | `false` | Create RBAC for KKP integration. |
 | kubelb.debug | bool | `true` |  |
 | kubelb.enableGatewayAPI | bool | `false` | enableGatewayAPI specifies whether to enable the Gateway API and Gateway Controllers. By default Gateway API is disabled since without Gateway APIs installed the controller cannot start. |
 | kubelb.enableLeaderElection | bool | `true` |  |
