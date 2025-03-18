@@ -18,6 +18,7 @@ package kubelb
 
 import (
 	"fmt"
+	"strings"
 
 	kubelbv1alpha1 "k8c.io/kubelb/api/kubelb.k8c.io/v1alpha1"
 
@@ -108,7 +109,15 @@ func PropagateAnnotations(loadbalancer map[string]string, annotations kubelbv1al
 	permittedMap := make(map[string][]string)
 	for k, v := range permitted {
 		if _, found := permittedMap[k]; !found {
-			permittedMap[k] = []string{v}
+			if len(v) == 0 || v == "" {
+				permittedMap[k] = []string{}
+			} else {
+				filterValues := strings.Split(v, ",")
+				for i, v := range filterValues {
+					filterValues[i] = strings.TrimSpace(v)
+				}
+				permittedMap[k] = filterValues
+			}
 		}
 	}
 
