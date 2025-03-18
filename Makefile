@@ -216,8 +216,10 @@ $(CONTROLLER_GEN): $(LOCALBIN)
 
 .PHONY: envtest
 envtest: $(ENVTEST) ## Download envtest-setup locally if necessary.
+## Latest requires go 1.24.0 so pinned to a specific commit:
+## go: sigs.k8s.io/controller-runtime/tools/setup-envtest@latest: sigs.k8s.io/controller-runtime/tools/setup-envtest@v0.0.0-20250318051348-5dfe3216fb7f requires go >= 1.24.0 (running go 1.23.7; GOTOOLCHAIN=local)
 $(ENVTEST): $(LOCALBIN)
-	test -s $(LOCALBIN)/setup-envtest || GOBIN=$(LOCALBIN) go install sigs.k8s.io/controller-runtime/tools/setup-envtest@latest
+	test -s $(LOCALBIN)/setup-envtest || GOBIN=$(LOCALBIN) go install sigs.k8s.io/controller-runtime/tools/setup-envtest@b68a0623fb4ee969e39ce88e1472755b5ef1ea6a
 
 .PHONY: shfmt
 shfmt:
