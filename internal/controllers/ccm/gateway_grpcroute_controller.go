@@ -263,8 +263,8 @@ func (r *GRPCRouteReconciler) resourceFilter() predicate.Predicate {
 // shouldReconcile returns true if the GRPCRoute should be reconciled by the controller.
 // In Community Edition, the controller only reconciles GRPCRoutes against the gateway named "kubelb".
 func (r *GRPCRouteReconciler) shouldReconcile(grpcRoute *gwapiv1.GRPCRoute) bool {
-	if len(grpcRoute.Spec.CommonRouteSpec.ParentRefs) == 1 {
-		parentRef := grpcRoute.Spec.CommonRouteSpec.ParentRefs[0]
+	if len(grpcRoute.Spec.ParentRefs) == 1 {
+		parentRef := grpcRoute.Spec.ParentRefs[0]
 		if parentRef.Name == ParentGatewayName {
 			return true
 		}
@@ -275,6 +275,7 @@ func (r *GRPCRouteReconciler) shouldReconcile(grpcRoute *gwapiv1.GRPCRoute) bool
 func (r *GRPCRouteReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&gwapiv1.GRPCRoute{}, builder.WithPredicates(r.resourceFilter())).
+		Named(GatewayGRPCRouteControllerName).
 		Watches(
 			&corev1.Service{},
 			handler.EnqueueRequestsFromMapFunc(r.enqueueResources()),

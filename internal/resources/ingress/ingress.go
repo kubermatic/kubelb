@@ -27,7 +27,6 @@ import (
 	util "k8c.io/kubelb/internal/util/kubernetes"
 
 	networkingv1 "k8s.io/api/networking/v1"
-	v1 "k8s.io/api/networking/v1"
 	"k8s.io/apimachinery/pkg/api/equality"
 	kerrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -36,7 +35,7 @@ import (
 )
 
 // createOrUpdateIngress creates or updates the Ingress object in the cluster.
-func CreateOrUpdateIngress(ctx context.Context, log logr.Logger, client ctrlclient.Client, object *v1.Ingress, referencedServices []metav1.ObjectMeta, namespace string, config *kubelbv1alpha1.Config,
+func CreateOrUpdateIngress(ctx context.Context, log logr.Logger, client ctrlclient.Client, object *networkingv1.Ingress, referencedServices []metav1.ObjectMeta, namespace string, config *kubelbv1alpha1.Config,
 	tenant *kubelbv1alpha1.Tenant, annotations kubelbv1alpha1.AnnotationSettings) error {
 	globalTopology := config.IsGlobalTopology()
 	// Transformations to make it compliant with the LB cluster.
@@ -93,7 +92,7 @@ func CreateOrUpdateIngress(ctx context.Context, log logr.Logger, client ctrlclie
 	log.V(4).Info("Creating/Updating Ingress", "name", object.Name, "namespace", object.Namespace)
 	// Check if it already exists.
 	key := ctrlclient.ObjectKey{Namespace: object.Namespace, Name: object.Name}
-	existingObject := &v1.Ingress{}
+	existingObject := &networkingv1.Ingress{}
 	if err := client.Get(ctx, key, existingObject); err != nil {
 		if !kerrors.IsNotFound(err) {
 			return fmt.Errorf("failed to get Ingress: %w", err)

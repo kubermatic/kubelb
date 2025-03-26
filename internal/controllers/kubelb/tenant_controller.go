@@ -33,7 +33,6 @@ import (
 	"k8c.io/reconciler/pkg/reconciling"
 
 	corev1 "k8s.io/api/core/v1"
-	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	kerrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -43,7 +42,6 @@ import (
 	clientcmdapi "k8s.io/client-go/tools/clientcmd/api"
 	"k8s.io/client-go/tools/record"
 	ctrl "sigs.k8s.io/controller-runtime"
-	ctrlclient "sigs.k8s.io/controller-runtime/pkg/client"
 	ctrlruntimeclient "sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
@@ -79,7 +77,7 @@ users:
 
 // TenantReconciler reconciles an HTTPRoute Object
 type TenantReconciler struct {
-	ctrlclient.Client
+	ctrlruntimeclient.Client
 
 	Config   *rest.Config
 	Log      logr.Logger
@@ -335,8 +333,8 @@ func buildKubeconfigFromEndpoint(ctx context.Context, client ctrlruntimeclient.C
 func (r *TenantReconciler) cleanup(ctx context.Context, tenant *kubelbv1alpha1.Tenant) (ctrl.Result, error) {
 	namespace := fmt.Sprintf(tenantNamespacePattern, tenant.Name)
 	for _, resource := range tenantresources.Deletion(namespace) {
-		err := r.Client.Delete(ctx, resource)
-		if err != nil && !apierrors.IsNotFound(err) {
+		err := r.Delete(ctx, resource)
+		if err != nil && !kerrors.IsNotFound(err) {
 			return reconcile.Result{}, fmt.Errorf("failed to ensure kubeLB resources are removed/not present on management cluster: %w", err)
 		}
 	}
@@ -352,6 +350,7 @@ func (r *TenantReconciler) cleanup(ctx context.Context, tenant *kubelbv1alpha1.T
 
 func (r *TenantReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
+		Named(TenantControllerName).
 		For(&kubelbv1alpha1.Tenant{}).
 		Complete(r)
 }

@@ -163,6 +163,7 @@ func CreateOrUpdateEndpointSlice(ctx context.Context, client ctrlclient.Client, 
 
 func (r *BridgeServiceReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
+		Named(BridgeServiceControllerName).
 		// Watch services with label app.kubernetes.io/type=bridge-service
 		For(&corev1.Service{}, builder.WithPredicates(predicate.ByLabel(kubelb.LabelAppKubernetesType, kubelb.LabelBridgeService))).
 		Complete(r)

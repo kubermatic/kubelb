@@ -36,7 +36,6 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/cache"
-	"sigs.k8s.io/controller-runtime/pkg/client"
 	ctrlruntimeclient "sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/event"
@@ -52,6 +51,7 @@ const (
 	envoyGlobalTopologyServicePattern = "envoy-%s-%s"
 	envoyProxyCleanupFinalizer        = "kubelb.k8c.io/cleanup-envoy-proxy"
 	EnvoyGlobalCache                  = "global"
+	LoadBalancerControllerName        = "loadbalancer-controller"
 )
 
 type EnvoyProxyTopology string
@@ -107,7 +107,7 @@ func (r *LoadBalancerReconciler) Reconcile(ctx context.Context, req ctrl.Request
 
 	// Todo: check validation webhook - ports must equal endpoint ports as well
 	if len(loadBalancer.Spec.Endpoints) == 0 {
-		log.Error(fmt.Errorf("Invalid Spec"), "No Endpoints set")
+		log.Error(fmt.Errorf("invalid Spec"), "No Endpoints set")
 		return ctrl.Result{}, nil
 	}
 
@@ -421,6 +421,7 @@ func (r *LoadBalancerReconciler) shouldReconcile(ctx context.Context, _ *kubelbv
 
 func (r *LoadBalancerReconciler) SetupWithManager(ctx context.Context, mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
+		Named(LoadBalancerControllerName).
 		For(&kubelbv1alpha1.LoadBalancer{}).
 		WithEventFilter(utils.ByLabelExistsOnNamespace(ctx, mgr.GetClient())).
 		Watches(
@@ -473,8 +474,8 @@ func (r *LoadBalancerReconciler) enqueueLoadBalancers() handler.MapFunc {
 
 // filterServicesPredicate filters out services that need to be propagated to the event handlers.
 // We only want to handle services that are managed by kubelb.
-func filterServicesPredicate() predicate.TypedPredicate[client.Object] {
-	return predicate.TypedFuncs[client.Object]{
+func filterServicesPredicate() predicate.TypedPredicate[ctrlruntimeclient.Object] {
+	return predicate.TypedFuncs[ctrlruntimeclient.Object]{
 		CreateFunc: func(e event.CreateEvent) bool {
 			return e.Object.GetLabels()[kubelb.LabelLoadBalancerName] != ""
 		},

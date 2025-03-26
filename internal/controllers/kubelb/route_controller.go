@@ -46,8 +46,6 @@ import (
 	"k8s.io/utils/ptr"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
-	"sigs.k8s.io/controller-runtime/pkg/client"
-	ctrlclient "sigs.k8s.io/controller-runtime/pkg/client"
 	ctrlruntimeclient "sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
@@ -63,7 +61,7 @@ const (
 
 // RouteReconciler reconciles a Route Object
 type RouteReconciler struct {
-	ctrlclient.Client
+	ctrlruntimeclient.Client
 	Log      logr.Logger
 	Scheme   *runtime.Scheme
 	Recorder record.EventRecorder
@@ -186,7 +184,7 @@ func (r *RouteReconciler) cleanup(ctx context.Context, route *kubelbv1alpha1.Rou
 		}
 		log.V(1).Info("Deleting service", "name", value.GeneratedName, "namespace", value.Namespace)
 
-		if err := r.Client.Delete(ctx, &svc); err != nil {
+		if err := r.Delete(ctx, &svc); err != nil {
 			if !kerrors.IsNotFound(err) {
 				return reconcile.Result{}, fmt.Errorf("failed to delete service: %w", err)
 			}
@@ -257,7 +255,7 @@ func (r *RouteReconciler) cleanupOrphanedServices(ctx context.Context, log logr.
 	desiredServices := map[string]bool{}
 	for _, service := range route.Spec.Source.Kubernetes.Services {
 		name := serviceHelpers.GetServiceName(service.Service)
-		key := fmt.Sprintf(kubelb.RouteServiceMapKey, service.Service.Namespace, name)
+		key := fmt.Sprintf(kubelb.RouteServiceMapKey, service.Namespace, name)
 		desiredServices[key] = true
 	}
 
@@ -292,7 +290,7 @@ func (r *RouteReconciler) cleanupOrphanedServices(ctx context.Context, log logr.
 					Namespace: ns,
 				},
 			}
-			if err := r.Client.Delete(ctx, &svc); err != nil {
+			if err := r.Delete(ctx, &svc); err != nil {
 				if !kerrors.IsNotFound(err) {
 					return fmt.Errorf("failed to delete orphaned service: %w", err)
 				}
@@ -308,10 +306,10 @@ func (r *RouteReconciler) cleanupOrphanedServices(ctx context.Context, log logr.
 }
 
 func (r *RouteReconciler) UpdateRouteStatus(ctx context.Context, route *kubelbv1alpha1.Route, status kubelbv1alpha1.RouteStatus) error {
-	key := ctrlclient.ObjectKeyFromObject(route)
+	key := ctrlruntimeclient.ObjectKeyFromObject(route)
 	return retry.RetryOnConflict(retry.DefaultRetry, func() error {
 		// Fetch the current state
-		if err := r.Client.Get(ctx, key, route); err != nil {
+		if err := r.Get(ctx, key, route); err != nil {
 			return err
 		}
 
@@ -325,7 +323,7 @@ func (r *RouteReconciler) UpdateRouteStatus(ctx context.Context, route *kubelbv1
 		}
 
 		// Update the route
-		return r.Client.Status().Patch(ctx, route, ctrlruntimeclient.MergeFrom(original))
+		return r.Status().Patch(ctx, route, ctrlruntimeclient.MergeFrom(original))
 	})
 }
 
@@ -356,8 +354,8 @@ func (r *RouteReconciler) manageRoutes(ctx context.Context, log logr.Logger, rou
 		name := serviceHelpers.GetServiceName(service.Service)
 		objectMeta := metav1.ObjectMeta{
 			Name:      name,
-			Namespace: service.Service.Namespace,
-			UID:       service.Service.UID,
+			Namespace: service.Namespace,
+			UID:       service.UID,
 		}
 		referencedServices = append(referencedServices, objectMeta)
 	}
@@ -370,9 +368,9 @@ func (r *RouteReconciler) manageRoutes(ctx context.Context, log logr.Logger, rou
 		err = ingressHelpers.CreateOrUpdateIngress(ctx, log, r.Client, v, referencedServices, route.Namespace, config, tenant, annotations)
 		if err == nil {
 			// Retrieve updated object to get the status.
-			key := client.ObjectKey{Namespace: v.Namespace, Name: v.Name}
+			key := ctrlruntimeclient.ObjectKey{Namespace: v.Namespace, Name: v.Name}
 			res := &v1.Ingress{}
-			if err := r.Client.Get(ctx, key, res); err != nil {
+			if err := r.Get(ctx, key, res); err != nil {
 				if !kerrors.IsNotFound(err) {
 					return fmt.Errorf("failed to get Ingress: %w", err)
 				}
@@ -384,9 +382,9 @@ func (r *RouteReconciler) manageRoutes(ctx context.Context, log logr.Logger, rou
 		err = gatewayHelpers.CreateOrUpdateGateway(ctx, log, r.Client, v, route.Namespace, config, tenant, annotations, config.IsGlobalTopology())
 		if err == nil {
 			// Retrieve updated object to get the status.
-			key := client.ObjectKey{Namespace: v.Namespace, Name: v.Name}
+			key := ctrlruntimeclient.ObjectKey{Namespace: v.Namespace, Name: v.Name}
 			res := &gwapiv1.Gateway{}
-			if err := r.Client.Get(ctx, key, res); err != nil {
+			if err := r.Get(ctx, key, res); err != nil {
 				if !kerrors.IsNotFound(err) {
 					return fmt.Errorf("failed to get Gateway: %w", err)
 				}
@@ -398,9 +396,9 @@ func (r *RouteReconciler) manageRoutes(ctx context.Context, log logr.Logger, rou
 		err = httprouteHelpers.CreateOrUpdateHTTPRoute(ctx, log, r.Client, v, referencedServices, route.Namespace, tenant, annotations, config.IsGlobalTopology())
 		if err == nil {
 			// Retrieve updated object to get the status.
-			key := client.ObjectKey{Namespace: v.Namespace, Name: v.Name}
+			key := ctrlruntimeclient.ObjectKey{Namespace: v.Namespace, Name: v.Name}
 			res := &gwapiv1.HTTPRoute{}
-			if err := r.Client.Get(ctx, key, res); err != nil {
+			if err := r.Get(ctx, key, res); err != nil {
 				if !kerrors.IsNotFound(err) {
 					return fmt.Errorf("failed to get HTTPRoute: %w", err)
 				}
@@ -412,9 +410,9 @@ func (r *RouteReconciler) manageRoutes(ctx context.Context, log logr.Logger, rou
 		err = grpcrouteHelpers.CreateOrUpdateGRPCRoute(ctx, log, r.Client, v, referencedServices, route.Namespace, tenant, annotations, config.IsGlobalTopology())
 		if err == nil {
 			// Retrieve updated object to get the status.
-			key := client.ObjectKey{Namespace: v.Namespace, Name: v.Name}
+			key := ctrlruntimeclient.ObjectKey{Namespace: v.Namespace, Name: v.Name}
 			res := &gwapiv1.GRPCRoute{}
-			if err := r.Client.Get(ctx, key, res); err != nil {
+			if err := r.Get(ctx, key, res); err != nil {
 				if !kerrors.IsNotFound(err) {
 					return fmt.Errorf("failed to get GRPCRoute: %w", err)
 				}
@@ -447,10 +445,10 @@ func (r *RouteReconciler) shouldReconcile(ctx context.Context, route *kubelbv1al
 	case *v1.Ingress:
 		// Ensure that Ingress is enabled
 		if config.Spec.Ingress.Disable {
-			log.Error(fmt.Errorf("Ingress is disabled at the global level"), "cannot proceed")
+			log.Error(fmt.Errorf("ingress is disabled at the global level"), "cannot proceed")
 			return false, true, nil
 		} else if tenant.Spec.Ingress.Disable {
-			log.Error(fmt.Errorf("Ingress is disabled at the tenant level"), "cannot proceed")
+			log.Error(fmt.Errorf("ingress is disabled at the tenant level"), "cannot proceed")
 			return false, true, nil
 		}
 
@@ -477,7 +475,7 @@ func (r *RouteReconciler) shouldReconcile(ctx context.Context, route *kubelbv1al
 		}
 
 	default:
-		log.Error(fmt.Errorf("Resource %v is not supported", v.GetObjectKind().GroupVersionKind().GroupKind().String()), "cannot proceed")
+		log.Error(fmt.Errorf("resource %v is not supported", v.GetObjectKind().GroupVersionKind().GroupKind().String()), "cannot proceed")
 		return false, false, nil
 	}
 	return true, false, nil
@@ -485,15 +483,15 @@ func (r *RouteReconciler) shouldReconcile(ctx context.Context, route *kubelbv1al
 
 func isGatewayAPIDisabled(log logr.Logger, disableGatewayAPI bool, config kubelbv1alpha1.Config, tenant kubelbv1alpha1.Tenant) bool {
 	if disableGatewayAPI {
-		log.Error(fmt.Errorf("Gateway API is disabled at the global level"), "cannot proceed")
+		log.Error(fmt.Errorf("gateway api is disabled at the global level"), "cannot proceed")
 		return true
 	}
 	// Ensure that Gateway API is enabled
 	if config.Spec.GatewayAPI.Disable {
-		log.Error(fmt.Errorf("Gateway API is disabled at the global level"), "cannot proceed")
+		log.Error(fmt.Errorf("gateway api is disabled at the global level"), "cannot proceed")
 		return true
 	} else if tenant.Spec.GatewayAPI.Disable {
-		log.Error(fmt.Errorf("Gateway API is disabled at the tenant level"), "cannot proceed")
+		log.Error(fmt.Errorf("gateway api is disabled at the tenant level"), "cannot proceed")
 		return true
 	}
 	return false
@@ -533,7 +531,7 @@ func updateServiceStatus(routeStatus *kubelbv1alpha1.RouteStatus, svc *corev1.Se
 	routeStatus.Resources.Services[key] = status
 }
 
-func updateResourceStatus(routeStatus *kubelbv1alpha1.RouteStatus, obj client.Object, err error) {
+func updateResourceStatus(routeStatus *kubelbv1alpha1.RouteStatus, obj ctrlruntimeclient.Object, err error) {
 	status := kubelbv1alpha1.ResourceState{
 		GeneratedName: obj.GetName(),
 		Namespace:     kubelb.GetNamespace(obj),
@@ -606,6 +604,7 @@ func (r *RouteReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	// 1. Watch for changes in Route object.
 	// 2. Skip reconciliation if generation is not changed; only status/metadata changed.
 	controller := ctrl.NewControllerManagedBy(mgr).
+		Named(RouteControllerName).
 		For(&kubelbv1alpha1.Route{}, builder.WithPredicates(predicate.GenerationChangedPredicate{})).
 		Watches(
 			&kubelbv1alpha1.Config{},
