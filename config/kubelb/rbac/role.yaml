@@ -16,41 +16,8 @@ rules:
   - ""
   resources:
   - namespaces
-  verbs:
-  - create
-  - delete
-  - get
-  - list
-  - patch
-  - update
-  - watch
-- apiGroups:
-  - ""
-  resources:
   - secrets
-  verbs:
-  - create
-  - delete
-  - get
-  - list
-  - patch
-  - update
-  - watch
-- apiGroups:
-  - ""
-  resources:
   - serviceaccounts
-  verbs:
-  - create
-  - delete
-  - get
-  - list
-  - patch
-  - update
-  - watch
-- apiGroups:
-  - ""
-  resources:
   - services
   verbs:
   - create
@@ -64,17 +31,6 @@ rules:
   - apps
   resources:
   - daemonsets
-  verbs:
-  - create
-  - delete
-  - get
-  - list
-  - patch
-  - update
-  - watch
-- apiGroups:
-  - apps
-  resources:
   - deployments
   verbs:
   - create
@@ -100,45 +56,7 @@ rules:
   - gateway.networking.k8s.io
   resources:
   - gateways
-  verbs:
-  - create
-  - delete
-  - get
-  - list
-  - patch
-  - update
-  - watch
-- apiGroups:
-  - gateway.networking.k8s.io
-  resources:
-  - gateways/status
-  verbs:
-  - get
-  - patch
-  - update
-- apiGroups:
-  - gateway.networking.k8s.io
-  resources:
   - grpcroutes
-  verbs:
-  - create
-  - delete
-  - get
-  - list
-  - patch
-  - update
-  - watch
-- apiGroups:
-  - gateway.networking.k8s.io
-  resources:
-  - grpcroutes/status
-  verbs:
-  - get
-  - patch
-  - update
-- apiGroups:
-  - gateway.networking.k8s.io
-  resources:
   - httproutes
   verbs:
   - create
@@ -151,6 +69,8 @@ rules:
 - apiGroups:
   - gateway.networking.k8s.io
   resources:
+  - gateways/status
+  - grpcroutes/status
   - httproutes/status
   verbs:
   - get
@@ -160,6 +80,10 @@ rules:
   - kubelb.k8c.io
   resources:
   - addresses
+  - loadbalancers
+  - routes
+  - syncsecrets
+  - tenants
   verbs:
   - create
   - delete
@@ -186,77 +110,8 @@ rules:
   - kubelb.k8c.io
   resources:
   - configs/status
-  verbs:
-  - get
-  - patch
-  - update
-- apiGroups:
-  - kubelb.k8c.io
-  resources:
-  - loadbalancers
-  verbs:
-  - create
-  - delete
-  - get
-  - list
-  - patch
-  - update
-  - watch
-- apiGroups:
-  - kubelb.k8c.io
-  resources:
   - loadbalancers/status
-  verbs:
-  - get
-  - patch
-  - update
-- apiGroups:
-  - kubelb.k8c.io
-  resources:
-  - routes
-  verbs:
-  - create
-  - delete
-  - get
-  - list
-  - patch
-  - update
-  - watch
-- apiGroups:
-  - kubelb.k8c.io
-  resources:
   - routes/status
-  verbs:
-  - get
-  - patch
-  - update
-- apiGroups:
-  - kubelb.k8c.io
-  resources:
-  - syncsecrets
-  verbs:
-  - create
-  - delete
-  - get
-  - list
-  - patch
-  - update
-  - watch
-- apiGroups:
-  - kubelb.k8c.io
-  resources:
-  - tenants
-  verbs:
-  - create
-  - delete
-  - get
-  - list
-  - patch
-  - update
-  - watch
-- apiGroups:
-  - kubelb.k8c.io
-  resources:
   - tenants/status
   verbs:
   - get
@@ -286,19 +141,6 @@ rules:
   - rbac.authorization.k8s.io
   resources:
   - rolebindings
-  verbs:
-  - bind
-  - create
-  - delete
-  - escalate
-  - get
-  - list
-  - patch
-  - update
-  - watch
-- apiGroups:
-  - rbac.authorization.k8s.io
-  resources:
   - roles
   verbs:
   - bind

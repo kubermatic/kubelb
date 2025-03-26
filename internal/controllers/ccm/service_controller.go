@@ -191,8 +191,8 @@ func (r *KubeLBServiceReconciler) cleanupService(ctx context.Context, log logr.L
 	return ctrl.Result{}, nil
 }
 
-func (r *KubeLBServiceReconciler) enqueueLoadBalancer() handler.TypedMapFunc[*kubelbv1alpha1.LoadBalancer] {
-	return handler.TypedMapFunc[*kubelbv1alpha1.LoadBalancer](func(_ context.Context, lb *kubelbv1alpha1.LoadBalancer) []reconcile.Request {
+func (r *KubeLBServiceReconciler) enqueueLoadBalancer() handler.TypedMapFunc[*kubelbv1alpha1.LoadBalancer, reconcile.Request] {
+	return handler.TypedMapFunc[*kubelbv1alpha1.LoadBalancer, reconcile.Request](func(_ context.Context, lb *kubelbv1alpha1.LoadBalancer) []reconcile.Request {
 		if lb.GetNamespace() != r.ClusterName {
 			return []reconcile.Request{}
 		}
