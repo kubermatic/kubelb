@@ -12,11 +12,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+version: "2"
 run:
-  timeout: 20m
   issues-exit-code: 1
-
 linters:
+  default: none
   enable:
     - asasalint
     - asciicheck
@@ -27,12 +27,9 @@ linters:
     - errcheck
     - errname
     - errorlint
-    - exportloopref
     - goconst
     - gocritic
     - gocyclo
-    - gofmt
-    - gosimple
     - govet
     - importas
     - ineffassign
@@ -46,44 +43,60 @@ linters:
     - promlinter
     - revive
     - staticcheck
-    - tenv
-    - typecheck
     - unconvert
     - unused
     - wastedassign
     - whitespace
-  disable-all: true
-
-linters-settings:
-  goimports:
-    local-prefixes: k8c.io/kubelb
-  tagliatelle:
-    case:
+  settings:
+    depguard:
       rules:
-        json: goCamel
-        yaml: goCamel
-  depguard:
+        main:
+          deny:
+            - pkg: io/ioutil
+              desc: https://go.dev/doc/go1.16#ioutil
+    govet:
+      enable:
+        - nilness
+    tagliatelle:
+      case:
+        rules:
+          json: goCamel
+          yaml: goCamel
+  exclusions:
+    generated: lax
+    presets:
+      - comments
+      - common-false-positives
+      - legacy
+      - std-error-handling
     rules:
-      main:
-        deny:
-          - { pkg: io/ioutil, desc: https://go.dev/doc/go1.16#ioutil }
-  govet:
-    enable:
-      - nilness # find tautologies / impossible conditions
-
-issues:
-  exclude:
-    # TODO: These methods are more or less the same and we need to build an abstraction for this. That would lower the cyclomatic complexity.
-    - "cyclomatic complexity 33 of func `CreateOrUpdateGRPCRoute` is high"
-    - "cyclomatic complexity 33 of func `CreateOrUpdateHTTPRoute` is high"
-  exclude-dirs:
-    - hack
-    - vendor
-  exclude-files:
-    - zz_generated.*.go
-  # Excluding configuration per-path and per-linter
-  exclude-rules:
-    # Exclude some linters from running on tests files.
-    - path: _test\.go
-      linters:
-        - revive
+      - linters:
+          - revive
+        path: _test\.go
+      - path: (.+)\.go$
+        text: cyclomatic complexity 33 of func `CreateOrUpdateGRPCRoute` is high
+      - path: (.+)\.go$
+        text: cyclomatic complexity 33 of func `CreateOrUpdateHTTPRoute` is high
+    paths:
+      - zz_generated.*.go
+      - hack
+      - vendor
+      - third_party$
+      - builtin$
+      - examples$
+formatters:
+  enable:
+    - gofmt
+  settings:
+    goimports:
+      local-prefixes:
+        - k8c.io/kubelb
+  exclusions:
+    generated: lax
+    paths:
+      - zz_generated.*.go
+      - hack
+      - vendor
+      - third_party$
+      - builtin$
+      - examples$

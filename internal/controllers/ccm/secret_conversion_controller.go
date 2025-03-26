@@ -133,6 +133,7 @@ func (r *SecretConversionReconciler) cleanup(ctx context.Context, object *corev1
 
 func (r *SecretConversionReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
+		Named(SecretConversionControllerName).
 		For(&corev1.Secret{}, builder.WithPredicates(predicateutil.ByLabel(kubelb.LabelManagedBy, kubelb.LabelControllerName))).
 		Complete(r)
 }

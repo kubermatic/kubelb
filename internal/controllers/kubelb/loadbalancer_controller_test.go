@@ -146,13 +146,15 @@ var _ = Describe("Lb deployment and service creation", func() {
 				existingLb.Spec.Endpoints[0].Ports[0].Name = "port-a"
 
 				existingLb.Spec.Ports = append(existingLb.Spec.Ports, kubelbv1alpha1.LoadBalancerPort{
-					Name: "port-b",
-					Port: 81,
+					Name:     "port-b",
+					Port:     81,
+					Protocol: corev1.ProtocolTCP,
 				})
 
 				existingLb.Spec.Endpoints[0].Ports = append(existingLb.Spec.Endpoints[0].Ports, kubelbv1alpha1.EndpointPort{
-					Name: "port-b",
-					Port: 8081,
+					Name:     "port-b",
+					Port:     8081,
+					Protocol: corev1.ProtocolTCP,
 				})
 
 				Expect(k8sClient.Update(ctx, existingLb)).Should(Succeed())

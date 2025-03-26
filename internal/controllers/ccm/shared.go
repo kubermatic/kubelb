@@ -83,8 +83,8 @@ func cleanupRoute(ctx context.Context, client ctrlclient.Client, resourceUID str
 	return nil
 }
 
-func enqueueRoutes(gvk, clusterNamespace string) handler.TypedMapFunc[*kubelbv1alpha1.Route] {
-	return handler.TypedMapFunc[*kubelbv1alpha1.Route](func(_ context.Context, route *kubelbv1alpha1.Route) []reconcile.Request {
+func enqueueRoutes(gvk, clusterNamespace string) handler.TypedMapFunc[*kubelbv1alpha1.Route, reconcile.Request] {
+	return handler.TypedMapFunc[*kubelbv1alpha1.Route, reconcile.Request](func(_ context.Context, route *kubelbv1alpha1.Route) []reconcile.Request {
 		if route.GetNamespace() != clusterNamespace {
 			return []reconcile.Request{}
 		}

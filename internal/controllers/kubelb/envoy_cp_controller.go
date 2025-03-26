@@ -34,11 +34,9 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
-	"sigs.k8s.io/controller-runtime/pkg/client"
 	ctrlruntimeclient "sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
@@ -48,11 +46,12 @@ import (
 )
 
 const (
-	RequeueAllResources = "requeue-all-for-route"
+	RequeueAllResources   = "requeue-all-for-route"
+	EnvoyCPControllerName = "envoy-cp-controller"
 )
 
 type EnvoyCPReconciler struct {
-	client.Client
+	ctrlruntimeclient.Client
 	EnvoyCache         envoycachev3.SnapshotCache
 	EnvoyProxyTopology EnvoyProxyTopology
 	PortAllocator      *portlookup.PortAllocator
@@ -158,12 +157,12 @@ func (r *EnvoyCPReconciler) ListLoadBalancersAndRoutes(ctx context.Context, req 
 
 	switch r.EnvoyProxyTopology {
 	case EnvoyProxyTopologyShared, EnvoyProxyTopologyDedicated:
-		err = r.List(ctx, &loadBalancers, client.InNamespace(req.Namespace))
+		err = r.List(ctx, &loadBalancers, ctrlruntimeclient.InNamespace(req.Namespace))
 		if err != nil {
 			return nil, nil, err
 		}
 
-		err = r.List(ctx, &routes, client.InNamespace(req.Namespace))
+		err = r.List(ctx, &routes, ctrlruntimeclient.InNamespace(req.Namespace))
 		if err != nil {
 			return nil, nil, err
 		}
@@ -200,7 +199,7 @@ func (r *EnvoyCPReconciler) cleanupEnvoyProxy(ctx context.Context, appName strin
 	log := ctrl.LoggerFrom(ctx).WithValues("reconcile", "envoy-proxy")
 	log.V(2).Info("cleanup envoy-proxy")
 
-	objMeta := v1.ObjectMeta{
+	objMeta := metav1.ObjectMeta{
 		Name:      fmt.Sprintf(envoyResourcePattern, appName),
 		Namespace: namespace,
 	}
@@ -290,7 +289,7 @@ func (r *EnvoyCPReconciler) ensureEnvoyProxy(ctx context.Context, namespace, app
 func (r *EnvoyCPReconciler) getEnvoyProxyPodSpec(namespace, appName, snapshotName string) corev1.PodTemplateSpec {
 	envoyProxy := r.Config.Spec.EnvoyProxy
 	template := corev1.PodTemplateSpec{
-		ObjectMeta: v1.ObjectMeta{
+		ObjectMeta: metav1.ObjectMeta{
 			Name:      appName,
 			Namespace: namespace,
 			Labels:    map[string]string{kubelb.LabelAppKubernetesName: appName},
@@ -332,7 +331,7 @@ func (r *EnvoyCPReconciler) getEnvoyProxyPodSpec(namespace, appName, snapshotNam
 				MaxSkew:           1,
 				TopologyKey:       "kubernetes.io/hostname",
 				WhenUnsatisfiable: corev1.ScheduleAnyway,
-				LabelSelector: &v1.LabelSelector{
+				LabelSelector: &metav1.LabelSelector{
 					MatchLabels: map[string]string{kubelb.LabelAppKubernetesName: appName},
 				},
 			},
@@ -374,6 +373,7 @@ func (r *EnvoyCPReconciler) SetupWithManager(ctx context.Context, mgr ctrl.Manag
 	// 3. Watch for changes in Route resources and enqueue LoadBalancer resources. TODO: we need to
 	// find an alternative for this since it is more of a "hack".
 	return ctrl.NewControllerManagedBy(mgr).
+		Named(EnvoyCPControllerName).
 		For(&kubelbv1alpha1.LoadBalancer{}).
 		// Disable concurrency to ensure that only one snapshot is created at a time.
 		WithOptions(controller.Options{MaxConcurrentReconciles: 1}).

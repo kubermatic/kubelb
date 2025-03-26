@@ -211,19 +211,20 @@ func (r *GatewayReconciler) resourceFilter() predicate.Predicate {
 // shouldReconcile checks if the Gateway should be reconciled by the controller.
 // In Community Edition, only a single Gateway with the name "kubelb" is reconciled.
 func (r *GatewayReconciler) shouldReconcile(gateway *gwapiv1.Gateway) bool {
-	shouldReconcile := true
 	if gateway.Name != ParentGatewayName {
-		shouldReconcile = false
+		return false
 	}
 
 	if r.UseGatewayClass && gateway.Spec.GatewayClassName != GatewayClassName {
-		shouldReconcile = false
+		return false
 	}
-	return shouldReconcile
+
+	return true
 }
 
 func (r *GatewayReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
+		Named(GatewayControllerName).
 		For(&gwapiv1.Gateway{}, builder.WithPredicates(r.resourceFilter())).
 		WatchesRawSource(
 			source.Kind(r.LBManager.GetCache(), &kubelbv1alpha1.Route{},

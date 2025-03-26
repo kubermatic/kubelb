@@ -194,14 +194,16 @@ func GetDefaultLoadBalancer(name string, namespace string) *v1alpha1.LoadBalance
 					},
 					Ports: []v1alpha1.EndpointPort{
 						{
-							Port: 8080,
+							Port:     8080,
+							Protocol: corev1.ProtocolTCP,
 						},
 					},
 				},
 			},
 			Ports: []v1alpha1.LoadBalancerPort{
 				{
-					Port: 80,
+					Port:     80,
+					Protocol: corev1.ProtocolTCP,
 				},
 			},
 			Type: corev1.ServiceTypeLoadBalancer,

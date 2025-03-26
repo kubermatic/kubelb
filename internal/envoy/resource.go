@@ -94,9 +94,10 @@ func MapSnapshot(ctx context.Context, client ctrlclient.Client, loadBalancers []
 					}
 				}
 
-				if lbEndpointPort.Protocol == corev1.ProtocolTCP {
+				switch lbEndpointPort.Protocol {
+				case corev1.ProtocolTCP:
 					listener = append(listener, makeTCPListener(key, key, port))
-				} else if lbEndpointPort.Protocol == corev1.ProtocolUDP {
+				case corev1.ProtocolUDP:
 					listener = append(listener, makeUDPListener(key, key, port))
 				}
 				cluster = append(cluster, makeCluster(key, lbEndpoints))
@@ -144,9 +145,10 @@ func MapSnapshot(ctx context.Context, client ctrlclient.Client, loadBalancers []
 
 				key := fmt.Sprintf(kubelb.EnvoyRoutePortIdentifierPattern, route.Namespace, svc.Namespace, svc.Name, svc.UID, port.Port, port.Protocol)
 
-				if port.Protocol == corev1.ProtocolTCP {
+				switch port.Protocol {
+				case corev1.ProtocolTCP:
 					listener = append(listener, makeTCPListener(key, key, listenerPort))
-				} else if port.Protocol == corev1.ProtocolUDP {
+				case corev1.ProtocolUDP:
 					listener = append(listener, makeUDPListener(key, key, listenerPort))
 				}
 				cluster = append(cluster, makeCluster(key, lbEndpoints))

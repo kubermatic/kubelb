@@ -267,8 +267,8 @@ func (r *HTTPRouteReconciler) resourceFilter() predicate.Predicate {
 // shouldReconcile returns true if the HTTPRoute should be reconciled by the controller.
 // In Community Edition, the controller only reconciles HTTPRoutes against the gateway named "kubelb".
 func (r *HTTPRouteReconciler) shouldReconcile(httpRoute *gwapiv1.HTTPRoute) bool {
-	if len(httpRoute.Spec.CommonRouteSpec.ParentRefs) == 1 {
-		parentRef := httpRoute.Spec.CommonRouteSpec.ParentRefs[0]
+	if len(httpRoute.Spec.ParentRefs) == 1 {
+		parentRef := httpRoute.Spec.ParentRefs[0]
 		if parentRef.Name == ParentGatewayName {
 			return true
 		}
@@ -278,6 +278,7 @@ func (r *HTTPRouteReconciler) shouldReconcile(httpRoute *gwapiv1.HTTPRoute) bool
 
 func (r *HTTPRouteReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
+		Named(GatewayHTTPRouteControllerName).
 		For(&gwapiv1.HTTPRoute{}, builder.WithPredicates(r.resourceFilter())).
 		Watches(
 			&corev1.Service{},

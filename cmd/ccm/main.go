@@ -250,7 +250,7 @@ func main() {
 		}
 	}
 
-	if !(disableGatewayController || disableGatewayAPI) {
+	if !disableGatewayController && !disableGatewayAPI {
 		if err = (&ccm.GatewayReconciler{
 			Client:          mgr.GetClient(),
 			LBManager:       kubeLBMgr,
@@ -265,7 +265,7 @@ func main() {
 		}
 	}
 
-	if !(disableHTTPRouteController || disableGatewayAPI) {
+	if !disableHTTPRouteController && !disableGatewayAPI {
 		if err = (&ccm.HTTPRouteReconciler{
 			Client:      mgr.GetClient(),
 			LBManager:   kubeLBMgr,
@@ -279,7 +279,7 @@ func main() {
 		}
 	}
 
-	if !(disableGRPCRouteController || disableGatewayAPI) {
+	if !disableGRPCRouteController && !disableGatewayAPI {
 		if err = (&ccm.GRPCRouteReconciler{
 			Client:      mgr.GetClient(),
 			LBManager:   kubeLBMgr,

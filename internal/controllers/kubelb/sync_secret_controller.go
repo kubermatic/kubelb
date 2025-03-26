@@ -174,6 +174,7 @@ func (r *SyncSecretReconciler) cleanup(ctx context.Context, object *kubelbv1alph
 
 func (r *SyncSecretReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
+		Named(SyncSecretControllerName).
 		For(&kubelbv1alpha1.SyncSecret{}).
 		Complete(r)
 }
