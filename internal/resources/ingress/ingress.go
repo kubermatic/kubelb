@@ -60,14 +60,11 @@ func CreateOrUpdateIngress(ctx context.Context, log logr.Logger, client ctrlclie
 	}
 
 	// Class name depends on the chosen Ingress controller for the tenant or global cluster.
-	var className *string
 	if tenant.Spec.Ingress.Class != nil {
-		className = tenant.Spec.Ingress.Class
+		object.Spec.IngressClassName = tenant.Spec.Ingress.Class
 	} else if config.Spec.Ingress.Class != nil {
-		className = config.Spec.Ingress.Class
+		object.Spec.IngressClassName = config.Spec.Ingress.Class
 	}
-
-	object.Spec.IngressClassName = className
 
 	// Process annotations.
 	object.Annotations = kubelb.PropagateAnnotations(object.Annotations, annotations, kubelbv1alpha1.AnnotatedResourceIngress)
