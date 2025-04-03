@@ -8,10 +8,12 @@ KUBELB_CCM_IMG ?= quay.io/kubermatic/kubelb-ccm
 # ENVTEST_K8S_VERSION refers to the version of kubebuilder assets to be downloaded by envtest binary.
 ENVTEST_K8S_VERSION = 1.30.0
 KUSTOMIZE_VERSION ?= v5.4.3
-CONTROLLER_TOOLS_VERSION ?= v0.15.0
-GO_VERSION = 1.23.0
+CONTROLLER_TOOLS_VERSION ?= v0.17.2
+GO_VERSION = 1.24.1
 HELM_DOCS_VERSION ?= v1.14.2
 CRD_REF_DOCS_VERSION ?= v0.1.0
+
+CRD_CODE_GEN_PATH = "./api/..."
 
 GATEWAY_RELEASE_CHANNEL ?= stable
 GATEWAY_API_VERSION ?= $(shell go list -m -f '{{.Version}}' sigs.k8s.io/gateway-api)
@@ -74,10 +76,11 @@ help: ## Display this help.
 
 .PHONY: manifests
 manifests: generate controller-gen ## Generate WebhookConfiguration, ClusterRole and CustomResourceDefinition objects.
-	$(CONTROLLER_GEN) crd webhook paths="./..." output:crd:artifacts:config=config/crd/bases
+	$(CONTROLLER_GEN) --version
+	$(CONTROLLER_GEN) crd webhook paths=$(CRD_CODE_GEN_PATH) output:crd:artifacts:config=config/crd/bases
+	$(CONTROLLER_GEN) crd webhook paths=$(CRD_CODE_GEN_PATH) output:crd:artifacts:config=charts/kubelb-manager/crds
 	$(CONTROLLER_GEN) rbac:roleName=kubelb-ccm paths="./internal/controllers/ccm/..." output:artifacts:config=config/ccm/rbac
 	$(CONTROLLER_GEN) rbac:roleName=kubelb paths="./internal/controllers/kubelb/..." output:artifacts:config=config/kubelb/rbac
-	$(CONTROLLER_GEN) crd webhook paths="./..." output:crd:artifacts:config=charts/kubelb-manager/crds
 	cp charts/kubelb-manager/crds/kubelb.k8c.io_syncsecrets.yaml charts/kubelb-ccm/crds/kubelb.k8c.io_syncsecrets.yaml
 
 .PHONY: generate
@@ -216,10 +219,8 @@ $(CONTROLLER_GEN): $(LOCALBIN)
 
 .PHONY: envtest
 envtest: $(ENVTEST) ## Download envtest-setup locally if necessary.
-## Latest requires go 1.24.0 so pinned to a specific commit:
-## go: sigs.k8s.io/controller-runtime/tools/setup-envtest@latest: sigs.k8s.io/controller-runtime/tools/setup-envtest@v0.0.0-20250318051348-5dfe3216fb7f requires go >= 1.24.0 (running go 1.23.7; GOTOOLCHAIN=local)
 $(ENVTEST): $(LOCALBIN)
-	test -s $(LOCALBIN)/setup-envtest || GOBIN=$(LOCALBIN) go install sigs.k8s.io/controller-runtime/tools/setup-envtest@b68a0623fb4ee969e39ce88e1472755b5ef1ea6a
+	test -s $(LOCALBIN)/setup-envtest || GOBIN=$(LOCALBIN) go install sigs.k8s.io/controller-runtime/tools/setup-envtest@latest
 
 .PHONY: shfmt
 shfmt:

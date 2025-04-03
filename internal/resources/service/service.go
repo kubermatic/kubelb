@@ -46,7 +46,7 @@ func NormalizeAndReplicateServices(ctx context.Context, log logr.Logger, client 
 		log.Info("Normalizing service", "name", serviceRef.Name, "namespace", serviceRef.Namespace)
 
 		service := &corev1.Service{}
-		if err := client.Get(ctx, ctrlclient.ObjectKey{Namespace: serviceRef.Namespace, Name: serviceRef.Name}, service); err != nil {
+		if err := client.Get(ctx, serviceRef, service); err != nil {
 			if kerrors.IsNotFound(err) {
 				log.V(4).Info("service not found", "service", serviceRef)
 				continue

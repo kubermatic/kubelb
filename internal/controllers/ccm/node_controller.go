@@ -34,6 +34,10 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 )
 
+const (
+	NodeControllerName = "node-controller"
+)
+
 // KubeLBNodeReconciler reconciles a Service object
 type KubeLBNodeReconciler struct {
 	ctrlclient.Client
@@ -127,6 +131,7 @@ func (r *KubeLBNodeReconciler) getEndpoints(nodes *corev1.NodeList) []string {
 
 func (r *KubeLBNodeReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
+		Named(NodeControllerName).
 		For(&corev1.Node{}).
 		Complete(r)
 }

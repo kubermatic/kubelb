@@ -275,6 +275,7 @@ func (r *IngressReconciler) shouldReconcile(ingress *networkingv1.Ingress) bool 
 
 func (r *IngressReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
+		Named(IngressControllerName).
 		For(&networkingv1.Ingress{}, builder.WithPredicates(r.resourceFilter())).
 		Watches(
 			&corev1.Service{},

@@ -27,7 +27,6 @@ import (
 	"k8c.io/kubelb/internal/kubelb"
 
 	corev1 "k8s.io/api/core/v1"
-	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	kerrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -44,6 +43,7 @@ import (
 const (
 	LBFinalizerName       = "kubelb.k8c.io/lb-finalizer"
 	LoadBalancerClassName = "kubelb"
+	ServiceControllerName = "service-controller"
 )
 
 // KubeLBServiceReconciler reconciles a Service object
@@ -119,7 +119,7 @@ func (r *KubeLBServiceReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 	log.V(6).Info("actual", "LoadBalancer", actualLB)
 
 	if err != nil {
-		if !apierrors.IsNotFound(err) {
+		if !kerrors.IsNotFound(err) {
 			return ctrl.Result{}, err
 		}
 		log.V(1).Info("creating LoadBalancer", "name", desiredLB.Name, "namespace", desiredLB.Namespace)
@@ -135,7 +135,7 @@ func (r *KubeLBServiceReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 		key := ctrlclient.ObjectKeyFromObject(&service)
 		retErr := retry.RetryOnConflict(retry.DefaultRetry, func() error {
 			// fetch the current state of the service
-			if err := r.Client.Get(ctx, key, &service); err != nil {
+			if err := r.Get(ctx, key, &service); err != nil {
 				return err
 			}
 
@@ -191,8 +191,8 @@ func (r *KubeLBServiceReconciler) cleanupService(ctx context.Context, log logr.L
 	return ctrl.Result{}, nil
 }
 
-func (r *KubeLBServiceReconciler) enqueueLoadBalancer() handler.TypedMapFunc[*kubelbv1alpha1.LoadBalancer] {
-	return handler.TypedMapFunc[*kubelbv1alpha1.LoadBalancer](func(_ context.Context, lb *kubelbv1alpha1.LoadBalancer) []reconcile.Request {
+func (r *KubeLBServiceReconciler) enqueueLoadBalancer() handler.TypedMapFunc[*kubelbv1alpha1.LoadBalancer, reconcile.Request] {
+	return handler.TypedMapFunc[*kubelbv1alpha1.LoadBalancer, reconcile.Request](func(_ context.Context, lb *kubelbv1alpha1.LoadBalancer) []reconcile.Request {
 		if lb.GetNamespace() != r.ClusterName {
 			return []reconcile.Request{}
 		}
@@ -258,6 +258,7 @@ func (r *KubeLBServiceReconciler) shouldReconcile(svc corev1.Service) bool {
 
 func (r *KubeLBServiceReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
+		Named(ServiceControllerName).
 		For(&corev1.Service{}).
 		WatchesRawSource(
 			source.Kind(r.KubeLBManager.GetCache(), &kubelbv1alpha1.LoadBalancer{},

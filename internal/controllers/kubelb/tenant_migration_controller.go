@@ -151,20 +151,18 @@ func (r *TenantMigrationReconciler) resourceFilter() predicate.Predicate {
 }
 
 func (r *TenantMigrationReconciler) shouldReconcile(ns *corev1.Namespace) bool {
-	reconcile := true
 	if ns.Labels == nil || ns.Labels[kubelb.LabelManagedBy] != kubelb.LabelControllerName {
-		reconcile = false
+		return false
 	}
 
 	if ns.OwnerReferences != nil {
 		for _, owner := range ns.OwnerReferences {
 			if owner.Kind == "Tenant" {
-				reconcile = false
-				break
+				return false
 			}
 		}
 	}
-	return reconcile
+	return true
 }
 
 func RemoveTenantPrefix(namespace string) string {
@@ -177,6 +175,7 @@ func RemoveTenantPrefix(namespace string) string {
 
 func (r *TenantMigrationReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
+		Named(TenantMigrationControllerName).
 		For(&corev1.Namespace{}, builder.WithPredicates(r.resourceFilter())).
 		Complete(r)
 }

@@ -47,41 +47,7 @@ rules:
   - gateway.networking.k8s.io
   resources:
   - gateways
-  verbs:
-  - get
-  - list
-  - patch
-  - update
-  - watch
-- apiGroups:
-  - gateway.networking.k8s.io
-  resources:
-  - gateways/status
-  verbs:
-  - get
-  - patch
-  - update
-- apiGroups:
-  - gateway.networking.k8s.io
-  resources:
   - grpcroutes
-  verbs:
-  - get
-  - list
-  - patch
-  - update
-  - watch
-- apiGroups:
-  - gateway.networking.k8s.io
-  resources:
-  - grpcroutes/status
-  verbs:
-  - get
-  - patch
-  - update
-- apiGroups:
-  - gateway.networking.k8s.io
-  resources:
   - httproutes
   verbs:
   - get
@@ -92,6 +58,8 @@ rules:
 - apiGroups:
   - gateway.networking.k8s.io
   resources:
+  - gateways/status
+  - grpcroutes/status
   - httproutes/status
   verbs:
   - get
@@ -101,6 +69,7 @@ rules:
   - kubelb.k8c.io
   resources:
   - routes
+  - syncsecrets
   verbs:
   - create
   - delete
@@ -117,18 +86,6 @@ rules:
   - get
   - patch
   - update
-- apiGroups:
-  - kubelb.k8c.io
-  resources:
-  - syncsecrets
-  verbs:
-  - create
-  - delete
-  - get
-  - list
-  - patch
-  - update
-  - watch
 - apiGroups:
   - networking.k8s.io
   resources:
