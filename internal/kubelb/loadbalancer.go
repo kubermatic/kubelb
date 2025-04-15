@@ -17,7 +17,9 @@ limitations under the License.
 package kubelb
 
 import (
+	"fmt"
 	"reflect"
+	"strings"
 
 	kubelbiov1alpha1 "k8c.io/kubelb/api/kubelb.k8c.io/v1alpha1"
 
@@ -32,14 +34,20 @@ func MapLoadBalancer(userService *corev1.Service, clusterEndpoints []string, use
 
 	// mapping into load balancing service and endpoint subset ports
 	for _, port := range userService.Spec.Ports {
+		// Add a name for port if not set.
+		name := fmt.Sprintf("%d-%s", port.Port, strings.ToLower(string(port.Protocol)))
+		if port.Name != "" {
+			name = strings.ToLower(port.Name)
+		}
+
 		lbServicePorts = append(lbServicePorts, kubelbiov1alpha1.LoadBalancerPort{
-			Name:     port.Name,
+			Name:     name,
 			Port:     port.Port,
 			Protocol: port.Protocol,
 		})
 
 		lbEndpointPorts = append(lbEndpointPorts, kubelbiov1alpha1.EndpointPort{
-			Name:     port.Name,
+			Name:     name,
 			Port:     port.NodePort,
 			Protocol: port.Protocol,
 		})
