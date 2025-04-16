@@ -19,6 +19,7 @@ package ccm
 import (
 	"context"
 	"reflect"
+	"sort"
 
 	"github.com/go-logr/logr"
 
@@ -103,6 +104,10 @@ func (r *KubeLBNodeReconciler) GenerateAddresses(nodes *corev1.NodeList) *kubelb
 			IP: endpoint,
 		})
 	}
+
+	sort.Slice(addresses, func(i, j int) bool {
+		return addresses[i].IP < addresses[j].IP
+	})
 
 	return &kubelbiov1alpha1.Addresses{
 		ObjectMeta: metav1.ObjectMeta{
