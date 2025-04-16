@@ -20,6 +20,7 @@ import (
 	"context"
 	"fmt"
 	"reflect"
+	"sort"
 
 	kubelbv1alpha1 "k8c.io/kubelb/api/kubelb.k8c.io/v1alpha1"
 	utils "k8c.io/kubelb/internal/controllers"
@@ -27,6 +28,7 @@ import (
 	portlookup "k8c.io/kubelb/internal/port-lookup"
 
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/equality"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -215,102 +217,130 @@ func (r *LoadBalancerReconciler) reconcileService(ctx context.Context, loadBalan
 
 	log.V(2).Info("verify service")
 
-	labels := map[string]string{
-		kubelb.LabelAppKubernetesName: appName,
-		// This helps us to identify the LoadBalancer that this service belongs to.
-		kubelb.LabelLoadBalancerName:      loadBalancer.Name,
-		kubelb.LabelLoadBalancerNamespace: loadBalancer.Namespace,
-		// This helps us to identify the origin of the service.
-		kubelb.LabelOriginNamespace: loadBalancer.Labels[kubelb.LabelOriginNamespace],
-		kubelb.LabelOriginName:      loadBalancer.Labels[kubelb.LabelOriginName],
-	}
-
+	// Create base service with metadata
 	svcName := fmt.Sprintf(envoyResourcePattern, loadBalancer.Name)
 	if r.EnvoyProxyTopology == EnvoyProxyTopologyGlobal {
 		svcName = fmt.Sprintf(envoyGlobalTopologyServicePattern, loadBalancer.Namespace, loadBalancer.Name)
 	}
+	labels := map[string]string{
+		kubelb.LabelAppKubernetesName:     appName,
+		kubelb.LabelLoadBalancerName:      loadBalancer.Name,
+		kubelb.LabelLoadBalancerNamespace: loadBalancer.Namespace,
+		kubelb.LabelOriginNamespace:       loadBalancer.Labels[kubelb.LabelOriginNamespace],
+		kubelb.LabelOriginName:            loadBalancer.Labels[kubelb.LabelOriginName],
+	}
 
-	service := &corev1.Service{
+	desiredService := &corev1.Service{
 		ObjectMeta: v1.ObjectMeta{
 			Name:        svcName,
 			Namespace:   namespace,
 			Labels:      labels,
 			Annotations: kubelb.PropagateAnnotations(loadBalancer.Annotations, annotations),
 		},
+		Spec: corev1.ServiceSpec{
+			Selector: map[string]string{kubelb.LabelAppKubernetesName: appName},
+			Type:     loadBalancer.Spec.Type,
+		},
 	}
+
+	if className != nil {
+		desiredService.Spec.LoadBalancerClass = className
+	}
+
+	// Get existing service.
+	existingService := &corev1.Service{}
 	err := r.Get(ctx, types.NamespacedName{
 		Name:      svcName,
 		Namespace: namespace,
-	}, service)
+	}, existingService)
 
 	if err != nil && !apierrors.IsNotFound(err) {
 		return err
 	}
 
-	log.V(5).Info("actual", "service", service)
+	// Handle service ports
+	desiredService.Spec.Ports = createServicePorts(loadBalancer, existingService, portAllocator, r.EnvoyProxyTopology)
 
-	allocatedServicePorts := len(service.Spec.Ports)
+	// If service doesn't exist, create it
+	if apierrors.IsNotFound(err) {
+		log.V(2).Info("creating service", "name", svcName)
+		if err := r.Create(ctx, desiredService); err != nil {
+			return fmt.Errorf("failed to create service: %w", err)
+		}
+	} else if !equality.Semantic.DeepEqual(existingService.Spec.Ports, desiredService.Spec.Ports) ||
+		!equality.Semantic.DeepEqual(existingService.Spec.Selector, desiredService.Spec.Selector) ||
+		!equality.Semantic.DeepEqual(existingService.Spec.Type, desiredService.Spec.Type) ||
+		!equality.Semantic.DeepEqual(existingService.Spec.LoadBalancerClass, desiredService.Spec.LoadBalancerClass) ||
+		!equality.Semantic.DeepEqual(existingService.Labels, desiredService.Labels) ||
+		!utils.CompareAnnotations(existingService.Annotations, desiredService.Annotations) {
+		log.V(2).Info("updating service", "name", svcName)
+		existingService.Spec = desiredService.Spec
+		existingService.Labels = desiredService.Labels
+		existingService.Annotations = desiredService.Annotations
+		if err := r.Update(ctx, existingService); err != nil {
+			return fmt.Errorf("failed to update service: %w", err)
+		}
+	}
+	return updateLoadBalancerStatus(ctx, r.Client, loadBalancer, existingService)
+}
 
-	result, err := ctrl.CreateOrUpdate(ctx, r.Client, service, func() error {
-		var ports []corev1.ServicePort
-		for currentLbPort, lbServicePort := range loadBalancer.Spec.Ports {
-			var allocatedPort corev1.ServicePort
-			targetPort := loadBalancer.Spec.Endpoints[0].Ports[currentLbPort].Port
-
-			if r.EnvoyProxyTopology == EnvoyProxyTopologyGlobal {
-				endpointKey := fmt.Sprintf(kubelb.EnvoyEndpointPattern, loadBalancer.Namespace, loadBalancer.Name, 0)
-				portKey := fmt.Sprintf(kubelb.EnvoyListenerPattern, targetPort, lbServicePort.Protocol)
-				if value, exists := portAllocator.Lookup(endpointKey, portKey); exists {
-					targetPort = int32(value)
-				}
+func createServicePorts(loadBalancer *kubelbv1alpha1.LoadBalancer, existingService *corev1.Service, portAllocator *portlookup.PortAllocator, topology EnvoyProxyTopology) []corev1.ServicePort {
+	desiredPorts := make([]corev1.ServicePort, 0, len(loadBalancer.Spec.Ports))
+	for i, lbPort := range loadBalancer.Spec.Ports {
+		// If the port name is not set, we match the port by index.
+		targetPort := loadBalancer.Spec.Endpoints[0].Ports[i].Port
+		// Find the port name in the endpoints ports.
+		for _, port := range loadBalancer.Spec.Endpoints[0].Ports {
+			if port.Name == lbPort.Name {
+				targetPort = port.Port
+				break
 			}
+		}
 
-			// Edit existing port
-			if currentLbPort < allocatedServicePorts {
-				allocatedPort = service.Spec.Ports[currentLbPort]
-
-				allocatedPort.Name = lbServicePort.Name
-				allocatedPort.Port = lbServicePort.Port
-				allocatedPort.TargetPort = intstr.FromInt(int(targetPort))
-				allocatedPort.Protocol = lbServicePort.Protocol
-			} else {
-				allocatedPort = corev1.ServicePort{
-					Name:       lbServicePort.Name,
-					Port:       lbServicePort.Port,
-					TargetPort: intstr.FromInt(int(targetPort)),
-					Protocol:   lbServicePort.Protocol,
-				}
+		// For global topology, look up allocated port
+		if topology == EnvoyProxyTopologyGlobal {
+			endpointKey := fmt.Sprintf(kubelb.EnvoyEndpointPattern, loadBalancer.Namespace, loadBalancer.Name, 0)
+			portKey := fmt.Sprintf(kubelb.EnvoyListenerPattern, targetPort, lbPort.Protocol)
+			if value, exists := portAllocator.Lookup(endpointKey, portKey); exists {
+				targetPort = int32(value)
 			}
-			ports = append(ports, allocatedPort)
 		}
 
-		if service.Annotations == nil {
-			service.Annotations = make(map[string]string)
+		// Try to find matching existing port to preserve NodePort if possible
+		var existingPort *corev1.ServicePort
+		for j := range existingService.Spec.Ports {
+			if existingService.Spec.Ports[j].Name == lbPort.Name || (existingService.Spec.Ports[j].Port == lbPort.Port && existingService.Spec.Ports[j].Protocol == lbPort.Protocol) {
+				existingPort = &existingService.Spec.Ports[j]
+				break
+			}
 		}
 
-		for k, v := range kubelb.PropagateAnnotations(loadBalancer.Annotations, annotations) {
-			service.Annotations[k] = v
-		}
-		service.Spec.Ports = ports
-
-		service.Spec.Selector = map[string]string{kubelb.LabelAppKubernetesName: appName}
-		service.Spec.Type = loadBalancer.Spec.Type
-
-		// Set the LoadBalancerClassName if it is specified in the configuration.
-		if className != nil {
-			service.Spec.LoadBalancerClass = className
+		port := corev1.ServicePort{
+			Name:       lbPort.Name,
+			Port:       lbPort.Port,
+			TargetPort: intstr.FromInt(int(targetPort)),
+			Protocol:   lbPort.Protocol,
 		}
 
-		return nil
+		// Preserve NodePort if it exists and matches the desired configuration
+		if existingPort != nil && existingPort.NodePort != 0 {
+			port.NodePort = existingPort.NodePort
+		}
+
+		desiredPorts = append(desiredPorts, port)
+	}
+
+	// Sort ports by name for consistent ordering
+	sort.Slice(desiredPorts, func(i, j int) bool {
+		return desiredPorts[i].Name < desiredPorts[j].Name
 	})
 
-	log.V(5).Info("desired", "service", service)
+	return desiredPorts
+}
 
-	log.V(2).Info("operation fulfilled", "status", result)
-
-	if err != nil {
-		return err
-	}
+func updateLoadBalancerStatus(ctx context.Context, client ctrlruntimeclient.Client, loadBalancer *kubelbv1alpha1.LoadBalancer, service *corev1.Service) error {
+	log := ctrl.LoggerFrom(ctx)
+	log.V(5).Info("load balancer status", "LoadBalancer", loadBalancer.Status.LoadBalancer.Ingress, "service", service.Status.LoadBalancer.Ingress)
 
 	// Status changes
 	log.V(5).Info("load balancer status", "LoadBalancer", loadBalancer.Status.LoadBalancer.Ingress, "service", service.Status.LoadBalancer.Ingress)
@@ -353,7 +383,7 @@ func (r *LoadBalancerReconciler) reconcileService(ctx context.Context, loadBalan
 
 	return retry.RetryOnConflict(retry.DefaultRetry, func() error {
 		lb := &kubelbv1alpha1.LoadBalancer{}
-		if err := r.Get(ctx, types.NamespacedName{Name: loadBalancer.Name, Namespace: loadBalancer.Namespace}, lb); err != nil {
+		if err := client.Get(ctx, types.NamespacedName{Name: loadBalancer.Name, Namespace: loadBalancer.Namespace}, lb); err != nil {
 			return err
 		}
 		original := lb.DeepCopy()
@@ -362,7 +392,7 @@ func (r *LoadBalancerReconciler) reconcileService(ctx context.Context, loadBalan
 			return nil
 		}
 		// update the status
-		return r.Status().Patch(ctx, lb, ctrlruntimeclient.MergeFrom(original))
+		return client.Status().Patch(ctx, lb, ctrlruntimeclient.MergeFrom(original))
 	})
 }
 
