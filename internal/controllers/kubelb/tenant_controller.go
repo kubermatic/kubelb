@@ -332,6 +332,13 @@ func buildKubeconfigFromEndpoint(ctx context.Context, client ctrlruntimeclient.C
 
 func (r *TenantReconciler) cleanup(ctx context.Context, tenant *kubelbv1alpha1.Tenant) (ctrl.Result, error) {
 	namespace := fmt.Sprintf(tenantNamespacePattern, tenant.Name)
+
+	result, err := r.cleanupResources(ctx, namespace)
+	if err != nil {
+		return result, fmt.Errorf("failed to cleanup resources: %w", err)
+	}
+
+	// Delete all resources in the namespace
 	for _, resource := range tenantresources.Deletion(namespace) {
 		err := r.Delete(ctx, resource)
 		if err != nil && !kerrors.IsNotFound(err) {
@@ -339,10 +346,59 @@ func (r *TenantReconciler) cleanup(ctx context.Context, tenant *kubelbv1alpha1.T
 		}
 	}
 
-	// Clean up is complete so remove the finalizer.
 	controllerutil.RemoveFinalizer(tenant, CleanupFinalizer)
 	if err := r.Update(ctx, tenant); err != nil {
 		return reconcile.Result{}, fmt.Errorf("failed to remove finalizer: %w", err)
+	}
+
+	return reconcile.Result{}, nil
+}
+
+func (r *TenantReconciler) cleanupResources(ctx context.Context, namespace string) (ctrl.Result, error) {
+	// Delete all Routes in the namespace
+	if err := r.DeleteAllOf(ctx, &kubelbv1alpha1.Route{}, ctrlruntimeclient.InNamespace(namespace)); err != nil {
+		return reconcile.Result{}, fmt.Errorf("failed to delete Routes: %w", err)
+	}
+
+	// Delete all LoadBalancers in the namespace
+	if err := r.DeleteAllOf(ctx, &kubelbv1alpha1.LoadBalancer{}, ctrlruntimeclient.InNamespace(namespace)); err != nil {
+		return reconcile.Result{}, fmt.Errorf("failed to delete LoadBalancers: %w", err)
+	}
+
+	// Delete all SyncSecrets in the namespace
+	if err := r.DeleteAllOf(ctx, &kubelbv1alpha1.SyncSecret{}, ctrlruntimeclient.InNamespace(namespace)); err != nil {
+		return reconcile.Result{}, fmt.Errorf("failed to delete SyncSecrets: %w", err)
+	}
+
+	// Ensure that routes, loadbalancers, and syncsecrets are removed.
+	routes := &kubelbv1alpha1.RouteList{}
+	if err := r.List(ctx, routes, ctrlruntimeclient.InNamespace(namespace)); err != nil {
+		return reconcile.Result{}, fmt.Errorf("failed to list HTTPRoutes: %w", err)
+	}
+
+	if len(routes.Items) > 0 {
+		// Requeue until all resources are deleted
+		return reconcile.Result{Requeue: true}, nil
+	}
+
+	loadbalancers := &kubelbv1alpha1.LoadBalancerList{}
+	if err := r.List(ctx, loadbalancers, ctrlruntimeclient.InNamespace(namespace)); err != nil {
+		return reconcile.Result{}, fmt.Errorf("failed to list LoadBalancers: %w", err)
+	}
+
+	if len(loadbalancers.Items) > 0 {
+		// Requeue until all resources are deleted
+		return reconcile.Result{Requeue: true}, nil
+	}
+
+	syncsecrets := &kubelbv1alpha1.SyncSecretList{}
+	if err := r.List(ctx, syncsecrets, ctrlruntimeclient.InNamespace(namespace)); err != nil {
+		return reconcile.Result{}, fmt.Errorf("failed to list SyncSecrets: %w", err)
+	}
+
+	if len(syncsecrets.Items) > 0 {
+		// Requeue until all resources are deleted
+		return reconcile.Result{Requeue: true}, nil
 	}
 
 	return reconcile.Result{}, nil
