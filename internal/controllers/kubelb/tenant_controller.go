@@ -25,6 +25,7 @@ import (
 	"html/template"
 	"net"
 	"strconv"
+	"time"
 
 	"github.com/go-logr/logr"
 
@@ -55,6 +56,7 @@ const (
 	configMapName           = "cluster-info"
 	kubernetesEndpointsName = "kubernetes"
 	securePortName          = "https"
+	requeueAfter            = 10 * time.Second
 )
 
 const kubeconfigTemplate = `apiVersion: v1
@@ -95,6 +97,9 @@ type TenantReconciler struct {
 // +kubebuilder:rbac:groups="rbac.authorization.k8s.io",resources=rolebindings,verbs=get;list;watch;create;update;patch;delete;bind;escalate
 // +kubebuilder:rbac:groups=kubelb.k8c.io,resources=tenants,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=kubelb.k8c.io,resources=tenants/status,verbs=get;update;patch
+// +kubebuilder:rbac:groups=kubelb.k8c.io,resources=routes,verbs=get;list;deletecollection
+// +kubebuilder:rbac:groups=kubelb.k8c.io,resources=loadbalancers,verbs=get;list;deletecollection
+// +kubebuilder:rbac:groups=kubelb.k8c.io,resources=syncsecrets,verbs=get;list;deletecollection
 
 func (r *TenantReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	log := r.Log.WithValues("name", req.NamespacedName)
@@ -380,7 +385,7 @@ func (r *TenantReconciler) cleanupResources(ctx context.Context, namespace strin
 
 	if len(routes.Items) > 0 {
 		// Requeue until all resources are deleted
-		return reconcile.Result{Requeue: true}, nil
+		return reconcile.Result{RequeueAfter: requeueAfter}, fmt.Errorf("routes still exist")
 	}
 
 	loadbalancers := &kubelbv1alpha1.LoadBalancerList{}
@@ -390,7 +395,7 @@ func (r *TenantReconciler) cleanupResources(ctx context.Context, namespace strin
 
 	if len(loadbalancers.Items) > 0 {
 		// Requeue until all resources are deleted
-		return reconcile.Result{Requeue: true}, nil
+		return reconcile.Result{RequeueAfter: requeueAfter}, fmt.Errorf("loadbalancers still exist")
 	}
 
 	syncsecrets := &kubelbv1alpha1.SyncSecretList{}
@@ -400,7 +405,7 @@ func (r *TenantReconciler) cleanupResources(ctx context.Context, namespace strin
 
 	if len(syncsecrets.Items) > 0 {
 		// Requeue until all resources are deleted
-		return reconcile.Result{Requeue: true}, nil
+		return reconcile.Result{RequeueAfter: requeueAfter}, fmt.Errorf("syncsecrets still exist")
 	}
 
 	return reconcile.Result{}, nil
