@@ -80,9 +80,6 @@ rules:
   - kubelb.k8c.io
   resources:
   - addresses
-  - loadbalancers
-  - routes
-  - syncsecrets
   - tenants
   verbs:
   - create
@@ -117,6 +114,21 @@ rules:
   - get
   - patch
   - update
+- apiGroups:
+  - kubelb.k8c.io
+  resources:
+  - loadbalancers
+  - routes
+  - syncsecrets
+  verbs:
+  - create
+  - delete
+  - deletecollection
+  - get
+  - list
+  - patch
+  - update
+  - watch
 - apiGroups:
   - networking.k8s.io
   resources:
