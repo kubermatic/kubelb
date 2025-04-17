@@ -25,6 +25,7 @@ import (
 	"html/template"
 	"net"
 	"strconv"
+	"time"
 
 	"github.com/go-logr/logr"
 
@@ -53,6 +54,7 @@ const (
 	configMapName           = "cluster-info"
 	kubernetesEndpointsName = "kubernetes"
 	securePortName          = "https"
+	requeueAfter            = 10 * time.Second
 )
 
 const kubeconfigTemplate = `apiVersion: v1
@@ -381,7 +383,7 @@ func (r *TenantReconciler) cleanupResources(ctx context.Context, namespace strin
 
 	if len(routes.Items) > 0 {
 		// Requeue until all resources are deleted
-		return reconcile.Result{Requeue: true}, nil
+		return reconcile.Result{RequeueAfter: requeueAfter}, fmt.Errorf("routes still exist")
 	}
 
 	loadbalancers := &kubelbv1alpha1.LoadBalancerList{}
@@ -391,7 +393,7 @@ func (r *TenantReconciler) cleanupResources(ctx context.Context, namespace strin
 
 	if len(loadbalancers.Items) > 0 {
 		// Requeue until all resources are deleted
-		return reconcile.Result{Requeue: true}, nil
+		return reconcile.Result{RequeueAfter: requeueAfter}, fmt.Errorf("loadbalancers still exist")
 	}
 
 	syncsecrets := &kubelbv1alpha1.SyncSecretList{}
@@ -401,7 +403,7 @@ func (r *TenantReconciler) cleanupResources(ctx context.Context, namespace strin
 
 	if len(syncsecrets.Items) > 0 {
 		// Requeue until all resources are deleted
-		return reconcile.Result{Requeue: true}, nil
+		return reconcile.Result{RequeueAfter: requeueAfter}, fmt.Errorf("syncsecrets still exist")
 	}
 
 	return reconcile.Result{}, nil
