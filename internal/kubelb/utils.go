@@ -20,7 +20,7 @@ import (
 	"fmt"
 	"strings"
 
-	kubelbv1alpha1 "k8c.io/kubelb/api/kubelb.k8c.io/v1alpha1"
+	kubelbv1alpha1 "k8c.io/kubelb/api/ce/kubelb.k8c.io/v1alpha1"
 
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )

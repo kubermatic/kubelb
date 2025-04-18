@@ -13,7 +13,7 @@ GO_VERSION = 1.24.1
 HELM_DOCS_VERSION ?= v1.14.2
 CRD_REF_DOCS_VERSION ?= v0.1.0
 
-CRD_CODE_GEN_PATH = "./api/..."
+CRD_CODE_GEN_PATH = "./api/ce/..."
 
 GATEWAY_RELEASE_CHANNEL ?= stable
 GATEWAY_API_VERSION ?= $(shell go list -m -f '{{.Version}}' sigs.k8s.io/gateway-api)
