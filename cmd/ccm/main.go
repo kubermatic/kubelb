@@ -28,7 +28,7 @@ import (
 
 	"go.uber.org/zap/zapcore"
 
-	kubelbv1alpha1 "k8c.io/kubelb/api/kubelb.k8c.io/v1alpha1"
+	kubelbv1alpha1 "k8c.io/kubelb/api/ce/kubelb.k8c.io/v1alpha1"
 	"k8c.io/kubelb/internal/controllers/ccm"
 
 	corev1 "k8s.io/api/core/v1"

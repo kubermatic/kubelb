@@ -21,4 +21,5 @@ boilerplate \
   -boilerplates hack/boilerplate/ \
   -exclude config \
   -exclude charts \
-  -exclude Makefile
+  -exclude Makefile \
+  -exclude api/ee

@@ -19,7 +19,7 @@ package config
 import (
 	"context"
 
-	"k8c.io/kubelb/api/kubelb.k8c.io/v1alpha1"
+	"k8c.io/kubelb/api/ce/kubelb.k8c.io/v1alpha1"
 
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )

@@ -19,7 +19,7 @@ package kubelb
 import (
 	"context"
 
-	kubelbv1alpha1 "k8c.io/kubelb/api/kubelb.k8c.io/v1alpha1"
+	kubelbv1alpha1 "k8c.io/kubelb/api/ce/kubelb.k8c.io/v1alpha1"
 	configpkg "k8c.io/kubelb/internal/config"
 
 	ctrlclient "sigs.k8s.io/controller-runtime/pkg/client"
