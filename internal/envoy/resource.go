@@ -100,7 +100,7 @@ func MapSnapshot(ctx context.Context, client ctrlclient.Client, loadBalancers []
 				case corev1.ProtocolUDP:
 					listener = append(listener, makeUDPListener(key, key, port))
 				}
-				cluster = append(cluster, makeCluster(key, lbEndpoints))
+				cluster = append(cluster, makeCluster(key, lbEndpoints, lbEndpointPort.Protocol))
 			}
 		}
 	}
@@ -151,7 +151,7 @@ func MapSnapshot(ctx context.Context, client ctrlclient.Client, loadBalancers []
 				case corev1.ProtocolUDP:
 					listener = append(listener, makeUDPListener(key, key, listenerPort))
 				}
-				cluster = append(cluster, makeCluster(key, lbEndpoints))
+				cluster = append(cluster, makeCluster(key, lbEndpoints, port.Protocol))
 			}
 		}
 	}
@@ -178,7 +178,27 @@ func MapSnapshot(ctx context.Context, client ctrlclient.Client, loadBalancers []
 	)
 }
 
-func makeCluster(clusterName string, lbEndpoints []*envoyEndpoint.LbEndpoint) *envoyCluster.Cluster {
+func makeCluster(clusterName string, lbEndpoints []*envoyEndpoint.LbEndpoint, protocol corev1.Protocol) *envoyCluster.Cluster {
+	defaultHealthCheck := []*envoyCore.HealthCheck{
+		{
+			Timeout:            &duration.Duration{Seconds: 5},
+			Interval:           &duration.Duration{Seconds: 5},
+			UnhealthyThreshold: &wrappers.UInt32Value{Value: 3},
+			HealthyThreshold:   &wrappers.UInt32Value{Value: 3},
+			HealthChecker: &envoyCore.HealthCheck_TcpHealthCheck_{
+				TcpHealthCheck: &envoyCore.HealthCheck_TcpHealthCheck{
+					// This will use empty payload to perform connect-only health check.
+					Send:    nil,
+					Receive: []*envoyCore.HealthCheck_Payload{},
+				}},
+		},
+	}
+
+	if protocol == corev1.ProtocolUDP {
+		// UDP health checks are not supported in Envoy, so we set defaultHealthCheck to nil
+		defaultHealthCheck = nil
+	}
+
 	return &envoyCluster.Cluster{
 		Name:                 clusterName,
 		ConnectTimeout:       durationpb.New(5 * time.Second),
@@ -191,17 +211,7 @@ func makeCluster(clusterName string, lbEndpoints []*envoyEndpoint.LbEndpoint) *e
 			}},
 		},
 		DnsLookupFamily: envoyCluster.Cluster_V4_ONLY,
-		HealthChecks: []*envoyCore.HealthCheck{
-			{
-				Timeout:            &duration.Duration{Seconds: 5},
-				Interval:           &duration.Duration{Seconds: 5},
-				UnhealthyThreshold: &wrappers.UInt32Value{Value: 3},
-				HealthyThreshold:   &wrappers.UInt32Value{Value: 3},
-				HealthChecker: &envoyCore.HealthCheck_TcpHealthCheck_{
-					TcpHealthCheck: &envoyCore.HealthCheck_TcpHealthCheck{},
-				},
-			},
-		},
+		HealthChecks:    defaultHealthCheck,
 		CommonLbConfig: &envoyCluster.Cluster_CommonLbConfig{
 			HealthyPanicThreshold: &envoytypev3.Percent{Value: 0},
 		},
