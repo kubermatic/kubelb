@@ -49,6 +49,13 @@ import (
 
 const (
 	endpointAddressReferencePattern = "%s-address-%s"
+
+	// Health check configuration constants
+	defaultHealthCheckTimeoutSeconds           = 5
+	defaultHealthCheckIntervalSeconds          = 5
+	defaultHealthCheckUnhealthyThreshold       = 3
+	defaultHealthCheckHealthyThreshold         = 2
+	defaultHealthCheckNoTrafficIntervalSeconds = 5
 )
 
 func MapSnapshot(ctx context.Context, client ctrlclient.Client, loadBalancers []kubelbv1alpha1.LoadBalancer, routes []kubelbv1alpha1.Route, portAllocator *portlookup.PortAllocator, globalEnvoyProxyTopology bool) (*envoycache.Snapshot, error) {
@@ -181,10 +188,12 @@ func MapSnapshot(ctx context.Context, client ctrlclient.Client, loadBalancers []
 func makeCluster(clusterName string, lbEndpoints []*envoyEndpoint.LbEndpoint, protocol corev1.Protocol) *envoyCluster.Cluster {
 	defaultHealthCheck := []*envoyCore.HealthCheck{
 		{
-			Timeout:            &duration.Duration{Seconds: 5},
-			Interval:           &duration.Duration{Seconds: 5},
-			UnhealthyThreshold: &wrappers.UInt32Value{Value: 3},
-			HealthyThreshold:   &wrappers.UInt32Value{Value: 3},
+			Timeout:            &duration.Duration{Seconds: defaultHealthCheckTimeoutSeconds},
+			Interval:           &duration.Duration{Seconds: defaultHealthCheckIntervalSeconds},
+			UnhealthyThreshold: &wrappers.UInt32Value{Value: defaultHealthCheckUnhealthyThreshold},
+			HealthyThreshold:   &wrappers.UInt32Value{Value: defaultHealthCheckHealthyThreshold},
+			// Start sending health checks after 5 seconds to a new cluster. The default is 60 seconds.
+			NoTrafficInterval: &duration.Duration{Seconds: defaultHealthCheckNoTrafficIntervalSeconds},
 			HealthChecker: &envoyCore.HealthCheck_TcpHealthCheck_{
 				TcpHealthCheck: &envoyCore.HealthCheck_TcpHealthCheck{
 					// This will use empty payload to perform connect-only health check.
