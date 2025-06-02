@@ -34,6 +34,7 @@ import (
 	"k8c.io/reconciler/pkg/reconciling"
 
 	corev1 "k8s.io/api/core/v1"
+	discoveryv1 "k8s.io/api/discovery/v1"
 	kerrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -289,40 +290,40 @@ func getKubeconfigFromConfigMap(ctx context.Context, client ctrlruntimeclient.Cl
 }
 
 func buildKubeconfigFromEndpoint(ctx context.Context, client ctrlruntimeclient.Client) (*clientcmdapi.Config, error) {
-	endpoint := &corev1.Endpoints{}
-	if err := client.Get(ctx, types.NamespacedName{Name: kubernetesEndpointsName, Namespace: metav1.NamespaceDefault}, endpoint); err != nil {
+	endpointSlice := &discoveryv1.EndpointSlice{}
+	if err := client.Get(ctx, types.NamespacedName{Name: kubernetesEndpointsName, Namespace: metav1.NamespaceDefault}, endpointSlice); err != nil {
 		return nil, err
 	}
 
-	if len(endpoint.Subsets) == 0 {
-		return nil, errors.New("no subsets in the kubernetes endpoints resource")
+	if len(endpointSlice.Endpoints) == 0 {
+		return nil, errors.New("no endpoints in the kubernetes endpointslice resource")
 	}
-	subset := endpoint.Subsets[0]
+	endpoint := endpointSlice.Endpoints[0]
 
-	if len(subset.Addresses) == 0 {
-		return nil, errors.New("no addresses in the first subset of the kubernetes endpoints resource")
+	if len(endpoint.Addresses) == 0 {
+		return nil, errors.New("no addresses in the first endpoint of the kubernetes endpointslice resource")
 	}
-	address := subset.Addresses[0]
+	address := endpoint.Addresses[0]
 
-	ip := net.ParseIP(address.IP)
+	ip := net.ParseIP(address)
 	if ip == nil {
-		return nil, errors.New("could not parse ip from ")
+		return nil, errors.New("could not parse ip from endpoint address")
 	}
 
-	getSecurePort := func(_ corev1.EndpointSubset) *corev1.EndpointPort {
-		for _, p := range subset.Ports {
-			if p.Name == securePortName {
+	getSecurePort := func() *discoveryv1.EndpointPort {
+		for _, p := range endpointSlice.Ports {
+			if p.Name != nil && *p.Name == securePortName {
 				return &p
 			}
 		}
 		return nil
 	}
 
-	port := getSecurePort(subset)
-	if port == nil {
-		return nil, errors.New("no secure port in the subset")
+	port := getSecurePort()
+	if port == nil || port.Port == nil {
+		return nil, errors.New("no secure port in the endpointslice")
 	}
-	url := fmt.Sprintf("https://%s", net.JoinHostPort(ip.String(), strconv.Itoa(int(port.Port))))
+	url := fmt.Sprintf("https://%s", net.JoinHostPort(ip.String(), strconv.Itoa(int(*port.Port))))
 
 	return &clientcmdapi.Config{
 		Kind:       "Config",
