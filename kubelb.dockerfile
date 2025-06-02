@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-FROM docker.io/golang:1.24.1 as builder
+FROM docker.io/golang:1.24.3 as builder
 
 WORKDIR /workspace
 # Copy the Go Modules manifests

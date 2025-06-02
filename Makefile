@@ -7,9 +7,9 @@ KUBELB_CCM_IMG ?= quay.io/kubermatic/kubelb-ccm
 ## Tool Versions
 # ENVTEST_K8S_VERSION refers to the version of kubebuilder assets to be downloaded by envtest binary.
 ENVTEST_K8S_VERSION = 1.30.0
-KUSTOMIZE_VERSION ?= v5.4.3
-CONTROLLER_TOOLS_VERSION ?= v0.17.2
-GO_VERSION = 1.24.1
+KUSTOMIZE_VERSION ?= v5.6.0
+CONTROLLER_TOOLS_VERSION ?= v0.18.0
+GO_VERSION = 1.24.3
 HELM_DOCS_VERSION ?= v1.14.2
 CRD_REF_DOCS_VERSION ?= v0.1.0
 
