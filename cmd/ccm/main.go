@@ -32,6 +32,7 @@ import (
 	"k8c.io/kubelb/internal/controllers/ccm"
 
 	corev1 "k8s.io/api/core/v1"
+	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
@@ -57,10 +58,14 @@ var (
 func init() {
 	utilruntime.Must(clientgoscheme.AddToScheme(scheme))
 	utilruntime.Must(kubelbv1alpha1.AddToScheme(scheme))
+	utilruntime.Must(apiextensionsv1.AddToScheme(scheme))
 
 	// +kubebuilder:scaffold:scheme
 }
 
+// TODO: @ahmedwaleedmalik this needs to be fixed
+//
+//nolint:gocyclo
 func main() {
 	var metricsAddr string
 	var probeAddr string
@@ -80,6 +85,8 @@ func main() {
 	var disableGRPCRouteController bool
 	var enableSecretSynchronizer bool
 	var enableGatewayAPI bool
+	var installGatewayAPICRDs bool
+	var gatewayAPICRDsChannel string
 
 	if flag.Lookup("kubeconfig") == nil {
 		flag.StringVar(&kubeconfig, "kubeconfig", "", "Path to a kubeconfig. Only required if out-of-cluster.")
@@ -87,8 +94,7 @@ func main() {
 
 	flag.StringVar(&metricsAddr, "metrics-addr", ":0", "The address the metric endpoint binds to.")
 	flag.StringVar(&probeAddr, "health-probe-bind-address", ":8081", "The address the probe endpoint binds to.")
-	flag.BoolVar(&enableLeaderElection, "enable-leader-election", true,
-		"Enable leader election for controller ccm. Enabling this will ensure there is only one active controller ccm.")
+	flag.BoolVar(&enableLeaderElection, "enable-leader-election", true, "Enable leader election for controller ccm. Enabling this will ensure there is only one active controller ccm.")
 	flag.StringVar(&leaderElectionNamespace, "leader-election-namespace", "", "Optionally configure leader election namespace.")
 
 	flag.StringVar(&endpointAddressTypeString, "node-address-type", string(corev1.NodeExternalIP), "The default address type used as an endpoint address for the LoadBalancer service. Valid values are ExternalIP or InternalIP, default is ExternalIP.")
@@ -106,6 +112,8 @@ func main() {
 
 	flag.BoolVar(&enableSecretSynchronizer, "enable-secret-synchronizer", false, "Enable to automatically convert Secrets labelled with `kubelb.k8c.io/managed-by: kubelb` to Sync Secrets.  This is used to sync secrets from tenants to the LB cluster in a controlled and secure way.")
 	flag.BoolVar(&enableGatewayAPI, "enable-gateway-api", false, "Enable the Gateway APIs and controllers. By default Gateway API is disabled since without Gateway API CRDs installed the controller cannot start.")
+	flag.BoolVar(&installGatewayAPICRDs, "install-gateway-api-crds", false, "Installs and manages the Gateway API CRDs using gateway crd controller.")
+	flag.StringVar(&gatewayAPICRDsChannel, "gateway-api-crds-channel", "standard", "Gateway API CRDs channel: 'standard' or 'experimental'.")
 
 	opts := zap.Options{
 		Development: false,
@@ -130,6 +138,12 @@ func main() {
 	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&opts)))
 
 	setupLog.V(1).Info("cluster", "name", clusterName)
+
+	// Validate gatewayAPICRDsChannel
+	if !ccm.IsValidGatewayAPICRDsChannel(gatewayAPICRDsChannel) {
+		setupLog.Error(nil, "Invalid value for --gateway-api-crds-channel. Must be 'standard' or 'experimental'.", "current value", gatewayAPICRDsChannel)
+		os.Exit(1)
+	}
 
 	var endpointAddressType corev1.NodeAddressType
 	switch endpointAddressTypeString {
@@ -246,6 +260,17 @@ func main() {
 			UseIngressClass: useIngressClass,
 		}).SetupWithManager(mgr); err != nil {
 			setupLog.Error(err, "unable to create controller", "controller", ccm.IngressControllerName)
+			os.Exit(1)
+		}
+	}
+
+	if installGatewayAPICRDs {
+		if err = (&ccm.GatewayCRDReconciler{
+			Client:  mgr.GetClient(),
+			Log:     ctrl.Log.WithName("controllers").WithName(ccm.GatewayCRDControllerName),
+			Channel: ccm.GatewayAPIChannel(gatewayAPICRDsChannel),
+		}).SetupWithManager(mgr); err != nil {
+			setupLog.Error(err, "unable to create controller", "controller", ccm.GatewayCRDControllerName)
 			os.Exit(1)
 		}
 	}

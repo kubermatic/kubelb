@@ -34,6 +34,18 @@ rules:
   - get
   - patch
   - update
+{{- if .Values.kubelb.installGatewayAPICRDs }}
+- apiGroups:
+  - apiextensions.k8s.io
+  resources:
+  - customresourcedefinitions
+  verbs:
+  - get
+  - list
+  - watch
+  - create
+  - update
+{{- end }}
 {{- if .Values.kubelb.enableGatewayAPI }}
 {{- if not .Values.kubelb.disableGatewayController }}
 - apiGroups:
