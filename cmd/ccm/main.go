@@ -126,6 +126,11 @@ func main() {
 
 	clusterName := opt.clusterName
 
+	if clusterName == "" {
+		setupLog.Error(errors.New("cluster name is required"), "cluster name is required")
+		os.Exit(1)
+	}
+
 	// If clusterName is not prefixed with "tenant-" then prefix it
 	if !strings.HasPrefix(opt.clusterName, "tenant-") {
 		clusterName = "tenant-" + clusterName
