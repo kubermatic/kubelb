@@ -473,7 +473,7 @@ func (r *LoadBalancerReconciler) SetupWithManager(ctx context.Context, mgr ctrl.
 		Complete(r)
 }
 
-// enqueueLoadBalancers is a handler.MapFunc to be used to enqeue requests for reconciliation
+// enqueueLoadBalancers is a handler.MapFunc to be used to enqueue requests for reconciliation
 // for LoadBalancers against the corresponding service.
 func (r *LoadBalancerReconciler) enqueueLoadBalancers() handler.MapFunc {
 	return func(_ context.Context, o ctrlruntimeclient.Object) []ctrl.Request {
@@ -532,7 +532,7 @@ func filterServicesPredicate() predicate.TypedPredicate[ctrlruntimeclient.Object
 	}
 }
 
-// enqueueLoadBalancersForConfig is a handler.MapFunc to be used to enqeue requests for reconciliation
+// enqueueLoadBalancersForConfig is a handler.MapFunc to be used to enqueue requests for reconciliation
 // for LoadBalancers if some change is made to the controller config.
 func (r *LoadBalancerReconciler) enqueueLoadBalancersForConfig() handler.MapFunc {
 	return func(ctx context.Context, _ ctrlruntimeclient.Object) []ctrl.Request {
@@ -558,7 +558,7 @@ func (r *LoadBalancerReconciler) enqueueLoadBalancersForConfig() handler.MapFunc
 	}
 }
 
-// enqueueLoadBalancersForTenant is a handler.MapFunc to be used to enqeue requests for reconciliation
+// enqueueLoadBalancersForTenant is a handler.MapFunc to be used to enqueue requests for reconciliation
 // for e changLoadBalancers if some is made to the tenant config.
 func (r *LoadBalancerReconciler) enqueueLoadBalancersForTenant() handler.MapFunc {
 	return func(ctx context.Context, o ctrlruntimeclient.Object) []ctrl.Request {

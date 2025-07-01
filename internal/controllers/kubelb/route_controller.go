@@ -624,7 +624,7 @@ func (r *RouteReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return controller.Complete(r)
 }
 
-// enqueueRoutesForConfig is a handler.MapFunc to be used to enqeue requests for reconciliation
+// enqueueRoutesForConfig is a handler.MapFunc to be used to enqueue requests for reconciliation
 // for Routes if some change is made to the controller config.
 func (r *RouteReconciler) enqueueRoutesForConfig() handler.MapFunc {
 	return func(ctx context.Context, _ ctrlruntimeclient.Object) []ctrl.Request {
@@ -649,7 +649,7 @@ func (r *RouteReconciler) enqueueRoutesForConfig() handler.MapFunc {
 	}
 }
 
-// enqueueRoutesForTenant is a handler.MapFunc to be used to enqeue requests for reconciliation
+// enqueueRoutesForTenant is a handler.MapFunc to be used to enqueue requests for reconciliation
 // for Routes if some change is made to the tenant config.
 func (r *RouteReconciler) enqueueRoutesForTenant() handler.MapFunc {
 	return func(ctx context.Context, o ctrlruntimeclient.Object) []ctrl.Request {

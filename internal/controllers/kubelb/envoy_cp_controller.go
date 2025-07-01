@@ -350,7 +350,7 @@ func envoySnapshotAndAppName(topology EnvoyProxyTopology, req ctrl.Request) (str
 	return "", ""
 }
 
-// enqueueLoadBalancers is a handler.MapFunc to be used to enqeue requests for reconciliation
+// enqueueLoadBalancers is a handler.MapFunc to be used to enqueue requests for reconciliation
 // for LoadBalancers.
 func (r *EnvoyCPReconciler) enqueueLoadBalancers() handler.MapFunc {
 	return func(_ context.Context, o ctrlruntimeclient.Object) []ctrl.Request {

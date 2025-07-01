@@ -124,10 +124,13 @@ func main() {
 	opts.BindFlags(flag.CommandLine)
 	flag.Parse()
 
+	// Set up logger before validation checks
+	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&opts)))
+
 	clusterName := opt.clusterName
 
 	if clusterName == "" {
-		setupLog.Error(errors.New("cluster name is required"), "cluster name is required")
+		setupLog.Error(errors.New("cluster/tenant name is required. Please provide a valid cluster/tenant name using the --cluster-name flag"), "cluster/tenant name is required")
 		os.Exit(1)
 	}
 
@@ -141,8 +144,6 @@ func main() {
 	}
 
 	opt.kubeconfig = flag.Lookup("kubeconfig").Value.(flag.Getter).Get().(string)
-
-	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&opts)))
 
 	setupLog.V(1).Info("cluster", "name", clusterName)
 

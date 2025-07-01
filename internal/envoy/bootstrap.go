@@ -23,9 +23,9 @@ import (
 	envoyCluster "github.com/envoyproxy/go-control-plane/envoy/config/cluster/v3"
 	envoyCore "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	envoyEndpoint "github.com/envoyproxy/go-control-plane/envoy/config/endpoint/v3"
-	"github.com/golang/protobuf/ptypes/wrappers"
 	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/types/known/durationpb"
+	"google.golang.org/protobuf/types/known/wrapperspb"
 )
 
 const xdsClusterName = "xds_cluster"
@@ -122,17 +122,17 @@ func (s *Server) GenerateBootstrap() string {
 					Thresholds: []*envoyCluster.CircuitBreakers_Thresholds{
 						{
 							Priority:           envoyCore.RoutingPriority_HIGH,
-							MaxConnections:     &wrappers.UInt32Value{Value: 100000},
-							MaxPendingRequests: &wrappers.UInt32Value{Value: 100000},
-							MaxRequests:        &wrappers.UInt32Value{Value: 60000000},
-							MaxRetries:         &wrappers.UInt32Value{Value: 50},
+							MaxConnections:     &wrapperspb.UInt32Value{Value: 100000},
+							MaxPendingRequests: &wrapperspb.UInt32Value{Value: 100000},
+							MaxRequests:        &wrapperspb.UInt32Value{Value: 60000000},
+							MaxRetries:         &wrapperspb.UInt32Value{Value: 50},
 						},
 						{
 							Priority:           envoyCore.RoutingPriority_DEFAULT,
-							MaxConnections:     &wrappers.UInt32Value{Value: 100000},
-							MaxPendingRequests: &wrappers.UInt32Value{Value: 100000},
-							MaxRequests:        &wrappers.UInt32Value{Value: 60000000},
-							MaxRetries:         &wrappers.UInt32Value{Value: 50},
+							MaxConnections:     &wrapperspb.UInt32Value{Value: 100000},
+							MaxPendingRequests: &wrapperspb.UInt32Value{Value: 100000},
+							MaxRequests:        &wrapperspb.UInt32Value{Value: 60000000},
+							MaxRetries:         &wrapperspb.UInt32Value{Value: 50},
 						},
 					},
 				},

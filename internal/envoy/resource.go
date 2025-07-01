@@ -34,10 +34,9 @@ import (
 	envoycache "github.com/envoyproxy/go-control-plane/pkg/cache/v3"
 	"github.com/envoyproxy/go-control-plane/pkg/resource/v3"
 	"github.com/envoyproxy/go-control-plane/pkg/wellknown"
-	"github.com/golang/protobuf/ptypes/duration"
-	"github.com/golang/protobuf/ptypes/wrappers"
 	"google.golang.org/protobuf/types/known/anypb"
 	"google.golang.org/protobuf/types/known/durationpb"
+	"google.golang.org/protobuf/types/known/wrapperspb"
 
 	kubelbv1alpha1 "k8c.io/kubelb/api/ce/kubelb.k8c.io/v1alpha1"
 	"k8c.io/kubelb/internal/kubelb"
@@ -188,12 +187,12 @@ func MapSnapshot(ctx context.Context, client ctrlclient.Client, loadBalancers []
 func makeCluster(clusterName string, lbEndpoints []*envoyEndpoint.LbEndpoint, protocol corev1.Protocol) *envoyCluster.Cluster {
 	defaultHealthCheck := []*envoyCore.HealthCheck{
 		{
-			Timeout:            &duration.Duration{Seconds: defaultHealthCheckTimeoutSeconds},
-			Interval:           &duration.Duration{Seconds: defaultHealthCheckIntervalSeconds},
-			UnhealthyThreshold: &wrappers.UInt32Value{Value: defaultHealthCheckUnhealthyThreshold},
-			HealthyThreshold:   &wrappers.UInt32Value{Value: defaultHealthCheckHealthyThreshold},
+			Timeout:            &durationpb.Duration{Seconds: defaultHealthCheckTimeoutSeconds},
+			Interval:           &durationpb.Duration{Seconds: defaultHealthCheckIntervalSeconds},
+			UnhealthyThreshold: &wrapperspb.UInt32Value{Value: defaultHealthCheckUnhealthyThreshold},
+			HealthyThreshold:   &wrapperspb.UInt32Value{Value: defaultHealthCheckHealthyThreshold},
 			// Start sending health checks after 5 seconds to a new cluster. The default is 60 seconds.
-			NoTrafficInterval: &duration.Duration{Seconds: defaultHealthCheckNoTrafficIntervalSeconds},
+			NoTrafficInterval: &durationpb.Duration{Seconds: defaultHealthCheckNoTrafficIntervalSeconds},
 			HealthChecker: &envoyCore.HealthCheck_TcpHealthCheck_{
 				TcpHealthCheck: &envoyCore.HealthCheck_TcpHealthCheck{
 					// This will use empty payload to perform connect-only health check.

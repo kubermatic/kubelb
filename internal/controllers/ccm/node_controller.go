@@ -18,8 +18,10 @@ package ccm
 
 import (
 	"context"
+	"fmt"
 	"reflect"
 	"sort"
+	"time"
 
 	"github.com/go-logr/logr"
 
@@ -37,6 +39,7 @@ import (
 
 const (
 	NodeControllerName = "node-controller"
+	requeueAfter       = 10 * time.Second
 )
 
 // KubeLBNodeReconciler reconciles a Service object
@@ -65,7 +68,13 @@ func (r *KubeLBNodeReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 	}
 
 	// Compute current state
-	currentAddresses := r.GenerateAddresses(nodeList)
+	currentAddresses, err := r.GenerateAddresses(nodeList)
+	if err != nil {
+		log.Error(err, "unable to find a node with an IP address")
+		// This is a transient error and happens when the nodes are coming up.
+		// We will requeue after a short period of time to give the nodes a chance to be ready and have an IP address.
+		return ctrl.Result{RequeueAfter: requeueAfter}, err
+	}
 
 	// Retrieve current state from the LB cluster
 	var addresses kubelbiov1alpha1.Addresses
@@ -96,13 +105,23 @@ func (r *KubeLBNodeReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 	return ctrl.Result{}, nil
 }
 
-func (r *KubeLBNodeReconciler) GenerateAddresses(nodes *corev1.NodeList) *kubelbiov1alpha1.Addresses {
+func (r *KubeLBNodeReconciler) GenerateAddresses(nodes *corev1.NodeList) (*kubelbiov1alpha1.Addresses, error) {
 	endpoints := r.getEndpoints(nodes)
 	var addresses []kubelbiov1alpha1.EndpointAddress
+	validAddressFound := false
 	for _, endpoint := range endpoints {
+		if endpoint == "" {
+			// Skip nodes that don't have an IP address.
+			continue
+		}
+		validAddressFound = true
 		addresses = append(addresses, kubelbiov1alpha1.EndpointAddress{
 			IP: endpoint,
 		})
+	}
+
+	if !validAddressFound {
+		return nil, fmt.Errorf("no valid addresses found")
 	}
 
 	sort.Slice(addresses, func(i, j int) bool {
@@ -117,7 +136,7 @@ func (r *KubeLBNodeReconciler) GenerateAddresses(nodes *corev1.NodeList) *kubelb
 		Spec: kubelbiov1alpha1.AddressesSpec{
 			Addresses: addresses,
 		},
-	}
+	}, nil
 }
 
 func (r *KubeLBNodeReconciler) getEndpoints(nodes *corev1.NodeList) []string {

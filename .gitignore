@@ -1,13 +1,15 @@
 *.iml*
 .idea
 .kubeconfig
-/vendor
+**/vendor
 _build
 .vscode/
 .local
 .DS_Store
-/bin
+**/bin
 cover.out
 kubelb-*.tgz
 __debug*
 charts/*/charts
+.claude
+CLAUDE.md

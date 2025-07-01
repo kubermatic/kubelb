@@ -27,6 +27,8 @@ import corev1 "k8s.io/api/core/v1"
 const (
 	// DefaultAddressName is the default name for the Addresses object.
 	DefaultAddressName = "default"
+	// CLIResourceAnnotation is the annotation key for the resource name in the CLI.
+	CLIResourceAnnotation = "kubelb.k8c.io/cli-generated"
 )
 
 // LoadBalancerEndpoints is a group of addresses with a common set of ports. The

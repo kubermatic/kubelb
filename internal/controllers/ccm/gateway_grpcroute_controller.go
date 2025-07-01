@@ -200,7 +200,7 @@ func (r *GRPCRouteReconciler) cleanup(ctx context.Context, grpcRoute *gwapiv1.GR
 	return reconcile.Result{}, nil
 }
 
-// enqueueResources is a handler.MapFunc to be used to enqeue requests for reconciliation
+// enqueueResources is a handler.MapFunc to be used to enqueue requests for reconciliation
 // for GRPCRoutes against the corresponding service.
 func (r *GRPCRouteReconciler) enqueueResources() handler.MapFunc {
 	return func(_ context.Context, o ctrlclient.Object) []ctrl.Request {
