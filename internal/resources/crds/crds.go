@@ -1,8 +1,5 @@
-//go:build tools
-// +build tools
-
 /*
-Copyright 2020 The KubeLB Authors.
+Copyright 2025 The KubeLB Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -17,10 +14,17 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package tools
+package gatewayapi
 
 import (
-	_ "k8c.io/reconciler/cmd/reconciler-gen"
+	"embed"
+)
 
-	_ "k8s.io/code-generator"
+//go:embed *
+var FS embed.FS
+
+// Directories for available CRDs
+const (
+	StandardGatewayAPICRDsDir     = "gatewayapi/standard"
+	ExperimentalGatewayAPICRDsDir = "gatewayapi/experimental"
 )

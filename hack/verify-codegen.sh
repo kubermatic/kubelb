@@ -57,3 +57,9 @@ else
   echodate "One or more directories are out of date. Please run hack/update-codegen.sh"
   exit 1
 fi
+
+reconcileHelpers=internal/resources/reconciling/zz_generated_reconcile.go
+go run k8c.io/reconciler/cmd/reconciler-gen --config hack/reconciling.yaml > $reconcileHelpers
+
+currentYear=$(date +%Y)
+$sed -i "s/Copyright YEAR/Copyright $currentYear/g" $reconcileHelpers

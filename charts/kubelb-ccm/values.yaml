@@ -22,7 +22,11 @@ kubelb:
   enableGatewayAPI: false
   # -- Enable to automatically convert Secrets labelled with `kubelb.k8c.io/managed-by: kubelb` to Sync Secrets. This is used to sync secrets from tenants to the LB cluster in a controlled and secure way.
   enableSecretSynchronizer: false
-
+  # -- installGatewayAPICRDs Installs and manages the Gateway API CRDs using gateway crd controller.
+  installGatewayAPICRDs: false
+  # -- gatewayAPICRDsChannel specifies the channel for the Gateway API CRDs. Options are `standard` and `experimental`.
+  gatewayAPICRDsChannel: standard
+  
   # -- Enable the leader election.
   enableLeaderElection: true
   # -- useIngressClass specifies whether to target resources with `kubelb` ingress class or all resources.

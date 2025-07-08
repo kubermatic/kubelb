@@ -14,10 +14,10 @@ HELM_DOCS_VERSION ?= v1.14.2
 CRD_REF_DOCS_VERSION ?= v0.1.0
 
 CRD_CODE_GEN_PATH = "./api/ce/..."
+RECONCILE_HELPER_PATH = "internal/resources/reconciling/zz_generated_reconcile.go"
 
-GATEWAY_RELEASE_CHANNEL ?= stable
+GATEWAY_RELEASE_CHANNEL ?= standard
 GATEWAY_API_VERSION ?= $(shell go list -m -f '{{.Version}}' sigs.k8s.io/gateway-api)
-GATEWAY_RELEASE_URL ?= https://github.com/kubernetes-sigs/gateway-api/releases/download/${GATEWAY_API_VERSION}/${GATEWAY_RELEASE_CHANNEL}-install.yaml
 
 export GOPATH?=$(shell go env GOPATH)
 export CGO_ENABLED=0
@@ -87,7 +87,7 @@ manifests: generate controller-gen ## Generate WebhookConfiguration, ClusterRole
 generate: controller-gen ## Generate code containing DeepCopy, DeepCopyInto, and DeepCopyObject method implementations.
 	$(CONTROLLER_GEN) object:headerFile="hack/boilerplate/boilerplate.go.txt" paths="./..."
 
-update-codegen: generate controller-gen manifests generate-helm-docs fmt vet go-mod-tidy
+update-codegen: generate controller-gen manifests reconciler-gen generate-helm-docs fmt vet go-mod-tidy 
 
 .PHONY: fmt
 fmt: ## Run go fmt against code.
@@ -262,9 +262,19 @@ generate-crd-docs: crd-ref-docs ## Generate API reference documentation.
 		--output-path ./docs/api-reference.md
 
 .PHONY: gateway-crds-copy
-gateway-crds-copy:
-	curl -sLo $(LOCALBIN)/gatewayapi-crds.yaml ${GATEWAY_RELEASE_URL}
-	# echo '{{- if .Values.gatewayAPICRDs -}}' > charts/kubelb-manager/crds/gatewayapi.yaml
-	# cat $(LOCALBIN)/gatewayapi-crds.yaml >> charts/kubelb-manager/crds/gatewayapi.yaml
-	# echo '{{- end }}' >> charts/kubelb-manager/crds/gatewayapi.yaml
-	mv $(LOCALBIN)/gatewayapi-crds.yaml charts/kubelb-ccm/crds/gatewayapi.yaml
+gateway-crds-copy: ## Download Gateway API CRDs
+	@echo "Downloading Gateway API CRDs..."
+	@curl -s -k "https://api.github.com/repos/kubernetes-sigs/gateway-api/contents/config/crd/$(GATEWAY_RELEASE_CHANNEL)?ref=$(GATEWAY_API_VERSION)" | \
+		jq -r '.[].name' | \
+		while read filename; do \
+			echo "Downloading $$filename..."; \
+			curl -k -sLo "internal/resources/crds/gatewayapi/$(GATEWAY_RELEASE_CHANNEL)/$$filename" \
+				"https://raw.githubusercontent.com/kubernetes-sigs/gateway-api/$(GATEWAY_API_VERSION)/config/crd/$(GATEWAY_RELEASE_CHANNEL)/$$filename"; \
+		done
+	@echo "Gateway API CRDs downloaded successfully to internal/resources/crds/gatewayapi/$(GATEWAY_RELEASE_CHANNEL)/"
+
+.PHONY: reconciler-gen
+reconciler-gen: ## Generate reconciler helpers
+	go run k8c.io/reconciler/cmd/reconciler-gen --config hack/reconciling.yaml > $(RECONCILE_HELPER_PATH)
+	$(eval currentYear := $(shell date +%Y))
+	$(SED) -i "s/Copyright YEAR/Copyright $(currentYear)/g" $(RECONCILE_HELPER_PATH)
