@@ -17,7 +17,7 @@ CRD_CODE_GEN_PATH = "./api/ce/..."
 RECONCILE_HELPER_PATH = "internal/resources/reconciling/zz_generated_reconcile.go"
 
 GATEWAY_RELEASE_CHANNEL ?= standard
-GATEWAY_API_VERSION ?= $(shell go list -m -f '{{.Version}}' sigs.k8s.io/gateway-api)
+GATEWAY_API_VERSION ?= v1.3.0
 
 export GOPATH?=$(shell go env GOPATH)
 export CGO_ENABLED=0
@@ -87,7 +87,7 @@ manifests: generate controller-gen ## Generate WebhookConfiguration, ClusterRole
 generate: controller-gen ## Generate code containing DeepCopy, DeepCopyInto, and DeepCopyObject method implementations.
 	$(CONTROLLER_GEN) object:headerFile="hack/boilerplate/boilerplate.go.txt" paths="./..."
 
-update-codegen: generate controller-gen manifests reconciler-gen generate-helm-docs fmt vet go-mod-tidy 
+update-codegen: generate controller-gen manifests reconciler-gen generate-helm-docs fmt vet go-mod-tidy
 
 .PHONY: fmt
 fmt: ## Run go fmt against code.
@@ -261,11 +261,16 @@ generate-crd-docs: crd-ref-docs ## Generate API reference documentation.
 		--config=./hack/crd-ref-docs.yaml \
 		--output-path ./docs/api-reference.md
 
-.PHONY: gateway-crds-copy
-gateway-crds-copy: ## Download Gateway API CRDs
+.PHONY: update-gateway-api-crds
+update-gateway-api-crds:
+	GATEWAY_RELEASE_CHANNEL=standard make download-gateway-api-crds
+	GATEWAY_RELEASE_CHANNEL=experimental make download-gateway-api-crds
+
+.PHONY: download-gateway-api-crds
+download-gateway-api-crds: ## Download Gateway API CRDs
 	@echo "Downloading Gateway API CRDs..."
 	@curl -s -k "https://api.github.com/repos/kubernetes-sigs/gateway-api/contents/config/crd/$(GATEWAY_RELEASE_CHANNEL)?ref=$(GATEWAY_API_VERSION)" | \
-		jq -r '.[].name' | \
+		jq -r '.[] | select(.name != "kustomization.yaml") | .name' | \
 		while read filename; do \
 			echo "Downloading $$filename..."; \
 			curl -k -sLo "internal/resources/crds/gatewayapi/$(GATEWAY_RELEASE_CHANNEL)/$$filename" \
