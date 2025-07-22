@@ -34,7 +34,6 @@ type TenantSpec struct {
 	GatewayAPI         GatewayAPISettings   `json:"gatewayAPI,omitempty"`
 	DNS                DNSSettings          `json:"dns,omitempty"`
 	Certificates       CertificatesSettings `json:"certificates,omitempty"`
-	Tunneling          TunnelingSettings    `json:"tunneling,omitempty"`
 
 	// +kubebuilder:default={"**"}
 
@@ -107,12 +106,6 @@ type GatewaySettings struct {
 	// If a lower limit is set than the number of reources that exist, the limit will be disallow creation of new resources but will not delete existing resources. The reason behind this
 	// is that it is not possible for KubeLB to know which resources are safe to remove.
 	Limit *int `json:"limit,omitempty"`
-}
-
-// TunnelingSettings defines the settings for tunneling.
-type TunnelingSettings struct {
-	// Disable is a flag that can be used to disable tunneling for a tenant.
-	Disable bool `json:"disable,omitempty"`
 }
 
 // DNSSettings defines the tenant specific settings for DNS management and automation.

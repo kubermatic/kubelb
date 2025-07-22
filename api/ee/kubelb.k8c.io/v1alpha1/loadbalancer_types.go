@@ -49,7 +49,6 @@ type LoadBalancerStatus struct {
 }
 
 type HostnameStatus struct {
-
 	// Hostname contains the hostname of the load-balancer.
 	// +optional
 	Hostname string `json:"hostname,omitempty" protobuf:"bytes,1,opt,name=hostname"`

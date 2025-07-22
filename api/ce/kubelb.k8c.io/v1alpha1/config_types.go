@@ -40,7 +40,6 @@ type ConfigSpec struct {
 	Ingress      IngressSettings      `json:"ingress,omitempty"`
 	GatewayAPI   GatewayAPISettings   `json:"gatewayAPI,omitempty"`
 	DNS          ConfigDNSSettings    `json:"dns,omitempty"`
-	Tunneling    TunnelingSettings    `json:"tunneling,omitempty"`
 	Certificates CertificatesSettings `json:"certificates,omitempty"`
 }
 

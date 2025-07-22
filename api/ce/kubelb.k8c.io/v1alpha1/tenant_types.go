@@ -28,19 +28,12 @@ type TenantSpec struct {
 	Ingress      IngressSettings      `json:"ingress,omitempty"`
 	GatewayAPI   GatewayAPISettings   `json:"gatewayAPI,omitempty"`
 	DNS          DNSSettings          `json:"dns,omitempty"`
-	Tunneling    TunnelingSettings    `json:"tunneling,omitempty"`
 	Certificates CertificatesSettings `json:"certificates,omitempty"`
 }
 
 type CertificatesSettings struct {
 	// DefaultClusterIssuer is the Cluster Issuer to use for the certificates by default. This is only used for load balancer hostname and tunneling.
 	DefaultClusterIssuer *string `json:"defaultClusterIssuer,omitempty"`
-}
-
-// TunnelingSettings defines the settings for tunneling.
-type TunnelingSettings struct {
-	// Disable is a flag that can be used to disable tunneling for a tenant.
-	Disable bool `json:"disable,omitempty"`
 }
 
 // DNSSettings defines the settings for DNS management and automation.

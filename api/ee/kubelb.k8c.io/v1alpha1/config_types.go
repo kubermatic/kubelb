@@ -46,7 +46,6 @@ type ConfigSpec struct {
 	GatewayAPI   GatewayAPISettings         `json:"gatewayAPI,omitempty"`
 	DNS          ConfigDNSSettings          `json:"dns,omitempty"`
 	Certificates ConfigCertificatesSettings `json:"certificates,omitempty"`
-	Tunneling    TunnelingSettings          `json:"tunneling,omitempty"`
 }
 
 // ConfigDNSSettings defines the global settings for DNS management and automation.

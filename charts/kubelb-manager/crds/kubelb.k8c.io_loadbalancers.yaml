@@ -169,7 +169,7 @@ spec:
               hostname:
                 description: |-
                   Hostname is the domain name at which the load balancer service will be accessible.
-                  When hostname is set, KubeLB will create a route(ingress or httproute) for the service, and expose it with TLS on the given hostname.
+                  When hostname is set, KubeLB will create a route(ingress or httproute) for the service, and expose it with TLS on the given hostname. Currently, only HTTP protocol is supported
                 type: string
               ports:
                 description: |-

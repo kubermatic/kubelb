@@ -125,14 +125,6 @@ spec:
                   PropagatedAnnotations defines the list of annotations(key-value pairs) that will be propagated to the LoadBalancer service. Keep the `value` field empty in the key-value pair to allow any value.
                   Tenant configuration has higher precedence than the annotations specified at the Config level.
                 type: object
-              tunneling:
-                description: TunnelingSettings defines the settings for tunneling.
-                properties:
-                  disable:
-                    description: Disable is a flag that can be used to disable tunneling
-                      for a tenant.
-                    type: boolean
-                type: object
             type: object
           status:
             description: TenantStatus defines the observed state of Tenant
