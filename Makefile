@@ -117,6 +117,7 @@ verify-imports:  ## Run verify-imports code.
 
 clean:  ## Clean binaries
 	rm -rf bin/*
+	@cd cli && $(MAKE) clean
 
 .PHONY: test
 test: envtest ## Run tests.

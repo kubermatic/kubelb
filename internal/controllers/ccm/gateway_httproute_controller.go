@@ -204,7 +204,7 @@ func (r *HTTPRouteReconciler) cleanup(ctx context.Context, httpRoute *gwapiv1.HT
 	return reconcile.Result{}, nil
 }
 
-// enqueueResources is a handler.MapFunc to be used to enqeue requests for reconciliation
+// enqueueResources is a handler.MapFunc to be used to enqueue requests for reconciliation
 // for HTTPRoutes against the corresponding service.
 func (r *HTTPRouteReconciler) enqueueResources() handler.MapFunc {
 	return func(_ context.Context, o ctrlclient.Object) []ctrl.Request {
