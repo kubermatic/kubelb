@@ -222,12 +222,32 @@ func (r *LoadBalancerReconciler) Reconcile(ctx context.Context, req ctrl.Request
 	}
 
 	// At this point, we have a service that is ready to be used.
+	// Get the service to get its current status
+	existingService := &corev1.Service{}
+	err = r.Get(ctx, types.NamespacedName{
+		Name:      svcName,
+		Namespace: resourceNamespace,
+	}, existingService)
+	if err != nil {
+		log.Error(err, "Unable to get service for status update")
+		return ctrl.Result{}, err
+	}
+
 	// Check if we need to configure the hostname.
+	var hostname string
 	if shouldConfigureHostname(&loadBalancer, tenant, config) {
-		if err := r.configureHostname(ctx, &loadBalancer, svcName, tenant, config); err != nil {
+		var err error
+		hostname, err = r.configureHostname(ctx, &loadBalancer, svcName, tenant, config)
+		if err != nil {
 			log.Error(err, "Unable to configure hostname")
 			return ctrl.Result{}, err
 		}
+	}
+
+	// Update LoadBalancer status (including hostname if configured)
+	if err := r.updateLoadBalancerStatus(ctx, &loadBalancer, existingService, hostname); err != nil {
+		log.Error(err, "Unable to update LoadBalancer status")
+		return ctrl.Result{}, err
 	}
 
 	return ctrl.Result{}, nil
@@ -298,10 +318,10 @@ func (r *LoadBalancerReconciler) reconcileService(ctx context.Context, loadBalan
 			return fmt.Errorf("failed to update service: %w", err)
 		}
 	}
-	return updateLoadBalancerStatus(ctx, r.Client, loadBalancer, existingService)
+	return nil
 }
 
-func (r *LoadBalancerReconciler) configureHostname(ctx context.Context, loadBalancer *kubelbv1alpha1.LoadBalancer, svcName string, tenant *kubelbv1alpha1.Tenant, config *kubelbv1alpha1.Config) error {
+func (r *LoadBalancerReconciler) configureHostname(ctx context.Context, loadBalancer *kubelbv1alpha1.LoadBalancer, svcName string, tenant *kubelbv1alpha1.Tenant, config *kubelbv1alpha1.Config) (string, error) {
 	log := ctrl.LoggerFrom(ctx).WithValues("reconcile", "hostname")
 
 	log.V(2).Info("configure hostname", "name", loadBalancer.Name, "namespace", loadBalancer.Namespace)
@@ -315,17 +335,17 @@ func (r *LoadBalancerReconciler) configureHostname(ctx context.Context, loadBala
 	if hostname == "" {
 		// No need for an error here since we can still manage the LB and skip the hostname configuration.
 		log.V(2).Info("no hostname configurable, skipping")
-		return nil
+		return "", nil
 	}
 
 	// Add hostname finalizer if it doesn't exist
 	if !controllerutil.ContainsFinalizer(loadBalancer, hostnameCleanupFinalizer) {
 		if ok := controllerutil.AddFinalizer(loadBalancer, hostnameCleanupFinalizer); !ok {
 			log.Error(nil, "Failed to add hostname finalizer for the LoadBalancer")
-			return fmt.Errorf("failed to add hostname finalizer")
+			return "", fmt.Errorf("failed to add hostname finalizer")
 		}
 		if err := r.Update(ctx, loadBalancer); err != nil {
-			return fmt.Errorf("failed to add hostname finalizer: %w", err)
+			return "", fmt.Errorf("failed to add hostname finalizer: %w", err)
 		}
 		log.V(2).Info("added hostname finalizer")
 	}
@@ -345,21 +365,21 @@ func (r *LoadBalancerReconciler) configureHostname(ctx context.Context, loadBala
 		}
 	}
 
-	var err error
 	if useGatewayAPI {
 		// Create HTTPRoute for Gateway API
-		err = r.createHTTPRoute(ctx, loadBalancer, svcName, hostname, tenant, config)
+		err := r.createHTTPRoute(ctx, loadBalancer, svcName, hostname, tenant, config)
+		if err != nil {
+			return "", err
+		}
 	} else {
 		// Create Ingress resource
-		err = r.createIngress(ctx, loadBalancer, svcName, hostname, tenant, config)
+		err := r.createIngress(ctx, loadBalancer, svcName, hostname, tenant, config)
+		if err != nil {
+			return "", err
+		}
 	}
-
-	if err != nil {
-		return err
-	}
-
-	// Update hostname status
-	return r.updateHostnameStatus(ctx, loadBalancer, hostname, useGatewayAPI)
+	
+	return hostname, nil
 }
 
 func generateHostname(tenant kubelbv1alpha1.DNSSettings, config kubelbv1alpha1.ConfigDNSSettings) string {
@@ -474,12 +494,9 @@ func createServicePorts(loadBalancer *kubelbv1alpha1.LoadBalancer, existingServi
 	return desiredPorts
 }
 
-func updateLoadBalancerStatus(ctx context.Context, client ctrlruntimeclient.Client, loadBalancer *kubelbv1alpha1.LoadBalancer, service *corev1.Service) error {
+func (r *LoadBalancerReconciler) updateLoadBalancerStatus(ctx context.Context, loadBalancer *kubelbv1alpha1.LoadBalancer, service *corev1.Service, hostname string) error {
 	log := ctrl.LoggerFrom(ctx)
-	log.V(5).Info("load balancer status", "LoadBalancer", loadBalancer.Status.LoadBalancer.Ingress, "service", service.Status.LoadBalancer.Ingress)
-
-	// Status changes
-	log.V(5).Info("load balancer status", "LoadBalancer", loadBalancer.Status.LoadBalancer.Ingress, "service", service.Status.LoadBalancer.Ingress)
+	log.V(5).Info("updating load balancer status", "LoadBalancer", loadBalancer.Status.LoadBalancer.Ingress, "service", service.Status.LoadBalancer.Ingress, "hostname", hostname)
 
 	updatedPorts := []kubelbv1alpha1.ServicePort{}
 	for i, port := range service.Spec.Ports {
@@ -491,15 +508,25 @@ func updateLoadBalancerStatus(ctx context.Context, client ctrlruntimeclient.Clie
 		})
 	}
 
-	// Update status if needed
-	updateStatus := false
-	updatedLoadBalanacerStatus := kubelbv1alpha1.LoadBalancerStatus{
+	// Create the updated status
+	updatedLoadBalancerStatus := kubelbv1alpha1.LoadBalancerStatus{
 		Service: kubelbv1alpha1.ServiceStatus{
 			Ports: updatedPorts,
 		},
 		LoadBalancer: service.Status.LoadBalancer,
 	}
 
+	// Add hostname status if hostname is configured
+	if hostname != "" {
+		updatedLoadBalancerStatus.Hostname = &kubelbv1alpha1.HostnameStatus{
+			Hostname:         hostname,
+			TLSEnabled:       true,  // Set to true since we're adding TLS configuration
+			DNSRecordCreated: true,  // Set to true since we're adding external-dns annotations
+		}
+	}
+
+	// Check if status update is needed
+	updateStatus := false
 	if !reflect.DeepEqual(loadBalancer.Status.Service.Ports, updatedPorts) {
 		updateStatus = true
 	}
@@ -508,6 +535,10 @@ func updateLoadBalancerStatus(ctx context.Context, client ctrlruntimeclient.Clie
 		if !reflect.DeepEqual(loadBalancer.Status.LoadBalancer.Ingress, service.Status.LoadBalancer.Ingress) {
 			updateStatus = true
 		}
+	}
+
+	if !reflect.DeepEqual(loadBalancer.Status.Hostname, updatedLoadBalancerStatus.Hostname) {
+		updateStatus = true
 	}
 
 	if !updateStatus {
@@ -519,16 +550,16 @@ func updateLoadBalancerStatus(ctx context.Context, client ctrlruntimeclient.Clie
 
 	return retry.RetryOnConflict(retry.DefaultRetry, func() error {
 		lb := &kubelbv1alpha1.LoadBalancer{}
-		if err := client.Get(ctx, types.NamespacedName{Name: loadBalancer.Name, Namespace: loadBalancer.Namespace}, lb); err != nil {
+		if err := r.Get(ctx, types.NamespacedName{Name: loadBalancer.Name, Namespace: loadBalancer.Namespace}, lb); err != nil {
 			return err
 		}
 		original := lb.DeepCopy()
-		lb.Status = updatedLoadBalanacerStatus
+		lb.Status = updatedLoadBalancerStatus
 		if reflect.DeepEqual(original.Status, lb.Status) {
 			return nil
 		}
 		// update the status
-		return client.Status().Patch(ctx, lb, ctrlruntimeclient.MergeFrom(original))
+		return r.Status().Patch(ctx, lb, ctrlruntimeclient.MergeFrom(original))
 	})
 }
 
@@ -682,31 +713,6 @@ func (r *LoadBalancerReconciler) cleanupHostnameResources(ctx context.Context, l
 	return nil
 }
 
-func (r *LoadBalancerReconciler) updateHostnameStatus(ctx context.Context, loadBalancer *kubelbv1alpha1.LoadBalancer, hostname string, useGatewayAPI bool) error {
-	log := ctrl.LoggerFrom(ctx).WithValues("reconcile", "hostname-status")
-	log.V(2).Info("updating hostname status", "hostname", hostname, "useGatewayAPI", useGatewayAPI)
-
-	// Update hostname status
-	hostnameStatus := &kubelbv1alpha1.HostnameStatus{
-		Hostname:         hostname,
-		TLSEnabled:       true,  // Set to true since we're adding TLS configuration
-		DNSRecordCreated: true,  // Set to true since we're adding external-dns annotations
-	}
-
-	return retry.RetryOnConflict(retry.DefaultRetry, func() error {
-		lb := &kubelbv1alpha1.LoadBalancer{}
-		if err := r.Get(ctx, types.NamespacedName{Name: loadBalancer.Name, Namespace: loadBalancer.Namespace}, lb); err != nil {
-			return err
-		}
-		original := lb.DeepCopy()
-		lb.Status.Hostname = hostnameStatus
-		if reflect.DeepEqual(original.Status.Hostname, lb.Status.Hostname) {
-			return nil
-		}
-		// update the status
-		return r.Status().Patch(ctx, lb, ctrlruntimeclient.MergeFrom(original))
-	})
-}
 
 func (r *LoadBalancerReconciler) createIngress(ctx context.Context, loadBalancer *kubelbv1alpha1.LoadBalancer, svcName string, hostname string, tenant *kubelbv1alpha1.Tenant, config *kubelbv1alpha1.Config) error {
 	log := ctrl.LoggerFrom(ctx).WithValues("reconcile", "ingress")
