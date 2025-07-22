@@ -35,11 +35,6 @@ type TenantSpec struct {
 type TunnelingSettings struct {
 	// Disable is a flag that can be used to disable tunneling for a tenant.
 	Disable bool `json:"disable,omitempty"`
-
-	// UseIngress is a flag that can be used to use Ingress for tunneling.
-	// By default, KubeLB will use Gateway API for tunneling.
-	// +optional
-	UseIngress bool `json:"useIngress,omitempty"`
 }
 
 // DNSSettings defines the settings for DNS management and automation.

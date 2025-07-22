@@ -225,6 +225,21 @@ spec:
           status:
             description: LoadBalancerStatus defines the observed state of LoadBalancer
             properties:
+              hostname:
+                description: Hostname contains the status for hostname resources.
+                properties:
+                  dnsRecordCreated:
+                    description: DNSRecordCreated is true if DNS record is created
+                      for the hostname.
+                    type: boolean
+                  hostname:
+                    description: Hostname contains the hostname of the load-balancer.
+                    type: string
+                  tlsEnabled:
+                    description: TLSEnabled is true if certificate is created for
+                      the hostname.
+                    type: boolean
+                type: object
               loadBalancer:
                 description: |-
                   LoadBalancer contains the current status of the load-balancer,
