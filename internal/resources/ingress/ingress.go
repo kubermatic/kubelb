@@ -33,6 +33,7 @@ import (
 	kerrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/utils/ptr"
 	ctrl "sigs.k8s.io/controller-runtime"
 	ctrlclient "sigs.k8s.io/controller-runtime/pkg/client"
 )
@@ -217,7 +218,10 @@ func CreateIngressForHostname(ctx context.Context, client ctrlclient.Client, loa
 		},
 	}
 
-	annotations := GetAnnotations(tenant, config)
+	annotations := kubelbv1alpha1.AnnotationSettings{
+		PropagateAllAnnotations: ptr.To(true),
+	}
+
 	ingress.Annotations = kubelb.PropagateAnnotations(loadBalancer.Annotations, annotations, kubelbv1alpha1.AnnotatedResourceIngress)
 
 	// Add cert-manager and external-dns annotations for automated DNS and TLS
@@ -250,27 +254,18 @@ func CreateIngressForHostname(ctx context.Context, client ctrlclient.Client, loa
 			return fmt.Errorf("failed to create ingress: %w", err)
 		}
 		log.V(2).Info("created ingress", "name", ingressName)
-	} else {
+	} else if !equality.Semantic.DeepEqual(existingIngress.Spec, ingress.Spec) ||
+		!equality.Semantic.DeepEqual(existingIngress.Labels, ingress.Labels) ||
+		!utils.CompareAnnotations(existingIngress.Annotations, ingress.Annotations) {
 		// Update existing Ingress if needed
-		if !equality.Semantic.DeepEqual(existingIngress.Spec, ingress.Spec) ||
-			!equality.Semantic.DeepEqual(existingIngress.Labels, ingress.Labels) ||
-			!utils.CompareAnnotations(existingIngress.Annotations, ingress.Annotations) {
-			existingIngress.Spec = ingress.Spec
-			existingIngress.Labels = ingress.Labels
-			existingIngress.Annotations = ingress.Annotations
-			if err := client.Update(ctx, existingIngress); err != nil {
-				return fmt.Errorf("failed to update ingress: %w", err)
-			}
-			log.V(2).Info("updated ingress", "name", ingressName)
+		existingIngress.Spec = ingress.Spec
+		existingIngress.Labels = ingress.Labels
+		existingIngress.Annotations = ingress.Annotations
+		if err := client.Update(ctx, existingIngress); err != nil {
+			return fmt.Errorf("failed to update ingress: %w", err)
 		}
+		log.V(2).Info("updated ingress", "name", ingressName)
 	}
 
 	return nil
-}
-
-// GetAnnotations is a placeholder function - this will need to be imported or implemented
-func GetAnnotations(tenant *kubelbv1alpha1.Tenant, config *kubelbv1alpha1.Config) kubelbv1alpha1.AnnotationSettings {
-	// This should be implemented based on the actual GetAnnotations function from the controller
-	// For now, returning empty annotations
-	return kubelbv1alpha1.AnnotationSettings{}
 }

@@ -31,6 +31,7 @@ import (
 	kerrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/utils/ptr"
 	ctrl "sigs.k8s.io/controller-runtime"
 	ctrlclient "sigs.k8s.io/controller-runtime/pkg/client"
 	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
@@ -268,13 +269,19 @@ func CreateHTTPRouteForHostname(ctx context.Context, client ctrlclient.Client, l
 		httpRoute.Annotations["gateway.networking.k8s.io/class"] = *gatewayClass
 	}
 
-	// Add annotations from config/tenant
-	annotations := GetAnnotations(tenant, config)
+	annotations := kubelbv1alpha1.AnnotationSettings{
+		PropagateAllAnnotations: ptr.To(true),
+	}
 	httpRoute.Annotations = kubelb.PropagateAnnotations(loadBalancer.Annotations, annotations, kubelbv1alpha1.AnnotatedResourceHTTPRoute)
 
 	// Add cert-manager and external-dns annotations for automated DNS and TLS
+	if tenant.Spec.Certificates.DefaultClusterIssuer != nil {
+		httpRoute.Annotations[resources.CertManagerClusterIssuerAnnotation] = *tenant.Spec.Certificates.DefaultClusterIssuer
+	}
+	if config.Spec.Certificates.DefaultClusterIssuer != nil {
+		httpRoute.Annotations[resources.CertManagerClusterIssuerAnnotation] = *config.Spec.Certificates.DefaultClusterIssuer
+	}
 
-	httpRoute.Annotations[resources.CertManagerClusterIssuerAnnotation] = "letsencrypt-prod"
 	httpRoute.Annotations[resources.ExternalDNSHostnameAnnotation] = hostname
 	httpRoute.Annotations[resources.ExternalDNSTTLAnnotation] = "10"
 
@@ -297,27 +304,18 @@ func CreateHTTPRouteForHostname(ctx context.Context, client ctrlclient.Client, l
 			return fmt.Errorf("failed to create httproute: %w", err)
 		}
 		log.V(2).Info("created httproute", "name", httpRouteName)
-	} else {
+	} else if !equality.Semantic.DeepEqual(existingHTTPRoute.Spec, httpRoute.Spec) ||
+		!equality.Semantic.DeepEqual(existingHTTPRoute.Labels, httpRoute.Labels) ||
+		!utils.CompareAnnotations(existingHTTPRoute.Annotations, httpRoute.Annotations) {
 		// Update existing HTTPRoute if needed
-		if !equality.Semantic.DeepEqual(existingHTTPRoute.Spec, httpRoute.Spec) ||
-			!equality.Semantic.DeepEqual(existingHTTPRoute.Labels, httpRoute.Labels) ||
-			!utils.CompareAnnotations(existingHTTPRoute.Annotations, httpRoute.Annotations) {
-			existingHTTPRoute.Spec = httpRoute.Spec
-			existingHTTPRoute.Labels = httpRoute.Labels
-			existingHTTPRoute.Annotations = httpRoute.Annotations
-			if err := client.Update(ctx, existingHTTPRoute); err != nil {
-				return fmt.Errorf("failed to update httproute: %w", err)
-			}
-			log.V(2).Info("updated httproute", "name", httpRouteName)
+		existingHTTPRoute.Spec = httpRoute.Spec
+		existingHTTPRoute.Labels = httpRoute.Labels
+		existingHTTPRoute.Annotations = httpRoute.Annotations
+		if err := client.Update(ctx, existingHTTPRoute); err != nil {
+			return fmt.Errorf("failed to update httproute: %w", err)
 		}
+		log.V(2).Info("updated httproute", "name", httpRouteName)
 	}
 
 	return nil
-}
-
-// GetAnnotations is a placeholder function - this will need to be imported or implemented
-func GetAnnotations(tenant *kubelbv1alpha1.Tenant, config *kubelbv1alpha1.Config) kubelbv1alpha1.AnnotationSettings {
-	// This should be implemented based on the actual GetAnnotations function from the controller
-	// For now, returning empty annotations
-	return kubelbv1alpha1.AnnotationSettings{}
 }

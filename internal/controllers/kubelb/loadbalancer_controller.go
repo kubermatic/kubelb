@@ -348,19 +348,9 @@ func (r *LoadBalancerReconciler) configureHostname(ctx context.Context, loadBala
 	}
 
 	// Determine whether to use Ingress or Gateway API based on configuration
-	useGatewayAPI := false
-
-	// Check if Gateway API is disabled at tenant or global level
-	if tenant.Spec.GatewayAPI.Disable {
-		useGatewayAPI = false
-	} else if config.Spec.GatewayAPI.Disable {
-		useGatewayAPI = false
-	} else {
-		// If Gateway API is not disabled and a class is specified, prefer Gateway API
-		if tenant.Spec.GatewayAPI.Class != nil || config.Spec.GatewayAPI.Class != nil {
-			useGatewayAPI = true
-		}
-	}
+	// Use Gateway API only if it's not disabled and a class is specified
+	useGatewayAPI := !tenant.Spec.GatewayAPI.Disable && !config.Spec.GatewayAPI.Disable &&
+		(tenant.Spec.GatewayAPI.Class != nil || config.Spec.GatewayAPI.Class != nil)
 
 	if useGatewayAPI {
 		// Create HTTPRoute for Gateway API
@@ -402,10 +392,7 @@ func (r *LoadBalancerReconciler) updateLoadBalancerStatus(ctx context.Context, l
 	}
 
 	// Check if status update is needed
-	updateStatus := false
-	if !reflect.DeepEqual(loadBalancer.Status.Service.Ports, updatedPorts) {
-		updateStatus = true
-	}
+	updateStatus := !reflect.DeepEqual(loadBalancer.Status.Service.Ports, updatedPorts)
 
 	if loadBalancer.Spec.Type == corev1.ServiceTypeLoadBalancer {
 		if !reflect.DeepEqual(loadBalancer.Status.LoadBalancer.Ingress, service.Status.LoadBalancer.Ingress) {

@@ -99,7 +99,7 @@ type LoadBalancerSpec struct {
 	Ports []LoadBalancerPort `json:"ports,omitempty"`
 
 	// Hostname is the domain name at which the load balancer service will be accessible.
-	// When hostname is set, KubeLB will create a route(ingress or httproute) for the service, and expose it with TLS on the given hostname.
+	// When hostname is set, KubeLB will create a route(ingress or httproute) for the service, and expose it with TLS on the given hostname. Currently, only HTTP protocol is supported
 	// +optional
 	Hostname string `json:"hostname,omitempty"`
 

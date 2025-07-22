@@ -160,11 +160,12 @@ func GenerateHostname(tenant kubelbiov1alpha1.DNSSettings, config kubelbiov1alph
 	var baseDomain string
 
 	// Prefer tenant wildcard domain over global config
-	if tenant.WildcardDomain != nil && *tenant.WildcardDomain != "" {
+	switch {
+	case tenant.WildcardDomain != nil && *tenant.WildcardDomain != "":
 		baseDomain = *tenant.WildcardDomain
-	} else if config.WildcardDomain != "" {
+	case config.WildcardDomain != "":
 		baseDomain = config.WildcardDomain
-	} else {
+	default:
 		// No wildcard domain configured
 		return ""
 	}
