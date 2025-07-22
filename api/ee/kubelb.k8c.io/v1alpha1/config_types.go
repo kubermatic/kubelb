@@ -46,12 +46,23 @@ type ConfigSpec struct {
 	GatewayAPI   GatewayAPISettings         `json:"gatewayAPI,omitempty"`
 	DNS          ConfigDNSSettings          `json:"dns,omitempty"`
 	Certificates ConfigCertificatesSettings `json:"certificates,omitempty"`
+	Tunneling    TunnelingSettings          `json:"tunneling,omitempty"`
 }
 
-// ConfigDNSSettings defines the global settings for the DNS.
+// ConfigDNSSettings defines the global settings for DNS management and automation.
 type ConfigDNSSettings struct {
 	// Disable is a flag that can be used to disable DNS automation globally for all the tenants.
 	Disable bool `json:"disable,omitempty"`
+
+	// WildcardDomain is the domain that will be used as the base domain to create wildcard DNS records for DNS resources.
+	// This is only used for determining the hostname for LoadBalancer resources at LoadBalancer.Spec.Hostname.
+	// +optional
+	WildcardDomain string `json:"wildcardDomain,omitempty"`
+
+	// AllowExplicitHostnames is a flag that can be used to allow explicit hostnames to be used for DNS resources.
+	// This is only used when LoadBalancer.Spec.Hostname is set.
+	// +optional
+	AllowExplicitHostnames bool `json:"allowExplicitHostnames,omitempty"`
 }
 
 // ConfigCertificatesSettings defines the global settings for the certificates.

@@ -49,6 +49,21 @@ spec:
                   set of annotations to all resources.
                   Tenant configuration has higher precedence than the annotations specified at the Config level.
                 type: object
+              dns:
+                description: DNSSettings defines the settings for DNS management and
+                  automation.
+                properties:
+                  allowExplicitHostnames:
+                    description: |-
+                      AllowExplicitHostnames is a flag that can be used to allow explicit hostnames to be used for DNS resources.
+                      This is only used when LoadBalancer.Spec.Hostname is set.
+                    type: boolean
+                  wildcardDomain:
+                    description: |-
+                      WildcardDomain is the domain that will be used as the base domain to create wildcard DNS records for DNS resources.
+                      This is only used for determining the hostname for LoadBalancer resources at LoadBalancer.Spec.Hostname.
+                    type: string
+                type: object
               gatewayAPI:
                 description: GatewayAPISettings defines the settings for the gateway
                   API.
@@ -101,6 +116,19 @@ spec:
                 description: |-
                   PropagatedAnnotations defines the list of annotations(key-value pairs) that will be propagated to the LoadBalancer service. Keep the `value` field empty in the key-value pair to allow any value.
                   Tenant configuration has higher precedence than the annotations specified at the Config level.
+                type: object
+              tunneling:
+                description: TunnelingSettings defines the settings for tunneling.
+                properties:
+                  disable:
+                    description: Disable is a flag that can be used to disable tunneling
+                      for a tenant.
+                    type: boolean
+                  useIngress:
+                    description: |-
+                      UseIngress is a flag that can be used to use Ingress for tunneling.
+                      By default, KubeLB will use Gateway API for tunneling.
+                    type: boolean
                 type: object
             type: object
           status:

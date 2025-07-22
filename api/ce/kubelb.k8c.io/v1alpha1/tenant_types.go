@@ -27,6 +27,32 @@ type TenantSpec struct {
 	LoadBalancer LoadBalancerSettings `json:"loadBalancer,omitempty"`
 	Ingress      IngressSettings      `json:"ingress,omitempty"`
 	GatewayAPI   GatewayAPISettings   `json:"gatewayAPI,omitempty"`
+	DNS          DNSSettings          `json:"dns,omitempty"`
+	Tunneling    TunnelingSettings    `json:"tunneling,omitempty"`
+}
+
+// TunnelingSettings defines the settings for tunneling.
+type TunnelingSettings struct {
+	// Disable is a flag that can be used to disable tunneling for a tenant.
+	Disable bool `json:"disable,omitempty"`
+
+	// UseIngress is a flag that can be used to use Ingress for tunneling.
+	// By default, KubeLB will use Gateway API for tunneling.
+	// +optional
+	UseIngress bool `json:"useIngress,omitempty"`
+}
+
+// DNSSettings defines the settings for DNS management and automation.
+type DNSSettings struct {
+	// WildcardDomain is the domain that will be used as the base domain to create wildcard DNS records for DNS resources.
+	// This is only used for determining the hostname for LoadBalancer resources at LoadBalancer.Spec.Hostname.
+	// +optional
+	WildcardDomain *string `json:"wildcardDomain,omitempty"`
+
+	// AllowExplicitHostnames is a flag that can be used to allow explicit hostnames to be used for DNS resources.
+	// This is only used when LoadBalancer.Spec.Hostname is set.
+	// +optional
+	AllowExplicitHostnames *bool `json:"allowExplicitHostnames,omitempty"`
 }
 
 // LoadBalancerSettings defines the settings for the load balancers.
