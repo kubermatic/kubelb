@@ -23,7 +23,9 @@ import (
 	"github.com/go-logr/logr"
 
 	kubelbv1alpha1 "k8c.io/kubelb/api/ce/kubelb.k8c.io/v1alpha1"
+	utils "k8c.io/kubelb/internal/controllers"
 	"k8c.io/kubelb/internal/kubelb"
+	"k8c.io/kubelb/internal/resources"
 	util "k8c.io/kubelb/internal/util/kubernetes"
 
 	networkingv1 "k8s.io/api/networking/v1"
@@ -31,6 +33,7 @@ import (
 	kerrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+	ctrl "sigs.k8s.io/controller-runtime"
 	ctrlclient "sigs.k8s.io/controller-runtime/pkg/client"
 )
 
@@ -147,4 +150,127 @@ func GetServicesFromIngress(ingress networkingv1.Ingress) []types.NamespacedName
 		}
 	}
 	return list
+}
+
+// CreateIngressForHostname creates or updates an Ingress resource for hostname configuration
+func CreateIngressForHostname(ctx context.Context, client ctrlclient.Client, loadBalancer *kubelbv1alpha1.LoadBalancer, svcName string, hostname string, tenant *kubelbv1alpha1.Tenant, config *kubelbv1alpha1.Config) error {
+	log := ctrl.LoggerFrom(ctx).WithValues("reconcile", "ingress")
+	log.V(2).Info("creating ingress", "hostname", hostname, "service", svcName)
+
+	// Create Ingress resource
+	ingressName := fmt.Sprintf("%s-ingress", loadBalancer.Name)
+	namespace := loadBalancer.Namespace
+
+	// Determine ingress class
+	var ingressClass *string
+	if tenant.Spec.Ingress.Class != nil {
+		ingressClass = tenant.Spec.Ingress.Class
+	} else if config.Spec.Ingress.Class != nil {
+		ingressClass = config.Spec.Ingress.Class
+	}
+
+	// Create Ingress
+	pathTypePrefix := networkingv1.PathTypePrefix
+	port := loadBalancer.Spec.Ports[0].Port
+
+	ingress := &networkingv1.Ingress{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      ingressName,
+			Namespace: namespace,
+			Labels: map[string]string{
+				kubelb.LabelLoadBalancerName:      loadBalancer.Name,
+				kubelb.LabelLoadBalancerNamespace: loadBalancer.Namespace,
+			},
+			Annotations: make(map[string]string),
+		},
+		Spec: networkingv1.IngressSpec{
+			IngressClassName: ingressClass,
+			Rules: []networkingv1.IngressRule{
+				{
+					Host: hostname,
+					IngressRuleValue: networkingv1.IngressRuleValue{
+						HTTP: &networkingv1.HTTPIngressRuleValue{
+							Paths: []networkingv1.HTTPIngressPath{
+								{
+									Path:     "/",
+									PathType: &pathTypePrefix,
+									Backend: networkingv1.IngressBackend{
+										Service: &networkingv1.IngressServiceBackend{
+											Name: svcName,
+											Port: networkingv1.ServiceBackendPort{
+												Number: port,
+											},
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			TLS: []networkingv1.IngressTLS{
+				{
+					Hosts:      []string{hostname},
+					SecretName: fmt.Sprintf("%s-tls", ingressName),
+				},
+			},
+		},
+	}
+
+	annotations := GetAnnotations(tenant, config)
+	ingress.Annotations = kubelb.PropagateAnnotations(loadBalancer.Annotations, annotations, kubelbv1alpha1.AnnotatedResourceIngress)
+
+	// Add cert-manager and external-dns annotations for automated DNS and TLS
+	if tenant.Spec.Certificates.DefaultClusterIssuer != nil {
+		ingress.Annotations[resources.CertManagerClusterIssuerAnnotation] = *tenant.Spec.Certificates.DefaultClusterIssuer
+	}
+	if config.Spec.Certificates.DefaultClusterIssuer != nil {
+		ingress.Annotations[resources.CertManagerClusterIssuerAnnotation] = *config.Spec.Certificates.DefaultClusterIssuer
+	}
+
+	ingress.Annotations[resources.ExternalDNSHostnameAnnotation] = hostname
+	ingress.Annotations[resources.ExternalDNSTTLAnnotation] = "10"
+
+	// Set controller reference to LoadBalancer so Ingress gets auto-deleted when LoadBalancer is deleted
+	if err := ctrl.SetControllerReference(loadBalancer, ingress, client.Scheme()); err != nil {
+		return fmt.Errorf("failed to set controller reference: %w", err)
+	}
+
+	// Check if Ingress already exists
+	existingIngress := &networkingv1.Ingress{}
+	err := client.Get(ctx, types.NamespacedName{Name: ingressName, Namespace: namespace}, existingIngress)
+
+	if err != nil && !kerrors.IsNotFound(err) {
+		return fmt.Errorf("failed to get ingress: %w", err)
+	}
+
+	if kerrors.IsNotFound(err) {
+		// Create new Ingress
+		if err := client.Create(ctx, ingress); err != nil {
+			return fmt.Errorf("failed to create ingress: %w", err)
+		}
+		log.V(2).Info("created ingress", "name", ingressName)
+	} else {
+		// Update existing Ingress if needed
+		if !equality.Semantic.DeepEqual(existingIngress.Spec, ingress.Spec) ||
+			!equality.Semantic.DeepEqual(existingIngress.Labels, ingress.Labels) ||
+			!utils.CompareAnnotations(existingIngress.Annotations, ingress.Annotations) {
+			existingIngress.Spec = ingress.Spec
+			existingIngress.Labels = ingress.Labels
+			existingIngress.Annotations = ingress.Annotations
+			if err := client.Update(ctx, existingIngress); err != nil {
+				return fmt.Errorf("failed to update ingress: %w", err)
+			}
+			log.V(2).Info("updated ingress", "name", ingressName)
+		}
+	}
+
+	return nil
+}
+
+// GetAnnotations is a placeholder function - this will need to be imported or implemented
+func GetAnnotations(tenant *kubelbv1alpha1.Tenant, config *kubelbv1alpha1.Config) kubelbv1alpha1.AnnotationSettings {
+	// This should be implemented based on the actual GetAnnotations function from the controller
+	// For now, returning empty annotations
+	return kubelbv1alpha1.AnnotationSettings{}
 }

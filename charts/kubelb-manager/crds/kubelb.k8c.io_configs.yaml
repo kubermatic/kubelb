@@ -40,6 +40,14 @@ spec:
           spec:
             description: ConfigSpec defines the desired state of the Config
             properties:
+              certificates:
+                properties:
+                  defaultClusterIssuer:
+                    description: DefaultClusterIssuer is the Cluster Issuer to use
+                      for the certificates by default. This is only used for load
+                      balancer hostname and tunneling.
+                    type: string
+                type: object
               defaultAnnotations:
                 additionalProperties:
                   additionalProperties:
@@ -1185,11 +1193,6 @@ spec:
                   disable:
                     description: Disable is a flag that can be used to disable tunneling
                       for a tenant.
-                    type: boolean
-                  useIngress:
-                    description: |-
-                      UseIngress is a flag that can be used to use Ingress for tunneling.
-                      By default, KubeLB will use Gateway API for tunneling.
                     type: boolean
                 type: object
             type: object

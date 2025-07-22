@@ -18,17 +18,15 @@ package kubelb
 
 import (
 	"context"
-	"crypto/rand"
-	"encoding/hex"
 	"fmt"
 	"reflect"
-	"sort"
-	"strings"
 
 	kubelbv1alpha1 "k8c.io/kubelb/api/ce/kubelb.k8c.io/v1alpha1"
 	utils "k8c.io/kubelb/internal/controllers"
 	"k8c.io/kubelb/internal/kubelb"
 	portlookup "k8c.io/kubelb/internal/port-lookup"
+	"k8c.io/kubelb/internal/resources/gatewayapi/httproute"
+	ingress "k8c.io/kubelb/internal/resources/ingress"
 
 	corev1 "k8s.io/api/core/v1"
 	networkingv1 "k8s.io/api/networking/v1"
@@ -37,7 +35,6 @@ import (
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/client-go/util/retry"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
@@ -235,7 +232,7 @@ func (r *LoadBalancerReconciler) Reconcile(ctx context.Context, req ctrl.Request
 
 	// Check if we need to configure the hostname.
 	var hostname string
-	if shouldConfigureHostname(&loadBalancer, tenant, config) {
+	if kubelb.ShouldConfigureHostname(&loadBalancer, tenant, config) {
 		var err error
 		hostname, err = r.configureHostname(ctx, &loadBalancer, svcName, tenant, config)
 		if err != nil {
@@ -296,7 +293,7 @@ func (r *LoadBalancerReconciler) reconcileService(ctx context.Context, loadBalan
 	}
 
 	// Handle service ports
-	desiredService.Spec.Ports = createServicePorts(loadBalancer, existingService, portAllocator, r.EnvoyProxyTopology)
+	desiredService.Spec.Ports = kubelb.CreateServicePorts(loadBalancer, existingService, portAllocator, string(r.EnvoyProxyTopology))
 
 	// If service doesn't exist, create it
 	if apierrors.IsNotFound(err) {
@@ -329,7 +326,7 @@ func (r *LoadBalancerReconciler) configureHostname(ctx context.Context, loadBala
 	// Assign a wildcard hostname if the annotation is set and the hostname is empty.
 	hostname := loadBalancer.Spec.Hostname
 	if hostname == "" {
-		hostname = generateHostname(tenant.Spec.DNS, config.Spec.DNS)
+		hostname = kubelb.GenerateHostname(tenant.Spec.DNS, config.Spec.DNS)
 	}
 
 	if hostname == "" {
@@ -367,131 +364,10 @@ func (r *LoadBalancerReconciler) configureHostname(ctx context.Context, loadBala
 
 	if useGatewayAPI {
 		// Create HTTPRoute for Gateway API
-		err := r.createHTTPRoute(ctx, loadBalancer, svcName, hostname, tenant, config)
-		if err != nil {
-			return "", err
-		}
-	} else {
-		// Create Ingress resource
-		err := r.createIngress(ctx, loadBalancer, svcName, hostname, tenant, config)
-		if err != nil {
-			return "", err
-		}
+		return hostname, httproute.CreateHTTPRouteForHostname(ctx, r.Client, loadBalancer, svcName, hostname, tenant, config)
 	}
-	
-	return hostname, nil
-}
-
-func generateHostname(tenant kubelbv1alpha1.DNSSettings, config kubelbv1alpha1.ConfigDNSSettings) string {
-	// Determine the base domain to use
-	var baseDomain string
-
-	// Prefer tenant wildcard domain over global config
-	if tenant.WildcardDomain != nil && *tenant.WildcardDomain != "" {
-		baseDomain = *tenant.WildcardDomain
-	} else if config.WildcardDomain != "" {
-		baseDomain = config.WildcardDomain
-	} else {
-		// No wildcard domain configured
-		return ""
-	}
-
-	randomBytes := make([]byte, 4)
-	if _, err := rand.Read(randomBytes); err != nil {
-		return fmt.Sprintf("lb-%d.%s", v1.Now().Unix(), baseDomain)
-	}
-
-	// Convert to hex string
-	randomPrefix := hex.EncodeToString(randomBytes)
-
-	// Remove leading asterisk(*) from wildcard domain if present
-	baseDomain = strings.TrimPrefix(baseDomain, "*.")
-	baseDomain = strings.TrimPrefix(baseDomain, "**.")
-	baseDomain = strings.TrimPrefix(baseDomain, "*")
-	return fmt.Sprintf("%s.%s", randomPrefix, baseDomain)
-}
-
-func shouldConfigureHostname(loadBalancer *kubelbv1alpha1.LoadBalancer, tenant *kubelbv1alpha1.Tenant, config *kubelbv1alpha1.Config) bool {
-	if loadBalancer.Spec.Hostname != "" {
-		// Ensure that explicit hostname is allowed at tenant or global level.
-		if tenant.Spec.DNS.AllowExplicitHostnames != nil && *tenant.Spec.DNS.AllowExplicitHostnames {
-			return true
-		}
-		if config.Spec.DNS.AllowExplicitHostnames && tenant.Spec.DNS.AllowExplicitHostnames == nil {
-			return true
-		}
-		return false
-	}
-
-	// For wildcard domain, we need to check if the annotation to request wildcard domain is set.
-	if val, ok := loadBalancer.Annotations[kubelb.AnnotationRequestWildcardDomain]; !ok {
-		return false
-	} else if val != "true" {
-		return false
-	}
-
-	// Request for wildcard domain.
-	if tenant.Spec.DNS.WildcardDomain != nil && *tenant.Spec.DNS.WildcardDomain != "" {
-		return true
-	}
-	if config.Spec.DNS.WildcardDomain != "" && tenant.Spec.DNS.WildcardDomain == nil {
-		return true
-	}
-	return false
-}
-
-func createServicePorts(loadBalancer *kubelbv1alpha1.LoadBalancer, existingService *corev1.Service, portAllocator *portlookup.PortAllocator, topology EnvoyProxyTopology) []corev1.ServicePort {
-	desiredPorts := make([]corev1.ServicePort, 0, len(loadBalancer.Spec.Ports))
-	for i, lbPort := range loadBalancer.Spec.Ports {
-		// If the port name is not set, we match the port by index.
-		targetPort := loadBalancer.Spec.Endpoints[0].Ports[i].Port
-		// Find the port name in the endpoints ports.
-		for _, port := range loadBalancer.Spec.Endpoints[0].Ports {
-			if port.Name == lbPort.Name {
-				targetPort = port.Port
-				break
-			}
-		}
-
-		// For global topology, look up allocated port
-		if topology == EnvoyProxyTopologyGlobal {
-			endpointKey := fmt.Sprintf(kubelb.EnvoyEndpointPattern, loadBalancer.Namespace, loadBalancer.Name, 0)
-			portKey := fmt.Sprintf(kubelb.EnvoyListenerPattern, targetPort, lbPort.Protocol)
-			if value, exists := portAllocator.Lookup(endpointKey, portKey); exists {
-				targetPort = int32(value)
-			}
-		}
-
-		// Try to find matching existing port to preserve NodePort if possible
-		var existingPort *corev1.ServicePort
-		for j := range existingService.Spec.Ports {
-			if existingService.Spec.Ports[j].Name == lbPort.Name || (existingService.Spec.Ports[j].Port == lbPort.Port && existingService.Spec.Ports[j].Protocol == lbPort.Protocol) {
-				existingPort = &existingService.Spec.Ports[j]
-				break
-			}
-		}
-
-		port := corev1.ServicePort{
-			Name:       lbPort.Name,
-			Port:       lbPort.Port,
-			TargetPort: intstr.FromInt(int(targetPort)),
-			Protocol:   lbPort.Protocol,
-		}
-
-		// Preserve NodePort if it exists and matches the desired configuration
-		if existingPort != nil && existingPort.NodePort != 0 {
-			port.NodePort = existingPort.NodePort
-		}
-
-		desiredPorts = append(desiredPorts, port)
-	}
-
-	// Sort ports by name for consistent ordering
-	sort.Slice(desiredPorts, func(i, j int) bool {
-		return desiredPorts[i].Name < desiredPorts[j].Name
-	})
-
-	return desiredPorts
+	// Create Ingress resource
+	return hostname, ingress.CreateIngressForHostname(ctx, r.Client, loadBalancer, svcName, hostname, tenant, config)
 }
 
 func (r *LoadBalancerReconciler) updateLoadBalancerStatus(ctx context.Context, loadBalancer *kubelbv1alpha1.LoadBalancer, service *corev1.Service, hostname string) error {
@@ -520,8 +396,8 @@ func (r *LoadBalancerReconciler) updateLoadBalancerStatus(ctx context.Context, l
 	if hostname != "" {
 		updatedLoadBalancerStatus.Hostname = &kubelbv1alpha1.HostnameStatus{
 			Hostname:         hostname,
-			TLSEnabled:       true,  // Set to true since we're adding TLS configuration
-			DNSRecordCreated: true,  // Set to true since we're adding external-dns annotations
+			TLSEnabled:       true, // Set to true since we're adding TLS configuration
+			DNSRecordCreated: true, // Set to true since we're adding external-dns annotations
 		}
 	}
 
@@ -710,228 +586,6 @@ func (r *LoadBalancerReconciler) cleanupHostnameResources(ctx context.Context, l
 	}
 
 	log.V(2).Info("Successfully cleaned up hostname resources")
-	return nil
-}
-
-
-func (r *LoadBalancerReconciler) createIngress(ctx context.Context, loadBalancer *kubelbv1alpha1.LoadBalancer, svcName string, hostname string, tenant *kubelbv1alpha1.Tenant, config *kubelbv1alpha1.Config) error {
-	log := ctrl.LoggerFrom(ctx).WithValues("reconcile", "ingress")
-	log.V(2).Info("creating ingress", "hostname", hostname, "service", svcName)
-
-	// Determine ingress class
-	var ingressClass *string
-	if tenant.Spec.Ingress.Class != nil {
-		ingressClass = tenant.Spec.Ingress.Class
-	} else if config.Spec.Ingress.Class != nil {
-		ingressClass = config.Spec.Ingress.Class
-	}
-
-	// Create Ingress resource
-	ingressName := fmt.Sprintf("%s-ingress", loadBalancer.Name)
-	namespace := loadBalancer.Namespace
-	if r.EnvoyProxyTopology == EnvoyProxyTopologyGlobal {
-		namespace = r.Namespace
-	}
-
-	// Create path type
-	pathType := networkingv1.PathTypePrefix
-	path := "/"
-
-	ingress := &networkingv1.Ingress{
-		ObjectMeta: v1.ObjectMeta{
-			Name:      ingressName,
-			Namespace: namespace,
-			Labels: map[string]string{
-				kubelb.LabelLoadBalancerName:      loadBalancer.Name,
-				kubelb.LabelLoadBalancerNamespace: loadBalancer.Namespace,
-			},
-			Annotations: make(map[string]string),
-		},
-		Spec: networkingv1.IngressSpec{
-			Rules: []networkingv1.IngressRule{
-				{
-					Host: hostname,
-					IngressRuleValue: networkingv1.IngressRuleValue{
-						HTTP: &networkingv1.HTTPIngressRuleValue{
-							Paths: []networkingv1.HTTPIngressPath{
-								{
-									Path:     path,
-									PathType: &pathType,
-									Backend: networkingv1.IngressBackend{
-										Service: &networkingv1.IngressServiceBackend{
-											Name: svcName,
-											Port: networkingv1.ServiceBackendPort{
-												// Use the first port from the load balancer spec
-												Number: loadBalancer.Spec.Ports[0].Port,
-											},
-										},
-									},
-								},
-							},
-						},
-					},
-				},
-			},
-		},
-	}
-
-	// Set ingress class if specified
-	if ingressClass != nil {
-		ingress.Spec.IngressClassName = ingressClass
-	}
-
-	// Add annotations from config/tenant
-	annotations := GetAnnotations(tenant, config)
-	ingress.Annotations = kubelb.PropagateAnnotations(loadBalancer.Annotations, annotations, kubelbv1alpha1.AnnotatedResourceIngress)
-
-	// Add cert-manager and external-dns annotations for automated DNS and TLS
-	ingress.Annotations["cert-manager.io/cluster-issuer"] = "letsencrypt-prod"
-	ingress.Annotations["external-dns.alpha.kubernetes.io/hostname"] = hostname
-	ingress.Annotations["external-dns.alpha.kubernetes.io/ttl"] = "10"
-
-	// Add TLS configuration for automatic certificate generation
-	ingress.Spec.TLS = []networkingv1.IngressTLS{
-		{
-			Hosts:      []string{hostname},
-			SecretName: fmt.Sprintf("%s-tls", ingressName),
-		},
-	}
-
-	// Check if ingress already exists
-	existingIngress := &networkingv1.Ingress{}
-	err := r.Get(ctx, types.NamespacedName{Name: ingressName, Namespace: namespace}, existingIngress)
-
-	if err != nil && !apierrors.IsNotFound(err) {
-		return fmt.Errorf("failed to get ingress: %w", err)
-	}
-
-	if apierrors.IsNotFound(err) {
-		// Create new ingress
-		if err := r.Create(ctx, ingress); err != nil {
-			return fmt.Errorf("failed to create ingress: %w", err)
-		}
-		log.V(2).Info("created ingress", "name", ingressName)
-	} else {
-		// Update existing ingress if needed
-		if !equality.Semantic.DeepEqual(existingIngress.Spec, ingress.Spec) ||
-			!equality.Semantic.DeepEqual(existingIngress.Labels, ingress.Labels) ||
-			!utils.CompareAnnotations(existingIngress.Annotations, ingress.Annotations) {
-			existingIngress.Spec = ingress.Spec
-			existingIngress.Labels = ingress.Labels
-			existingIngress.Annotations = ingress.Annotations
-			if err := r.Update(ctx, existingIngress); err != nil {
-				return fmt.Errorf("failed to update ingress: %w", err)
-			}
-			log.V(2).Info("updated ingress", "name", ingressName)
-		}
-	}
-
-	return nil
-}
-
-func (r *LoadBalancerReconciler) createHTTPRoute(ctx context.Context, loadBalancer *kubelbv1alpha1.LoadBalancer, svcName string, hostname string, tenant *kubelbv1alpha1.Tenant, config *kubelbv1alpha1.Config) error {
-	log := ctrl.LoggerFrom(ctx).WithValues("reconcile", "httproute")
-	log.V(2).Info("creating httproute", "hostname", hostname, "service", svcName)
-
-	// Determine gateway class
-	var gatewayClass *string
-	if tenant.Spec.GatewayAPI.Class != nil {
-		gatewayClass = tenant.Spec.GatewayAPI.Class
-	} else if config.Spec.GatewayAPI.Class != nil {
-		gatewayClass = config.Spec.GatewayAPI.Class
-	}
-
-	// Create HTTPRoute resource
-	httpRouteName := fmt.Sprintf("%s-httproute", loadBalancer.Name)
-	namespace := loadBalancer.Namespace
-	if r.EnvoyProxyTopology == EnvoyProxyTopologyGlobal {
-		namespace = r.Namespace
-	}
-
-	// Create HTTPRoute
-	port := gwapiv1.PortNumber(loadBalancer.Spec.Ports[0].Port)
-	serviceKind := gwapiv1.Kind("Service")
-
-	httpRoute := &gwapiv1.HTTPRoute{
-		ObjectMeta: v1.ObjectMeta{
-			Name:      httpRouteName,
-			Namespace: namespace,
-			Labels: map[string]string{
-				kubelb.LabelLoadBalancerName:      loadBalancer.Name,
-				kubelb.LabelLoadBalancerNamespace: loadBalancer.Namespace,
-			},
-			Annotations: make(map[string]string),
-		},
-		Spec: gwapiv1.HTTPRouteSpec{
-			CommonRouteSpec: gwapiv1.CommonRouteSpec{
-				ParentRefs: []gwapiv1.ParentReference{},
-			},
-			Hostnames: []gwapiv1.Hostname{
-				gwapiv1.Hostname(hostname),
-			},
-			Rules: []gwapiv1.HTTPRouteRule{
-				{
-					BackendRefs: []gwapiv1.HTTPBackendRef{
-						{
-							BackendRef: gwapiv1.BackendRef{
-								BackendObjectReference: gwapiv1.BackendObjectReference{
-									Name: gwapiv1.ObjectName(svcName),
-									Port: &port,
-									Kind: &serviceKind,
-								},
-							},
-						},
-					},
-				},
-			},
-		},
-	}
-
-	// If gateway class is specified, add parent reference
-	if gatewayClass != nil {
-		// Parent reference would typically point to a Gateway resource
-		// For now, we'll just set the gateway class in annotations
-		httpRoute.Annotations["gateway.networking.k8s.io/class"] = *gatewayClass
-	}
-
-	// Add annotations from config/tenant
-	annotations := GetAnnotations(tenant, config)
-	httpRoute.Annotations = kubelb.PropagateAnnotations(loadBalancer.Annotations, annotations, kubelbv1alpha1.AnnotatedResourceHTTPRoute)
-
-	// Add cert-manager and external-dns annotations for automated DNS and TLS
-	httpRoute.Annotations["cert-manager.io/cluster-issuer"] = "letsencrypt-prod"
-	httpRoute.Annotations["external-dns.alpha.kubernetes.io/hostname"] = hostname
-	httpRoute.Annotations["external-dns.alpha.kubernetes.io/ttl"] = "10"
-
-	// Check if HTTPRoute already exists
-	existingHTTPRoute := &gwapiv1.HTTPRoute{}
-	err := r.Get(ctx, types.NamespacedName{Name: httpRouteName, Namespace: namespace}, existingHTTPRoute)
-
-	if err != nil && !apierrors.IsNotFound(err) {
-		return fmt.Errorf("failed to get httproute: %w", err)
-	}
-
-	if apierrors.IsNotFound(err) {
-		// Create new HTTPRoute
-		if err := r.Create(ctx, httpRoute); err != nil {
-			return fmt.Errorf("failed to create httproute: %w", err)
-		}
-		log.V(2).Info("created httproute", "name", httpRouteName)
-	} else {
-		// Update existing HTTPRoute if needed
-		if !equality.Semantic.DeepEqual(existingHTTPRoute.Spec, httpRoute.Spec) ||
-			!equality.Semantic.DeepEqual(existingHTTPRoute.Labels, httpRoute.Labels) ||
-			!utils.CompareAnnotations(existingHTTPRoute.Annotations, httpRoute.Annotations) {
-			existingHTTPRoute.Spec = httpRoute.Spec
-			existingHTTPRoute.Labels = httpRoute.Labels
-			existingHTTPRoute.Annotations = httpRoute.Annotations
-			if err := r.Update(ctx, existingHTTPRoute); err != nil {
-				return fmt.Errorf("failed to update httproute: %w", err)
-			}
-			log.V(2).Info("updated httproute", "name", httpRouteName)
-		}
-	}
-
 	return nil
 }
 

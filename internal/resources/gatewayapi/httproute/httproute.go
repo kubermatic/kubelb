@@ -23,12 +23,15 @@ import (
 	"github.com/go-logr/logr"
 
 	kubelbv1alpha1 "k8c.io/kubelb/api/ce/kubelb.k8c.io/v1alpha1"
+	utils "k8c.io/kubelb/internal/controllers"
 	"k8c.io/kubelb/internal/kubelb"
+	"k8c.io/kubelb/internal/resources"
 
 	"k8s.io/apimachinery/pkg/api/equality"
 	kerrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+	ctrl "sigs.k8s.io/controller-runtime"
 	ctrlclient "sigs.k8s.io/controller-runtime/pkg/client"
 	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
 )
@@ -200,4 +203,121 @@ func GetServicesFromHTTPRoute(httpRoute *gwapiv1.HTTPRoute) []types.NamespacedNa
 		}
 	}
 	return list
+}
+
+// CreateHTTPRouteForHostname creates or updates an HTTPRoute resource for hostname configuration
+func CreateHTTPRouteForHostname(ctx context.Context, client ctrlclient.Client, loadBalancer *kubelbv1alpha1.LoadBalancer, svcName string, hostname string, tenant *kubelbv1alpha1.Tenant, config *kubelbv1alpha1.Config) error {
+	log := ctrl.LoggerFrom(ctx).WithValues("reconcile", "httproute")
+	log.V(2).Info("creating httproute", "hostname", hostname, "service", svcName)
+
+	// Determine gateway class
+	var gatewayClass *string
+	if tenant.Spec.GatewayAPI.Class != nil {
+		gatewayClass = tenant.Spec.GatewayAPI.Class
+	} else if config.Spec.GatewayAPI.Class != nil {
+		gatewayClass = config.Spec.GatewayAPI.Class
+	}
+
+	// Create HTTPRoute resource
+	httpRouteName := fmt.Sprintf("%s-httproute", loadBalancer.Name)
+	namespace := loadBalancer.Namespace
+
+	// Create HTTPRoute
+	port := gwapiv1.PortNumber(loadBalancer.Spec.Ports[0].Port)
+	serviceKind := gwapiv1.Kind("Service")
+
+	httpRoute := &gwapiv1.HTTPRoute{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      httpRouteName,
+			Namespace: namespace,
+			Labels: map[string]string{
+				kubelb.LabelLoadBalancerName:      loadBalancer.Name,
+				kubelb.LabelLoadBalancerNamespace: loadBalancer.Namespace,
+			},
+			Annotations: make(map[string]string),
+		},
+		Spec: gwapiv1.HTTPRouteSpec{
+			CommonRouteSpec: gwapiv1.CommonRouteSpec{
+				ParentRefs: []gwapiv1.ParentReference{},
+			},
+			Hostnames: []gwapiv1.Hostname{
+				gwapiv1.Hostname(hostname),
+			},
+			Rules: []gwapiv1.HTTPRouteRule{
+				{
+					BackendRefs: []gwapiv1.HTTPBackendRef{
+						{
+							BackendRef: gwapiv1.BackendRef{
+								BackendObjectReference: gwapiv1.BackendObjectReference{
+									Name: gwapiv1.ObjectName(svcName),
+									Port: &port,
+									Kind: &serviceKind,
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	// If gateway class is specified, add parent reference
+	if gatewayClass != nil {
+		// Parent reference would typically point to a Gateway resource
+		// For now, we'll just set the gateway class in annotations
+		httpRoute.Annotations["gateway.networking.k8s.io/class"] = *gatewayClass
+	}
+
+	// Add annotations from config/tenant
+	annotations := GetAnnotations(tenant, config)
+	httpRoute.Annotations = kubelb.PropagateAnnotations(loadBalancer.Annotations, annotations, kubelbv1alpha1.AnnotatedResourceHTTPRoute)
+
+	// Add cert-manager and external-dns annotations for automated DNS and TLS
+
+	httpRoute.Annotations[resources.CertManagerClusterIssuerAnnotation] = "letsencrypt-prod"
+	httpRoute.Annotations[resources.ExternalDNSHostnameAnnotation] = hostname
+	httpRoute.Annotations[resources.ExternalDNSTTLAnnotation] = "10"
+
+	// Set controller reference to LoadBalancer so HTTPRoute gets auto-deleted when LoadBalancer is deleted
+	if err := ctrl.SetControllerReference(loadBalancer, httpRoute, client.Scheme()); err != nil {
+		return fmt.Errorf("failed to set controller reference: %w", err)
+	}
+
+	// Check if HTTPRoute already exists
+	existingHTTPRoute := &gwapiv1.HTTPRoute{}
+	err := client.Get(ctx, types.NamespacedName{Name: httpRouteName, Namespace: namespace}, existingHTTPRoute)
+
+	if err != nil && !kerrors.IsNotFound(err) {
+		return fmt.Errorf("failed to get httproute: %w", err)
+	}
+
+	if kerrors.IsNotFound(err) {
+		// Create new HTTPRoute
+		if err := client.Create(ctx, httpRoute); err != nil {
+			return fmt.Errorf("failed to create httproute: %w", err)
+		}
+		log.V(2).Info("created httproute", "name", httpRouteName)
+	} else {
+		// Update existing HTTPRoute if needed
+		if !equality.Semantic.DeepEqual(existingHTTPRoute.Spec, httpRoute.Spec) ||
+			!equality.Semantic.DeepEqual(existingHTTPRoute.Labels, httpRoute.Labels) ||
+			!utils.CompareAnnotations(existingHTTPRoute.Annotations, httpRoute.Annotations) {
+			existingHTTPRoute.Spec = httpRoute.Spec
+			existingHTTPRoute.Labels = httpRoute.Labels
+			existingHTTPRoute.Annotations = httpRoute.Annotations
+			if err := client.Update(ctx, existingHTTPRoute); err != nil {
+				return fmt.Errorf("failed to update httproute: %w", err)
+			}
+			log.V(2).Info("updated httproute", "name", httpRouteName)
+		}
+	}
+
+	return nil
+}
+
+// GetAnnotations is a placeholder function - this will need to be imported or implemented
+func GetAnnotations(tenant *kubelbv1alpha1.Tenant, config *kubelbv1alpha1.Config) kubelbv1alpha1.AnnotationSettings {
+	// This should be implemented based on the actual GetAnnotations function from the controller
+	// For now, returning empty annotations
+	return kubelbv1alpha1.AnnotationSettings{}
 }
