@@ -33,7 +33,6 @@ import (
 	kerrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/utils/ptr"
 	ctrl "sigs.k8s.io/controller-runtime"
 	ctrlclient "sigs.k8s.io/controller-runtime/pkg/client"
 )
@@ -154,7 +153,7 @@ func GetServicesFromIngress(ingress networkingv1.Ingress) []types.NamespacedName
 }
 
 // CreateIngressForHostname creates or updates an Ingress resource for hostname configuration
-func CreateIngressForHostname(ctx context.Context, client ctrlclient.Client, loadBalancer *kubelbv1alpha1.LoadBalancer, svcName string, hostname string, tenant *kubelbv1alpha1.Tenant, config *kubelbv1alpha1.Config) error {
+func CreateIngressForHostname(ctx context.Context, client ctrlclient.Client, loadBalancer *kubelbv1alpha1.LoadBalancer, svcName string, hostname string, tenant *kubelbv1alpha1.Tenant, config *kubelbv1alpha1.Config, annotations kubelbv1alpha1.AnnotationSettings) error {
 	log := ctrl.LoggerFrom(ctx).WithValues("reconcile", "ingress")
 	log.V(2).Info("creating ingress", "hostname", hostname, "service", svcName)
 
@@ -218,22 +217,17 @@ func CreateIngressForHostname(ctx context.Context, client ctrlclient.Client, loa
 		},
 	}
 
-	annotations := kubelbv1alpha1.AnnotationSettings{
-		PropagateAllAnnotations: ptr.To(true),
-	}
-
 	ingress.Annotations = kubelb.PropagateAnnotations(loadBalancer.Annotations, annotations, kubelbv1alpha1.AnnotatedResourceIngress)
 
 	// Add cert-manager and external-dns annotations for automated DNS and TLS
 	if tenant.Spec.Certificates.DefaultClusterIssuer != nil {
 		ingress.Annotations[resources.CertManagerClusterIssuerAnnotation] = *tenant.Spec.Certificates.DefaultClusterIssuer
-	}
-	if config.Spec.Certificates.DefaultClusterIssuer != nil {
+	} else if config.Spec.Certificates.DefaultClusterIssuer != nil {
 		ingress.Annotations[resources.CertManagerClusterIssuerAnnotation] = *config.Spec.Certificates.DefaultClusterIssuer
 	}
 
 	ingress.Annotations[resources.ExternalDNSHostnameAnnotation] = hostname
-	ingress.Annotations[resources.ExternalDNSTTLAnnotation] = "10"
+	ingress.Annotations[resources.ExternalDNSTTLAnnotation] = resources.ExternalDNSTTLDefault
 
 	// Set controller reference to LoadBalancer so Ingress gets auto-deleted when LoadBalancer is deleted
 	if err := ctrl.SetControllerReference(loadBalancer, ingress, client.Scheme()); err != nil {

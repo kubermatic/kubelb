@@ -31,7 +31,6 @@ import (
 	kerrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/utils/ptr"
 	ctrl "sigs.k8s.io/controller-runtime"
 	ctrlclient "sigs.k8s.io/controller-runtime/pkg/client"
 	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
@@ -207,16 +206,31 @@ func GetServicesFromHTTPRoute(httpRoute *gwapiv1.HTTPRoute) []types.NamespacedNa
 }
 
 // CreateHTTPRouteForHostname creates or updates an HTTPRoute resource for hostname configuration
-func CreateHTTPRouteForHostname(ctx context.Context, client ctrlclient.Client, loadBalancer *kubelbv1alpha1.LoadBalancer, svcName string, hostname string, tenant *kubelbv1alpha1.Tenant, config *kubelbv1alpha1.Config) error {
+func CreateHTTPRouteForHostname(ctx context.Context, client ctrlclient.Client, loadBalancer *kubelbv1alpha1.LoadBalancer, svcName string, hostname string, tenant *kubelbv1alpha1.Tenant, config *kubelbv1alpha1.Config, annotations kubelbv1alpha1.AnnotationSettings) error {
 	log := ctrl.LoggerFrom(ctx).WithValues("reconcile", "httproute")
 	log.V(2).Info("creating httproute", "hostname", hostname, "service", svcName)
 
-	// Determine gateway class
-	var gatewayClass *string
-	if tenant.Spec.GatewayAPI.Class != nil {
-		gatewayClass = tenant.Spec.GatewayAPI.Class
-	} else if config.Spec.GatewayAPI.Class != nil {
-		gatewayClass = config.Spec.GatewayAPI.Class
+	// Determine parent reference
+	var parentRef gwapiv1.ParentReference
+	switch {
+	case tenant.Spec.GatewayAPI.DefaultGateway != nil:
+		parentRef = gwapiv1.ParentReference{
+			Name: gwapiv1.ObjectName(tenant.Spec.GatewayAPI.DefaultGateway.Name),
+		}
+
+		if tenant.Spec.GatewayAPI.DefaultGateway.Namespace != "" {
+			parentRef.Namespace = (*gwapiv1.Namespace)(&tenant.Spec.GatewayAPI.DefaultGateway.Namespace)
+		}
+	case config.Spec.GatewayAPI.DefaultGateway != nil:
+		parentRef = gwapiv1.ParentReference{
+			Name: gwapiv1.ObjectName(config.Spec.GatewayAPI.DefaultGateway.Name),
+		}
+
+		if config.Spec.GatewayAPI.DefaultGateway.Namespace != "" {
+			parentRef.Namespace = (*gwapiv1.Namespace)(&config.Spec.GatewayAPI.DefaultGateway.Namespace)
+		}
+	default:
+		return fmt.Errorf("no default gateway specified for tenant or config")
 	}
 
 	// Create HTTPRoute resource
@@ -239,7 +253,7 @@ func CreateHTTPRouteForHostname(ctx context.Context, client ctrlclient.Client, l
 		},
 		Spec: gwapiv1.HTTPRouteSpec{
 			CommonRouteSpec: gwapiv1.CommonRouteSpec{
-				ParentRefs: []gwapiv1.ParentReference{},
+				ParentRefs: []gwapiv1.ParentReference{parentRef},
 			},
 			Hostnames: []gwapiv1.Hostname{
 				gwapiv1.Hostname(hostname),
@@ -262,28 +276,17 @@ func CreateHTTPRouteForHostname(ctx context.Context, client ctrlclient.Client, l
 		},
 	}
 
-	// If gateway class is specified, add parent reference
-	if gatewayClass != nil {
-		// Parent reference would typically point to a Gateway resource
-		// For now, we'll just set the gateway class in annotations
-		httpRoute.Annotations["gateway.networking.k8s.io/class"] = *gatewayClass
-	}
-
-	annotations := kubelbv1alpha1.AnnotationSettings{
-		PropagateAllAnnotations: ptr.To(true),
-	}
 	httpRoute.Annotations = kubelb.PropagateAnnotations(loadBalancer.Annotations, annotations, kubelbv1alpha1.AnnotatedResourceHTTPRoute)
 
 	// Add cert-manager and external-dns annotations for automated DNS and TLS
 	if tenant.Spec.Certificates.DefaultClusterIssuer != nil {
 		httpRoute.Annotations[resources.CertManagerClusterIssuerAnnotation] = *tenant.Spec.Certificates.DefaultClusterIssuer
-	}
-	if config.Spec.Certificates.DefaultClusterIssuer != nil {
+	} else if config.Spec.Certificates.DefaultClusterIssuer != nil {
 		httpRoute.Annotations[resources.CertManagerClusterIssuerAnnotation] = *config.Spec.Certificates.DefaultClusterIssuer
 	}
 
 	httpRoute.Annotations[resources.ExternalDNSHostnameAnnotation] = hostname
-	httpRoute.Annotations[resources.ExternalDNSTTLAnnotation] = "10"
+	httpRoute.Annotations[resources.ExternalDNSTTLAnnotation] = resources.ExternalDNSTTLDefault
 
 	// Set controller reference to LoadBalancer so HTTPRoute gets auto-deleted when LoadBalancer is deleted
 	if err := ctrl.SetControllerReference(loadBalancer, httpRoute, client.Scheme()); err != nil {

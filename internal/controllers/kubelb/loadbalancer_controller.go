@@ -205,8 +205,8 @@ func (r *LoadBalancerReconciler) Reconcile(ctx context.Context, req ctrl.Request
 		}
 	}
 
+	// Generate the service name and app name.
 	_, appName := envoySnapshotAndAppName(r.EnvoyProxyTopology, req)
-	// Create base service with metadata
 	svcName := fmt.Sprintf(envoyResourcePattern, loadBalancer.Name)
 	if r.EnvoyProxyTopology == EnvoyProxyTopologyGlobal {
 		svcName = fmt.Sprintf(envoyGlobalTopologyServicePattern, loadBalancer.Namespace, loadBalancer.Name)
@@ -234,7 +234,7 @@ func (r *LoadBalancerReconciler) Reconcile(ctx context.Context, req ctrl.Request
 	var hostname string
 	if kubelb.ShouldConfigureHostname(log, &loadBalancer, tenant, config) {
 		var err error
-		hostname, err = r.configureHostname(ctx, &loadBalancer, svcName, tenant, config)
+		hostname, err = r.configureHostname(ctx, &loadBalancer, svcName, tenant, config, annotations)
 		if err != nil {
 			log.Error(err, "Unable to configure hostname")
 			return ctrl.Result{}, err
@@ -318,7 +318,7 @@ func (r *LoadBalancerReconciler) reconcileService(ctx context.Context, loadBalan
 	return nil
 }
 
-func (r *LoadBalancerReconciler) configureHostname(ctx context.Context, loadBalancer *kubelbv1alpha1.LoadBalancer, svcName string, tenant *kubelbv1alpha1.Tenant, config *kubelbv1alpha1.Config) (string, error) {
+func (r *LoadBalancerReconciler) configureHostname(ctx context.Context, loadBalancer *kubelbv1alpha1.LoadBalancer, svcName string, tenant *kubelbv1alpha1.Tenant, config *kubelbv1alpha1.Config, annotations kubelbv1alpha1.AnnotationSettings) (string, error) {
 	log := ctrl.LoggerFrom(ctx).WithValues("reconcile", "hostname")
 
 	log.V(2).Info("configure hostname", "name", loadBalancer.Name, "namespace", loadBalancer.Namespace)
@@ -354,10 +354,10 @@ func (r *LoadBalancerReconciler) configureHostname(ctx context.Context, loadBala
 
 	if useGatewayAPI {
 		// Create HTTPRoute for Gateway API
-		return hostname, httproute.CreateHTTPRouteForHostname(ctx, r.Client, loadBalancer, svcName, hostname, tenant, config)
+		return hostname, httproute.CreateHTTPRouteForHostname(ctx, r.Client, loadBalancer, svcName, hostname, tenant, config, annotations)
 	}
 	// Create Ingress resource
-	return hostname, ingress.CreateIngressForHostname(ctx, r.Client, loadBalancer, svcName, hostname, tenant, config)
+	return hostname, ingress.CreateIngressForHostname(ctx, r.Client, loadBalancer, svcName, hostname, tenant, config, annotations)
 }
 
 func (r *LoadBalancerReconciler) updateLoadBalancerStatus(ctx context.Context, loadBalancer *kubelbv1alpha1.LoadBalancer, service *corev1.Service, hostname string) error {
