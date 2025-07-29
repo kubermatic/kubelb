@@ -17,6 +17,7 @@ limitations under the License.
 package v1alpha1
 
 import (
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -27,6 +28,26 @@ type TenantSpec struct {
 	LoadBalancer LoadBalancerSettings `json:"loadBalancer,omitempty"`
 	Ingress      IngressSettings      `json:"ingress,omitempty"`
 	GatewayAPI   GatewayAPISettings   `json:"gatewayAPI,omitempty"`
+	DNS          DNSSettings          `json:"dns,omitempty"`
+	Certificates CertificatesSettings `json:"certificates,omitempty"`
+}
+
+type CertificatesSettings struct {
+	// DefaultClusterIssuer is the Cluster Issuer to use for the certificates by default. This is only used for load balancer hostname and tunneling.
+	DefaultClusterIssuer *string `json:"defaultClusterIssuer,omitempty"`
+}
+
+// DNSSettings defines the settings for DNS management and automation.
+type DNSSettings struct {
+	// WildcardDomain is the domain that will be used as the base domain to create wildcard DNS records for DNS resources.
+	// This is only used for determining the hostname for LoadBalancer resources at LoadBalancer.Spec.Hostname.
+	// +optional
+	WildcardDomain *string `json:"wildcardDomain,omitempty"`
+
+	// AllowExplicitHostnames is a flag that can be used to allow explicit hostnames to be used for DNS resources.
+	// This is only used when LoadBalancer.Spec.Hostname is set.
+	// +optional
+	AllowExplicitHostnames *bool `json:"allowExplicitHostnames,omitempty"`
 }
 
 // LoadBalancerSettings defines the settings for the load balancers.
@@ -57,6 +78,10 @@ type GatewayAPISettings struct {
 	// This has higher precedence than the value specified in the Config.
 	// +optional
 	Class *string `json:"class,omitempty"`
+
+	// DefaultGateway is the default gateway reference to use for the tenant. This is only used for load balancer hostname and tunneling.
+	// +optional
+	DefaultGateway *corev1.ObjectReference `json:"defaultGateway,omitempty"`
 
 	// Disable is a flag that can be used to disable Gateway API for a tenant.
 	Disable bool `json:"disable,omitempty"`

@@ -15,3 +15,14 @@ limitations under the License.
 */
 
 package resources
+
+const (
+	ExternalDNSAnnotationPrefix        = "external-dns.alpha.kubernetes.io"
+	CertManagerAnnotationPrefix        = "cert-manager.io"
+	ExternalDNSHostnameAnnotation      = "external-dns.alpha.kubernetes.io/hostname"
+	ExternalDNSTargetAnnotation        = "external-dns.alpha.kubernetes.io/target"
+	ExternalDNSTTLAnnotation           = "external-dns.alpha.kubernetes.io/ttl"
+	ExternalDNSTTLDefault              = "10"
+	CertManagerClusterIssuerAnnotation = "cert-manager.io/cluster-issuer"
+	CertManagerIssuerAnnotation        = "cert-manager.io/issuer"
+)

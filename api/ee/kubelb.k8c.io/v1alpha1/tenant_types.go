@@ -108,7 +108,7 @@ type GatewaySettings struct {
 	Limit *int `json:"limit,omitempty"`
 }
 
-// DNSSettings defines the settings for the DNS.
+// DNSSettings defines the tenant specific settings for DNS management and automation.
 type DNSSettings struct {
 	// Disable is a flag that can be used to disable DNS automation for a tenant.
 	Disable bool `json:"disable,omitempty"`
@@ -122,6 +122,16 @@ type DNSSettings struct {
 	// - ["**"] or ["*"] -> this allows all domains
 	// Note: "**" was added as a special case to allow any levels of subdomains that come before it. "*" works for only 1 level.
 	AllowedDomains []string `json:"allowedDomains,omitempty"`
+
+	// WildcardDomain is the domain that will be used as the base domain to create wildcard DNS records for DNS resources.
+	// This is only used for determining the hostname for LoadBalancer resources at LoadBalancer.Spec.Hostname.
+	// +optional
+	WildcardDomain *string `json:"wildcardDomain,omitempty"`
+
+	// AllowExplicitHostnames is a flag that can be used to allow explicit hostnames to be used for DNS resources.
+	// This is only used when LoadBalancer.Spec.Hostname is set.
+	// +optional
+	AllowExplicitHostnames *bool `json:"allowExplicitHostnames,omitempty"`
 }
 
 // CertificatesSettings defines the settings for the certificates.

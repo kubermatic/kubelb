@@ -20,20 +20,21 @@ import (
 	"context"
 	"fmt"
 	"reflect"
-	"sort"
 
 	kubelbv1alpha1 "k8c.io/kubelb/api/ce/kubelb.k8c.io/v1alpha1"
 	utils "k8c.io/kubelb/internal/controllers"
 	"k8c.io/kubelb/internal/kubelb"
 	portlookup "k8c.io/kubelb/internal/port-lookup"
+	"k8c.io/kubelb/internal/resources/gatewayapi/httproute"
+	ingress "k8c.io/kubelb/internal/resources/ingress"
 
 	corev1 "k8s.io/api/core/v1"
+	networkingv1 "k8s.io/api/networking/v1"
 	"k8s.io/apimachinery/pkg/api/equality"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/client-go/util/retry"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
@@ -44,6 +45,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
+	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
 )
 
 const (
@@ -52,6 +54,7 @@ const (
 	envoyResourcePattern              = "envoy-%s"
 	envoyGlobalTopologyServicePattern = "envoy-%s-%s"
 	envoyProxyCleanupFinalizer        = "kubelb.k8c.io/cleanup-envoy-proxy"
+	hostnameCleanupFinalizer          = "kubelb.k8c.io/cleanup-hostname"
 	EnvoyGlobalCache                  = "global"
 	LoadBalancerControllerName        = "loadbalancer-controller"
 )
@@ -140,7 +143,8 @@ func (r *LoadBalancerReconciler) Reconcile(ctx context.Context, req ctrl.Request
 	// Resource is marked for deletion.
 	if loadBalancer.DeletionTimestamp != nil {
 		if controllerutil.ContainsFinalizer(&loadBalancer, envoyProxyCleanupFinalizer) ||
-			controllerutil.ContainsFinalizer(&loadBalancer, CleanupFinalizer) {
+			controllerutil.ContainsFinalizer(&loadBalancer, CleanupFinalizer) ||
+			controllerutil.ContainsFinalizer(&loadBalancer, hostnameCleanupFinalizer) {
 			return reconcile.Result{}, r.cleanup(ctx, loadBalancer, resourceNamespace)
 		}
 		// Finalizer doesn't exist so clean up is already done
@@ -201,27 +205,56 @@ func (r *LoadBalancerReconciler) Reconcile(ctx context.Context, req ctrl.Request
 		}
 	}
 
+	// Generate the service name and app name.
 	_, appName := envoySnapshotAndAppName(r.EnvoyProxyTopology, req)
-	err = r.reconcileService(ctx, &loadBalancer, appName, resourceNamespace, r.PortAllocator, className, annotations)
+	svcName := fmt.Sprintf(envoyResourcePattern, loadBalancer.Name)
+	if r.EnvoyProxyTopology == EnvoyProxyTopologyGlobal {
+		svcName = fmt.Sprintf(envoyGlobalTopologyServicePattern, loadBalancer.Namespace, loadBalancer.Name)
+	}
+
+	err = r.reconcileService(ctx, &loadBalancer, svcName, appName, resourceNamespace, r.PortAllocator, className, annotations)
 	if err != nil {
 		log.Error(err, "Unable to reconcile service")
+		return ctrl.Result{}, err
+	}
+
+	// At this point, we have a service that is ready to be used.
+	// Get the service to get its current status
+	existingService := &corev1.Service{}
+	err = r.Get(ctx, types.NamespacedName{
+		Name:      svcName,
+		Namespace: resourceNamespace,
+	}, existingService)
+	if err != nil {
+		log.Error(err, "Unable to get service for status update")
+		return ctrl.Result{}, err
+	}
+
+	// Check if we need to configure the hostname.
+	var hostname string
+	if kubelb.ShouldConfigureHostname(log, &loadBalancer, tenant, config) {
+		var err error
+		hostname, err = r.configureHostname(ctx, &loadBalancer, svcName, tenant, config, annotations)
+		if err != nil {
+			log.Error(err, "Unable to configure hostname")
+			return ctrl.Result{}, err
+		}
+	}
+
+	// Update LoadBalancer status (including hostname if configured)
+	if err := r.updateLoadBalancerStatus(ctx, &loadBalancer, existingService, hostname); err != nil {
+		log.Error(err, "Unable to update LoadBalancer status")
 		return ctrl.Result{}, err
 	}
 
 	return ctrl.Result{}, nil
 }
 
-func (r *LoadBalancerReconciler) reconcileService(ctx context.Context, loadBalancer *kubelbv1alpha1.LoadBalancer, appName, namespace string, portAllocator *portlookup.PortAllocator, className *string,
+func (r *LoadBalancerReconciler) reconcileService(ctx context.Context, loadBalancer *kubelbv1alpha1.LoadBalancer, svcName, appName, namespace string, portAllocator *portlookup.PortAllocator, className *string,
 	annotations kubelbv1alpha1.AnnotationSettings) error {
 	log := ctrl.LoggerFrom(ctx).WithValues("reconcile", "service")
 
 	log.V(2).Info("verify service")
-
-	// Create base service with metadata
-	svcName := fmt.Sprintf(envoyResourcePattern, loadBalancer.Name)
-	if r.EnvoyProxyTopology == EnvoyProxyTopologyGlobal {
-		svcName = fmt.Sprintf(envoyGlobalTopologyServicePattern, loadBalancer.Namespace, loadBalancer.Name)
-	}
 
 	labels := map[string]string{
 		kubelb.LabelAppKubernetesName:     appName,
@@ -260,7 +293,7 @@ func (r *LoadBalancerReconciler) reconcileService(ctx context.Context, loadBalan
 	}
 
 	// Handle service ports
-	desiredService.Spec.Ports = createServicePorts(loadBalancer, existingService, portAllocator, r.EnvoyProxyTopology)
+	desiredService.Spec.Ports = kubelb.CreateServicePorts(loadBalancer, existingService, portAllocator, string(r.EnvoyProxyTopology))
 
 	// If service doesn't exist, create it
 	if apierrors.IsNotFound(err) {
@@ -282,69 +315,54 @@ func (r *LoadBalancerReconciler) reconcileService(ctx context.Context, loadBalan
 			return fmt.Errorf("failed to update service: %w", err)
 		}
 	}
-	return updateLoadBalancerStatus(ctx, r.Client, loadBalancer, existingService)
+	return nil
 }
 
-func createServicePorts(loadBalancer *kubelbv1alpha1.LoadBalancer, existingService *corev1.Service, portAllocator *portlookup.PortAllocator, topology EnvoyProxyTopology) []corev1.ServicePort {
-	desiredPorts := make([]corev1.ServicePort, 0, len(loadBalancer.Spec.Ports))
-	for i, lbPort := range loadBalancer.Spec.Ports {
-		// If the port name is not set, we match the port by index.
-		targetPort := loadBalancer.Spec.Endpoints[0].Ports[i].Port
-		// Find the port name in the endpoints ports.
-		for _, port := range loadBalancer.Spec.Endpoints[0].Ports {
-			if port.Name == lbPort.Name {
-				targetPort = port.Port
-				break
-			}
-		}
+func (r *LoadBalancerReconciler) configureHostname(ctx context.Context, loadBalancer *kubelbv1alpha1.LoadBalancer, svcName string, tenant *kubelbv1alpha1.Tenant, config *kubelbv1alpha1.Config, annotations kubelbv1alpha1.AnnotationSettings) (string, error) {
+	log := ctrl.LoggerFrom(ctx).WithValues("reconcile", "hostname")
 
-		// For global topology, look up allocated port
-		if topology == EnvoyProxyTopologyGlobal {
-			endpointKey := fmt.Sprintf(kubelb.EnvoyEndpointPattern, loadBalancer.Namespace, loadBalancer.Name, 0)
-			portKey := fmt.Sprintf(kubelb.EnvoyListenerPattern, targetPort, lbPort.Protocol)
-			if value, exists := portAllocator.Lookup(endpointKey, portKey); exists {
-				targetPort = int32(value)
-			}
-		}
+	log.V(2).Info("configure hostname", "name", loadBalancer.Name, "namespace", loadBalancer.Namespace)
 
-		// Try to find matching existing port to preserve NodePort if possible
-		var existingPort *corev1.ServicePort
-		for j := range existingService.Spec.Ports {
-			if existingService.Spec.Ports[j].Name == lbPort.Name || (existingService.Spec.Ports[j].Port == lbPort.Port && existingService.Spec.Ports[j].Protocol == lbPort.Protocol) {
-				existingPort = &existingService.Spec.Ports[j]
-				break
-			}
-		}
-
-		port := corev1.ServicePort{
-			Name:       lbPort.Name,
-			Port:       lbPort.Port,
-			TargetPort: intstr.FromInt(int(targetPort)),
-			Protocol:   lbPort.Protocol,
-		}
-
-		// Preserve NodePort if it exists and matches the desired configuration
-		if existingPort != nil && existingPort.NodePort != 0 {
-			port.NodePort = existingPort.NodePort
-		}
-
-		desiredPorts = append(desiredPorts, port)
+	// Assign a wildcard hostname if the annotation is set and the hostname is empty.
+	hostname := loadBalancer.Spec.Hostname
+	if hostname == "" {
+		hostname = kubelb.GenerateHostname(tenant.Spec.DNS, config.Spec.DNS)
 	}
 
-	// Sort ports by name for consistent ordering
-	sort.Slice(desiredPorts, func(i, j int) bool {
-		return desiredPorts[i].Name < desiredPorts[j].Name
-	})
+	if hostname == "" {
+		// No need for an error here since we can still manage the LB and skip the hostname configuration.
+		log.V(2).Info("no hostname configurable, skipping")
+		return "", nil
+	}
 
-	return desiredPorts
+	// Add hostname finalizer if it doesn't exist
+	if !controllerutil.ContainsFinalizer(loadBalancer, hostnameCleanupFinalizer) {
+		if ok := controllerutil.AddFinalizer(loadBalancer, hostnameCleanupFinalizer); !ok {
+			log.Error(nil, "Failed to add hostname finalizer for the LoadBalancer")
+			return "", fmt.Errorf("failed to add hostname finalizer")
+		}
+		if err := r.Update(ctx, loadBalancer); err != nil {
+			return "", fmt.Errorf("failed to add hostname finalizer: %w", err)
+		}
+		log.V(2).Info("added hostname finalizer")
+	}
+
+	// Determine whether to use Ingress or Gateway API based on configuration
+	// Use Gateway API only if it's not disabled and a class is specified
+	useGatewayAPI := !tenant.Spec.GatewayAPI.Disable && !config.Spec.GatewayAPI.Disable &&
+		(tenant.Spec.GatewayAPI.Class != nil || config.Spec.GatewayAPI.Class != nil)
+
+	if useGatewayAPI {
+		// Create HTTPRoute for Gateway API
+		return hostname, httproute.CreateHTTPRouteForHostname(ctx, r.Client, loadBalancer, svcName, hostname, tenant, config, annotations)
+	}
+	// Create Ingress resource
+	return hostname, ingress.CreateIngressForHostname(ctx, r.Client, loadBalancer, svcName, hostname, tenant, config, annotations)
 }
 
-func updateLoadBalancerStatus(ctx context.Context, client ctrlruntimeclient.Client, loadBalancer *kubelbv1alpha1.LoadBalancer, service *corev1.Service) error {
+func (r *LoadBalancerReconciler) updateLoadBalancerStatus(ctx context.Context, loadBalancer *kubelbv1alpha1.LoadBalancer, service *corev1.Service, hostname string) error {
 	log := ctrl.LoggerFrom(ctx)
-	log.V(5).Info("load balancer status", "LoadBalancer", loadBalancer.Status.LoadBalancer.Ingress, "service", service.Status.LoadBalancer.Ingress)
-
-	// Status changes
-	log.V(5).Info("load balancer status", "LoadBalancer", loadBalancer.Status.LoadBalancer.Ingress, "service", service.Status.LoadBalancer.Ingress)
+	log.V(5).Info("updating load balancer status", "LoadBalancer", loadBalancer.Status.LoadBalancer.Ingress, "service", service.Status.LoadBalancer.Ingress, "hostname", hostname)
 
 	updatedPorts := []kubelbv1alpha1.ServicePort{}
 	for i, port := range service.Spec.Ports {
@@ -356,23 +374,34 @@ func updateLoadBalancerStatus(ctx context.Context, client ctrlruntimeclient.Clie
 		})
 	}
 
-	// Update status if needed
-	updateStatus := false
-	updatedLoadBalanacerStatus := kubelbv1alpha1.LoadBalancerStatus{
+	// Create the updated status
+	updatedLoadBalancerStatus := kubelbv1alpha1.LoadBalancerStatus{
 		Service: kubelbv1alpha1.ServiceStatus{
 			Ports: updatedPorts,
 		},
 		LoadBalancer: service.Status.LoadBalancer,
 	}
 
-	if !reflect.DeepEqual(loadBalancer.Status.Service.Ports, updatedPorts) {
-		updateStatus = true
+	// Add hostname status if hostname is configured
+	if hostname != "" {
+		updatedLoadBalancerStatus.Hostname = &kubelbv1alpha1.HostnameStatus{
+			Hostname:         hostname,
+			TLSEnabled:       true, // Set to true since we're adding TLS configuration
+			DNSRecordCreated: true, // Set to true since we're adding external-dns annotations
+		}
 	}
+
+	// Check if status update is needed
+	updateStatus := !reflect.DeepEqual(loadBalancer.Status.Service.Ports, updatedPorts)
 
 	if loadBalancer.Spec.Type == corev1.ServiceTypeLoadBalancer {
 		if !reflect.DeepEqual(loadBalancer.Status.LoadBalancer.Ingress, service.Status.LoadBalancer.Ingress) {
 			updateStatus = true
 		}
+	}
+
+	if !reflect.DeepEqual(loadBalancer.Status.Hostname, updatedLoadBalancerStatus.Hostname) {
+		updateStatus = true
 	}
 
 	if !updateStatus {
@@ -384,16 +413,16 @@ func updateLoadBalancerStatus(ctx context.Context, client ctrlruntimeclient.Clie
 
 	return retry.RetryOnConflict(retry.DefaultRetry, func() error {
 		lb := &kubelbv1alpha1.LoadBalancer{}
-		if err := client.Get(ctx, types.NamespacedName{Name: loadBalancer.Name, Namespace: loadBalancer.Namespace}, lb); err != nil {
+		if err := r.Get(ctx, types.NamespacedName{Name: loadBalancer.Name, Namespace: loadBalancer.Namespace}, lb); err != nil {
 			return err
 		}
 		original := lb.DeepCopy()
-		lb.Status = updatedLoadBalanacerStatus
+		lb.Status = updatedLoadBalancerStatus
 		if reflect.DeepEqual(original.Status, lb.Status) {
 			return nil
 		}
 		// update the status
-		return client.Status().Patch(ctx, lb, ctrlruntimeclient.MergeFrom(original))
+		return r.Status().Patch(ctx, lb, ctrlruntimeclient.MergeFrom(original))
 	})
 }
 
@@ -404,6 +433,13 @@ func (r *LoadBalancerReconciler) cleanup(ctx context.Context, lb kubelbv1alpha1.
 	// Deallocate ports if we are using global envoy proxy topology.
 	if r.EnvoyProxyTopology == EnvoyProxyTopologyGlobal {
 		if err := r.PortAllocator.DeallocatePortsForLoadBalancer(lb); err != nil {
+			return err
+		}
+	}
+
+	// Clean up hostname resources (Ingress/HTTPRoute) if hostname finalizer exists
+	if controllerutil.ContainsFinalizer(&lb, hostnameCleanupFinalizer) {
+		if err := r.cleanupHostnameResources(ctx, &lb, resourceNamespace); err != nil {
 			return err
 		}
 	}
@@ -425,9 +461,10 @@ func (r *LoadBalancerReconciler) cleanup(ctx context.Context, lb kubelbv1alpha1.
 		return fmt.Errorf("failed to delete service %s: %v against LoadBalancer %w", svc.Name, fmt.Sprintf("%s/%s", lb.Name, lb.Namespace), err)
 	}
 
-	// Remove finalizer
+	// Remove finalizers
 	controllerutil.RemoveFinalizer(&lb, CleanupFinalizer)
 	controllerutil.RemoveFinalizer(&lb, envoyProxyCleanupFinalizer)
+	controllerutil.RemoveFinalizer(&lb, hostnameCleanupFinalizer)
 
 	// Update instance
 	err := r.Update(ctx, &lb)
@@ -503,6 +540,40 @@ func (r *LoadBalancerReconciler) enqueueLoadBalancers() handler.MapFunc {
 
 		return result
 	}
+}
+
+func (r *LoadBalancerReconciler) cleanupHostnameResources(ctx context.Context, lb *kubelbv1alpha1.LoadBalancer, namespace string) error {
+	log := ctrl.LoggerFrom(ctx).WithValues("cleanup", "hostname")
+	log.V(2).Info("Cleaning up hostname resources", "name", lb.Name, "namespace", lb.Namespace)
+
+	// Cleanup Ingress resource
+	ingressName := fmt.Sprintf("%s-ingress", lb.Name)
+	ingress := &networkingv1.Ingress{
+		ObjectMeta: v1.ObjectMeta{
+			Name:      ingressName,
+			Namespace: namespace,
+		},
+	}
+	log.V(2).Info("Deleting ingress", "name", ingress.Name, "namespace", ingress.Namespace)
+	if err := r.Delete(ctx, ingress); err != nil && !apierrors.IsNotFound(err) {
+		return fmt.Errorf("failed to delete ingress %s: %w", ingress.Name, err)
+	}
+
+	// Cleanup HTTPRoute resource
+	httpRouteName := fmt.Sprintf("%s-httproute", lb.Name)
+	httpRoute := &gwapiv1.HTTPRoute{
+		ObjectMeta: v1.ObjectMeta{
+			Name:      httpRouteName,
+			Namespace: namespace,
+		},
+	}
+	log.V(2).Info("Deleting httproute", "name", httpRoute.Name, "namespace", httpRoute.Namespace)
+	if err := r.Delete(ctx, httpRoute); err != nil && !apierrors.IsNotFound(err) {
+		return fmt.Errorf("failed to delete httproute %s: %w", httpRoute.Name, err)
+	}
+
+	log.V(2).Info("Successfully cleaned up hostname resources")
+	return nil
 }
 
 // filterServicesPredicate filters out services that need to be propagated to the event handlers.

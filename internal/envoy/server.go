@@ -85,7 +85,8 @@ func (s *Server) Start(ctx context.Context) error {
 	grpcOptions = append(grpcOptions, grpc.MaxConcurrentStreams(grpcMaxConcurrentStreams))
 	grpcServer := grpc.NewServer(grpcOptions...)
 
-	lis, err := net.Listen("tcp", s.listenAddress)
+	var lc net.ListenConfig
+	lis, err := lc.Listen(ctx, "tcp", s.listenAddress)
 	if err != nil {
 		return errors.Wrap(err, "envoy control plane server failed while start listening")
 	}

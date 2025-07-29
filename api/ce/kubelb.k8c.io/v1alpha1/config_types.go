@@ -39,6 +39,21 @@ type ConfigSpec struct {
 	LoadBalancer LoadBalancerSettings `json:"loadBalancer,omitempty"`
 	Ingress      IngressSettings      `json:"ingress,omitempty"`
 	GatewayAPI   GatewayAPISettings   `json:"gatewayAPI,omitempty"`
+	DNS          ConfigDNSSettings    `json:"dns,omitempty"`
+	Certificates CertificatesSettings `json:"certificates,omitempty"`
+}
+
+// ConfigDNSSettings defines the global settings for DNS management and automation.
+type ConfigDNSSettings struct {
+	// WildcardDomain is the domain that will be used as the base domain to create wildcard DNS records for DNS resources.
+	// This is only used for determining the hostname for LoadBalancer resources at LoadBalancer.Spec.Hostname.
+	// +optional
+	WildcardDomain string `json:"wildcardDomain,omitempty"`
+
+	// AllowExplicitHostnames is a flag that can be used to allow explicit hostnames to be used for DNS resources.
+	// This is only used when LoadBalancer.Spec.Hostname is set.
+	// +optional
+	AllowExplicitHostnames bool `json:"allowExplicitHostnames,omitempty"`
 }
 
 // EnvoyProxy defines the desired state of the EnvoyProxy

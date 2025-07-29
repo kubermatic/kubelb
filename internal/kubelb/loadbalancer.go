@@ -17,14 +17,20 @@ limitations under the License.
 package kubelb
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"fmt"
 	"reflect"
+	"sort"
 	"strings"
+
+	"github.com/go-logr/logr"
 
 	kubelbiov1alpha1 "k8c.io/kubelb/api/ce/kubelb.k8c.io/v1alpha1"
 
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/util/intstr"
 )
 
 func MapLoadBalancer(userService *corev1.Service, clusterEndpoints []string, useAddressesReference bool, clusterName string) *kubelbiov1alpha1.LoadBalancer {
@@ -148,4 +154,141 @@ func LoadBalancerIsDesiredState(actual, desired *kubelbiov1alpha1.LoadBalancer) 
 	}
 
 	return reflect.DeepEqual(actual.Annotations, desired.Annotations)
+}
+
+// GenerateHostname generates a random hostname using tenant or config wildcard domain as base
+func GenerateHostname(tenant kubelbiov1alpha1.DNSSettings, config kubelbiov1alpha1.ConfigDNSSettings) string {
+	// Determine the base domain to use
+	var baseDomain string
+
+	// Prefer tenant wildcard domain over global config
+	switch {
+	case tenant.WildcardDomain != nil && *tenant.WildcardDomain != "":
+		baseDomain = *tenant.WildcardDomain
+	case config.WildcardDomain != "":
+		baseDomain = config.WildcardDomain
+	default:
+		// No wildcard domain configured
+		return ""
+	}
+
+	randomBytes := make([]byte, 4)
+	if _, err := rand.Read(randomBytes); err != nil {
+		return fmt.Sprintf("lb-%d.%s", metav1.Now().Unix(), baseDomain)
+	}
+
+	// Convert to hex string
+	randomPrefix := hex.EncodeToString(randomBytes)
+
+	// Remove leading asterisk(*) from wildcard domain if present
+	baseDomain = strings.TrimPrefix(baseDomain, "*.")
+	baseDomain = strings.TrimPrefix(baseDomain, "**.")
+	baseDomain = strings.TrimPrefix(baseDomain, "*")
+	return fmt.Sprintf("%s.%s", randomPrefix, baseDomain)
+}
+
+// ShouldConfigureHostname determines whether hostname configuration should be enabled
+func ShouldConfigureHostname(log logr.Logger, loadBalancer *kubelbiov1alpha1.LoadBalancer, tenant *kubelbiov1alpha1.Tenant, config *kubelbiov1alpha1.Config) bool {
+	if loadBalancer.Spec.Hostname != "" {
+		// Ensure that explicit hostname is allowed at tenant or global level.
+		if tenant.Spec.DNS.AllowExplicitHostnames != nil && *tenant.Spec.DNS.AllowExplicitHostnames {
+			return true
+		}
+		if config.Spec.DNS.AllowExplicitHostnames && tenant.Spec.DNS.AllowExplicitHostnames == nil {
+			return true
+		}
+		log.V(4).Info("Hostname configuration denied: explicit hostname provided but not allowed",
+			"loadBalancer", loadBalancer.Name,
+			"hostname", loadBalancer.Spec.Hostname,
+			"tenantAllowsExplicit", tenant.Spec.DNS.AllowExplicitHostnames,
+			"configAllowsExplicit", config.Spec.DNS.AllowExplicitHostnames)
+		return false
+	}
+
+	// For wildcard domain, we need to check if the annotation to request wildcard domain is set.
+	if val, ok := loadBalancer.Annotations[AnnotationRequestWildcardDomain]; !ok {
+		log.V(4).Info("Hostname configuration denied: wildcard domain annotation not found",
+			"loadBalancer", loadBalancer.Name,
+			"annotation", AnnotationRequestWildcardDomain)
+		return false
+	} else if val != "true" {
+		log.V(4).Info("Hostname configuration denied: wildcard domain annotation not set to 'true'",
+			"loadBalancer", loadBalancer.Name,
+			"annotation", AnnotationRequestWildcardDomain,
+			"value", val)
+		return false
+	}
+
+	// Request for wildcard domain.
+	if tenant.Spec.DNS.WildcardDomain != nil && *tenant.Spec.DNS.WildcardDomain != "" {
+		return true
+	}
+	if config.Spec.DNS.WildcardDomain != "" && tenant.Spec.DNS.WildcardDomain == nil {
+		return true
+	}
+	log.V(4).Info("Hostname configuration denied: no wildcard domain configured",
+		"loadBalancer", loadBalancer.Name,
+		"tenantWildcardDomain", tenant.Spec.DNS.WildcardDomain,
+		"configWildcardDomain", config.Spec.DNS.WildcardDomain)
+	return false
+}
+
+// PortAllocator defines the interface for port allocation
+type PortAllocator interface {
+	Lookup(endpointKey, portKey string) (int, bool)
+}
+
+// CreateServicePorts creates service ports for the load balancer
+func CreateServicePorts(loadBalancer *kubelbiov1alpha1.LoadBalancer, existingService *corev1.Service, portAllocator PortAllocator, topology string) []corev1.ServicePort {
+	desiredPorts := make([]corev1.ServicePort, 0, len(loadBalancer.Spec.Ports))
+	for i, lbPort := range loadBalancer.Spec.Ports {
+		// If the port name is not set, we match the port by index.
+		targetPort := loadBalancer.Spec.Endpoints[0].Ports[i].Port
+		// Find the port name in the endpoints ports.
+		for _, port := range loadBalancer.Spec.Endpoints[0].Ports {
+			if port.Name == lbPort.Name {
+				targetPort = port.Port
+				break
+			}
+		}
+
+		// For global topology, look up allocated port
+		if topology == "global" {
+			endpointKey := fmt.Sprintf(EnvoyEndpointPattern, loadBalancer.Namespace, loadBalancer.Name, 0)
+			portKey := fmt.Sprintf(EnvoyListenerPattern, targetPort, lbPort.Protocol)
+			if value, exists := portAllocator.Lookup(endpointKey, portKey); exists {
+				targetPort = int32(value)
+			}
+		}
+
+		// Try to find matching existing port to preserve NodePort if possible
+		var existingPort *corev1.ServicePort
+		for j := range existingService.Spec.Ports {
+			if existingService.Spec.Ports[j].Name == lbPort.Name || (existingService.Spec.Ports[j].Port == lbPort.Port && existingService.Spec.Ports[j].Protocol == lbPort.Protocol) {
+				existingPort = &existingService.Spec.Ports[j]
+				break
+			}
+		}
+
+		port := corev1.ServicePort{
+			Name:       lbPort.Name,
+			Port:       lbPort.Port,
+			TargetPort: intstr.FromInt(int(targetPort)),
+			Protocol:   lbPort.Protocol,
+		}
+
+		// Preserve NodePort if it exists and matches the desired configuration
+		if existingPort != nil && existingPort.NodePort != 0 {
+			port.NodePort = existingPort.NodePort
+		}
+
+		desiredPorts = append(desiredPorts, port)
+	}
+
+	// Sort ports by name for consistent ordering
+	sort.Slice(desiredPorts, func(i, j int) bool {
+		return desiredPorts[i].Name < desiredPorts[j].Name
+	})
+
+	return desiredPorts
 }

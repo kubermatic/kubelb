@@ -42,6 +42,24 @@ type LoadBalancerStatus struct {
 	// Service contains the current status of the LB service.
 	// +optional
 	Service ServiceStatus `json:"service,omitempty" protobuf:"bytes,2,opt,name=service"`
+
+	// Hostname contains the status for hostname resources.
+	// +optional
+	Hostname *HostnameStatus `json:"hostname,omitempty" protobuf:"bytes,3,opt,name=hostname"`
+}
+
+type HostnameStatus struct {
+	// Hostname contains the hostname of the load-balancer.
+	// +optional
+	Hostname string `json:"hostname,omitempty" protobuf:"bytes,1,opt,name=hostname"`
+
+	// TLSEnabled is true if certificate is created for the hostname.
+	// +optional
+	TLSEnabled bool `json:"tlsEnabled,omitempty" protobuf:"bytes,2,opt,name=tlsEnabled"`
+
+	// DNSRecordCreated is true if DNS record is created for the hostname.
+	// +optional
+	DNSRecordCreated bool `json:"dnsRecordCreated,omitempty" protobuf:"bytes,3,opt,name=dnsRecordCreated"`
 }
 
 type ServiceStatus struct {
@@ -85,6 +103,11 @@ type LoadBalancerSpec struct {
 	// only needed for layer 4
 	// +optional
 	Ports []LoadBalancerPort `json:"ports,omitempty"`
+
+	// Hostname is the domain name at which the load balancer service will be accessible.
+	// When hostname is set, KubeLB will create a route(ingress or httproute) for the service, and expose it with TLS on the given hostname.
+	// +optional
+	Hostname string `json:"hostname,omitempty"`
 
 	// type determines how the Service is exposed. Defaults to ClusterIP. Valid
 	// options are ExternalName, ClusterIP, NodePort, and LoadBalancer.

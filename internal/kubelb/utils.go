@@ -53,8 +53,9 @@ const RouteServiceMapKey = "%s/%s"
 const DefaultRouteStatus = "{}"
 
 const ServiceKind = "Service"
-
 const NameSuffixLength = 4
+
+const AnnotationRequestWildcardDomain = "kubelb.k8c.io/request-wildcard-domain"
 
 func GenerateName(appendUID bool, uid, name, namespace string) string {
 	output := fmt.Sprintf("%s-%s", namespace, name)
