@@ -1,0 +1,20 @@
+{{- if .Values.kubelb.tunnel.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: tunnel-connection-manager
+  namespace: {{ .Release.Namespace | quote }}
+  labels:
+    {{- include "kubelb-manager.labels" . | nindent 4 }}
+    app.kubernetes.io/component: tunnel-connection-manager
+spec:
+  type: {{ .Values.kubelb.tunnel.connectionManager.service.type }}
+  ports:
+  - port: {{ .Values.kubelb.tunnel.connectionManager.service.httpPort }}
+    targetPort: http
+    protocol: TCP
+    name: http
+  selector:
+    {{- include "kubelb-manager.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: tunnel-connection-manager
+{{- end }}

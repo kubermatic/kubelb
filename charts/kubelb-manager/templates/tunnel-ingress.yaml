@@ -1,0 +1,37 @@
+{{- if and .Values.kubelb.tunnel.enabled .Values.kubelb.tunnel.connectionManager.ingress.enabled }}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ include "kubelb-manager.fullname" . }}-connection-manager
+  namespace: {{ .Release.Namespace | quote }}
+  labels:
+    {{- include "kubelb-manager.labels" . | nindent 4 }}
+    app.kubernetes.io/component: tunnel-connection-manager
+  {{- with .Values.kubelb.tunnel.connectionManager.ingress.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  {{- if .Values.kubelb.tunnel.connectionManager.ingress.className }}
+  ingressClassName: {{ .Values.kubelb.tunnel.connectionManager.ingress.className }}
+  {{- end }}
+  {{- if .Values.kubelb.tunnel.connectionManager.ingress.tls }}
+  tls:
+    {{- toYaml .Values.kubelb.tunnel.connectionManager.ingress.tls | nindent 2 }}
+  {{- end }}
+  rules:
+  {{- range .Values.kubelb.tunnel.connectionManager.ingress.hosts }}
+  - host: {{ .host }}
+    http:
+      paths:
+      {{- range .paths }}
+      - path: {{ .path }}
+        pathType: {{ .pathType }}
+        backend:
+          service:
+            name: tunnel-connection-manager
+            port:
+              number: {{ $.Values.kubelb.tunnel.connectionManager.service.httpPort }}
+      {{- end }}
+  {{- end }}
+{{- end }}

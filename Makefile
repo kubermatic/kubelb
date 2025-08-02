@@ -1,8 +1,10 @@
 SHELL = /bin/bash -eu -o pipefail
 
 # Image URL to use all building/pushing image targets
-KUBELB_IMG ?= quay.io/kubermatic/kubelb-manager
-KUBELB_CCM_IMG ?= quay.io/kubermatic/kubelb-ccm
+REGISTRY_PREFIX ?= quay.io/kubermatic
+KUBELB_IMG ?= $(REGISTRY_PREFIX)/kubelb-manager
+KUBELB_CCM_IMG ?= $(REGISTRY_PREFIX)/kubelb-ccm
+KUBELB_CONNECTION_MANAGER_IMG ?= $(REGISTRY_PREFIX)/kubelb-connection-manager
 
 ## Tool Versions
 # ENVTEST_K8S_VERSION refers to the version of kubebuilder assets to be downloaded by envtest binary.
@@ -33,6 +35,7 @@ VERSION = $(shell cat VERSION)
 
 CCM_IMAGE_NAME ?= $(KUBELB_CCM_IMG):$(IMAGE_TAG)
 KUBELB_IMAGE_NAME ?= $(KUBELB_IMG):$(IMAGE_TAG)
+CONNECTION_MANAGER_IMAGE_NAME ?= $(KUBELB_CONNECTION_MANAGER_IMG):$(IMAGE_TAG)
 
 # Get the currently used golang install path (in GOPATH/bin, unless GOBIN is set)
 ifeq (,$(shell go env GOBIN))
@@ -53,7 +56,7 @@ SHELL = /usr/bin/env bash -o pipefail
 .SHELLFLAGS = -ec
 
 .PHONY: all
-all: build-kubelb build-ccm
+all: build-kubelb build-ccm build-connection-manager
 
 ##@ General
 
@@ -126,7 +129,7 @@ test: envtest ## Run tests.
 ##@ Build
 
 .PHONY: build
-build: build-ccm build-kubelb
+build: build-ccm build-kubelb build-connection-manager
 
 build-%: generate fmt vet ## Build manager binary.
 	CGO_ENABLED=0 go build -v -o bin/$* cmd/$*/main.go
@@ -146,6 +149,7 @@ download-gocache:
 docker-image:
 	docker build --build-arg GO_VERSION=$(GO_VERSION) -t ${KUBELB_IMAGE_NAME} -f kubelb.dockerfile .
 	docker build --build-arg GO_VERSION=$(GO_VERSION) -t ${CCM_IMAGE_NAME} -f ccm.dockerfile .
+	docker build --build-arg GO_VERSION=$(GO_VERSION) -t ${CONNECTION_MANAGER_IMAGE_NAME} -f connection-manager.dockerfile .
 
 .PHONY: docker-image-publish
 docker-image-publish: docker-image
@@ -153,11 +157,14 @@ docker-image-publish: docker-image
 		docker tag $(KUBELB_IMAGE_NAME) $(KUBELB_IMG):$(GIT_TAG) && \
 		docker tag $(KUBELB_IMAGE_NAME) $(KUBELB_IMG):latest && \
 		docker tag $(CCM_IMAGE_NAME) $(KUBELB_CCM_IMG):$(GIT_TAG) && \
-		docker tag $(CCM_IMAGE_NAME) $(KUBELB_CCM_IMG):latest ;\
+		docker tag $(CCM_IMAGE_NAME) $(KUBELB_CCM_IMG):latest && \
+		docker tag $(CONNECTION_MANAGER_IMAGE_NAME) $(KUBELB_CONNECTION_MANAGER_IMG):$(GIT_TAG) && \
+		docker tag $(CONNECTION_MANAGER_IMAGE_NAME) $(KUBELB_CONNECTION_MANAGER_IMG):latest ;\
 	fi
 
 	docker push $(KUBELB_IMG) --all-tags
 	docker push $(KUBELB_CCM_IMG) --all-tags
+	docker push $(KUBELB_CONNECTION_MANAGER_IMG) --all-tags
 
 ##@ Deployment
 
@@ -192,8 +199,8 @@ undeploy-%: ## Undeploy controller from the K8s cluster specified in ~/.kube/con
 
 .PHONY: bump
 bump: kustomize
-	cd config/deploy/kubelb && $(KUSTOMIZE) edit set image controller=quay.io/kubermatic/kubelb-manager:$(IMAGE_TAG)
-	cd config/deploy/ccm && $(KUSTOMIZE) edit set image controller=quay.io/kubermatic/kubelb-ccm:$(IMAGE_TAG)
+	cd config/deploy/kubelb && $(KUSTOMIZE) edit set image controller=$(REGISTRY_PREFIX)/kubelb-manager:$(IMAGE_TAG)
+	cd config/deploy/ccm && $(KUSTOMIZE) edit set image controller=$(REGISTRY_PREFIX)/kubelb-ccm:$(IMAGE_TAG)
 
 ##@ Build Dependencies
 

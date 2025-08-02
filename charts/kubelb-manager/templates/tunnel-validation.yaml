@@ -1,0 +1,45 @@
+{{- /*
+Validation for tunnel configuration domains to prevent deployment with placeholder values
+*/ -}}
+
+{{- if .Values.kubelb.tunnel.enabled -}}
+
+{{- /* Validate Ingress domain */ -}}
+{{- if .Values.kubelb.tunnel.connectionManager.ingress.enabled -}}
+  {{- range .Values.kubelb.tunnel.connectionManager.ingress.hosts -}}
+    {{- if contains "${DOMAIN}" .host -}}
+      {{- fail "ERROR: Ingress host contains placeholder '${DOMAIN}'. Please set a valid domain in .Values.kubelb.tunnel.connectionManager.ingress.hosts[].host" -}}
+    {{- end -}}
+  {{- end -}}
+  {{- range .Values.kubelb.tunnel.connectionManager.ingress.tls -}}
+    {{- range .hosts -}}
+      {{- if contains "${DOMAIN}" . -}}
+        {{- fail "ERROR: Ingress TLS host contains placeholder '${DOMAIN}'. Please set a valid domain in .Values.kubelb.tunnel.connectionManager.ingress.tls[].hosts[]" -}}
+      {{- end -}}
+    {{- end -}}
+  {{- end -}}
+{{- end -}}
+
+{{- /* Validate HTTPRoute domain */ -}}
+{{- if .Values.kubelb.tunnel.connectionManager.httpRoute.enabled -}}
+  {{- if contains "${DOMAIN}" .Values.kubelb.tunnel.connectionManager.httpRoute.domain -}}
+    {{- fail "ERROR: HTTPRoute domain contains placeholder '${DOMAIN}'. Please set a valid domain in .Values.kubelb.tunnel.connectionManager.httpRoute.domain" -}}
+  {{- end -}}
+{{- end -}}
+
+{{- /* Validate external-dns annotations */ -}}
+{{- if .Values.kubelb.tunnel.connectionManager.ingress.enabled -}}
+  {{- $hostname := index .Values.kubelb.tunnel.connectionManager.ingress.annotations "external-dns.alpha.kubernetes.io/hostname" -}}
+  {{- if and $hostname (contains "${DOMAIN}" $hostname) -}}
+    {{- fail "ERROR: Ingress external-dns annotation contains placeholder '${DOMAIN}'. Please set a valid domain in .Values.kubelb.tunnel.connectionManager.ingress.annotations['external-dns.alpha.kubernetes.io/hostname']" -}}
+  {{- end -}}
+{{- end -}}
+
+{{- if .Values.kubelb.tunnel.connectionManager.httpRoute.enabled -}}
+  {{- $hostname := index .Values.kubelb.tunnel.connectionManager.httpRoute.annotations "external-dns.alpha.kubernetes.io/hostname" -}}
+  {{- if and $hostname (contains "${DOMAIN}" $hostname) -}}
+    {{- fail "ERROR: HTTPRoute external-dns annotation contains placeholder '${DOMAIN}'. Please set a valid domain in .Values.kubelb.tunnel.connectionManager.httpRoute.annotations['external-dns.alpha.kubernetes.io/hostname']" -}}
+  {{- end -}}
+{{- end -}}
+
+{{- end -}}

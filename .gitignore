@@ -13,3 +13,4 @@ __debug*
 charts/*/charts
 .claude
 CLAUDE.md
+charts/kubelb-manager/values-test.yaml

@@ -50,6 +50,7 @@ type options struct {
 	namespace                       string
 	enableTenantMigrationController bool
 	enableGatewayAPI                bool
+	disableTunneling                bool
 }
 
 var (
@@ -76,6 +77,7 @@ func main() {
 
 	flag.BoolVar(&opt.enableTenantMigrationController, "enable-tenant-migration", true, "Enables a controller that performs automated migration from namespaces to tenants")
 	flag.BoolVar(&opt.enableGatewayAPI, "enable-gateway-api", false, "Enable the Gateway APIs and controllers. By default Gateway API is disabled since without Gateway API CRDs installed the controller cannot start.")
+	flag.BoolVar(&opt.disableTunneling, "disable-tunneling", false, "Disable the Tunnel controller for exposing local workloads to the internet.")
 
 	if flag.Lookup("kubeconfig") == nil {
 		flag.StringVar(&opt.kubeconfig, "kubeconfig", "", "Path to a kubeconfig. Only required if out-of-cluster.")
@@ -249,6 +251,21 @@ func main() {
 			Recorder: mgr.GetEventRecorderFor(kubelb.BridgeServiceControllerName),
 		}).SetupWithManager(mgr); err != nil {
 			setupLog.Error(err, "unable to create controller", "controller", kubelb.BridgeServiceControllerName)
+			os.Exit(1)
+		}
+	}
+
+	if !opt.disableTunneling {
+		if err = (&kubelb.TunnelReconciler{
+			Client:             mgr.GetClient(),
+			Scheme:             mgr.GetScheme(),
+			Log:                ctrl.Log.WithName("controllers").WithName(kubelb.TunnelControllerName),
+			Recorder:           mgr.GetEventRecorderFor(kubelb.TunnelControllerName),
+			Namespace:          opt.namespace,
+			EnvoyProxyTopology: kubelb.EnvoyProxyTopology(conf.GetEnvoyProxyTopology()),
+			DisableGatewayAPI:  disableGatewayAPI,
+		}).SetupWithManager(mgr); err != nil {
+			setupLog.Error(err, "unable to create controller", "controller", kubelb.TunnelControllerName)
 			os.Exit(1)
 		}
 	}

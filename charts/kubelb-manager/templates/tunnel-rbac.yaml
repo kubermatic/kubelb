@@ -1,0 +1,39 @@
+{{- if and .Values.kubelb.tunnel.enabled .Values.rbac.enabled }}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ include "kubelb-manager.fullname" . }}-connection-manager
+  labels:
+    {{- include "kubelb-manager.labels" . | nindent 4 }}
+    app.kubernetes.io/component: tunnel-connection-manager
+rules:
+- apiGroups: [""]
+  resources: ["secrets"]
+  verbs: ["get", "list", "watch"]
+- apiGroups: ["kubelb.k8c.io"]
+  resources: ["tunnels"]
+  verbs: ["get", "list", "watch", "update", "patch"]
+- apiGroups: ["kubelb.k8c.io"]
+  resources: ["tunnels/status"]
+  verbs: ["get", "update", "patch"]
+- apiGroups: ["kubelb.k8c.io"]
+  resources: ["syncsecrets"]
+  verbs: ["get", "list", "watch"]
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ include "kubelb-manager.fullname" . }}-connection-manager
+  labels:
+    {{- include "kubelb-manager.labels" . | nindent 4 }}
+    app.kubernetes.io/component: tunnel-connection-manager
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ include "kubelb-manager.fullname" . }}-connection-manager
+subjects:
+- kind: ServiceAccount
+  name: {{ include "kubelb-manager.fullname" . }}-connection-manager
+  namespace: {{ .Release.Namespace }}
+{{- end }}

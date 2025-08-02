@@ -19,7 +19,7 @@ kubelb:
     # -- Topology defines the deployment topology for Envoy Proxy. Valid values are: shared and global.
     topology: shared
     # -- The number of replicas for the Envoy Proxy deployment.
-    replicas: 3
+    replicas: 2
     # -- Deploy single pod per node.
     singlePodPerNode: true
     # -- Use DaemonSet for Envoy Proxy deployment instead of Deployment.
@@ -32,6 +32,94 @@ kubelb:
   propagatedAnnotations: {}
   # -- Propagate all annotations from the LB resource to the LB service.
   propagateAllAnnotations: false
+
+  # Tunnel configuration
+  tunnel:
+    # -- Enable tunnel functionality
+    enabled: false
+    connectionManager:
+      # -- Number of connection manager replicas
+      replicaCount: 1
+      # -- Connection manager image configuration
+      image:
+        repository: quay.io/kubermatic/kubelb-connection-manager
+        tag: "" # Defaults to global image.tag
+        pullPolicy: IfNotPresent
+      # -- Ingress configuration for external HTTP/2 access
+      ingress:
+        enabled: false
+        className: "nginx"
+        annotations:
+          nginx.ingress.kubernetes.io/backend-protocol: "HTTP"
+          nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
+          nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
+          external-dns.alpha.kubernetes.io/hostname: connection-manager.${DOMAIN}
+          cert-manager.io/cluster-issuer: "letsencrypt-prod"
+        hosts:
+          - host: connection-manager.${DOMAIN}
+            paths:
+              - path: /tunnel
+                pathType: Prefix
+              - path: /health
+                pathType: Prefix
+        tls:
+          - secretName: connection-manager-tls
+            hosts:
+              - connection-manager.${DOMAIN}
+      # HTTPRoute configuration for external HTTP/2 access (Gateway API)
+      httpRoute:
+        enabled: false
+        # -- Domain for the HTTPRoute
+        domain: "connection-manager.${DOMAIN}"
+        # -- Gateway name to attach to
+        gatewayName: "gateway"
+        # -- Gateway namespace
+        gatewayNamespace: ""
+        # -- Annotations for HTTPRoute
+        annotations:
+          external-dns.alpha.kubernetes.io/hostname: connection-manager.${DOMAIN}
+          cert-manager.io/cluster-issuer: "letsencrypt-prod"
+      # -- Server addresses
+      httpAddr: ":8080"
+      requestTimeout: "30s"
+      # -- Service configuration
+      service:
+        type: ClusterIP
+        httpPort: 8080
+      # Health check configuration
+      healthCheck:
+        enabled: true
+        livenessInitialDelay: 30
+        readinessInitialDelay: 10
+      # -- Resource limits
+      resources:
+        requests:
+          memory: "128Mi"
+          cpu: "250m"
+        limits:
+          memory: "256Mi"
+          cpu: "500m"
+
+      # Pod Security context
+      podSecurityContext:
+        runAsNonRoot: true
+        runAsUser: 65534
+        fsGroup: 65534
+      # -- Security context
+      securityContext:
+        allowPrivilegeEscalation: false
+        capabilities:
+          drop:
+            - ALL
+        readOnlyRootFilesystem: true
+        runAsNonRoot: true
+        runAsUser: 65534
+      # -- Pod configuration
+      podAnnotations: {}
+      podLabels: {}
+      nodeSelector: {}
+      tolerations: []
+      affinity: {}
 
 # Create required resources for KKP integration.
 kkpintegration:
@@ -96,7 +184,5 @@ autoscaling:
   targetMemoryUtilizationPercentage: 80
 
 nodeSelector: {}
-
 tolerations: []
-
 affinity: {}

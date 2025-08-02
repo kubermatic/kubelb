@@ -96,7 +96,7 @@ type LoadBalancerSpec struct {
 
 	// Sets of addresses and ports that comprise an exposed user service on a cluster.
 	// +required
-	//+kubebuilder:validation:MinItems=1
+	// +kubebuilder:validation:MinItems=1
 	Endpoints []LoadBalancerEndpoints `json:"endpoints,omitempty"`
 
 	// The list of ports that are exposed by the load balancer service.

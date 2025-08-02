@@ -24,6 +24,13 @@ rules:
 - apiGroups:
   - ""
   resources:
+  - events
+  verbs:
+  - create
+  - patch
+- apiGroups:
+  - ""
+  resources:
   - configmaps
   verbs:
   - get
@@ -149,6 +156,7 @@ rules:
   - loadbalancers
   - addresses
   - syncsecrets
+  - tunnels
   verbs:
   - create
   - delete
@@ -189,6 +197,20 @@ rules:
   verbs:
   - get
   - patch
+  - update
+- apiGroups:
+  - kubelb.k8c.io
+  resources:
+  - tunnels/status
+  verbs:
+  - get
+  - patch
+  - update
+- apiGroups:
+  - kubelb.k8c.io
+  resources:
+  - tunnels/finalizers
+  verbs:
   - update
 - apiGroups:
   - networking.k8s.io

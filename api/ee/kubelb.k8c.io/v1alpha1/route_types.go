@@ -34,7 +34,7 @@ import (
 type RouteSpec struct {
 	// Sets of addresses and ports that comprise an exposed user service on a cluster.
 	// +required
-	//+kubebuilder:validation:MinItems=1
+	// +kubebuilder:validation:MinItems=1
 	Endpoints []LoadBalancerEndpoints `json:"endpoints,omitempty"`
 
 	// Source contains the information about the source of the route. This is used when the route is created from external sources.

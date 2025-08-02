@@ -44,6 +44,9 @@ spec:
             {{ if .Values.kubelb.enableTenantMigration -}}
             - --enable-tenant-migration=true
             {{ end -}}
+            {{ if not .Values.kubelb.tunnel.enabled -}}
+            - --disable-tunneling=true
+            {{ end -}}
             - --debug={{ .Values.kubelb.debug }}
           env:
           - name: NAMESPACE

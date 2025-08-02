@@ -1,4 +1,4 @@
-# Copyright 2020 The KubeLB Authors.
+# Copyright 2025 The KubeLB Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -27,11 +27,15 @@ COPY cmd/ cmd/
 COPY api/ api/
 COPY internal/ internal/
 
-RUN CGO_ENABLED=0 go build -a -o kubelb cmd/kubelb/main.go
+RUN CGO_ENABLED=0 go build -a -o connection-manager cmd/connection-manager/main.go
 
-FROM gcr.io/distroless/static:nonroot
+FROM docker.io/alpine:3.20
+RUN apk --no-cache add ca-certificates
 WORKDIR /
-COPY --from=builder /workspace/kubelb .
+COPY --from=builder /workspace/connection-manager .
 USER 65532:65532
 
-ENTRYPOINT ["/kubelb"]
+# Expose HTTP port for HTTP/2 tunneling
+EXPOSE 8080
+
+ENTRYPOINT ["/connection-manager"]

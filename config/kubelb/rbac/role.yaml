@@ -15,6 +15,13 @@ rules:
 - apiGroups:
   - ""
   resources:
+  - events
+  verbs:
+  - create
+  - patch
+- apiGroups:
+  - ""
+  resources:
   - namespaces
   - secrets
   - serviceaccounts
@@ -81,6 +88,7 @@ rules:
   resources:
   - addresses
   - tenants
+  - tunnels
   verbs:
   - create
   - delete
@@ -110,6 +118,7 @@ rules:
   - loadbalancers/status
   - routes/status
   - tenants/status
+  - tunnels/status
   verbs:
   - get
   - patch
@@ -129,6 +138,12 @@ rules:
   - patch
   - update
   - watch
+- apiGroups:
+  - kubelb.k8c.io
+  resources:
+  - tunnels/finalizers
+  verbs:
+  - update
 - apiGroups:
   - networking.k8s.io
   resources:

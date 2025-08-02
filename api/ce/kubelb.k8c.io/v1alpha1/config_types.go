@@ -41,6 +41,7 @@ type ConfigSpec struct {
 	GatewayAPI   GatewayAPISettings   `json:"gatewayAPI,omitempty"`
 	DNS          ConfigDNSSettings    `json:"dns,omitempty"`
 	Certificates CertificatesSettings `json:"certificates,omitempty"`
+	Tunnel       TunnelSettings       `json:"tunnel,omitempty"`
 }
 
 // ConfigDNSSettings defines the global settings for DNS management and automation.
@@ -54,6 +55,19 @@ type ConfigDNSSettings struct {
 	// This is only used when LoadBalancer.Spec.Hostname is set.
 	// +optional
 	AllowExplicitHostnames bool `json:"allowExplicitHostnames,omitempty"`
+}
+
+// TunnelSettings defines the global settings for Tunnel resources.
+type TunnelSettings struct {
+	// ConnectionManagerURL is the URL of the connection manager service that handles tunnel connections.
+	// This is required if tunneling is enabled.
+	// For example: "https://con.example.com"
+	// +optional
+	ConnectionManagerURL string `json:"connectionManagerURL,omitempty"`
+
+	// Disable indicates whether tunneling feature should be disabled.
+	// +optional
+	Disable bool `json:"disable,omitempty"`
 }
 
 // EnvoyProxy defines the desired state of the EnvoyProxy

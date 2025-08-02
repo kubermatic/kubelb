@@ -1,0 +1,31 @@
+{{- if and .Values.kubelb.tunnel.enabled .Values.kubelb.tunnel.connectionManager.httpRoute.enabled }}
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: {{ include "kubelb-manager.fullname" . }}-connection-manager
+  namespace: {{ .Release.Namespace | quote }}
+  labels:
+    {{- include "kubelb-manager.labels" . | nindent 4 }}
+    app.kubernetes.io/component: tunnel-connection-manager
+  {{- with .Values.kubelb.tunnel.connectionManager.httpRoute.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  parentRefs:
+  - name: {{ .Values.kubelb.tunnel.connectionManager.httpRoute.gatewayName | default "gateway" }}
+    namespace: {{ .Values.kubelb.tunnel.connectionManager.httpRoute.gatewayNamespace | default .Release.Namespace }}
+  hostnames:
+  - {{ .Values.kubelb.tunnel.connectionManager.httpRoute.domain | default (printf "connection-manager.%s" "${DOMAIN}") }}
+  rules:
+  - matches:
+    - path:
+        type: PathPrefix
+        value: /tunnel
+    - path:
+        type: PathPrefix
+        value: /health
+    backendRefs:
+    - name: tunnel-connection-manager
+      port: {{ .Values.kubelb.tunnel.connectionManager.service.httpPort }}
+{{- end }}

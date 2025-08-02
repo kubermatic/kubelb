@@ -1232,6 +1232,21 @@ spec:
                   PropagatedAnnotations defines the list of annotations(key-value pairs) that will be propagated to the LoadBalancer service. Keep the `value` field empty in the key-value pair to allow any value.
                   Tenant configuration has higher precedence than the annotations specified at the Config level.
                 type: object
+              tunnel:
+                description: TunnelSettings defines the global settings for Tunnel
+                  resources.
+                properties:
+                  connectionManagerURL:
+                    description: |-
+                      ConnectionManagerURL is the URL of the connection manager service that handles tunnel connections.
+                      This is required if tunneling is enabled.
+                      For example: "https://con.example.com"
+                    type: string
+                  disable:
+                    description: Disable indicates whether tunneling feature should
+                      be disabled.
+                    type: boolean
+                type: object
             type: object
         type: object
     served: true

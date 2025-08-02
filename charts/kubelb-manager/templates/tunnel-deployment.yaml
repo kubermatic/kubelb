@@ -1,0 +1,92 @@
+{{- if .Values.kubelb.tunnel.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "kubelb-manager.fullname" . }}-connection-manager
+  namespace: {{ .Release.Namespace | quote }}
+  labels:
+    {{- include "kubelb-manager.labels" . | nindent 4 }}
+    app.kubernetes.io/component: tunnel-connection-manager
+spec:
+  replicas: {{ .Values.kubelb.tunnel.connectionManager.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "kubelb-manager.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: tunnel-connection-manager
+  template:
+    metadata:
+      annotations:
+        {{- with .Values.kubelb.tunnel.connectionManager.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      labels:
+        {{- include "kubelb-manager.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: tunnel-connection-manager
+        {{- with .Values.kubelb.tunnel.connectionManager.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "kubelb-manager.fullname" . }}-connection-manager
+      securityContext:
+        {{- toYaml .Values.kubelb.tunnel.connectionManager.podSecurityContext | nindent 8 }}
+      containers:
+      - name: connection-manager
+        securityContext:
+          {{- toYaml .Values.kubelb.tunnel.connectionManager.securityContext | nindent 10 }}
+        image: "{{ .Values.kubelb.tunnel.connectionManager.image.repository }}:{{ .Values.kubelb.tunnel.connectionManager.image.tag | default .Values.image.tag }}"
+        imagePullPolicy: {{ .Values.kubelb.tunnel.connectionManager.image.pullPolicy }}
+        args:
+        - --http-addr={{ .Values.kubelb.tunnel.connectionManager.httpAddr }}
+        - --request-timeout={{ .Values.kubelb.tunnel.connectionManager.requestTimeout }}
+        - --v=2
+        ports:
+        - name: http
+          containerPort: 8080
+          protocol: TCP
+        {{- if .Values.kubelb.tunnel.connectionManager.healthCheck.enabled }}
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: http
+          initialDelaySeconds: {{ .Values.kubelb.tunnel.connectionManager.healthCheck.livenessInitialDelay }}
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: http
+          initialDelaySeconds: {{ .Values.kubelb.tunnel.connectionManager.healthCheck.readinessInitialDelay }}
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 3
+        {{- end }}
+        resources:
+          {{- toYaml .Values.kubelb.tunnel.connectionManager.resources | nindent 10 }}
+        env:
+        - name: POD_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
+        - name: POD_NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+      {{- with .Values.kubelb.tunnel.connectionManager.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.kubelb.tunnel.connectionManager.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.kubelb.tunnel.connectionManager.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      terminationGracePeriodSeconds: 60
+{{- end }}

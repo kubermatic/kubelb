@@ -1,0 +1,20 @@
+{{- if and .Values.kubelb.tunnel.enabled .Values.serviceMonitor.enabled }}
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: {{ include "kubelb-manager.fullname" . }}-connection-manager
+  namespace: {{ .Release.Namespace | quote }}
+  labels:
+    {{- include "kubelb-manager.labels" . | nindent 4 }}
+    app.kubernetes.io/component: tunnel-connection-manager
+spec:
+  selector:
+    matchLabels:
+      {{- include "kubelb-manager.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: tunnel-connection-manager
+  endpoints:
+  - port: grpc
+    path: /metrics
+    interval: 30s
+    scrapeTimeout: 10s
+{{- end }}

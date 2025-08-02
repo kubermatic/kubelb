@@ -38,6 +38,7 @@ rules:
   - routes
   - loadbalancers
   - addresses
+  - tunnels
   verbs:
   - get
   - list

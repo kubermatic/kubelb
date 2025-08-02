@@ -23,6 +23,7 @@
 package v1alpha1
 
 import (
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -86,6 +87,10 @@ type GatewayAPISettings struct {
 
 	// Disable is a flag that can be used to disable Gateway API for a tenant.
 	Disable bool `json:"disable,omitempty"`
+
+	// DefaultGateway is the default gateway reference to use for the tenant. This is only used for load balancer hostname and tunneling.
+	// +optional
+	DefaultGateway *corev1.ObjectReference `json:"defaultGateway,omitempty"`
 
 	GatewaySettings GatewaySettings `json:"gateway,omitempty"`
 

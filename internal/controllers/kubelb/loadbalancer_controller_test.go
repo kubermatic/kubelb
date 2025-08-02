@@ -121,7 +121,7 @@ var _ = Describe("Lb deployment and service creation", func() {
 				snapshot, err := envoyServer.Cache.GetSnapshot(snapshotName)
 				Expect(err).ToNot(HaveOccurred())
 
-				testSnapshot, err := envoycp.MapSnapshot(ctx, k8sClient, getLoadBalancerList(*lb), nil, ecpr.PortAllocator, t.topology == EnvoyProxyTopologyGlobal)
+				testSnapshot, err := envoycp.MapSnapshot(ctx, k8sClient, getLoadBalancerList(*lb), nil, nil, ecpr.PortAllocator, t.topology == EnvoyProxyTopologyGlobal, "")
 				Expect(err).ToNot(HaveOccurred())
 				diff := deep.Equal(snapshot, testSnapshot)
 				if len(diff) > 0 {
@@ -187,7 +187,7 @@ var _ = Describe("Lb deployment and service creation", func() {
 				snapshot, err := envoyServer.Cache.GetSnapshot(snapshotName)
 				Expect(err).ToNot(HaveOccurred())
 
-				testSnapshot, err := envoycp.MapSnapshot(ctx, k8sClient, getLoadBalancerList(*existingLb), nil, ecpr.PortAllocator, t.topology == EnvoyProxyTopologyGlobal)
+				testSnapshot, err := envoycp.MapSnapshot(ctx, k8sClient, getLoadBalancerList(*existingLb), nil, nil, ecpr.PortAllocator, t.topology == EnvoyProxyTopologyGlobal, "")
 				Expect(err).ToNot(HaveOccurred())
 				diff := deep.Equal(snapshot, testSnapshot)
 				if len(diff) > 0 {
