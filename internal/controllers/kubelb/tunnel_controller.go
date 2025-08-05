@@ -86,15 +86,18 @@ func (r *TunnelReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 	}
 
 	// Check if tenant has reached the maximum tunnel limit
-	if exceedsLimit, err := r.checkTunnelLimit(ctx, tunnel.Namespace); err != nil {
-		log.Error(err, "failed to check tunnel limit")
-		return reconcile.Result{}, err
-	} else if exceedsLimit {
-		log.Error(nil, "Maximum tunnel limit reached for tenant", "namespace", tunnel.Namespace, "limit", MaxConcurrentTunnelsPerTenant)
-		r.Recorder.Eventf(tunnel, corev1.EventTypeWarning, "TunnelLimitExceeded",
-			"Maximum tunnel limit of %d reached for tenant namespace %s", MaxConcurrentTunnelsPerTenant, tunnel.Namespace)
-		// Requeue after 1 hour without returning error to avoid immediate requeue
-		return reconcile.Result{RequeueAfter: 1 * time.Hour}, nil
+	// If the tunnel is being deleted, we don't need to check the limit.
+	if tunnel.DeletionTimestamp == nil {
+		if exceedsLimit, err := r.checkTunnelLimit(ctx, tunnel.Namespace); err != nil {
+			log.Error(err, "failed to check tunnel limit")
+			return reconcile.Result{}, err
+		} else if exceedsLimit {
+			log.Error(nil, "Maximum tunnel limit reached for tenant", "namespace", tunnel.Namespace, "limit", MaxConcurrentTunnelsPerTenant)
+			r.Recorder.Eventf(tunnel, corev1.EventTypeWarning, "TunnelLimitExceeded",
+				"Maximum tunnel limit of %d reached for tenant namespace %s", MaxConcurrentTunnelsPerTenant, tunnel.Namespace)
+			// Requeue after 1 hour without returning error to avoid immediate requeue
+			return reconcile.Result{RequeueAfter: 1 * time.Hour}, nil
+		}
 	}
 
 	// Before proceeding further we need to make sure that the resource is reconcilable.
