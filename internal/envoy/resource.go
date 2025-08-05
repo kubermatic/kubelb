@@ -61,13 +61,22 @@ const (
 	defaultHealthCheckNoTrafficIntervalSeconds = 5
 )
 
+//nolint:gocyclo
 func MapSnapshot(ctx context.Context, client ctrlclient.Client, loadBalancers []kubelbv1alpha1.LoadBalancer, routes []kubelbv1alpha1.Route, tunnels []kubelbv1alpha1.Tunnel, portAllocator *portlookup.PortAllocator, globalEnvoyProxyTopology bool, kubelbNamespace string) (*envoycache.Snapshot, error) {
 	var listener []types.Resource
 	var cluster []types.Resource
 
-	// Check if we need HTTP listeners for tunnel services
-	if len(tunnels) > 0 {
-		// Create HTTP listener for tunnel traffic
+	// Check if we have tunnels with valid hostnames before creating HTTP listener
+	hasValidTunnels := false
+	for _, tunnel := range tunnels {
+		if tunnel.Status.Hostname != "" {
+			hasValidTunnels = true
+			break
+		}
+	}
+
+	if hasValidTunnels {
+		// Create HTTP listener for tunnel traffic only when we have valid tunnels
 		httpListener := makeHTTPListener("tunnel_http_listener", tunnels, 8080)
 		listener = append(listener, httpListener)
 
@@ -436,32 +445,6 @@ func makeHTTPListener(listenerName string, tunnels []kubelbv1alpha1.Tunnel, list
 				},
 			}
 			virtualHosts = append(virtualHosts, virtualHost)
-		}
-	}
-
-	// If no virtual hosts, create a default catch-all
-	if len(virtualHosts) == 0 {
-		virtualHosts = []*envoyRoute.VirtualHost{
-			{
-				Name:    "tunnel-default",
-				Domains: []string{"*"},
-				Routes: []*envoyRoute.Route{
-					{
-						Match: &envoyRoute.RouteMatch{
-							PathSpecifier: &envoyRoute.RouteMatch_Prefix{
-								Prefix: "/",
-							},
-						},
-						Action: &envoyRoute.Route_Route{
-							Route: &envoyRoute.RouteAction{
-								ClusterSpecifier: &envoyRoute.RouteAction_Cluster{
-									Cluster: "tunnel-connection-manager",
-								},
-							},
-						},
-					},
-				},
-			},
 		}
 	}
 

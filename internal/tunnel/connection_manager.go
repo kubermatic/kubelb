@@ -298,6 +298,12 @@ type ConnectionManager struct {
 	cleanupCtx       context.Context
 	cleanupCancel    context.CancelFunc
 
+	// Graceful shutdown fields
+	activeRequests sync.WaitGroup  // Track in-flight requests
+	shutdownCtx    context.Context // Shutdown signal context
+	shutdownCancel context.CancelFunc
+	isShuttingDown int32 // Atomic flag
+
 	httpServer *http.Server
 }
 
@@ -324,6 +330,9 @@ func NewConnectionManager(config *ConnectionManagerConfig) (*ConnectionManager, 
 	// Create cleanup context
 	cleanupCtx, cleanupCancel := context.WithCancel(context.Background())
 
+	// Create shutdown context
+	shutdownCtx, shutdownCancel := context.WithCancel(context.Background())
+
 	cm := &ConnectionManager{
 		httpAddr:       config.HTTPAddr,
 		requestTimeout: config.RequestTimeout,
@@ -332,6 +341,9 @@ func NewConnectionManager(config *ConnectionManagerConfig) (*ConnectionManager, 
 		tunnelCache:    tunnelCache,
 		cleanupCtx:     cleanupCtx,
 		cleanupCancel:  cleanupCancel,
+		shutdownCtx:    shutdownCtx,
+		shutdownCancel: shutdownCancel,
+		isShuttingDown: 0,
 	}
 
 	// Start response channel cleanup routine
@@ -412,6 +424,16 @@ func (cm *ConnectionManager) startHTTPServer(ctx context.Context) error {
 
 // handleTunnelRequest handles incoming HTTP requests and forwards them through tunnels
 func (cm *ConnectionManager) handleTunnelRequest(w http.ResponseWriter, r *http.Request) {
+	// Check if shutting down - reject new requests
+	if atomic.LoadInt32(&cm.isShuttingDown) == 1 {
+		http.Error(w, "Service shutting down", http.StatusServiceUnavailable)
+		return
+	}
+
+	// Track this request for graceful shutdown
+	cm.activeRequests.Add(1)
+	defer cm.activeRequests.Done()
+
 	// Extract host from x-tunnel-host header first (from Envoy), fallback to Host header
 	host := r.Header.Get("X-Tunnel-Host")
 	if host == "" {
@@ -548,7 +570,6 @@ func (cm *ConnectionManager) handleTunnelRequest(w http.ResponseWriter, r *http.
 	// Create response channel
 	respChan := make(chan *HTTPResponse, 1)
 	cm.responseChannels.Store(requestID, respChan)
-	defer cm.responseChannels.Delete(requestID)
 
 	// Send request to tunnel with retry logic
 	startTime := time.Now()
@@ -559,6 +580,8 @@ func (cm *ConnectionManager) handleTunnelRequest(w http.ResponseWriter, r *http.
 		health.RecordRequest(false, time.Since(startTime))
 		log.Error(err, "Failed to send request to tunnel after retries")
 		http.Error(w, "Failed to forward request", http.StatusBadGateway)
+		// Clean up the response channel on error
+		cm.responseChannels.Delete(requestID)
 		return
 	}
 
@@ -574,6 +597,8 @@ func (cm *ConnectionManager) handleTunnelRequest(w http.ResponseWriter, r *http.
 		if err != nil {
 			log.Error(err, "Failed to decode response body")
 			http.Error(w, "Invalid response body", http.StatusInternalServerError)
+			// Clean up the response channel on error
+			cm.responseChannels.Delete(requestID)
 			return
 		}
 
@@ -592,22 +617,35 @@ func (cm *ConnectionManager) handleTunnelRequest(w http.ResponseWriter, r *http.
 			}
 		}
 
+		// Clean up the response channel after successful response
+		cm.responseChannels.Delete(requestID)
+
 	case <-time.After(cm.requestTimeout):
 		// Record timeout as failure
 		health.RecordRequest(false, time.Since(startTime))
 		log.Error(nil, "Request timeout", "requestID", requestID)
 		http.Error(w, "Request timeout", http.StatusGatewayTimeout)
 
+		// Clean up the response channel with a grace period for late responses
+		go func() {
+			time.Sleep(30 * time.Second) // Grace period
+			cm.responseChannels.Delete(requestID)
+		}()
+
 	case <-r.Context().Done():
 		// Don't record client cancellations as failures
 		log.V(4).Info("Request canceled by client", "requestID", requestID)
 		// Don't send error response for canceled requests
+		// Clean up the response channel
+		cm.responseChannels.Delete(requestID)
 
 	case <-conn.Context.Done():
 		// Record tunnel disconnection as failure
 		health.RecordRequest(false, time.Since(startTime))
 		log.Error(nil, "Tunnel disconnected during request", "requestID", requestID)
 		http.Error(w, "Tunnel disconnected", http.StatusBadGateway)
+		// Clean up the response channel
+		cm.responseChannels.Delete(requestID)
 	}
 }
 
@@ -703,6 +741,12 @@ func (cm *ConnectionManager) handleMetrics(w http.ResponseWriter, _ *http.Reques
 func (cm *ConnectionManager) handleTunnelConnect(w http.ResponseWriter, r *http.Request) {
 	log := klog.FromContext(r.Context())
 
+	// Check if shutting down - reject new tunnel connections
+	if atomic.LoadInt32(&cm.isShuttingDown) == 1 {
+		http.Error(w, "Service shutting down", http.StatusServiceUnavailable)
+		return
+	}
+
 	// Check if this is an SSE request
 	if r.Header.Get("Accept") != "text/event-stream" {
 		http.Error(w, "Invalid request", http.StatusBadRequest)
@@ -760,18 +804,28 @@ func (cm *ConnectionManager) handleTunnelConnect(w http.ResponseWriter, r *http.
 		close(requestChan)
 		// Invalidate cache entry when tunnel disconnects
 		cm.tunnelCache.Delete(tenantName, tunnelName)
-		log.Info("Tunnel connection closed", "hostname", hostname, "cacheInvalidated", true)
+
+		// Get remaining tunnel count for context
+		remainingTunnels := cm.registry.GetAllTunnels()
+		log.Info("Tunnel connection closed",
+			"hostname", hostname,
+			"tunnelName", tunnelName,
+			"tenantName", tenantName,
+			"cacheInvalidated", true,
+			"remainingTunnels", len(remainingTunnels),
+			"remainingHostnames", remainingTunnels)
 	}()
 
-	log.Info("Tunnel registered successfully", "hostname", hostname, "targetPort", targetPort)
+	log.Info("Tunnel registered successfully", "hostname", hostname, "targetPort", targetPort, "tunnelName", tunnelName, "tenantName", tenantName)
 
 	// Send initial ping to confirm connection
 	if err := cm.sendSSEEvent(w, flusher, "ping", "initial"); err != nil {
-		log.Error(err, "Failed to send initial ping")
+		log.Error(err, "Failed to send initial ping", "hostname", hostname)
 		return
 	}
 
-	// Start the SSE event loop
+	// Start the SSE event loop with enhanced logging
+	log.Info("Starting SSE event loop", "hostname", hostname, "remoteAddr", r.RemoteAddr)
 	cm.handleSSEEventLoop(r.Context(), w, flusher, requestChan, log)
 }
 
@@ -798,6 +852,17 @@ func (cm *ConnectionManager) handleSSEEventLoop(ctx context.Context, w http.Resp
 				"totalPings", pingCount,
 				"pendingFailures", pingFailureCount,
 				"avgPingInterval", time.Duration(connectionDuration.Nanoseconds()/max(pingCount, 1)).String())
+			return
+
+		case <-cm.shutdownCtx.Done():
+			connectionDuration := time.Since(connectionStart)
+			log.Info("SSE connection closed by server shutdown",
+				"connectionDuration", connectionDuration.String(),
+				"totalPings", pingCount)
+			// Send shutdown notification to client
+			if err := cm.sendSSEEvent(w, flusher, "shutdown", "server shutting down"); err != nil {
+				log.V(4).Info("Failed to send shutdown notification", "error", err)
+			}
 			return
 
 		case req := <-requestChan:
@@ -1108,20 +1173,68 @@ func (cm *ConnectionManager) cleanupStaleHealthTrackers() {
 	}
 }
 
-// Stop stops the connection manager
+// Stop stops the connection manager with default timeout
 func (cm *ConnectionManager) Stop() {
-	// Stop cleanup routine
-	if cm.cleanupCancel != nil {
-		cm.cleanupCancel()
+	cm.GracefulStop(30 * time.Second)
+}
+
+// GracefulStop gracefully stops the connection manager with configurable timeout
+func (cm *ConnectionManager) GracefulStop(timeout time.Duration) {
+	klog.Info("Starting graceful shutdown of connection manager", "timeout", timeout.String())
+
+	// 1. Set shutdown flag - no new requests/connections accepted
+	atomic.StoreInt32(&cm.isShuttingDown, 1)
+	klog.Info("Shutdown flag set - rejecting new connections and requests")
+
+	// 2. Cancel shutdown context to notify all tunnel connections
+	if cm.shutdownCancel != nil {
+		cm.shutdownCancel()
+		klog.Info("Shutdown signal sent to all tunnel connections")
 	}
 
+	// 3. Wait for active requests to complete (with timeout)
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		cm.activeRequests.Wait()
+	}()
+
+	klog.Info("Waiting for active requests to complete...")
+	select {
+	case <-done:
+		klog.Info("All active requests completed successfully")
+	case <-time.After(timeout):
+		klog.Info("Timeout reached - forcing shutdown while requests may still be active")
+	}
+
+	// 4. Stop cleanup routine
+	if cm.cleanupCancel != nil {
+		cm.cleanupCancel()
+		klog.Info("Cleanup routines stopped")
+	}
+
+	// 5. Shutdown HTTP server
 	if cm.httpServer != nil {
-		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
-		if err := cm.httpServer.Shutdown(ctx); err != nil {
-			klog.V(2).Info("Failed to shutdown HTTP server gracefully", "error", err)
+		if err := cm.httpServer.Shutdown(shutdownCtx); err != nil {
+			klog.Info("Failed to shutdown HTTP server gracefully", "error", err)
+		} else {
+			klog.Info("HTTP server stopped gracefully")
 		}
 	}
+
+	// 6. Log final shutdown status
+	activeTunnels := cm.registry.GetAllTunnels()
+	responseChannelsCount := 0
+	cm.responseChannels.Range(func(_, _ interface{}) bool {
+		responseChannelsCount++
+		return true
+	})
+
+	klog.Info("Connection manager shutdown complete",
+		"activeTunnels", len(activeTunnels),
+		"remainingResponseChannels", responseChannelsCount)
 }
 
 // GetActiveTunnels returns the list of active tunnel hostnames

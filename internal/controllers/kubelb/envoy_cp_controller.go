@@ -39,6 +39,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	ctrlruntimeclient "sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
+	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
@@ -392,6 +393,7 @@ func (r *EnvoyCPReconciler) SetupWithManager(ctx context.Context, mgr ctrl.Manag
 	// 2. Resource must exist in a tenant namespace.
 	// 3. Watch for changes in Route resources and enqueue LoadBalancer resources. TODO: we need to
 	// find an alternative for this since it is more of a "hack".
+	// 4. Watch for changes in Tunnel resources to update Envoy configuration when tunnels connect/disconnect.
 	return ctrl.NewControllerManagedBy(mgr).
 		Named(EnvoyCPControllerName).
 		For(&kubelbv1alpha1.LoadBalancer{}).
@@ -411,7 +413,36 @@ func (r *EnvoyCPReconciler) SetupWithManager(ctx context.Context, mgr ctrl.Manag
 		Watches(
 			&kubelbv1alpha1.Tunnel{},
 			handler.EnqueueRequestsFromMapFunc(r.enqueueLoadBalancers()),
-			builder.WithPredicates(predicate.GenerationChangedPredicate{}),
+			builder.WithPredicates(predicate.Funcs{
+				CreateFunc: func(e event.CreateEvent) bool {
+					tunnel, ok := e.Object.(*kubelbv1alpha1.Tunnel)
+					if !ok {
+						return false
+					}
+					// Only trigger on create if hostname is already set
+					return tunnel.Status.Hostname != ""
+				},
+				UpdateFunc: func(e event.UpdateEvent) bool {
+					oldTunnel, ok := e.ObjectOld.(*kubelbv1alpha1.Tunnel)
+					if !ok {
+						return false
+					}
+					newTunnel, ok := e.ObjectNew.(*kubelbv1alpha1.Tunnel)
+					if !ok {
+						return false
+					}
+					// Only trigger on update if hostname changed
+					return oldTunnel.Status.Hostname != newTunnel.Status.Hostname
+				},
+				DeleteFunc: func(_ event.DeleteEvent) bool {
+					// Always trigger on delete to clean up Envoy config
+					return true
+				},
+				GenericFunc: func(_ event.GenericEvent) bool {
+					// Don't trigger on generic events
+					return false
+				},
+			}),
 		).
 		Complete(r)
 }
