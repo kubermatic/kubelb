@@ -47,8 +47,9 @@ import (
 )
 
 const (
-	TunnelControllerName = "tunnel-controller"
-	TokenLength          = 32
+	TunnelControllerName          = "tunnel-controller"
+	TokenLength                   = 32
+	MaxConcurrentTunnelsPerTenant = 3
 )
 
 // TunnelReconciler reconciles a Tunnel Object
@@ -82,6 +83,18 @@ func (r *TunnelReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 			return reconcile.Result{}, nil
 		}
 		return reconcile.Result{}, err
+	}
+
+	// Check if tenant has reached the maximum tunnel limit
+	if exceedsLimit, err := r.checkTunnelLimit(ctx, tunnel.Namespace); err != nil {
+		log.Error(err, "failed to check tunnel limit")
+		return reconcile.Result{}, err
+	} else if exceedsLimit {
+		log.Error(nil, "Maximum tunnel limit reached for tenant", "namespace", tunnel.Namespace, "limit", MaxConcurrentTunnelsPerTenant)
+		r.Recorder.Eventf(tunnel, corev1.EventTypeWarning, "TunnelLimitExceeded",
+			"Maximum tunnel limit of %d reached for tenant namespace %s", MaxConcurrentTunnelsPerTenant, tunnel.Namespace)
+		// Requeue after 1 hour without returning error to avoid immediate requeue
+		return reconcile.Result{RequeueAfter: 1 * time.Hour}, nil
 	}
 
 	// Before proceeding further we need to make sure that the resource is reconcilable.
@@ -519,6 +532,19 @@ func (r *TunnelReconciler) updateCondition(tunnel *kubelbv1alpha1.Tunnel, condit
 	if !found {
 		tunnel.Status.Conditions = append(tunnel.Status.Conditions, condition)
 	}
+}
+
+// checkTunnelLimit checks if the tenant namespace has reached the maximum tunnel limit
+func (r *TunnelReconciler) checkTunnelLimit(ctx context.Context, namespace string) (bool, error) {
+	tunnelList := &kubelbv1alpha1.TunnelList{}
+	if err := r.List(ctx, tunnelList, ctrlruntimeclient.InNamespace(namespace)); err != nil {
+		return false, fmt.Errorf("failed to list tunnels in namespace %s: %w", namespace, err)
+	}
+
+	tunnelCount := len(tunnelList.Items)
+	r.Log.V(1).Info("Current tunnel count in namespace", "namespace", namespace, "count", tunnelCount, "limit", MaxConcurrentTunnelsPerTenant)
+
+	return tunnelCount >= MaxConcurrentTunnelsPerTenant, nil
 }
 
 // SetupWithManager sets up the controller with the Manager.
