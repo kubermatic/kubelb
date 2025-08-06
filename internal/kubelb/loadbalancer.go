@@ -21,6 +21,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"reflect"
+	"regexp"
 	"sort"
 	"strings"
 
@@ -172,24 +173,71 @@ func GenerateHostname(tenant kubelbiov1alpha1.DNSSettings, config kubelbiov1alph
 		return ""
 	}
 
-	randomBytes := make([]byte, 4)
+	randomBytes := make([]byte, 8)
 	if _, err := rand.Read(randomBytes); err != nil {
 		return fmt.Sprintf("lb-%d.%s", metav1.Now().Unix(), baseDomain)
 	}
 
-	// Convert to hex string
-	randomPrefix := hex.EncodeToString(randomBytes)
+	// Convert to hex string (always lowercase for DNS compliance)
+	randomPrefix := strings.ToLower(hex.EncodeToString(randomBytes))
 
 	// Remove leading asterisk(*) from wildcard domain if present
 	baseDomain = strings.TrimPrefix(baseDomain, "*.")
 	baseDomain = strings.TrimPrefix(baseDomain, "**.")
 	baseDomain = strings.TrimPrefix(baseDomain, "*")
-	return fmt.Sprintf("%s.%s", randomPrefix, baseDomain)
+
+	if !isValidHostname(baseDomain) {
+		return ""
+	}
+
+	hostname := fmt.Sprintf("%s.%s", randomPrefix, baseDomain)
+	if !isValidHostname(hostname) {
+		return fmt.Sprintf("lb-%d.%s", metav1.Now().Unix(), baseDomain)
+	}
+
+	return hostname
+}
+
+// isValidHostname validates that a hostname complies with DNS standards
+func isValidHostname(hostname string) bool {
+	// DNS hostname validation rules:
+	// - Max 253 characters total
+	// - Each label (part between dots) max 63 characters
+	// - Labels must start with alphanumeric, can contain hyphens, must end with alphanumeric
+	// - No consecutive dots
+	// - Case insensitive (but we'll generate lowercase)
+
+	if hostname == "" || len(hostname) > 253 {
+		return false
+	}
+
+	// Check for consecutive dots or leading/trailing dots
+	if strings.Contains(hostname, "..") || strings.HasPrefix(hostname, ".") || strings.HasSuffix(hostname, ".") {
+		return false
+	}
+
+	// Validate each label
+	labels := strings.Split(hostname, ".")
+	if len(labels) < 2 { // At least two labels required (subdomain.domain)
+		return false
+	}
+
+	labelRegex := regexp.MustCompile(`^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$`)
+	for _, label := range labels {
+		if label == "" || len(label) > 63 {
+			return false
+		}
+		if !labelRegex.MatchString(strings.ToLower(label)) {
+			return false
+		}
+	}
+
+	return true
 }
 
 // ShouldConfigureHostname determines whether hostname configuration should be enabled
-func ShouldConfigureHostname(log logr.Logger, loadBalancer *kubelbiov1alpha1.LoadBalancer, tenant *kubelbiov1alpha1.Tenant, config *kubelbiov1alpha1.Config) bool {
-	if loadBalancer.Spec.Hostname != "" {
+func ShouldConfigureHostname(log logr.Logger, annotations map[string]string, resourceName, hostname string, tenant *kubelbiov1alpha1.Tenant, config *kubelbiov1alpha1.Config) bool {
+	if hostname != "" {
 		// Ensure that explicit hostname is allowed at tenant or global level.
 		if tenant.Spec.DNS.AllowExplicitHostnames != nil && *tenant.Spec.DNS.AllowExplicitHostnames {
 			return true
@@ -198,22 +246,22 @@ func ShouldConfigureHostname(log logr.Logger, loadBalancer *kubelbiov1alpha1.Loa
 			return true
 		}
 		log.V(4).Info("Hostname configuration denied: explicit hostname provided but not allowed",
-			"loadBalancer", loadBalancer.Name,
-			"hostname", loadBalancer.Spec.Hostname,
+			"resourceName", resourceName,
+			"hostname", hostname,
 			"tenantAllowsExplicit", tenant.Spec.DNS.AllowExplicitHostnames,
 			"configAllowsExplicit", config.Spec.DNS.AllowExplicitHostnames)
 		return false
 	}
 
 	// For wildcard domain, we need to check if the annotation to request wildcard domain is set.
-	if val, ok := loadBalancer.Annotations[AnnotationRequestWildcardDomain]; !ok {
+	if val, ok := annotations[AnnotationRequestWildcardDomain]; !ok {
 		log.V(4).Info("Hostname configuration denied: wildcard domain annotation not found",
-			"loadBalancer", loadBalancer.Name,
+			"resourceName", resourceName,
 			"annotation", AnnotationRequestWildcardDomain)
 		return false
 	} else if val != "true" {
 		log.V(4).Info("Hostname configuration denied: wildcard domain annotation not set to 'true'",
-			"loadBalancer", loadBalancer.Name,
+			"resourceName", resourceName,
 			"annotation", AnnotationRequestWildcardDomain,
 			"value", val)
 		return false
@@ -227,7 +275,7 @@ func ShouldConfigureHostname(log logr.Logger, loadBalancer *kubelbiov1alpha1.Loa
 		return true
 	}
 	log.V(4).Info("Hostname configuration denied: no wildcard domain configured",
-		"loadBalancer", loadBalancer.Name,
+		"resourceName", resourceName,
 		"tenantWildcardDomain", tenant.Spec.DNS.WildcardDomain,
 		"configWildcardDomain", config.Spec.DNS.WildcardDomain)
 	return false
@@ -240,6 +288,11 @@ type PortAllocator interface {
 
 // CreateServicePorts creates service ports for the load balancer
 func CreateServicePorts(loadBalancer *kubelbiov1alpha1.LoadBalancer, existingService *corev1.Service, portAllocator PortAllocator, topology string) []corev1.ServicePort {
+	// Validate that endpoints exist
+	if len(loadBalancer.Spec.Endpoints) == 0 {
+		return []corev1.ServicePort{}
+	}
+
 	desiredPorts := make([]corev1.ServicePort, 0, len(loadBalancer.Spec.Ports))
 	for i, lbPort := range loadBalancer.Spec.Ports {
 		// If the port name is not set, we match the port by index.

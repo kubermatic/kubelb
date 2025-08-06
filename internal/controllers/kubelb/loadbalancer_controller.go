@@ -18,8 +18,12 @@ package kubelb
 
 import (
 	"context"
+	"crypto/tls"
 	"fmt"
+	"net"
+	"net/http"
 	"reflect"
+	"time"
 
 	kubelbv1alpha1 "k8c.io/kubelb/api/ce/kubelb.k8c.io/v1alpha1"
 	utils "k8c.io/kubelb/internal/controllers"
@@ -124,7 +128,7 @@ func (r *LoadBalancerReconciler) Reconcile(ctx context.Context, req ctrl.Request
 	)
 
 	switch r.EnvoyProxyTopology {
-	case EnvoyProxyTopologyShared, EnvoyProxyTopologyDedicated:
+	case EnvoyProxyTopologyShared:
 		err = r.List(ctx, &loadBalancers, ctrlruntimeclient.InNamespace(req.Namespace))
 		if err != nil {
 			log.Error(err, "unable to fetch LoadBalancer list")
@@ -232,7 +236,7 @@ func (r *LoadBalancerReconciler) Reconcile(ctx context.Context, req ctrl.Request
 
 	// Check if we need to configure the hostname.
 	var hostname string
-	if kubelb.ShouldConfigureHostname(log, &loadBalancer, tenant, config) {
+	if kubelb.ShouldConfigureHostname(log, loadBalancer.Annotations, loadBalancer.Name, loadBalancer.Spec.Hostname, tenant, config) {
 		var err error
 		hostname, err = r.configureHostname(ctx, &loadBalancer, svcName, tenant, config, annotations)
 		if err != nil {
@@ -323,16 +327,34 @@ func (r *LoadBalancerReconciler) configureHostname(ctx context.Context, loadBala
 
 	log.V(2).Info("configure hostname", "name", loadBalancer.Name, "namespace", loadBalancer.Namespace)
 
-	// Assign a wildcard hostname if the annotation is set and the hostname is empty.
-	hostname := loadBalancer.Spec.Hostname
-	if hostname == "" {
-		hostname = kubelb.GenerateHostname(tenant.Spec.DNS, config.Spec.DNS)
-	}
+	// Use existing hostname from status if available, otherwise generate/use spec hostname
+	var hostname string
+	if loadBalancer.Status.Hostname != nil && loadBalancer.Status.Hostname.Hostname != "" {
+		hostname = loadBalancer.Status.Hostname.Hostname
+	} else {
+		// Generate new hostname or use spec hostname
+		if loadBalancer.Spec.Hostname != "" {
+			hostname = loadBalancer.Spec.Hostname
+		} else {
+			hostname = kubelb.GenerateHostname(tenant.Spec.DNS, config.Spec.DNS)
+		}
 
-	if hostname == "" {
-		// No need for an error here since we can still manage the LB and skip the hostname configuration.
-		log.V(2).Info("no hostname configurable, skipping")
-		return "", nil
+		if hostname == "" {
+			// No need for an error here since we can still manage the LB and skip the hostname configuration.
+			log.V(2).Info("no hostname configurable, skipping")
+			return "", nil
+		}
+
+		needsUpdate := loadBalancer.Status.Hostname == nil || loadBalancer.Status.Hostname.Hostname != hostname
+		loadBalancer.Status.Hostname = &kubelbv1alpha1.HostnameStatus{
+			Hostname: hostname,
+		}
+		if needsUpdate {
+			if err := r.Status().Update(ctx, loadBalancer); err != nil {
+				return "", fmt.Errorf("failed to update LoadBalancer status: %w", err)
+			}
+			log.V(2).Info("persisted hostname to status", "hostname", hostname)
+		}
 	}
 
 	// Add hostname finalizer if it doesn't exist
@@ -364,6 +386,12 @@ func (r *LoadBalancerReconciler) updateLoadBalancerStatus(ctx context.Context, l
 	log := ctrl.LoggerFrom(ctx)
 	log.V(5).Info("updating load balancer status", "LoadBalancer", loadBalancer.Status.LoadBalancer.Ingress, "service", service.Status.LoadBalancer.Ingress, "hostname", hostname)
 
+	// Validate that endpoints exist
+	if len(loadBalancer.Spec.Endpoints) == 0 {
+		log.V(3).Info("No endpoints found, skipping status update")
+		return nil
+	}
+
 	updatedPorts := []kubelbv1alpha1.ServicePort{}
 	for i, port := range service.Spec.Ports {
 		targetPort := loadBalancer.Spec.Endpoints[0].Ports[i].Port
@@ -382,12 +410,24 @@ func (r *LoadBalancerReconciler) updateLoadBalancerStatus(ctx context.Context, l
 		LoadBalancer: service.Status.LoadBalancer,
 	}
 
-	// Add hostname status if hostname is configured
+	// Add hostname status if hostname is configured and not already set
 	if hostname != "" {
+		// Only assign hostname if it's not already set in status
+		var hostnameToUse string
+		if loadBalancer.Status.Hostname != nil && loadBalancer.Status.Hostname.Hostname != "" {
+			hostnameToUse = loadBalancer.Status.Hostname.Hostname
+		} else {
+			hostnameToUse = hostname
+		}
+
+		// Perform actual health checks for DNS and TLS
+		dnsReady := r.checkDNSResolution(hostnameToUse)
+		tlsReady := r.checkTLSHealth(fmt.Sprintf("https://%s", hostnameToUse))
+
 		updatedLoadBalancerStatus.Hostname = &kubelbv1alpha1.HostnameStatus{
-			Hostname:         hostname,
-			TLSEnabled:       true, // Set to true since we're adding TLS configuration
-			DNSRecordCreated: true, // Set to true since we're adding external-dns annotations
+			Hostname:         hostnameToUse,
+			TLSEnabled:       tlsReady, // Actually check if TLS endpoint is working
+			DNSRecordCreated: dnsReady, // Actually check if DNS resolves
 		}
 	}
 
@@ -655,4 +695,54 @@ func (r *LoadBalancerReconciler) enqueueLoadBalancersForTenant() handler.MapFunc
 
 		return result
 	}
+}
+
+// checkDNSResolution checks if the hostname resolves to an IP address
+func (r *LoadBalancerReconciler) checkDNSResolution(hostname string) bool {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	ips, err := net.DefaultResolver.LookupIPAddr(ctx, hostname)
+	if err != nil {
+		ctrl.LoggerFrom(ctx).V(2).Info("DNS resolution failed", "hostname", hostname, "error", err)
+		return false
+	}
+	ctrl.LoggerFrom(ctx).V(3).Info("DNS resolution successful", "hostname", hostname, "ips", ips)
+	return true
+}
+
+// checkTLSHealth checks if the TLS endpoint has a working TLS connection
+func (r *LoadBalancerReconciler) checkTLSHealth(url string) bool {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	// Create HTTP client with timeout - skip cert verification to handle self-signed certs
+	// We're checking if TLS handshake works, not certificate validity
+	client := &http.Client{
+		Timeout: 10 * time.Second,
+		Transport: &http.Transport{
+			TLSClientConfig: &tls.Config{
+				InsecureSkipVerify: true, // Skip cert verification to handle self-signed certificates
+			},
+		},
+	}
+
+	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+	if err != nil {
+		ctrl.LoggerFrom(ctx).V(2).Info("TLS health check failed - request creation", "url", url, "error", err)
+		return false
+	}
+
+	resp, err := client.Do(req)
+	if err != nil {
+		// TLS handshake or connection errors will cause this to fail
+		ctrl.LoggerFrom(ctx).V(2).Info("TLS health check failed - request execution", "url", url, "error", err)
+		return false
+	}
+	defer resp.Body.Close()
+
+	// If we get here, TLS handshake succeeded (even with self-signed cert)
+	// Any HTTP response code means TLS is working
+	ctrl.LoggerFrom(ctx).V(3).Info("TLS health check successful", "url", url, "statusCode", resp.StatusCode)
+	return true
 }

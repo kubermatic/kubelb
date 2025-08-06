@@ -39,7 +39,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	ctrlruntimeclient "sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
-	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
@@ -156,7 +155,7 @@ func (r *EnvoyCPReconciler) ListLoadBalancersAndRoutes(ctx context.Context, req 
 	var err error
 
 	switch r.EnvoyProxyTopology {
-	case EnvoyProxyTopologyShared, EnvoyProxyTopologyDedicated:
+	case EnvoyProxyTopologyShared:
 		err = r.List(ctx, &loadBalancers, ctrlruntimeclient.InNamespace(req.Namespace))
 		if err != nil {
 			return nil, nil, err
@@ -180,14 +179,14 @@ func (r *EnvoyCPReconciler) ListLoadBalancersAndRoutes(ctx context.Context, req 
 
 	lbs := make([]kubelbv1alpha1.LoadBalancer, 0, len(loadBalancers.Items))
 	for _, lb := range loadBalancers.Items {
-		if lb.DeletionTimestamp.IsZero() && controllerutil.ContainsFinalizer(&lb, CleanupFinalizer) {
+		if lb.DeletionTimestamp.IsZero() {
 			lbs = append(lbs, lb)
 		}
 	}
 
 	routeList := make([]kubelbv1alpha1.Route, 0, len(routes.Items))
 	for _, route := range routes.Items {
-		if route.DeletionTimestamp.IsZero() && controllerutil.ContainsFinalizer(&route, CleanupFinalizer) {
+		if route.DeletionTimestamp.IsZero() {
 			routeList = append(routeList, route)
 		}
 	}
@@ -342,7 +341,7 @@ func (r *EnvoyCPReconciler) getEnvoyProxyPodSpec(namespace, appName, snapshotNam
 
 func envoySnapshotAndAppName(topology EnvoyProxyTopology, req ctrl.Request) (string, string) {
 	switch topology {
-	case EnvoyProxyTopologyShared, EnvoyProxyTopologyDedicated:
+	case EnvoyProxyTopologyShared:
 		return req.Namespace, req.Namespace
 	case EnvoyProxyTopologyGlobal:
 		return EnvoyGlobalCache, EnvoyGlobalCache
@@ -386,6 +385,7 @@ func (r *EnvoyCPReconciler) SetupWithManager(ctx context.Context, mgr ctrl.Manag
 		Watches(
 			&kubelbv1alpha1.Addresses{},
 			handler.EnqueueRequestsFromMapFunc(r.enqueueLoadBalancers()),
+			builder.WithPredicates(predicate.GenerationChangedPredicate{}),
 		).
 		Complete(r)
 }
