@@ -39,7 +39,7 @@ presubmits:
       preset-goproxy: "true"
     spec:
       containers:
-        - image: golangci/golangci-lint:v2.0.2
+        - image: golangci/golangci-lint:v2.3.1
           command:
             - make
           args:
@@ -57,7 +57,7 @@ presubmits:
       preset-goproxy: "true"
     spec:
       containers:
-        - image: quay.io/kubermatic/build:go-1.24-node-20-kind-0.27-1
+        - image: quay.io/kubermatic/build:go-1.24-node-20-kind-0.27-6
           command:
             - make
           args:
@@ -72,7 +72,7 @@ presubmits:
     clone_uri: "ssh://git@github.com/kubermatic/kubelb.git"
     spec:
       containers:
-        - image: quay.io/kubermatic/build:go-1.24-node-20-kind-0.27-1
+        - image: quay.io/kubermatic/build:go-1.24-node-20-kind-0.27-6
           command:
             - make
           args:
@@ -84,7 +84,7 @@ presubmits:
     clone_uri: "ssh://git@github.com/kubermatic/kubelb.git"
     spec:
       containers:
-        - image: quay.io/kubermatic/build:go-1.24-node-20-kind-0.27-1
+        - image: quay.io/kubermatic/build:go-1.24-node-20-kind-0.27-6
           command:
             - make
           args:
@@ -141,7 +141,7 @@ presubmits:
       preset-goproxy: "true"
     spec:
       containers:
-        - image: quay.io/kubermatic/build:go-1.24-node-20-kind-0.27-1
+        - image: quay.io/kubermatic/build:go-1.24-node-20-kind-0.27-6
           securityContext:
             privileged: true
           env:
@@ -175,7 +175,7 @@ presubmits:
     clone_uri: "ssh://git@github.com/kubermatic/kubelb.git"
     spec:
       containers:
-        - image: quay.io/kubermatic/build:go-1.24-node-20-kind-0.27-1
+        - image: quay.io/kubermatic/build:go-1.24-node-20-kind-0.27-6
           command:
             - shfmt
           args:
@@ -205,7 +205,7 @@ presubmits:
       preset-goproxy: "true"
     spec:
       containers:
-        - image: quay.io/kubermatic/build:go-1.24-node-20-kind-0.27-1
+        - image: quay.io/kubermatic/build:go-1.24-node-20-kind-0.27-6
           command:
             - ./hack/verify-licenses.sh
           resources:

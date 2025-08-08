@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-FROM docker.io/golang:1.24.3 as builder
+FROM docker.io/golang:1.24.6 as builder
 
 WORKDIR /workspace
 # Copy the Go Modules manifests
@@ -26,7 +26,6 @@ RUN go mod download
 COPY cmd/ cmd/
 COPY api/ api/
 COPY internal/ internal/
-COPY VERSION VERSION
 COPY Makefile Makefile
 
 # Optional build args for version info (if not provided, Makefile will use defaults)
