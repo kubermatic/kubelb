@@ -46,6 +46,25 @@ type ConfigSpec struct {
 	GatewayAPI   GatewayAPISettings         `json:"gatewayAPI,omitempty"`
 	DNS          ConfigDNSSettings          `json:"dns,omitempty"`
 	Certificates ConfigCertificatesSettings `json:"certificates,omitempty"`
+	Tunnel       TunnelSettings             `json:"tunnel,omitempty"`
+}
+
+// TunnelSettings defines the global settings for Tunnel resources.
+type TunnelSettings struct {
+	// Limit is the maximum number of tunnels to create.
+	// If a lower limit is set than the number of reources that exist, the limit will be disallow creation of new resources but will not delete existing resources. The reason behind this
+	// is that it is not possible for KubeLB to know which resources are safe to remove.
+	Limit *int `json:"limit,omitempty"`
+
+	// ConnectionManagerURL is the URL of the connection manager service that handles tunnel connections.
+	// This is required if tunneling is enabled.
+	// For example: "https://con.example.com"
+	// +optional
+	ConnectionManagerURL string `json:"connectionManagerURL,omitempty"`
+
+	// Disable indicates whether tunneling feature should be disabled.
+	// +optional
+	Disable bool `json:"disable,omitempty"`
 }
 
 // ConfigDNSSettings defines the global settings for DNS management and automation.
@@ -54,12 +73,12 @@ type ConfigDNSSettings struct {
 	Disable bool `json:"disable,omitempty"`
 
 	// WildcardDomain is the domain that will be used as the base domain to create wildcard DNS records for DNS resources.
-	// This is only used for determining the hostname for LoadBalancer resources at LoadBalancer.Spec.Hostname.
+	// This is only used for determining the hostname for LoadBalancer and Tunnel resources.
 	// +optional
 	WildcardDomain string `json:"wildcardDomain,omitempty"`
 
 	// AllowExplicitHostnames is a flag that can be used to allow explicit hostnames to be used for DNS resources.
-	// This is only used when LoadBalancer.Spec.Hostname is set.
+	// This is only used when LoadBalancer.Spec.Hostname or Tunnel.Spec.Hostname is set.
 	// +optional
 	AllowExplicitHostnames bool `json:"allowExplicitHostnames,omitempty"`
 }

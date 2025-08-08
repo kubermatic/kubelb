@@ -26,7 +26,7 @@ kubelb:
   installGatewayAPICRDs: false
   # -- gatewayAPICRDsChannel specifies the channel for the Gateway API CRDs. Options are `standard` and `experimental`.
   gatewayAPICRDsChannel: standard
-  
+
   # -- Enable the leader election.
   enableLeaderElection: true
   # -- useIngressClass specifies whether to target resources with `kubelb` ingress class or all resources.
@@ -103,7 +103,5 @@ autoscaling:
   targetMemoryUtilizationPercentage: 80
 
 nodeSelector: {}
-
 tolerations: []
-
 affinity: {}

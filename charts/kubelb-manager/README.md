@@ -42,7 +42,7 @@ helm install kubelb-manager kubelb-manager --namespace kubelb -f values.yaml --c
 | kubelb.enableTenantMigration | bool | `true` |  |
 | kubelb.envoyProxy.affinity | object | `{}` |  |
 | kubelb.envoyProxy.nodeSelector | object | `{}` |  |
-| kubelb.envoyProxy.replicas | int | `3` | The number of replicas for the Envoy Proxy deployment. |
+| kubelb.envoyProxy.replicas | int | `2` | The number of replicas for the Envoy Proxy deployment. |
 | kubelb.envoyProxy.resources | object | `{}` |  |
 | kubelb.envoyProxy.singlePodPerNode | bool | `true` | Deploy single pod per node. |
 | kubelb.envoyProxy.tolerations | list | `[]` |  |
