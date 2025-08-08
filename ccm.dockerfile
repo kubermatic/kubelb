@@ -26,12 +26,19 @@ RUN go mod download
 COPY cmd/ cmd/
 COPY api/ api/
 COPY internal/ internal/
+COPY VERSION VERSION
+COPY Makefile Makefile
 
-RUN CGO_ENABLED=0 go build -a -o ccm cmd/ccm/main.go
+# Optional build args for version info (if not provided, Makefile will use defaults)
+ARG GIT_VERSION
+ARG GIT_COMMIT
+ARG BUILD_DATE
+
+RUN make build-ccm
 
 FROM gcr.io/distroless/static:nonroot
 WORKDIR /
-COPY --from=builder /workspace/ccm .
+COPY --from=builder /workspace/bin/ccm .
 USER 65532:65532
 
 ENTRYPOINT ["/ccm"]

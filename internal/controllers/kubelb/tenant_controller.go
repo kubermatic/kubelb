@@ -31,6 +31,7 @@ import (
 
 	kubelbv1alpha1 "k8c.io/kubelb/api/ce/kubelb.k8c.io/v1alpha1"
 	tenantresources "k8c.io/kubelb/internal/controllers/kubelb/resources/tenant"
+	"k8c.io/kubelb/internal/version"
 	"k8c.io/reconciler/pkg/reconciling"
 
 	corev1 "k8s.io/api/core/v1"
@@ -56,6 +57,7 @@ const (
 	kubernetesEndpointsName = "kubernetes"
 	securePortName          = "https"
 	requeueAfter            = 10 * time.Second
+	TenantStateName         = "default"
 )
 
 const kubeconfigTemplate = `apiVersion: v1
@@ -99,6 +101,8 @@ type TenantReconciler struct {
 // +kubebuilder:rbac:groups=kubelb.k8c.io,resources=routes,verbs=get;list;deletecollection
 // +kubebuilder:rbac:groups=kubelb.k8c.io,resources=loadbalancers,verbs=get;list;deletecollection
 // +kubebuilder:rbac:groups=kubelb.k8c.io,resources=syncsecrets,verbs=get;list;deletecollection
+// +kubebuilder:rbac:groups=kubelb.k8c.io,resources=tenantstates,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=kubelb.k8c.io,resources=tenantstates/status,verbs=get;update;patch
 
 func (r *TenantReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	log := r.Log.WithValues("name", req.NamespacedName)
@@ -207,6 +211,11 @@ func (r *TenantReconciler) reconcile(ctx context.Context, log logr.Logger, tenan
 	// Create kubeconfig secret in the user cluster namespace.
 	if err := reconciling.ReconcileSecrets(ctx, secretReconcilers, namespace, r.Client); err != nil {
 		return fmt.Errorf("failed to reconcile kubeLB tenant kubeconfig secret: %w", err)
+	}
+
+	// Create or update TenantState resource
+	if err := r.reconcileTenantState(ctx, tenant, namespace); err != nil {
+		return fmt.Errorf("failed to reconcile TenantState: %w", err)
 	}
 
 	return nil
@@ -408,6 +417,45 @@ func (r *TenantReconciler) cleanupResources(ctx context.Context, namespace strin
 	}
 
 	return reconcile.Result{}, nil
+}
+
+func (r *TenantReconciler) reconcileTenantState(ctx context.Context, tenant *kubelbv1alpha1.Tenant, namespace string) error {
+	tenantState := &kubelbv1alpha1.TenantState{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      TenantStateName,
+			Namespace: namespace,
+		},
+	}
+
+	// First, create or update the resource itself (without status)
+	_, err := controllerutil.CreateOrUpdate(ctx, r.Client, tenantState, func() error {
+		// Set owner reference to the Tenant
+		if err := controllerutil.SetControllerReference(tenant, tenantState, r.Scheme); err != nil {
+			return err
+		}
+		// Note: We don't set status here as it cannot be set during creation
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+
+	// Now update the status separately if version info has changed
+	currentVersion := version.GetVersion()
+	if tenantState.Status.Version != currentVersion {
+		tenantState.Status = kubelbv1alpha1.TenantStateStatus{
+			Version:     currentVersion,
+			LastUpdated: metav1.Now(),
+			Conditions:  tenantState.Status.Conditions, // Preserve existing conditions
+		}
+
+		// Update the status subresource
+		if err := r.Status().Update(ctx, tenantState); err != nil {
+			return fmt.Errorf("failed to update TenantState status: %w", err)
+		}
+	}
+
+	return nil
 }
 
 func (r *TenantReconciler) SetupWithManager(mgr ctrl.Manager) error {
