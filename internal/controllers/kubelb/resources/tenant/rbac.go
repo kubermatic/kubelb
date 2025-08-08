@@ -56,6 +56,22 @@ func RoleReconciler() reconciling.NamedRoleReconcilerFactory {
 				},
 				{
 					APIGroups: []string{"kubelb.k8c.io"},
+					Resources: []string{"tenantstates"},
+					Verbs: []string{
+						"get",
+						"list",
+						"watch",
+					},
+				},
+				{
+					APIGroups: []string{"kubelb.k8c.io"},
+					Resources: []string{"tenantstates/status"},
+					Verbs: []string{
+						"get",
+					},
+				},
+				{
+					APIGroups: []string{"kubelb.k8c.io"},
 					Resources: []string{"loadbalancers/status", "routes/status", "addresses/status", "syncsecrets/status"},
 					Verbs: []string{
 						"update",
