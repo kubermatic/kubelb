@@ -75,7 +75,7 @@ echodate "Pre-pulling base image in the background"
 (
   cd ${ROOT_DIR}
   dockerfile="ccm.dockerfile"
-  line=$(grep "as builder" $dockerfile)
+  line=$(grep "AS builder" $dockerfile)
   dockerImage=$(echo $line | awk -F'FROM | AS builder' '{print $2}')
   echodate "Pulling image: $dockerImage"
   docker pull $dockerImage &> /dev/null &
