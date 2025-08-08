@@ -12,11 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-<<<<<<< Updated upstream
-FROM docker.io/golang:1.24.6 as builder
-=======
-FROM docker.io/golang:1.24.3 AS builder
->>>>>>> Stashed changes
+FROM docker.io/golang:1.24.6 AS builder
 
 WORKDIR /workspace
 # Copy the Go Modules manifests

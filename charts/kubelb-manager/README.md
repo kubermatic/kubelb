@@ -1,6 +1,6 @@
 # kubelb-manager
 
-Helm chart for KubeLB Manager. This is used to deploy the KubeLB Manager to a Kubernetes cluster. The Manager is responsible for managing the dataplane and all the load balancing configurations for the tenants.
+Helm chart for KubeLB Manager. This is used to deploy the KubeLB CCM to a Kubernetes cluster. The CCM is responsible for propagating the load balancer configurations to the management cluster.
 
 ![Version: v1.1.0](https://img.shields.io/badge/Version-v1.1.0-informational?style=flat-square) ![Type: application](https://img.shields.io/badge/Type-application-informational?style=flat-square) ![AppVersion: v1.1.0](https://img.shields.io/badge/AppVersion-v1.1.0-informational?style=flat-square)
 
@@ -8,7 +8,7 @@ Helm chart for KubeLB Manager. This is used to deploy the KubeLB Manager to a Ku
 
 ### Pre-requisites
 
-* Create a namespace `kubelb` for the Manager to be deployed in.
+* Create a namespace `kubelb` for the CCM to be deployed in.
 
 ### Install helm chart
 
@@ -42,7 +42,7 @@ helm install kubelb-manager kubelb-manager --namespace kubelb -f values.yaml --c
 | kubelb.enableTenantMigration | bool | `true` |  |
 | kubelb.envoyProxy.affinity | object | `{}` |  |
 | kubelb.envoyProxy.nodeSelector | object | `{}` |  |
-| kubelb.envoyProxy.replicas | int | `3` | The number of replicas for the Envoy Proxy deployment. |
+| kubelb.envoyProxy.replicas | int | `2` | The number of replicas for the Envoy Proxy deployment. |
 | kubelb.envoyProxy.resources | object | `{}` |  |
 | kubelb.envoyProxy.singlePodPerNode | bool | `true` | Deploy single pod per node. |
 | kubelb.envoyProxy.tolerations | list | `[]` |  |
