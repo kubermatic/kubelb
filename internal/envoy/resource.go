@@ -57,7 +57,7 @@ const (
 	defaultHealthCheckNoTrafficIntervalSeconds = 5
 )
 
-func MapSnapshot(ctx context.Context, client ctrlclient.Client, loadBalancers []kubelbv1alpha1.LoadBalancer, routes []kubelbv1alpha1.Route, portAllocator *portlookup.PortAllocator, globalEnvoyProxyTopology bool) (*envoycache.Snapshot, error) {
+func MapSnapshot(ctx context.Context, client ctrlclient.Client, loadBalancers []kubelbv1alpha1.LoadBalancer, routes []kubelbv1alpha1.Route, portAllocator *portlookup.PortAllocator) (*envoycache.Snapshot, error) {
 	var listener []types.Resource
 	var cluster []types.Resource
 
@@ -92,7 +92,7 @@ func MapSnapshot(ctx context.Context, client ctrlclient.Client, loadBalancers []
 				}
 
 				port := uint32(lbEndpointPort.Port)
-				if globalEnvoyProxyTopology && portAllocator != nil {
+				if portAllocator != nil {
 					endpointKey := fmt.Sprintf(kubelb.EnvoyEndpointPattern, lb.Namespace, lb.Name, i)
 					portKey := fmt.Sprintf(kubelb.EnvoyListenerPattern, lbEndpointPort.Port, lbEndpointPort.Protocol)
 					if value, exists := portAllocator.Lookup(endpointKey, portKey); exists {

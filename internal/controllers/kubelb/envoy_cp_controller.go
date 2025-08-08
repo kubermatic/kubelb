@@ -99,14 +99,11 @@ func (r *EnvoyCPReconciler) reconcile(ctx context.Context, req ctrl.Request) err
 		return fmt.Errorf("failed to update Envoy proxy: %w", err)
 	}
 
-	// For Global topology, we need to ensure that an arbitrary port has been assigned to the endpoint ports of the LoadBalancer.
-	if r.EnvoyProxyTopology == EnvoyProxyTopologyGlobal {
-		lbList := kubelbv1alpha1.LoadBalancerList{
-			Items: lbs,
-		}
-		if err := r.PortAllocator.AllocatePortsForLoadBalancers(lbList); err != nil {
-			return err
-		}
+	lbList := kubelbv1alpha1.LoadBalancerList{
+		Items: lbs,
+	}
+	if err := r.PortAllocator.AllocatePortsForLoadBalancers(lbList); err != nil {
+		return err
 	}
 
 	if err := r.PortAllocator.AllocatePortsForRoutes(routes); err != nil {
@@ -118,7 +115,7 @@ func (r *EnvoyCPReconciler) reconcile(ctx context.Context, req ctrl.Request) err
 
 func (r *EnvoyCPReconciler) updateCache(ctx context.Context, snapshotName string, lbs []kubelbv1alpha1.LoadBalancer, routes []kubelbv1alpha1.Route) error {
 	log := ctrl.LoggerFrom(ctx)
-	desiredSnapshot, err := envoycp.MapSnapshot(ctx, r.Client, lbs, routes, r.PortAllocator, r.EnvoyProxyTopology == EnvoyProxyTopologyGlobal)
+	desiredSnapshot, err := envoycp.MapSnapshot(ctx, r.Client, lbs, routes, r.PortAllocator)
 	if err != nil {
 		return err
 	}

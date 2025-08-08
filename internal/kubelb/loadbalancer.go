@@ -287,7 +287,7 @@ type PortAllocator interface {
 }
 
 // CreateServicePorts creates service ports for the load balancer
-func CreateServicePorts(loadBalancer *kubelbiov1alpha1.LoadBalancer, existingService *corev1.Service, portAllocator PortAllocator, topology string) []corev1.ServicePort {
+func CreateServicePorts(loadBalancer *kubelbiov1alpha1.LoadBalancer, existingService *corev1.Service, portAllocator PortAllocator) []corev1.ServicePort {
 	// Validate that endpoints exist
 	if len(loadBalancer.Spec.Endpoints) == 0 {
 		return []corev1.ServicePort{}
@@ -305,13 +305,11 @@ func CreateServicePorts(loadBalancer *kubelbiov1alpha1.LoadBalancer, existingSer
 			}
 		}
 
-		// For global topology, look up allocated port
-		if topology == "global" {
-			endpointKey := fmt.Sprintf(EnvoyEndpointPattern, loadBalancer.Namespace, loadBalancer.Name, 0)
-			portKey := fmt.Sprintf(EnvoyListenerPattern, targetPort, lbPort.Protocol)
-			if value, exists := portAllocator.Lookup(endpointKey, portKey); exists {
-				targetPort = int32(value)
-			}
+		// Look up allocated port
+		endpointKey := fmt.Sprintf(EnvoyEndpointPattern, loadBalancer.Namespace, loadBalancer.Name, 0)
+		portKey := fmt.Sprintf(EnvoyListenerPattern, targetPort, lbPort.Protocol)
+		if value, exists := portAllocator.Lookup(endpointKey, portKey); exists {
+			targetPort = int32(value)
 		}
 
 		// Try to find matching existing port to preserve NodePort if possible
