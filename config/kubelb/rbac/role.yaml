@@ -81,6 +81,7 @@ rules:
   resources:
   - addresses
   - tenants
+  - tenantstates
   verbs:
   - create
   - delete
@@ -110,6 +111,7 @@ rules:
   - loadbalancers/status
   - routes/status
   - tenants/status
+  - tenantstates/status
   verbs:
   - get
   - patch

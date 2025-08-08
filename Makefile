@@ -26,6 +26,14 @@ export GO111MODULE=on
 export GOFLAGS?=-mod=readonly -trimpath
 export GIT_TAG ?= $(shell git tag --points-at HEAD)
 
+GIT_VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
+GIT_COMMIT ?= $(shell git rev-parse HEAD 2>/dev/null || echo "unknown")
+BUILD_DATE ?= $(shell date -u +"%Y-%m-%dT%H:%M:%SZ")
+
+LDFLAGS := -X 'k8c.io/kubelb/internal/version.GitVersion=$(GIT_VERSION)' \
+	-X 'k8c.io/kubelb/internal/version.GitCommit=$(GIT_COMMIT)' \
+	-X 'k8c.io/kubelb/internal/version.BuildDate=$(BUILD_DATE)'
+
 IMAGE_TAG = \
 		$(shell echo $$(git rev-parse HEAD && if [[ -n $$(git status --porcelain) ]]; then echo '-dirty'; fi)|tr -d ' ')
 
@@ -128,8 +136,10 @@ test: envtest ## Run tests.
 .PHONY: build
 build: build-ccm build-kubelb
 
-build-%: generate fmt vet ## Build manager binary.
-	CGO_ENABLED=0 go build -v -o bin/$* cmd/$*/main.go
+build-%: fmt vet ## Build manager binary.
+	CGO_ENABLED=0 go build -v \
+		-ldflags "$(LDFLAGS)" \
+		-o bin/$* cmd/$*/main.go
 
 .PHONY: run
 run-%: manifests generate fmt vet ## Run a controller from your host.
@@ -144,8 +154,16 @@ download-gocache:
 # More info: https://docs.docker.com/develop/develop-images/build_enhancements/
 .PHONY: docker-image
 docker-image:
-	docker build --build-arg GO_VERSION=$(GO_VERSION) -t ${KUBELB_IMAGE_NAME} -f kubelb.dockerfile .
-	docker build --build-arg GO_VERSION=$(GO_VERSION) -t ${CCM_IMAGE_NAME} -f ccm.dockerfile .
+	docker build --build-arg GO_VERSION=$(GO_VERSION) \
+		--build-arg GIT_VERSION="$(GIT_VERSION)" \
+		--build-arg GIT_COMMIT="$(GIT_COMMIT)" \
+		--build-arg BUILD_DATE="$(BUILD_DATE)" \
+		-t ${KUBELB_IMAGE_NAME} -f kubelb.dockerfile .
+	docker build --build-arg GO_VERSION=$(GO_VERSION) \
+		--build-arg GIT_VERSION="$(GIT_VERSION)" \
+		--build-arg GIT_COMMIT="$(GIT_COMMIT)" \
+		--build-arg BUILD_DATE="$(BUILD_DATE)" \
+		-t ${CCM_IMAGE_NAME} -f ccm.dockerfile .
 
 .PHONY: docker-image-publish
 docker-image-publish: docker-image

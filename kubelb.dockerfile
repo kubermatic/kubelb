@@ -26,12 +26,19 @@ RUN go mod download
 COPY cmd/ cmd/
 COPY api/ api/
 COPY internal/ internal/
+COPY VERSION VERSION
+COPY Makefile Makefile
 
-RUN CGO_ENABLED=0 go build -a -o kubelb cmd/kubelb/main.go
+# Optional build args for version info (if not provided, Makefile will use defaults)
+ARG GIT_VERSION
+ARG GIT_COMMIT
+ARG BUILD_DATE
+
+RUN make build-kubelb
 
 FROM gcr.io/distroless/static:nonroot
 WORKDIR /
-COPY --from=builder /workspace/kubelb .
+COPY --from=builder /workspace/bin/kubelb .
 USER 65532:65532
 
 ENTRYPOINT ["/kubelb"]
