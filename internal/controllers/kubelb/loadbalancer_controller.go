@@ -202,11 +202,8 @@ func (r *LoadBalancerReconciler) Reconcile(ctx context.Context, req ctrl.Request
 		}
 	}
 
-	if r.EnvoyProxyTopology == EnvoyProxyTopologyGlobal {
-		// For Global topology, we need to ensure that an arbitrary port has been assigned to the endpoint ports of the LoadBalancer.
-		if err := r.PortAllocator.AllocatePortsForLoadBalancers(loadBalancers); err != nil {
-			return ctrl.Result{}, err
-		}
+	if err := r.PortAllocator.AllocatePortsForLoadBalancers(loadBalancers); err != nil {
+		return ctrl.Result{}, err
 	}
 
 	// Generate the service name and app name.
@@ -297,7 +294,7 @@ func (r *LoadBalancerReconciler) reconcileService(ctx context.Context, loadBalan
 	}
 
 	// Handle service ports
-	desiredService.Spec.Ports = kubelb.CreateServicePorts(loadBalancer, existingService, portAllocator, string(r.EnvoyProxyTopology))
+	desiredService.Spec.Ports = kubelb.CreateServicePorts(loadBalancer, existingService, portAllocator)
 
 	// If service doesn't exist, create it
 	if apierrors.IsNotFound(err) {
@@ -470,11 +467,9 @@ func (r *LoadBalancerReconciler) cleanup(ctx context.Context, lb kubelbv1alpha1.
 	log := ctrl.LoggerFrom(ctx).WithValues("cleanup", "LoadBalancer")
 	log.V(2).Info("Cleaning up LoadBalancer", "name", lb.Name, "namespace", lb.Namespace)
 
-	// Deallocate ports if we are using global envoy proxy topology.
-	if r.EnvoyProxyTopology == EnvoyProxyTopologyGlobal {
-		if err := r.PortAllocator.DeallocatePortsForLoadBalancer(lb); err != nil {
-			return err
-		}
+	// Deallocate ports for the load balancers.
+	if err := r.PortAllocator.DeallocatePortsForLoadBalancer(lb); err != nil {
+		return err
 	}
 
 	// Clean up hostname resources (Ingress/HTTPRoute) if hostname finalizer exists

@@ -150,7 +150,7 @@ func main() {
 		setupLog.Error(err, "unable to load controller config")
 		os.Exit(1)
 	}
-	// For Global topology, we need to ensure that the port lookup table exists. If it doesn't, we create it since it's managed by this controller.
+	// We need to ensure that the port lookup table exists. If it doesn't, we create it since it's managed by this controller.
 	portAllocator := portlookup.NewPortAllocator()
 	if err := portAllocator.LoadState(ctx, mgr.GetAPIReader()); err != nil {
 		setupLog.Error(err, ("unable to load port lookup state"))
