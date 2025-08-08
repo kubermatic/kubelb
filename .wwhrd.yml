@@ -25,6 +25,3 @@ whitelist:
   - MIT
   - MPL-2.0
   - NewBSD
-
-exceptions:
-  - github.com/ajeddeloh/go-json # Since it's a fork, https://github.com/golang/go/blob/master/LICENSE
