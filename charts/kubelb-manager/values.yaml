@@ -19,7 +19,7 @@ kubelb:
     # -- Topology defines the deployment topology for Envoy Proxy. Valid values are: shared and global.
     topology: shared
     # -- The number of replicas for the Envoy Proxy deployment.
-    replicas: 3
+    replicas: 2
     # -- Deploy single pod per node.
     singlePodPerNode: true
     # -- Use DaemonSet for Envoy Proxy deployment instead of Deployment.

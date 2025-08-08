@@ -23,6 +23,7 @@
 package v1alpha1
 
 import (
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -34,6 +35,7 @@ type TenantSpec struct {
 	GatewayAPI         GatewayAPISettings   `json:"gatewayAPI,omitempty"`
 	DNS                DNSSettings          `json:"dns,omitempty"`
 	Certificates       CertificatesSettings `json:"certificates,omitempty"`
+	Tunnel             TenantTunnelSettings `json:"tunnel,omitempty"`
 
 	// +kubebuilder:default={"**"}
 
@@ -87,6 +89,10 @@ type GatewayAPISettings struct {
 	// Disable is a flag that can be used to disable Gateway API for a tenant.
 	Disable bool `json:"disable,omitempty"`
 
+	// DefaultGateway is the default gateway reference to use for the tenant. This is only used for load balancer hostname and tunneling.
+	// +optional
+	DefaultGateway *corev1.ObjectReference `json:"defaultGateway,omitempty"`
+
 	GatewaySettings GatewaySettings `json:"gateway,omitempty"`
 
 	GatewayAPIsSettings `json:",inline"`
@@ -124,12 +130,12 @@ type DNSSettings struct {
 	AllowedDomains []string `json:"allowedDomains,omitempty"`
 
 	// WildcardDomain is the domain that will be used as the base domain to create wildcard DNS records for DNS resources.
-	// This is only used for determining the hostname for LoadBalancer resources at LoadBalancer.Spec.Hostname.
+	// This is only used for determining the hostname for LoadBalancer and Tunnel resources.
 	// +optional
 	WildcardDomain *string `json:"wildcardDomain,omitempty"`
 
 	// AllowExplicitHostnames is a flag that can be used to allow explicit hostnames to be used for DNS resources.
-	// This is only used when LoadBalancer.Spec.Hostname is set.
+	// This is only used when LoadBalancer.Spec.Hostname or Tunnel.Spec.Hostname is set.
 	// +optional
 	AllowExplicitHostnames *bool `json:"allowExplicitHostnames,omitempty"`
 }
@@ -151,6 +157,17 @@ type CertificatesSettings struct {
 	// - ["**"] or ["*"] -> this allows all domains
 	// Note: "**" was added as a special case to allow any levels of subdomains that come before it. "*" works for only 1 level.
 	AllowedDomains []string `json:"allowedDomains,omitempty"`
+}
+
+// TenantTunnelSettings defines the settings for the tunnel.
+type TenantTunnelSettings struct {
+	// Limit is the maximum number of tunnels to create.
+	// If a lower limit is set than the number of reources that exist, the limit will be disallow creation of new resources but will not delete existing resources. The reason behind this
+	// is that it is not possible for KubeLB to know which resources are safe to remove.
+	Limit *int `json:"limit,omitempty"`
+
+	// Disable is a flag that can be used to disable tunneling for a tenant.
+	Disable bool `json:"disable,omitempty"`
 }
 
 // TenantStatus defines the observed state of Tenant

@@ -61,7 +61,7 @@ type LoadBalancerEndpoints struct {
 	// Port numbers available on the related IP addresses.
 	// This field is ignored for routes that are using kubernetes resources as the source.
 	// +optional
-	//+kubebuilder:validation:MinItems=1
+	// +kubebuilder:validation:MinItems=1
 	Ports []EndpointPort `json:"ports,omitempty" protobuf:"bytes,3,rep,name=ports"`
 }
 

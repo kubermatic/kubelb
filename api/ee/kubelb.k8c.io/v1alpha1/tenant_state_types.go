@@ -27,15 +27,31 @@ type TenantStateSpec struct {
 
 // TenantStateStatus defines the observed state of TenantState
 type TenantStateStatus struct {
-	Version     Version            `json:"version"`
-	LastUpdated metav1.Time        `json:"lastUpdated"`
-	Conditions  []metav1.Condition `json:"conditions"`
+	Version     Version            `json:"version,omitempty"`
+	LastUpdated metav1.Time        `json:"lastUpdated,omitempty"`
+	Conditions  []metav1.Condition `json:"conditions,omitempty"`
+
+	Tunnel         TunnelState       `json:"tunnel,omitempty"`
+	LoadBalancer   LoadBalancerState `json:"loadBalancer,omitempty"`
+	AllowedDomains []string          `json:"allowedDomains,omitempty"`
+}
+
+type TunnelState struct {
+	Disable              bool   `json:"disable,omitempty"`
+	Limit                int    `json:"limit,omitempty"`
+	ConnectionManagerURL string `json:"connectionManagerURL,omitempty"`
+}
+
+type LoadBalancerState struct {
+	Disable bool `json:"disable,omitempty"`
+	Limit   int  `json:"limit,omitempty"`
 }
 
 type Version struct {
-	GitVersion string `json:"gitVersion"`
-	GitCommit  string `json:"gitCommit"`
-	Edition    string `json:"edition"`
+	GitVersion string `json:"gitVersion,omitempty"`
+	GitCommit  string `json:"gitCommit,omitempty"`
+	BuildDate  string `json:"buildDate,omitempty"`
+	Edition    string `json:"edition,omitempty"`
 }
 
 // +kubebuilder:resource:scope=Namespaced
