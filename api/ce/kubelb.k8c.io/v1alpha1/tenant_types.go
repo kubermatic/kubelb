@@ -33,7 +33,7 @@ type TenantSpec struct {
 }
 
 type CertificatesSettings struct {
-	// DefaultClusterIssuer is the Cluster Issuer to use for the certificates by default. This is only used for load balancer hostname and tunneling.
+	// DefaultClusterIssuer is the Cluster Issuer to use for the certificates by default. This is only used for load balancer hostname.
 	DefaultClusterIssuer *string `json:"defaultClusterIssuer,omitempty"`
 }
 
@@ -79,7 +79,7 @@ type GatewayAPISettings struct {
 	// +optional
 	Class *string `json:"class,omitempty"`
 
-	// DefaultGateway is the default gateway reference to use for the tenant. This is only used for load balancer hostname and tunneling.
+	// DefaultGateway is the default gateway reference to use for the tenant. This is only used for load balancer hostname.
 	// +optional
 	DefaultGateway *corev1.ObjectReference `json:"defaultGateway,omitempty"`
 

@@ -149,6 +149,7 @@ rules:
   - loadbalancers
   - addresses
   - syncsecrets
+  - tenantstates
   verbs:
   - create
   - delete
@@ -186,6 +187,14 @@ rules:
   - kubelb.k8c.io
   resources:
   - addresses/status
+  verbs:
+  - get
+  - patch
+  - update
+- apiGroups:
+  - kubelb.k8c.io
+  resources:
+  - tenantstates/status
   verbs:
   - get
   - patch
