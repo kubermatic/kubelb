@@ -36,7 +36,6 @@ type TenantStateStatus struct {
 
 type LoadBalancerState struct {
 	Disable bool `json:"disable,omitempty"`
-	Limit   int  `json:"limit,omitempty"`
 }
 
 type Version struct {
