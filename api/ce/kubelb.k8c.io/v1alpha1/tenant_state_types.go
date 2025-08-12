@@ -30,6 +30,12 @@ type TenantStateStatus struct {
 	Version     Version            `json:"version,omitempty"`
 	LastUpdated metav1.Time        `json:"lastUpdated,omitempty"`
 	Conditions  []metav1.Condition `json:"conditions,omitempty"`
+
+	LoadBalancer LoadBalancerState `json:"loadBalancer,omitempty"`
+}
+
+type LoadBalancerState struct {
+	Disable bool `json:"disable,omitempty"`
 }
 
 type Version struct {

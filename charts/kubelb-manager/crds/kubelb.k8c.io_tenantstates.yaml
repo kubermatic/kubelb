@@ -101,6 +101,11 @@ spec:
               lastUpdated:
                 format: date-time
                 type: string
+              loadBalancer:
+                properties:
+                  disable:
+                    type: boolean
+                type: object
               version:
                 properties:
                   buildDate:

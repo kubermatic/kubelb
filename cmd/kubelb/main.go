@@ -218,11 +218,12 @@ func main() {
 	}
 
 	if err = (&kubelb.TenantReconciler{
-		Client:   mgr.GetClient(),
-		Scheme:   mgr.GetScheme(),
-		Config:   mgr.GetConfig(),
-		Log:      ctrl.Log.WithName("controllers").WithName(kubelb.RouteControllerName),
-		Recorder: mgr.GetEventRecorderFor(kubelb.RouteControllerName),
+		Client:    mgr.GetClient(),
+		Scheme:    mgr.GetScheme(),
+		Config:    mgr.GetConfig(),
+		Log:       ctrl.Log.WithName("controllers").WithName(kubelb.RouteControllerName),
+		Recorder:  mgr.GetEventRecorderFor(kubelb.RouteControllerName),
+		Namespace: opt.namespace,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", kubelb.RouteControllerName)
 		os.Exit(1)

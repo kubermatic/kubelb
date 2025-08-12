@@ -36,6 +36,7 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 	discoveryv1 "k8s.io/api/discovery/v1"
+	"k8s.io/apimachinery/pkg/api/equality"
 	kerrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -84,10 +85,11 @@ users:
 type TenantReconciler struct {
 	ctrlruntimeclient.Client
 
-	Config   *rest.Config
-	Log      logr.Logger
-	Scheme   *runtime.Scheme
-	Recorder record.EventRecorder
+	Config    *rest.Config
+	Log       logr.Logger
+	Scheme    *runtime.Scheme
+	Recorder  record.EventRecorder
+	Namespace string
 }
 
 // +kubebuilder:rbac:groups="",resources=namespaces,verbs=get;list;watch;create;update;patch;delete
@@ -440,22 +442,56 @@ func (r *TenantReconciler) reconcileTenantState(ctx context.Context, tenant *kub
 		return err
 	}
 
-	// Now update the status separately if version info has changed
-	currentVersion := version.GetVersion()
-	if tenantState.Status.Version != currentVersion {
-		tenantState.Status = kubelbv1alpha1.TenantStateStatus{
-			Version:     currentVersion,
-			LastUpdated: metav1.Now(),
-			Conditions:  tenantState.Status.Conditions, // Preserve existing conditions
-		}
+	// Generate updated status
+	newStatus := r.buildTenantState(ctx, tenant, version.GetVersion(), tenantState.Status.Conditions)
 
-		// Update the status subresource
+	// Update status if required.
+	if r.shouldUpdateStatus(tenantState.Status, newStatus) {
+		tenantState.Status = newStatus
 		if err := r.Status().Update(ctx, tenantState); err != nil {
 			return fmt.Errorf("failed to update TenantState status: %w", err)
 		}
 	}
-
 	return nil
+}
+
+// buildTenantState constructs the TenantState status with current configuration
+func (r *TenantReconciler) buildTenantState(ctx context.Context, tenant *kubelbv1alpha1.Tenant, currentVersion kubelbv1alpha1.Version, existingConditions []metav1.Condition) kubelbv1alpha1.TenantStateStatus {
+	status := kubelbv1alpha1.TenantStateStatus{
+		Version:     currentVersion,
+		LastUpdated: metav1.Now(),
+		Conditions:  existingConditions,
+	}
+
+	// Try to get Config to populate configuration-dependent fields
+	config, configErr := GetConfig(ctx, r.Client, r.Namespace)
+	if configErr != nil {
+		r.Log.V(2).Info("Could not get Config resource, using default values", "error", configErr)
+	}
+
+	loadBalancerState := kubelbv1alpha1.LoadBalancerState{}
+	switch {
+	case tenant.Spec.LoadBalancer.Disable:
+		loadBalancerState.Disable = true
+	case config.Spec.LoadBalancer.Disable:
+		loadBalancerState.Disable = true
+	}
+	status.LoadBalancer = loadBalancerState
+	return status
+}
+
+// shouldUpdateStatus checks if the status needs to be updated
+func (r *TenantReconciler) shouldUpdateStatus(current, newTenantStatus kubelbv1alpha1.TenantStateStatus) bool {
+	if current.Version != newTenantStatus.Version ||
+		current.LoadBalancer != newTenantStatus.LoadBalancer {
+		return true
+	}
+
+	if !equality.Semantic.DeepEqual(current.Conditions, newTenantStatus.Conditions) {
+		return true
+	}
+
+	return false
 }
 
 func (r *TenantReconciler) SetupWithManager(mgr ctrl.Manager) error {
