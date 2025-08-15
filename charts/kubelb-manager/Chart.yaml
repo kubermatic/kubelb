@@ -12,3 +12,9 @@ maintainers:
 version: v1.1.0
 # Application version to be deployed.
 appVersion: v1.1.0
+
+dependencies:
+  - name: kubelb-addons
+    repository: oci://quay.io/kubermatic/helm-charts/
+    condition: kubelb-addons.enabled
+    version: v0.1.0

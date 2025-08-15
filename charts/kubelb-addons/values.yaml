@@ -1,0 +1,58 @@
+# Ingress Nginx
+ingress-nginx:
+  enabled: false
+
+# Envoy Gateway
+envoy-gateway:
+  enabled: false
+
+# Cert Manager
+cert-manager:
+  enabled: false
+  crds:
+    enabled: true
+  config:
+    apiVersion: controller.config.cert-manager.io/v1alpha1
+    kind: ControllerConfiguration
+    enableGatewayAPI: true
+
+# External DNS
+external-dns:
+  enabled: false
+  # do not allow any domain that are now below these base domains
+  domainFilters:
+    - ${DOMAIN}
+  extraVolumes:
+    - name: credentials
+      secret:
+        # NOTE: this secret is created outside of this helm chart.
+        secretName: route53-credentials
+  extraVolumeMounts:
+    - name: credentials
+      mountPath: /.aws
+      readOnly: true
+  env:
+    - name: AWS_SHARED_CREDENTIALS_FILE
+      value: /.aws/credentials
+  txtOwnerId: kubelb-management
+  registry: txt
+  provider: aws
+  policy: sync
+  sources:
+    - service
+    - ingress
+    - gateway-httproute
+    - gateway-grpcroute
+    - gateway-tlsroute
+    - gateway-tcproute
+    - gateway-udproute
+
+## KGateway Integration
+
+## KGateway CRDs
+kgateway-crds:
+  enabled: false
+
+## KGateway
+kgateway:
+  enabled: false

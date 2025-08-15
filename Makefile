@@ -261,13 +261,16 @@ generate-helm-docs: helm-docs
 
 .PHONY: bump-chart
 bump-chart:
-	$(SED) -i "s/^version:.*/version: $(IMAGE_TAG)/" charts/*/Chart.yaml
-	$(SED) -i "s/^appVersion:.*/appVersion: $(IMAGE_TAG)/" charts/*/Chart.yaml
-	$(SED) -i "s/tag:.*/tag: $(IMAGE_TAG)/" charts/*/values.yaml
+	$(SED) -i "s/^version:.*/version: $(IMAGE_TAG)/" charts/kubelb-ccm/Chart.yaml charts/kubelb-manager/Chart.yaml
+	$(SED) -i "s/^appVersion:.*/appVersion: $(IMAGE_TAG)/" charts/kubelb-ccm/Chart.yaml charts/kubelb-manager/Chart.yaml
+	$(SED) -i "s/tag:.*/tag: $(IMAGE_TAG)/" charts/kubelb-ccm/values.yaml charts/kubelb-manager/values.yaml
 
 .PHONY: release-charts helm-docs generate-helm-docs
 release-charts: bump-chart helm-lint generate-helm-docs
 	CHART_VERSION=$(IMAGE_TAG) ./hack/release-helm-charts.sh
+
+release-addons-chart: helm-lint generate-helm-docs
+	CHART_VERSION=$(IMAGE_TAG) RELEASE_ADDONS_ONLY=true ./hack/release-helm-charts.sh
 
 .PHONY: crd-ref-docs
 crd-ref-docs: $(CRD_REF_DOCS) ## Download crd-ref-docs locally if necessary.
