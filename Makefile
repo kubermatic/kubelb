@@ -18,6 +18,7 @@ RECONCILE_HELPER_PATH = "internal/resources/reconciling/zz_generated_reconcile.g
 
 GATEWAY_RELEASE_CHANNEL ?= standard
 GATEWAY_API_VERSION ?= v1.3.0
+KUBELB_ADDONS_CHART_VERSION ?= v0.0.1
 
 export GOPATH?=$(shell go env GOPATH)
 export CGO_ENABLED=0
@@ -270,7 +271,7 @@ release-charts: bump-chart helm-lint generate-helm-docs
 	CHART_VERSION=$(IMAGE_TAG) ./hack/release-helm-charts.sh
 
 release-addons-chart: helm-lint generate-helm-docs
-	CHART_VERSION=$(IMAGE_TAG) RELEASE_ADDONS_ONLY=true ./hack/release-helm-charts.sh
+	CHART_VERSION=$(KUBELB_ADDONS_CHART_VERSION) RELEASE_ADDONS_ONLY=true ./hack/release-helm-charts.sh
 
 .PHONY: crd-ref-docs
 crd-ref-docs: $(CRD_REF_DOCS) ## Download crd-ref-docs locally if necessary.

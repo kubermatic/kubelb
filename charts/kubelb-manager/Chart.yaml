@@ -15,6 +15,6 @@ appVersion: v1.1.0
 
 dependencies:
   - name: kubelb-addons
-    repository: oci://quay.io/kubermatic/helm-charts/
+    repository: oci://quay.io/kubermatic/helm-charts
     condition: kubelb-addons.enabled
-    version: v0.1.0
+    version: v0.0.1
