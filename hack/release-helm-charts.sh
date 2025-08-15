@@ -22,6 +22,7 @@ source hack/lib.sh
 JOB_NAME=${JOB_NAME:-}
 PROW_JOB_ID=${PROW_JOB_ID:-}
 CHART_VERSION=${CHART_VERSION:-}
+RELEASE_ADDONS_ONLY=${RELEASE_ADDONS_ONLY:-false}
 
 ## When running out of CI, it's expected that the user has already configured vault
 if [ -n "$JOB_NAME" ] || [ -n "$PROW_JOB_ID" ]; then
@@ -47,23 +48,40 @@ REGISTRY_PASSWORD="${REGISTRY_PASSWORD:-$(vault kv get -field=password dev/kuber
 echo ${REGISTRY_PASSWORD} | helm registry login ${REGISTRY_HOST} --username ${REGISTRY_USER} --password-stdin
 
 # Package and publish charts
-MANAGER="kubelb-manager"
-CCM="kubelb-ccm"
-CHART_PACKAGE_MANAGER="${MANAGER}-${CHART_VERSION}.tgz"
-CHART_PACKAGE_CCM="${CCM}-${CHART_VERSION}.tgz"
+if [ "$RELEASE_ADDONS_ONLY" = "true" ]; then
+  # Release only addons chart
+  ADDONS="kubelb-addons"
+  CHART_PACKAGE_ADDONS="${ADDONS}-${CHART_VERSION}.tgz"
 
-echodate "Packaging helm charts ${CHART_PACKAGE_MANAGER} and ${CHART_PACKAGE_CCM}"
+  echodate "Packaging helm chart ${CHART_PACKAGE_ADDONS}"
 
-helm dependency build charts/kubelb-manager
-helm dependency build charts/kubelb-ccm
+  helm dependency build charts/${ADDONS}
+  helm package charts/${ADDONS} --version ${CHART_VERSION} --destination ./
 
-helm package charts/${MANAGER} --version ${CHART_VERSION} --destination ./
-helm package charts/${CCM} --version ${CHART_VERSION} --destination ./
+  echodate "Publishing helm chart to OCI registry ${REGISTRY_HOST}/${REPOSITORY_PREFIX}"
+  helm push ${CHART_PACKAGE_ADDONS} oci://${REGISTRY_HOST}/${REPOSITORY_PREFIX}
 
-echodate "Publishing helm charts to OCI registry ${REGISTRY_HOST}/${REPOSITORY_PREFIX}"
-helm push ${CHART_PACKAGE_MANAGER} oci://${REGISTRY_HOST}/${REPOSITORY_PREFIX}
-helm push ${CHART_PACKAGE_CCM} oci://${REGISTRY_HOST}/${REPOSITORY_PREFIX}
+  rm ${CHART_PACKAGE_ADDONS}
+else
+  # Release manager and ccm charts (default behavior)
+  MANAGER="kubelb-manager"
+  CCM="kubelb-ccm"
+  CHART_PACKAGE_MANAGER="${MANAGER}-${CHART_VERSION}.tgz"
+  CHART_PACKAGE_CCM="${CCM}-${CHART_VERSION}.tgz"
 
-rm ${CHART_PACKAGE_MANAGER}
-rm ${CHART_PACKAGE_CCM}
+  echodate "Packaging helm charts ${CHART_PACKAGE_MANAGER} and ${CHART_PACKAGE_CCM}"
+
+  helm dependency build charts/kubelb-manager
+  helm dependency build charts/kubelb-ccm
+
+  helm package charts/${MANAGER} --version ${CHART_VERSION} --destination ./
+  helm package charts/${CCM} --version ${CHART_VERSION} --destination ./
+
+  echodate "Publishing helm charts to OCI registry ${REGISTRY_HOST}/${REPOSITORY_PREFIX}"
+  helm push ${CHART_PACKAGE_MANAGER} oci://${REGISTRY_HOST}/${REPOSITORY_PREFIX}
+  helm push ${CHART_PACKAGE_CCM} oci://${REGISTRY_HOST}/${REPOSITORY_PREFIX}
+
+  rm ${CHART_PACKAGE_MANAGER}
+  rm ${CHART_PACKAGE_CCM}
+fi
 helm registry logout ${REGISTRY_HOST}
