@@ -270,7 +270,11 @@ bump-chart:
 release-charts: bump-chart helm-lint generate-helm-docs
 	CHART_VERSION=$(IMAGE_TAG) ./hack/release-helm-charts.sh
 
-release-addons-chart: helm-lint generate-helm-docs
+bump-addons-chart:
+	$(SED) -i "s/^version:.*/version: $(KUBELB_ADDONS_CHART_VERSION)/" charts/kubelb-addons/Chart.yaml
+	$(SED) -i "s/^appVersion:.*/appVersion: $(KUBELB_ADDONS_CHART_VERSION)/" charts/kubelb-addons/Chart.yaml
+
+release-addons-chart: bump-addons-chart helm-lint generate-helm-docs
 	CHART_VERSION=$(KUBELB_ADDONS_CHART_VERSION) RELEASE_ADDONS_ONLY=true ./hack/release-helm-charts.sh
 
 .PHONY: crd-ref-docs

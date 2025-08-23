@@ -1,3 +1,14 @@
+# ------------------------------------------------------------
+# Addons configuration
+# ------------------------------------------------------------
+
+gatewayClass:
+  create: false
+
+# ------------------------------------------------------------
+# Upstream Addons configuration
+# ------------------------------------------------------------
+
 # Ingress Nginx
 ingress-nginx:
   enabled: false
@@ -56,3 +67,8 @@ kgateway-crds:
 ## KGateway
 kgateway:
   enabled: false
+  gateway:
+    aiExtension:
+      enabled: true
+  agentgateway:
+    enabled: false

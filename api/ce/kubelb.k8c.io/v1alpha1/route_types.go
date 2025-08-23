@@ -60,9 +60,6 @@ type KubernetesSource struct {
 	Services []UpstreamService `json:"services,omitempty"`
 }
 
-// TODO(waleed): Evaluate if this is really worth it, semantically it makes sense but it adds a lot of boilerplate. Alternatively,
-// we can simply use YQ and add the required markers/fields in the CRD. This will also make the CRD more readable.
-
 // UpstreamService is a wrapper over the corev1.Service object.
 // This is required as kubebuilder:validation:EmbeddedResource marker adds the x-kubernetes-embedded-resource to the array instead of
 // the elements within it. Which results in a broken CRD; validation error. Without this marker, the embedded resource is not properly
