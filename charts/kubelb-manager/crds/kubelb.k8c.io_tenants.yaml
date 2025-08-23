@@ -66,6 +66,16 @@ spec:
                       AllowExplicitHostnames is a flag that can be used to allow explicit hostnames to be used for DNS resources.
                       This is only used when LoadBalancer.Spec.Hostname is set.
                     type: boolean
+                  useCertificateAnnotations:
+                    description: |-
+                      UseCertificateAnnotations is a flag that can be used to add Certificate annotations to Certificate resources.
+                      This is only used when LoadBalancer.Spec.Hostname is set.
+                    type: boolean
+                  useDNSAnnotations:
+                    description: |-
+                      UseDNSAnnotations is a flag that can be used to add DNS annotations to DNS resources.
+                      This is only used when LoadBalancer.Spec.Hostname is set.
+                    type: boolean
                   wildcardDomain:
                     description: |-
                       WildcardDomain is the domain that will be used as the base domain to create wildcard DNS records for DNS resources.

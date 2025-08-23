@@ -48,6 +48,16 @@ type DNSSettings struct {
 	// This is only used when LoadBalancer.Spec.Hostname is set.
 	// +optional
 	AllowExplicitHostnames *bool `json:"allowExplicitHostnames,omitempty"`
+
+	// UseDNSAnnotations is a flag that can be used to add DNS annotations to DNS resources.
+	// This is only used when LoadBalancer.Spec.Hostname is set.
+	// +optional
+	UseDNSAnnotations *bool `json:"useDNSAnnotations,omitempty"`
+
+	// UseCertificateAnnotations is a flag that can be used to add Certificate annotations to Certificate resources.
+	// This is only used when LoadBalancer.Spec.Hostname is set.
+	// +optional
+	UseCertificateAnnotations *bool `json:"useCertificateAnnotations,omitempty"`
 }
 
 // LoadBalancerSettings defines the settings for the load balancers.

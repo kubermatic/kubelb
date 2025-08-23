@@ -25,7 +25,6 @@ import (
 	kubelbv1alpha1 "k8c.io/kubelb/api/ce/kubelb.k8c.io/v1alpha1"
 	utils "k8c.io/kubelb/internal/controllers"
 	"k8c.io/kubelb/internal/kubelb"
-	"k8c.io/kubelb/internal/resources"
 	util "k8c.io/kubelb/internal/util/kubernetes"
 
 	networkingv1 "k8s.io/api/networking/v1"
@@ -218,16 +217,7 @@ func CreateIngressForHostname(ctx context.Context, client ctrlclient.Client, loa
 	}
 
 	ingress.Annotations = kubelb.PropagateAnnotations(loadBalancer.Annotations, annotations, kubelbv1alpha1.AnnotatedResourceIngress)
-
-	// Add cert-manager and external-dns annotations for automated DNS and TLS
-	if tenant.Spec.Certificates.DefaultClusterIssuer != nil {
-		ingress.Annotations[resources.CertManagerClusterIssuerAnnotation] = *tenant.Spec.Certificates.DefaultClusterIssuer
-	} else if config.Spec.Certificates.DefaultClusterIssuer != nil {
-		ingress.Annotations[resources.CertManagerClusterIssuerAnnotation] = *config.Spec.Certificates.DefaultClusterIssuer
-	}
-
-	ingress.Annotations[resources.ExternalDNSHostnameAnnotation] = hostname
-	ingress.Annotations[resources.ExternalDNSTTLAnnotation] = resources.ExternalDNSTTLDefault
+	kubelb.AddDNSAndCertificateAnnotations(ingress.Annotations, tenant, config, hostname, false)
 
 	// Set controller reference to LoadBalancer so Ingress gets auto-deleted when LoadBalancer is deleted
 	if err := ctrl.SetControllerReference(loadBalancer, ingress, client.Scheme()); err != nil {

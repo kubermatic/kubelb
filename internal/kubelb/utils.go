@@ -21,6 +21,7 @@ import (
 	"strings"
 
 	kubelbv1alpha1 "k8c.io/kubelb/api/ce/kubelb.k8c.io/v1alpha1"
+	"k8c.io/kubelb/internal/resources"
 
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
@@ -177,4 +178,47 @@ func AddKubeLBLabels(labels map[string]string, name, namespace, gvk string) map[
 		labels[LabelOriginResourceKind] = gvk
 	}
 	return labels
+}
+
+// AddDNSAndCertificateAnnotations adds DNS and certificate annotations based on tenant and config settings
+func AddDNSAndCertificateAnnotations(annotations map[string]string, tenant *kubelbv1alpha1.Tenant, config *kubelbv1alpha1.Config, hostname string, skipCertificateAnnotations bool) {
+	if annotations == nil {
+		annotations = make(map[string]string)
+	}
+
+	// Add DNS annotations if enabled
+	var shouldAddDNS bool
+	if tenant.Spec.DNS.UseDNSAnnotations != nil {
+		// Tenant has explicit setting - use it
+		shouldAddDNS = *tenant.Spec.DNS.UseDNSAnnotations
+	} else {
+		// Tenant setting is null - fall back to config
+		shouldAddDNS = config.Spec.DNS.UseDNSAnnotations
+	}
+
+	if shouldAddDNS {
+		annotations[resources.ExternalDNSHostnameAnnotation] = hostname
+		annotations[resources.ExternalDNSTTLAnnotation] = resources.ExternalDNSTTLDefault
+	}
+
+	// Add certificate annotations if enabled and not skipped
+	if !skipCertificateAnnotations {
+		var shouldAddCert bool
+		if tenant.Spec.DNS.UseCertificateAnnotations != nil {
+			// Tenant has explicit setting - use it
+			shouldAddCert = *tenant.Spec.DNS.UseCertificateAnnotations
+		} else {
+			// Tenant setting is null - fall back to config
+			shouldAddCert = config.Spec.DNS.UseCertificateAnnotations
+		}
+
+		if shouldAddCert {
+			// Determine which cluster issuer to use
+			if tenant.Spec.Certificates.DefaultClusterIssuer != nil {
+				annotations[resources.CertManagerClusterIssuerAnnotation] = *tenant.Spec.Certificates.DefaultClusterIssuer
+			} else if config.Spec.Certificates.DefaultClusterIssuer != nil {
+				annotations[resources.CertManagerClusterIssuerAnnotation] = *config.Spec.Certificates.DefaultClusterIssuer
+			}
+		}
+	}
 }

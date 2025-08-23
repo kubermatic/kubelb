@@ -25,7 +25,6 @@ import (
 	kubelbv1alpha1 "k8c.io/kubelb/api/ce/kubelb.k8c.io/v1alpha1"
 	utils "k8c.io/kubelb/internal/controllers"
 	"k8c.io/kubelb/internal/kubelb"
-	"k8c.io/kubelb/internal/resources"
 
 	"k8s.io/apimachinery/pkg/api/equality"
 	kerrors "k8s.io/apimachinery/pkg/api/errors"
@@ -277,16 +276,7 @@ func CreateHTTPRouteForHostname(ctx context.Context, client ctrlclient.Client, l
 	}
 
 	httpRoute.Annotations = kubelb.PropagateAnnotations(loadBalancer.Annotations, annotations, kubelbv1alpha1.AnnotatedResourceHTTPRoute)
-
-	// Add cert-manager and external-dns annotations for automated DNS and TLS
-	if tenant.Spec.Certificates.DefaultClusterIssuer != nil {
-		httpRoute.Annotations[resources.CertManagerClusterIssuerAnnotation] = *tenant.Spec.Certificates.DefaultClusterIssuer
-	} else if config.Spec.Certificates.DefaultClusterIssuer != nil {
-		httpRoute.Annotations[resources.CertManagerClusterIssuerAnnotation] = *config.Spec.Certificates.DefaultClusterIssuer
-	}
-
-	httpRoute.Annotations[resources.ExternalDNSHostnameAnnotation] = hostname
-	httpRoute.Annotations[resources.ExternalDNSTTLAnnotation] = resources.ExternalDNSTTLDefault
+	kubelb.AddDNSAndCertificateAnnotations(httpRoute.Annotations, tenant, config, hostname, true)
 
 	// Set controller reference to LoadBalancer so HTTPRoute gets auto-deleted when LoadBalancer is deleted
 	if err := ctrl.SetControllerReference(loadBalancer, httpRoute, client.Scheme()); err != nil {

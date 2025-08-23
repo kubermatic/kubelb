@@ -81,6 +81,16 @@ type ConfigDNSSettings struct {
 	// This is only used when LoadBalancer.Spec.Hostname or Tunnel.Spec.Hostname is set.
 	// +optional
 	AllowExplicitHostnames bool `json:"allowExplicitHostnames,omitempty"`
+
+	// UseDNSAnnotations is a flag that can be used to add DNS annotations to DNS resources.
+	// This is only used when LoadBalancer.Spec.Hostname or Tunnel.Spec.Hostname is set.
+	// +optional
+	UseDNSAnnotations bool `json:"useDNSAnnotations,omitempty"`
+
+	// UseCertificateAnnotations is a flag that can be used to add Certificate annotations to Certificate resources.
+	// This is only used when LoadBalancer.Spec.Hostname or Tunnel.Spec.Hostname is set.
+	// +optional
+	UseCertificateAnnotations bool `json:"useCertificateAnnotations,omitempty"`
 }
 
 // ConfigCertificatesSettings defines the global settings for the certificates.
