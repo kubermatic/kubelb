@@ -5,6 +5,8 @@ ingress-nginx:
 # Envoy Gateway
 envoy-gateway:
   enabled: false
+  gatewayclass:
+    create: false
 
 # Cert Manager
 cert-manager:
@@ -47,3 +49,5 @@ kgateway-crds:
 ## KGateway
 kgateway:
   enabled: false
+  gatewayclass:
+    create: false
