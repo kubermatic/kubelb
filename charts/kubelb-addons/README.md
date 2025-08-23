@@ -2,12 +2,12 @@
 
 Helm chart for deploying optional addons to enhance KubeLB functionality.
 
-![Version: v0.1.0](https://img.shields.io/badge/Version-v0.1.0-informational?style=flat-square) ![Type: application](https://img.shields.io/badge/Type-application-informational?style=flat-square) ![AppVersion: v0.1.0](https://img.shields.io/badge/AppVersion-v0.1.0-informational?style=flat-square)
+![Version: v0.0.1](https://img.shields.io/badge/Version-v0.0.1-informational?style=flat-square) ![Type: application](https://img.shields.io/badge/Type-application-informational?style=flat-square) ![AppVersion: v0.0.1](https://img.shields.io/badge/AppVersion-v0.0.1-informational?style=flat-square)
 
 ## Installing the chart
 
 ```sh
-helm pull oci://quay.io/kubermatic/helm-charts/kubelb-addons --version=v0.1.0 --untardir "kubelb-addons" --untar
+helm pull oci://quay.io/kubermatic/helm-charts/kubelb-addons --version=v0.0.1 --untardir "kubelb-addons" --untar
 ## Create and update values.yaml with the required values.
 helm install kubelb-addons kubelb-addons --namespace kubelb -f values.yaml --create-namespace
 ```
@@ -111,7 +111,9 @@ These are the default values to use when Gateway API is disabled for KubeLB in f
 | external-dns.txtOwnerId | string | `"kubelb-management"` |  |
 | ingress-nginx.enabled | bool | `false` |  |
 | kgateway-crds.enabled | bool | `false` |  |
+| kgateway.agentgateway.enabled | bool | `false` |  |
 | kgateway.enabled | bool | `false` |  |
+| kgateway.gateway.aiExtension.enabled | bool | `true` |  |
 
 ## Maintainers
 

@@ -7,8 +7,8 @@ maintainers:
   - name: Kubermatic
     email: support@kubermatic.com
     url: https://kubermatic.com
-version: v0.1.0
-appVersion: v0.1.0
+version: v0.0.1
+appVersion: v0.0.1
 dependencies:
   - name: ingress-nginx
     repository: https://kubernetes.github.io/ingress-nginx
