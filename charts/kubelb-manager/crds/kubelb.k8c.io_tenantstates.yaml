@@ -14,7 +14,11 @@ spec:
     singular: tenantstate
   scope: Namespaced
   versions:
-  - name: v1alpha1
+  - additionalPrinterColumns:
+    - jsonPath: .status.version.edition
+      name: Edition
+      type: string
+    name: v1alpha1
     schema:
       openAPIV3Schema:
         description: TenantState is the Schema for the tenants API

@@ -133,6 +133,7 @@ type LoadBalancerSpec struct {
 // +kubebuilder:resource:shortName=lb
 // +kubebuilder:printcolumn:JSONPath=".metadata.labels.kubelb\\.k8c\\.io/origin-name",name="OriginName",type="string"
 // +kubebuilder:printcolumn:JSONPath=".metadata.labels.kubelb\\.k8c\\.io/origin-ns",name="OriginNamespace",type="string"
+// +kubebuilder:printcolumn:JSONPath=".status.hostname.hostname",name="Hostname",type="string"
 // +genclient
 
 // LoadBalancer is the Schema for the loadbalancers API

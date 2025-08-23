@@ -49,6 +49,7 @@ type Version struct {
 // +kubebuilder:object:generate=true
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
+// +kubebuilder:printcolumn:JSONPath=".status.version.edition",name="Edition",type="string"
 
 // TenantState is the Schema for the tenants API
 type TenantState struct {
