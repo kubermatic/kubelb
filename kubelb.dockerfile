@@ -29,10 +29,8 @@ COPY internal/ internal/
 COPY VERSION VERSION
 COPY Makefile Makefile
 
-# Optional build args for version info (if not provided, Makefile will use defaults)
-ARG GIT_VERSION
-ARG GIT_COMMIT
-ARG BUILD_DATE
+# Required to build the image with the correct version info.
+COPY .git/ .git/
 
 RUN make build-kubelb
 
