@@ -1,4 +1,4 @@
-{{ if .Values.envoy-gateway.enabled && .Values.envoy-gateway.gatewayclass.create }}
+{{ if .Values.envoy-gateway.enabled && .Values.gatewayClass.create }}
 apiVersion: gateway.networking.k8s.io/v1
 kind: GatewayClass
 metadata:
@@ -10,7 +10,7 @@ spec:
   controllerName: gateway.envoyproxy.io/gatewayclass-controller
 {{ end }}
 ---
-{{ if .Values.kgateway.enabled && .Values.kgateway.gatewayclass.create }}
+{{ if .Values.kgateway.enabled && .Values.gatewayClass.create }}
 apiVersion: gateway.networking.k8s.io/v1
 kind: GatewayClass
 metadata:

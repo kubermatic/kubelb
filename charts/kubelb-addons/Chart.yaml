@@ -18,6 +18,7 @@ dependencies:
     repository: oci://docker.io/envoyproxy
     condition: envoy-gateway.enabled
     version: 1.3.0
+    alias: envoy-gateway
   - name: cert-manager
     repository: https://charts.jetstack.io
     condition: cert-manager.enabled

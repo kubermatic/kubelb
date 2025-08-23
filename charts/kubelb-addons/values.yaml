@@ -1,3 +1,14 @@
+# ------------------------------------------------------------
+# Addons configuration
+# ------------------------------------------------------------
+
+gatewayClass:
+  create: false
+
+# ------------------------------------------------------------
+# Upstream Addons configuration
+# ------------------------------------------------------------
+
 # Ingress Nginx
 ingress-nginx:
   enabled: false
@@ -5,8 +16,6 @@ ingress-nginx:
 # Envoy Gateway
 envoy-gateway:
   enabled: false
-  gatewayclass:
-    create: true
 
 # Cert Manager
 cert-manager:
@@ -58,9 +67,7 @@ kgateway-crds:
 ## KGateway
 kgateway:
   enabled: false
-  gatewayclass:
-    create: true
-  gateway:  
+  gateway:
     aiExtension:
       enabled: true
   agentgateway:
