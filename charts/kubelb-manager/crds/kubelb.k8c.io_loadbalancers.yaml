@@ -23,6 +23,9 @@ spec:
     - jsonPath: .metadata.labels.kubelb\.k8c\.io/origin-ns
       name: OriginNamespace
       type: string
+    - jsonPath: .status.hostname.hostname
+      name: Hostname
+      type: string
     name: v1alpha1
     schema:
       openAPIV3Schema:
