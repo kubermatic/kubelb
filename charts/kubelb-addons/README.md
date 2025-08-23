@@ -77,7 +77,7 @@ These are the default values to use when Gateway API is disabled for KubeLB in f
 | https://kubernetes.github.io/ingress-nginx | ingress-nginx | 4.13.0 |
 | oci://cr.kgateway.dev/kgateway-dev/charts | kgateway | v2.0.4 |
 | oci://cr.kgateway.dev/kgateway-dev/charts | kgateway-crds | v2.0.4 |
-| oci://docker.io/envoyproxy | gateway-helm | 1.3.0 |
+| oci://docker.io/envoyproxy | envoy-gateway(gateway-helm) | 1.3.0 |
 
 ## Values
 
@@ -109,7 +109,8 @@ These are the default values to use when Gateway API is disabled for KubeLB in f
 | external-dns.sources[5] | string | `"gateway-tcproute"` |  |
 | external-dns.sources[6] | string | `"gateway-udproute"` |  |
 | external-dns.txtOwnerId | string | `"kubelb-management"` |  |
-| ingress-nginx.enabled | bool | `false` |  |
+| gatewayClass.create | bool | `false` |  |
+| ingress-nginx | object | `{"enabled":false}` | ---------------------------------------------------------- Ingress Nginx |
 | kgateway-crds.enabled | bool | `false` |  |
 | kgateway.agentgateway.enabled | bool | `false` |  |
 | kgateway.enabled | bool | `false` |  |
