@@ -58,8 +58,11 @@ external-dns:
     - gateway-tcproute
     - gateway-udproute
 
-## KGateway Integration
+# Metallb
+metallb:
+  enabled: false
 
+## KGateway Integration
 ## KGateway CRDs
 kgateway-crds:
   enabled: false

@@ -2,12 +2,12 @@
 
 Helm chart for deploying optional addons to enhance KubeLB functionality.
 
-![Version: v0.0.1](https://img.shields.io/badge/Version-v0.0.1-informational?style=flat-square) ![Type: application](https://img.shields.io/badge/Type-application-informational?style=flat-square) ![AppVersion: v0.0.1](https://img.shields.io/badge/AppVersion-v0.0.1-informational?style=flat-square)
+![Version: v0.0.2](https://img.shields.io/badge/Version-v0.0.2-informational?style=flat-square) ![Type: application](https://img.shields.io/badge/Type-application-informational?style=flat-square) ![AppVersion: v0.0.2](https://img.shields.io/badge/AppVersion-v0.0.2-informational?style=flat-square)
 
 ## Installing the chart
 
 ```sh
-helm pull oci://quay.io/kubermatic/helm-charts/kubelb-addons --version=v0.0.1 --untardir "kubelb-addons" --untar
+helm pull oci://quay.io/kubermatic/helm-charts/kubelb-addons --version=v0.0.2 --untardir "kubelb-addons" --untar
 ## Create and update values.yaml with the required values.
 helm install kubelb-addons kubelb-addons --namespace kubelb -f values.yaml --create-namespace
 ```
@@ -21,6 +21,7 @@ This chart packages commonly used networking and certificate management tools th
 - **cert-manager**: Automatic TLS certificate management
 - **external-dns**: Synchronize exposed services with DNS providers
 - **kgateway**: Kubernetes Gateway API implementation
+- **metallb**: LoadBalancer implementation for Kubernetes
 
 ## Configuration
 
@@ -75,6 +76,7 @@ These are the default values to use when Gateway API is disabled for KubeLB in f
 | https://charts.jetstack.io | cert-manager | 1.18.2 |
 | https://kubernetes-sigs.github.io/external-dns | external-dns | 1.18.0 |
 | https://kubernetes.github.io/ingress-nginx | ingress-nginx | 4.13.0 |
+| https://metallb.github.io/metallb | metallb | 0.15.2 |
 | oci://cr.kgateway.dev/kgateway-dev/charts | kgateway | v2.0.4 |
 | oci://cr.kgateway.dev/kgateway-dev/charts | kgateway-crds | v2.0.4 |
 | oci://docker.io/envoyproxy | envoy-gateway(gateway-helm) | 1.3.0 |
@@ -115,6 +117,7 @@ These are the default values to use when Gateway API is disabled for KubeLB in f
 | kgateway.agentgateway.enabled | bool | `false` |  |
 | kgateway.enabled | bool | `false` |  |
 | kgateway.gateway.aiExtension.enabled | bool | `true` |  |
+| metallb.enabled | bool | `false` |  |
 
 ## Maintainers
 

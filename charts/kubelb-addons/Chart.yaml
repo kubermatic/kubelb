@@ -7,8 +7,8 @@ maintainers:
   - name: Kubermatic
     email: support@kubermatic.com
     url: https://kubermatic.com
-version: v0.0.1
-appVersion: v0.0.1
+version: v0.0.2
+appVersion: v0.0.2
 dependencies:
   - name: ingress-nginx
     repository: https://kubernetes.github.io/ingress-nginx
@@ -27,6 +27,10 @@ dependencies:
     repository: https://kubernetes-sigs.github.io/external-dns
     condition: external-dns.enabled
     version: 1.18.0
+  - name: metallb
+    repository: https://metallb.github.io/metallb
+    condition: metallb.enabled
+    version: 0.15.2
   - name: kgateway-crds
     repository: oci://cr.kgateway.dev/kgateway-dev/charts
     condition: kgateway.crds.enabled

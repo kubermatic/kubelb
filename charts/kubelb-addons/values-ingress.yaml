@@ -39,6 +39,10 @@ external-dns:
     - service
     - ingress
 
+# Metallb
+metallb:
+  enabled: false
+
 ## KGateway Integration
 ## KGateway CRDs
 kgateway-crds:
@@ -47,3 +51,8 @@ kgateway-crds:
 ## KGateway
 kgateway:
   enabled: false
+  gateway:
+    aiExtension:
+      enabled: true
+  agentgateway:
+    enabled: false
