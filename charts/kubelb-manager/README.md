@@ -23,7 +23,7 @@ helm install kubelb-manager kubelb-manager --namespace kubelb -f values.yaml --c
 
 | Repository | Name | Version |
 |------------|------|---------|
-| oci://quay.io/kubermatic/helm-charts | kubelb-addons | v0.0.1 |
+| oci://quay.io/kubermatic/helm-charts | kubelb-addons | v0.0.2 |
 
 ## Values
 
