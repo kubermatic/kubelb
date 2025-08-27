@@ -19,6 +19,7 @@ set -euo pipefail
 # Get the root directory of the repository
 export ROOT_DIR="$(git rev-parse --show-toplevel)"
 export SCRIPT_DIR="$(dirname "$(realpath "$0")")"
+export CHAINSAW_VERSION="${CHAINSAW_VERSION:-v0.2.13}"
 
 # Source the common library functions
 source "${ROOT_DIR}/hack/lib.sh"
@@ -76,8 +77,6 @@ echodate "Using local IP: ${local_ip}"
 # Check and install Chainsaw if needed
 if ! command -v chainsaw &> /dev/null; then
   echodate "Chainsaw not found, installing..."
-  CHAINSAW_VERSION="${CHAINSAW_VERSION:-v0.2.15}"
-
   # Detect OS and architecture
   OS="$(uname -s | tr '[:upper:]' '[:lower:]')"
   ARCH="$(uname -m)"
