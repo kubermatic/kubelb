@@ -4,5 +4,5 @@ metadata:
   name: assert-service-ip
 spec:
   try:
-  - assert:
-      file: ../testdata/assert/service-has-ip.yaml
+    - assert:
+        file: ../testdata/assert/service-has-ip.yaml

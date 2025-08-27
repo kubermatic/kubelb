@@ -6,4 +6,4 @@ metadata:
 status:
   loadBalancer:
     ingress:
-    - ip: "~"
+      - ip: "~"

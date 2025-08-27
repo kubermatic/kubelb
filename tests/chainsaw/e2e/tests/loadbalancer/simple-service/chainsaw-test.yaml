@@ -7,42 +7,42 @@ spec:
   namespace: simple-service
   template: true
   bindings:
-  - name: name
-    value: simple-service-app
-  - name: tenant_namespace
-    value: tenant-vyse
+    - name: name
+      value: simple-service-app
+    - name: tenant_namespace
+      value: tenant-vyse
   steps:
-  - name: deploy application
-    description: Deploy nginx application in tenant cluster
-    cluster: vyse
-    use:
-      template:
-        ref: 
-          name: deploy-application
-  - name: create service
-    description: Create LoadBalancer service in tenant cluster
-    cluster: vyse
-    try:
-    - apply:
-        file: testdata/service.yaml
-  - name: wait for loadbalancer
-    description: Wait for LoadBalancer to be created in management cluster
-    cluster: management
-    try:
-    - assert:
-        file: testdata/loadbalancer-created.yaml
-  - name: wait for service IP
-    description: Wait for service to get LoadBalancer IP in tenant cluster
-    cluster: vyse
-    use:
-      template:
-        ref:
-          name: assert-service-ip
-  - name: test connectivity
-    description: Test HTTP connectivity using curl
-    cluster: vyse
-    try:
-    - apply:
-        file: testdata/curl-test.yaml
-    - assert:
-        file: testdata/curl-success.yaml
+    - name: deploy application
+      description: Deploy nginx application in tenant cluster
+      cluster: vyse
+      use:
+        template:
+          ref:
+            name: deploy-application
+    - name: create service
+      description: Create LoadBalancer service in tenant cluster
+      cluster: vyse
+      try:
+        - apply:
+            file: testdata/service.yaml
+    - name: wait for loadbalancer
+      description: Wait for LoadBalancer to be created in management cluster
+      cluster: management
+      try:
+        - assert:
+            file: testdata/loadbalancer-created.yaml
+    - name: wait for service IP
+      description: Wait for service to get LoadBalancer IP in tenant cluster
+      cluster: vyse
+      use:
+        template:
+          ref:
+            name: assert-service-ip
+    - name: test connectivity
+      description: Test HTTP connectivity using curl
+      cluster: vyse
+      try:
+        - apply:
+            file: testdata/curl-test.yaml
+        - assert:
+            file: testdata/curl-success.yaml

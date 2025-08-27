@@ -90,18 +90,7 @@ if ! command -v chainsaw &> /dev/null; then
   echodate "Downloading Chainsaw ${CHAINSAW_VERSION} for ${OS}_${ARCH}..."
 
   curl -sL "${CHAINSAW_URL}" | tar -xz -C /tmp
-
-  # Move to appropriate location based on permissions
-  if [[ -w /usr/local/bin ]]; then
-    sudo mv /tmp/chainsaw /usr/local/bin/chainsaw
-  elif [[ -d "${HOME}/bin" ]]; then
-    mv /tmp/chainsaw "${HOME}/bin/chainsaw"
-  else
-    mkdir -p "${HOME}/.local/bin"
-    mv /tmp/chainsaw "${HOME}/.local/bin/chainsaw"
-    export PATH="${HOME}/.local/bin:${PATH}"
-  fi
-
+  mv /tmp/chainsaw /usr/local/bin/chainsaw
   echodate "Chainsaw installed successfully"
 else
   echodate "Chainsaw is already installed: $(chainsaw version 2>/dev/null || chainsaw --version)"

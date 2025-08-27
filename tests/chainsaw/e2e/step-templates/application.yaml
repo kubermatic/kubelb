@@ -4,7 +4,7 @@ metadata:
   name: deploy-application
 spec:
   try:
-  - apply:
-      file: ../../testdata/apps/nginx-deployment.yaml
-  - assert:
-      file: ../../testdata/assert/deployment-ready.yaml
+    - apply:
+        file: ../../testdata/apps/nginx-deployment.yaml
+    - assert:
+        file: ../../testdata/assert/deployment-ready.yaml

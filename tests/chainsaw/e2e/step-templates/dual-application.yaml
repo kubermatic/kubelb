@@ -4,7 +4,7 @@ metadata:
   name: apply-dual-application
 spec:
   try:
-  - apply:
-      file: ../testdata/apps/dual-app-deployment.yaml
-  - assert:
-      file: ../testdata/assert/deployment-ready.yaml
+    - apply:
+        file: ../testdata/apps/dual-app-deployment.yaml
+    - assert:
+        file: ../testdata/assert/deployment-ready.yaml
