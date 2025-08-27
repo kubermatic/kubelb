@@ -75,6 +75,16 @@ echodate() {
   echo "[$(date +%Y-%m-%dT%H:%M:%S%:z)]" "$@"
 }
 
+# returns the current time as a number of milliseconds
+nowms() {
+  echo $(($(date +%s%N) / 1000000))
+}
+
+# returns the number of milliseconds elapsed since the given time
+elapsed() {
+  echo $(($(nowms) - $1))
+}
+
 write_junit() {
   # Doesn't make any sense if we don't know a testname
   if [ -z "${TEST_NAME:-}" ]; then return; fi

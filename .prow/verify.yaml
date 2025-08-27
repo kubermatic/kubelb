@@ -160,7 +160,7 @@ presubmits:
               start-docker.sh
               docker load --input /kindest.tar
               make download-gocache
-              ./hack/ci/e2e/run-tests.sh
+              ./tests/chainsaw/hack/run-e2e-tests.sh
           resources:
             requests:
               memory: 4Gi

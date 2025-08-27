@@ -1,0 +1,10 @@
+apiVersion: chainsaw.kyverno.io/v1alpha1
+kind: StepTemplate
+metadata:
+  name: apply-dual-application
+spec:
+  try:
+  - apply:
+      file: ../testdata/apps/dual-app-deployment.yaml
+  - assert:
+      file: ../testdata/assert/deployment-ready.yaml

@@ -1,0 +1,29 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: curl-test-($name)
+  namespace: ($namespace)
+spec:
+  restartPolicy: Never
+  containers:
+  - name: curl
+    image: curlimages/curl:latest
+    command: ["/bin/sh"]
+    args:
+    - -c
+    - |
+      LB_IP=$(nslookup ($name) | grep -A1 "Name:" | tail -n1 | awk '{print $2}')
+      echo "Testing connectivity to LoadBalancer IP: $LB_IP"
+      
+      for i in $(seq 1 30); do
+        echo "Attempt $i/30: Testing HTTP connectivity"
+        if curl -s --connect-timeout 5 --max-time 10 "http://$LB_IP" | grep -q "Welcome to nginx"; then
+          echo "SUCCESS: Service is accessible"
+          exit 0
+        fi
+        echo "Retrying in 10 seconds..."
+        sleep 10
+      done
+      
+      echo "FAILED: Service not accessible after 30 attempts"
+      exit 1

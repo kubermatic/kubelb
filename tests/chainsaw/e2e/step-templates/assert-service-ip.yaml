@@ -1,0 +1,8 @@
+apiVersion: chainsaw.kyverno.io/v1alpha1
+kind: StepTemplate
+metadata:
+  name: assert-service-ip
+spec:
+  try:
+  - assert:
+      file: ../testdata/assert/service-has-ip.yaml
