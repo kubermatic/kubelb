@@ -14,9 +14,11 @@ Helm chart for KubeLB Manager. This is used to deploy the KubeLB CCM to a Kubern
 Now, we can install the helm chart:
 
 ```sh
-helm pull oci://quay.io/kubermatic/helm-charts/kubelb-manager --version=v1.1.0 --untardir "kubelb-manager" --untar
+helm pull oci://quay.io/kubermatic/helm-charts/kubelb-manager --version=v1.1.0 --untardir "." --untar
+## Apply CRDs
+kubectl apply -f kubelb-manager/crds/
 ## Create and update values.yaml with the required values.
-helm install kubelb-manager kubelb-manager --namespace kubelb -f values.yaml --create-namespace
+helm install kubelb-manager kubelb-manager/ --namespace kubelb -f values.yaml --create-namespace
 ```
 
 ## Requirements

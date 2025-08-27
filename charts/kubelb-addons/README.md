@@ -7,7 +7,7 @@ Helm chart for deploying optional addons to enhance KubeLB functionality.
 ## Installing the chart
 
 ```sh
-helm pull oci://quay.io/kubermatic/helm-charts/kubelb-addons --version=v0.0.3 --untardir "kubelb-addons" --untar
+helm pull oci://quay.io/kubermatic/helm-charts/kubelb-addons --version=v0.0.3 --untardir "." --untar
 ## Create and update values.yaml with the required values.
 helm install kubelb-addons kubelb-addons --namespace kubelb -f values.yaml --create-namespace
 ```
