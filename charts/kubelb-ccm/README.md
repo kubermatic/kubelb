@@ -25,9 +25,11 @@ kubelb:
 Now, we can install the helm chart:
 
 ```sh
-helm pull oci://quay.io/kubermatic/helm-charts/kubelb-ccm --version=v1.1.0 --untardir "kubelb-ccm" --untar
+helm pull oci://quay.io/kubermatic/helm-charts/kubelb-ccm --version=v1.1.0 --untardir "." --untar
+## Apply CRDs
+kubectl apply -f kubelb-ccm/crds/
 ## Create and update values.yaml with the required values.
-helm install kubelb-ccm kubelb-ccm --namespace kubelb -f values.yaml --create-namespace
+helm install kubelb-ccm kubelb-ccm/ --namespace kubelb -f values.yaml
 ```
 
 ## Values

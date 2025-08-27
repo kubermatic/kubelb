@@ -9,7 +9,7 @@ KUBELB_CCM_IMG ?= quay.io/kubermatic/kubelb-ccm
 ENVTEST_K8S_VERSION = 1.32.0
 KUSTOMIZE_VERSION ?= v5.7.1
 CONTROLLER_TOOLS_VERSION ?= v0.18.0
-GO_VERSION = 1.24.6
+GO_VERSION = 1.25.0
 HELM_DOCS_VERSION ?= v1.14.2
 CRD_REF_DOCS_VERSION ?= v0.2.0
 
@@ -97,6 +97,14 @@ generate: controller-gen ## Generate code containing DeepCopy, DeepCopyInto, and
 	$(CONTROLLER_GEN) object:headerFile="hack/boilerplate/boilerplate.go.txt" paths="./..."
 
 update-codegen: generate controller-gen manifests reconciler-gen generate-helm-docs fmt vet go-mod-tidy
+
+helm-dependency-update:
+	helm dependency update charts/kubelb-manager && \
+	helm dependency build charts/kubelb-manager && \
+	helm dependency update charts/kubelb-ccm && \
+	helm dependency build charts/kubelb-ccm && \
+	helm dependency update charts/kubelb-addons && \
+	helm dependency build charts/kubelb-addons
 
 .PHONY: fmt
 fmt: ## Run go fmt against code.
@@ -267,14 +275,14 @@ bump-chart:
 	$(SED) -i "s/tag:.*/tag: $(IMAGE_TAG)/" charts/kubelb-ccm/values.yaml charts/kubelb-manager/values.yaml
 
 .PHONY: release-charts helm-docs generate-helm-docs
-release-charts: bump-chart helm-lint generate-helm-docs
+release-charts: bump-chart helm-lint helm-dependency-update generate-helm-docs
 	CHART_VERSION=$(IMAGE_TAG) ./hack/release-helm-charts.sh
 
 bump-addons-chart:
 	$(SED) -i "s/^version:.*/version: $(KUBELB_ADDONS_CHART_VERSION)/" charts/kubelb-addons/Chart.yaml
 	$(SED) -i "s/^appVersion:.*/appVersion: $(KUBELB_ADDONS_CHART_VERSION)/" charts/kubelb-addons/Chart.yaml
 
-release-addons-chart: bump-addons-chart helm-lint generate-helm-docs
+release-addons-chart: bump-addons-chart helm-lint helm-dependency-update generate-helm-docs
 	CHART_VERSION=$(KUBELB_ADDONS_CHART_VERSION) RELEASE_ADDONS_ONLY=true ./hack/release-helm-charts.sh
 
 .PHONY: crd-ref-docs
