@@ -18,7 +18,7 @@ RECONCILE_HELPER_PATH = "internal/resources/reconciling/zz_generated_reconcile.g
 
 GATEWAY_RELEASE_CHANNEL ?= standard
 GATEWAY_API_VERSION ?= v1.3.0
-KUBELB_ADDONS_CHART_VERSION ?= v0.0.3
+KUBELB_ADDONS_CHART_VERSION ?= v0.1.0
 
 export GOPATH?=$(shell go env GOPATH)
 export CGO_ENABLED=0
@@ -99,6 +99,7 @@ generate: controller-gen ## Generate code containing DeepCopy, DeepCopyInto, and
 update-codegen: generate controller-gen manifests reconciler-gen generate-helm-docs fmt vet go-mod-tidy
 
 helm-dependency-update:
+	./hack/ensure-helm-repos.sh && \
 	helm dependency update charts/kubelb-manager && \
 	helm dependency build charts/kubelb-manager && \
 	helm dependency update charts/kubelb-ccm && \
@@ -292,7 +293,7 @@ $(CRD_REF_DOCS): $(LOCALBIN)
 
 generate-crd-docs: crd-ref-docs ## Generate API reference documentation.
 	$(LOCALBIN)/crd-ref-docs --renderer=markdown \
-		--source-path ./api/kubelb.k8c.io \
+		--source-path ./api/ce/kubelb.k8c.io \
 		--config=./hack/crd-ref-docs.yaml \
 		--output-path ./docs/api-reference.md
 
