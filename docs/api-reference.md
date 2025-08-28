@@ -22,6 +22,8 @@ Package v1alpha1 contains API Schema definitions for the kubelb.k8c.io v1alpha1 
 - [SyncSecretList](#syncsecretlist)
 - [Tenant](#tenant)
 - [TenantList](#tenantlist)
+- [TenantState](#tenantstate)
+- [TenantStateList](#tenantstatelist)
 
 #### Addresses
 
@@ -70,6 +72,32 @@ _Appears in:_
 
 - [Addresses](#addresses)
 
+#### AnnotatedResource
+
+_Underlying type:_ _string_
+
+_Validation:_
+
+- Enum: [all service ingress gateway httproute grpcroute tcproute udproute tlsroute]
+
+_Appears in:_
+
+- [AnnotationSettings](#annotationsettings)
+- [ConfigSpec](#configspec)
+- [TenantSpec](#tenantspec)
+
+| Field | Description |
+| --- | --- |
+| `all` |  |
+| `service` |  |
+| `ingress` |  |
+| `gateway` |  |
+| `httproute` |  |
+| `grpcroute` |  |
+| `tcproute` |  |
+| `udproute` |  |
+| `tlsroute` |  |
+
 #### AnnotationSettings
 
 _Appears in:_
@@ -79,8 +107,30 @@ _Appears in:_
 
 | Field | Description | Default | Validation |
 | --- | --- | --- | --- |
-| `propagatedAnnotations` _map[string]string_ | PropagatedAnnotations defines the list of annotations(key-value pairs) that will be propagated to the LoadBalancer service. Keep the `value` field empty in the key-value pair to allow any value.<br />This will have a higher precedence than the annotations specified at the Config level. |  |  |
-| `propagateAllAnnotations` _boolean_ | PropagateAllAnnotations defines whether all annotations will be propagated to the LoadBalancer service. If set to true, PropagatedAnnotations will be ignored.<br />This will have a higher precedence than the value specified at the Config level. |  |  |
+| `propagatedAnnotations` _map[string]string_ | PropagatedAnnotations defines the list of annotations(key-value pairs) that will be propagated to the LoadBalancer service. Keep the `value` field empty in the key-value pair to allow any value.<br />Tenant configuration has higher precedence than the annotations specified at the Config level. |  |  |
+| `propagateAllAnnotations` _boolean_ | PropagateAllAnnotations defines whether all annotations will be propagated to the LoadBalancer service. If set to true, PropagatedAnnotations will be ignored.<br />Tenant configuration has higher precedence than the value specified at the Config level. |  |  |
+| `defaultAnnotations` _object (keys:[AnnotatedResource](#annotatedresource), values:[Annotations](#annotations))_ | DefaultAnnotations defines the list of annotations(key-value pairs) that will be set on the load balancing resources if not already present. A special key `all` can be used to apply the same<br />set of annotations to all resources.<br />Tenant configuration has higher precedence than the annotations specified at the Config level. |  |  |
+
+#### Annotations
+
+_Underlying type:_ _object_
+
+_Appears in:_
+
+- [AnnotationSettings](#annotationsettings)
+- [ConfigSpec](#configspec)
+- [TenantSpec](#tenantspec)
+
+#### CertificatesSettings
+
+_Appears in:_
+
+- [ConfigSpec](#configspec)
+- [TenantSpec](#tenantspec)
+
+| Field | Description | Default | Validation |
+| --- | --- | --- | --- |
+| `defaultClusterIssuer` _string_ | DefaultClusterIssuer is the Cluster Issuer to use for the certificates by default. This is only used for load balancer hostname. |  |  |
 
 #### Config
 
@@ -96,6 +146,21 @@ _Appears in:_
 | `kind` _string_ | `Config` | | |
 | `metadata` _[ObjectMeta](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.30/#objectmeta-v1-meta)_ | Refer to Kubernetes API documentation for fields of `metadata`. |  |  |
 | `spec` _[ConfigSpec](#configspec)_ |  |  |  |
+
+#### ConfigDNSSettings
+
+ConfigDNSSettings defines the global settings for DNS management and automation.
+
+_Appears in:_
+
+- [ConfigSpec](#configspec)
+
+| Field | Description | Default | Validation |
+| --- | --- | --- | --- |
+| `wildcardDomain` _string_ | WildcardDomain is the domain that will be used as the base domain to create wildcard DNS records for DNS resources.<br />This is only used for determining the hostname for LoadBalancer resources at LoadBalancer.Spec.Hostname. |  |  |
+| `allowExplicitHostnames` _boolean_ | AllowExplicitHostnames is a flag that can be used to allow explicit hostnames to be used for DNS resources.<br />This is only used when LoadBalancer.Spec.Hostname is set. |  |  |
+| `useDNSAnnotations` _boolean_ | UseDNSAnnotations is a flag that can be used to add DNS annotations to DNS resources.<br />This is only used when LoadBalancer.Spec.Hostname is set. |  |  |
+| `useCertificateAnnotations` _boolean_ | UseCertificateAnnotations is a flag that can be used to add Certificate annotations to Certificate resources.<br />This is only used when LoadBalancer.Spec.Hostname is set. |  |  |
 
 #### ConfigList
 
@@ -118,12 +183,30 @@ _Appears in:_
 
 | Field | Description | Default | Validation |
 | --- | --- | --- | --- |
-| `propagatedAnnotations` _map[string]string_ | PropagatedAnnotations defines the list of annotations(key-value pairs) that will be propagated to the LoadBalancer service. Keep the `value` field empty in the key-value pair to allow any value.<br />This will have a higher precedence than the annotations specified at the Config level. |  |  |
-| `propagateAllAnnotations` _boolean_ | PropagateAllAnnotations defines whether all annotations will be propagated to the LoadBalancer service. If set to true, PropagatedAnnotations will be ignored.<br />This will have a higher precedence than the value specified at the Config level. |  |  |
+| `propagatedAnnotations` _map[string]string_ | PropagatedAnnotations defines the list of annotations(key-value pairs) that will be propagated to the LoadBalancer service. Keep the `value` field empty in the key-value pair to allow any value.<br />Tenant configuration has higher precedence than the annotations specified at the Config level. |  |  |
+| `propagateAllAnnotations` _boolean_ | PropagateAllAnnotations defines whether all annotations will be propagated to the LoadBalancer service. If set to true, PropagatedAnnotations will be ignored.<br />Tenant configuration has higher precedence than the value specified at the Config level. |  |  |
+| `defaultAnnotations` _object (keys:[AnnotatedResource](#annotatedresource), values:[Annotations](#annotations))_ | DefaultAnnotations defines the list of annotations(key-value pairs) that will be set on the load balancing resources if not already present. A special key `all` can be used to apply the same<br />set of annotations to all resources.<br />Tenant configuration has higher precedence than the annotations specified at the Config level. |  |  |
 | `envoyProxy` _[EnvoyProxy](#envoyproxy)_ | EnvoyProxy defines the desired state of the Envoy Proxy |  |  |
 | `loadBalancer` _[LoadBalancerSettings](#loadbalancersettings)_ |  |  |  |
 | `ingress` _[IngressSettings](#ingresssettings)_ |  |  |  |
 | `gatewayAPI` _[GatewayAPISettings](#gatewayapisettings)_ |  |  |  |
+| `dns` _[ConfigDNSSettings](#configdnssettings)_ |  |  |  |
+| `certificates` _[CertificatesSettings](#certificatessettings)_ |  |  |  |
+
+#### DNSSettings
+
+DNSSettings defines the settings for DNS management and automation.
+
+_Appears in:_
+
+- [TenantSpec](#tenantspec)
+
+| Field | Description | Default | Validation |
+| --- | --- | --- | --- |
+| `wildcardDomain` _string_ | WildcardDomain is the domain that will be used as the base domain to create wildcard DNS records for DNS resources.<br />This is only used for determining the hostname for LoadBalancer resources at LoadBalancer.Spec.Hostname. |  |  |
+| `allowExplicitHostnames` _boolean_ | AllowExplicitHostnames is a flag that can be used to allow explicit hostnames to be used for DNS resources.<br />This is only used when LoadBalancer.Spec.Hostname is set. |  |  |
+| `useDNSAnnotations` _boolean_ | UseDNSAnnotations is a flag that can be used to add DNS annotations to DNS resources.<br />This is only used when LoadBalancer.Spec.Hostname is set. |  |  |
+| `useCertificateAnnotations` _boolean_ | UseCertificateAnnotations is a flag that can be used to add Certificate annotations to Certificate resources.<br />This is only used when LoadBalancer.Spec.Hostname is set. |  |  |
 
 #### EndpointAddress
 
@@ -198,7 +281,20 @@ _Appears in:_
 | Field | Description | Default | Validation |
 | --- | --- | --- | --- |
 | `class` _string_ | Class is the class of the gateway API to use. This can be used to specify a specific gateway API implementation.<br />This has higher precedence than the value specified in the Config. |  |  |
+| `defaultGateway` _[ObjectReference](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.30/#objectreference-v1-core)_ | DefaultGateway is the default gateway reference to use for the tenant. This is only used for load balancer hostname. |  |  |
 | `disable` _boolean_ | Disable is a flag that can be used to disable Gateway API for a tenant. |  |  |
+
+#### HostnameStatus
+
+_Appears in:_
+
+- [LoadBalancerStatus](#loadbalancerstatus)
+
+| Field | Description | Default | Validation |
+| --- | --- | --- | --- |
+| `hostname` _string_ | Hostname contains the hostname of the load-balancer. |  |  |
+| `tlsEnabled` _boolean_ | TLSEnabled is true if certificate is created for the hostname. |  |  |
+| `dnsRecordCreated` _boolean_ | DNSRecordCreated is true if DNS record is created for the hostname. |  |  |
 
 #### IngressSettings
 
@@ -320,7 +416,18 @@ _Appears in:_
 | --- | --- | --- | --- |
 | `endpoints` _[LoadBalancerEndpoints](#loadbalancerendpoints) array_ | Sets of addresses and ports that comprise an exposed user service on a cluster. |  | MinItems: 1 <br /> |
 | `ports` _[LoadBalancerPort](#loadbalancerport) array_ | The list of ports that are exposed by the load balancer service.<br />only needed for layer 4 |  |  |
+| `hostname` _string_ | Hostname is the domain name at which the load balancer service will be accessible.<br />When hostname is set, KubeLB will create a route(ingress or httproute) for the service, and expose it with TLS on the given hostname. Currently, only HTTP protocol is supported |  |  |
 | `type` _[ServiceType](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.30/#servicetype-v1-core)_ | type determines how the Service is exposed. Defaults to ClusterIP. Valid<br />options are ExternalName, ClusterIP, NodePort, and LoadBalancer.<br />"ExternalName" maps to the specified externalName.<br />"ClusterIP" allocates a cluster-internal IP address for load-balancing to<br />endpoints. Endpoints are determined by the selector or if that is not<br />specified, by manual construction of an Endpoints object. If clusterIP is<br />"None", no virtual IP is allocated and the endpoints are published as a<br />set of endpoints rather than a stable IP.<br />"NodePort" builds on ClusterIP and allocates a port on every node which<br />routes to the clusterIP.<br />"LoadBalancer" builds on NodePort and creates an<br />external load-balancer (if supported in the current cloud) which routes<br />to the clusterIP.<br />More info: <https://kubernetes.io/docs/concepts/services-networking/service/#publishing-services-service-types> | ClusterIP |  |
+
+#### LoadBalancerState
+
+_Appears in:_
+
+- [TenantStateStatus](#tenantstatestatus)
+
+| Field | Description | Default | Validation |
+| --- | --- | --- | --- |
+| `disable` _boolean_ |  |  |  |
 
 #### LoadBalancerStatus
 
@@ -334,6 +441,7 @@ _Appears in:_
 | --- | --- | --- | --- |
 | `loadBalancer` _[LoadBalancerStatus](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.30/#loadbalancerstatus-v1-core)_ | LoadBalancer contains the current status of the load-balancer,<br />if one is present. |  |  |
 | `service` _[ServiceStatus](#servicestatus)_ | Service contains the current status of the LB service. |  |  |
+| `hostname` _[HostnameStatus](#hostnamestatus)_ | Hostname contains the status for hostname resources. |  |  |
 
 #### ResourceState
 
@@ -453,7 +561,7 @@ _Appears in:_
 | --- | --- | --- | --- |
 | `name` _string_ | The name of this port within the service. This must be a DNS_LABEL.<br />All ports within a ServiceSpec must have unique names. When considering<br />the endpoints for a Service, this must match the 'name' field in the<br />EndpointPort.<br />Optional if only one ServicePort is defined on this service. |  |  |
 | `protocol` _[Protocol](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.30/#protocol-v1-core)_ | The IP protocol for this port. Supports "TCP", "UDP", and "SCTP".<br />Default is TCP. |  |  |
-| `appProtocol` _string_ | The application protocol for this port.<br />This is used as a hint for implementations to offer richer behavior for protocols that they understand.<br />This field follows standard Kubernetes label syntax.<br />Valid values are either:<br /><br />_Un-prefixed protocol names - reserved for IANA standard service names (as per<br />RFC-6335 and <https://www.iana.org/assignments/service-names>).<br /><br />_ Kubernetes-defined prefixed names:<br />  _'kubernetes.io/h2c' - HTTP/2 prior knowledge over cleartext as described in <https://www.rfc-editor.org/rfc/rfc9113.html#name-starting-http-2-with-prior-><br />_ 'kubernetes.io/ws'  - WebSocket over cleartext as described in <https://www.rfc-editor.org/rfc/rfc6455><br />  _'kubernetes.io/wss' - WebSocket over TLS as described in <https://www.rfc-editor.org/rfc/rfc6455><br /><br />_ Other protocols should use implementation-defined prefixed names such as<br />mycompany.com/my-custom-protocol. |  |  |
+| `appProtocol` _string_ | The application protocol for this port.<br />This is used as a hint for implementations to offer richer behavior for protocols that they understand.<br />This field follows standard Kubernetes label syntax.<br />Valid values are either:<br />*Un-prefixed protocol names - reserved for IANA standard service names (as per<br />RFC-6335 and <https://www.iana.org/assignments/service-names>).<br />* Kubernetes-defined prefixed names:<br />  *'kubernetes.io/h2c' - HTTP/2 prior knowledge over cleartext as described in <https://www.rfc-editor.org/rfc/rfc9113.html#name-starting-http-2-with-prior-><br />* 'kubernetes.io/ws'  - WebSocket over cleartext as described in <https://www.rfc-editor.org/rfc/rfc6455><br />  *'kubernetes.io/wss' - WebSocket over TLS as described in <https://www.rfc-editor.org/rfc/rfc6455><br />* Other protocols should use implementation-defined prefixed names such as<br />mycompany.com/my-custom-protocol. |  |  |
 | `port` _integer_ | The port that will be exposed by this service. |  |  |
 | `targetPort` _[IntOrString](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.30/#intorstring-intstr-util)_ | Number or name of the port to access on the pods targeted by the service.<br />Number must be in the range 1 to 65535. Name must be an IANA_SVC_NAME.<br />If this is a string, it will be looked up as a named port in the<br />target Pod's container ports. If this is not specified, the value<br />of the 'port' field is used (an identity map).<br />This field is ignored for services with clusterIP=None, and should be<br />omitted or set equal to the 'port' field.<br />More info: <https://kubernetes.io/docs/concepts/services-networking/service/#defining-a-service> |  |  |
 | `nodePort` _integer_ | The port on each node on which this service is exposed when type is<br />NodePort or LoadBalancer.  Usually assigned by the system. If a value is<br />specified, in-range, and not in use it will be used, otherwise the<br />operation will fail.  If not specified, a port will be allocated if this<br />Service requires one.  If this field is specified when creating a<br />Service which does not need it, creation will fail. This field will be<br />wiped when updating a Service to no longer need it (e.g. changing type<br />from NodePort to ClusterIP).<br />More info: <https://kubernetes.io/docs/concepts/services-networking/service/#type-nodeport> |  |  |
@@ -535,11 +643,64 @@ _Appears in:_
 
 | Field | Description | Default | Validation |
 | --- | --- | --- | --- |
-| `propagatedAnnotations` _map[string]string_ | PropagatedAnnotations defines the list of annotations(key-value pairs) that will be propagated to the LoadBalancer service. Keep the `value` field empty in the key-value pair to allow any value.<br />This will have a higher precedence than the annotations specified at the Config level. |  |  |
-| `propagateAllAnnotations` _boolean_ | PropagateAllAnnotations defines whether all annotations will be propagated to the LoadBalancer service. If set to true, PropagatedAnnotations will be ignored.<br />This will have a higher precedence than the value specified at the Config level. |  |  |
+| `propagatedAnnotations` _map[string]string_ | PropagatedAnnotations defines the list of annotations(key-value pairs) that will be propagated to the LoadBalancer service. Keep the `value` field empty in the key-value pair to allow any value.<br />Tenant configuration has higher precedence than the annotations specified at the Config level. |  |  |
+| `propagateAllAnnotations` _boolean_ | PropagateAllAnnotations defines whether all annotations will be propagated to the LoadBalancer service. If set to true, PropagatedAnnotations will be ignored.<br />Tenant configuration has higher precedence than the value specified at the Config level. |  |  |
+| `defaultAnnotations` _object (keys:[AnnotatedResource](#annotatedresource), values:[Annotations](#annotations))_ | DefaultAnnotations defines the list of annotations(key-value pairs) that will be set on the load balancing resources if not already present. A special key `all` can be used to apply the same<br />set of annotations to all resources.<br />Tenant configuration has higher precedence than the annotations specified at the Config level. |  |  |
 | `loadBalancer` _[LoadBalancerSettings](#loadbalancersettings)_ |  |  |  |
 | `ingress` _[IngressSettings](#ingresssettings)_ |  |  |  |
 | `gatewayAPI` _[GatewayAPISettings](#gatewayapisettings)_ |  |  |  |
+| `dns` _[DNSSettings](#dnssettings)_ |  |  |  |
+| `certificates` _[CertificatesSettings](#certificatessettings)_ |  |  |  |
+
+#### TenantState
+
+TenantState is the Schema for the tenants API
+
+_Appears in:_
+
+- [TenantStateList](#tenantstatelist)
+
+| Field | Description | Default | Validation |
+| --- | --- | --- | --- |
+| `apiVersion` _string_ | `kubelb.k8c.io/v1alpha1` | | |
+| `kind` _string_ | `TenantState` | | |
+| `metadata` _[ObjectMeta](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.30/#objectmeta-v1-meta)_ | Refer to Kubernetes API documentation for fields of `metadata`. |  |  |
+| `spec` _[TenantStateSpec](#tenantstatespec)_ |  |  |  |
+| `status` _[TenantStateStatus](#tenantstatestatus)_ |  |  |  |
+
+#### TenantStateList
+
+TenantStateList contains a list of TenantState
+
+| Field | Description | Default | Validation |
+| --- | --- | --- | --- |
+| `apiVersion` _string_ | `kubelb.k8c.io/v1alpha1` | | |
+| `kind` _string_ | `TenantStateList` | | |
+| `metadata` _[ListMeta](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.30/#listmeta-v1-meta)_ | Refer to Kubernetes API documentation for fields of `metadata`. |  |  |
+| `items` _[TenantState](#tenantstate) array_ |  |  |  |
+
+#### TenantStateSpec
+
+TenantStateSpec defines the desired state of TenantState.
+
+_Appears in:_
+
+- [TenantState](#tenantstate)
+
+#### TenantStateStatus
+
+TenantStateStatus defines the observed state of TenantState
+
+_Appears in:_
+
+- [TenantState](#tenantstate)
+
+| Field | Description | Default | Validation |
+| --- | --- | --- | --- |
+| `version` _[Version](#version)_ |  |  |  |
+| `lastUpdated` _[Time](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.30/#time-v1-meta)_ |  |  |  |
+| `conditions` _[Condition](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.30/#condition-v1-meta) array_ |  |  |  |
+| `loadBalancer` _[LoadBalancerState](#loadbalancerstate)_ |  |  |  |
 
 #### TenantStatus
 
@@ -565,3 +726,16 @@ _Appears in:_
 | `metadata` _[ObjectMeta](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.30/#objectmeta-v1-meta)_ | Refer to Kubernetes API documentation for fields of `metadata`. |  |  |
 | `spec` _[ServiceSpec](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.30/#servicespec-v1-core)_ | Spec defines the behavior of a service.<br /><https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#spec-and-status> |  |  |
 | `status` _[ServiceStatus](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.30/#servicestatus-v1-core)_ | Most recently observed status of the service.<br />Populated by the system.<br />Read-only.<br />More info: <https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#spec-and-status> |  |  |
+
+#### Version
+
+_Appears in:_
+
+- [TenantStateStatus](#tenantstatestatus)
+
+| Field | Description | Default | Validation |
+| --- | --- | --- | --- |
+| `gitVersion` _string_ |  |  |  |
+| `gitCommit` _string_ |  |  |  |
+| `buildDate` _string_ |  |  |  |
+| `edition` _string_ |  |  |  |
