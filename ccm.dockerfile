@@ -14,6 +14,10 @@
 
 FROM docker.io/golang:1.25.0 AS builder
 
+ARG GIT_VERSION
+ARG GIT_COMMIT
+ARG BUILD_DATE
+
 WORKDIR /workspace
 # Copy the Go Modules manifests
 COPY go.mod go.mod
@@ -29,10 +33,11 @@ COPY internal/ internal/
 COPY VERSION VERSION
 COPY Makefile Makefile
 
-# Required to build the image with the correct version info.
-COPY .git/ .git/
-
-RUN make build-ccm
+# Pass build arguments to make command
+RUN GIT_VERSION="${GIT_VERSION}" \
+    GIT_COMMIT="${GIT_COMMIT}" \
+    BUILD_DATE="${BUILD_DATE}" \
+    make build-ccm
 
 FROM gcr.io/distroless/static:nonroot
 WORKDIR /
