@@ -56,6 +56,7 @@ type EnvoyCPReconciler struct {
 	PortAllocator      *portlookup.PortAllocator
 	Namespace          string
 	EnvoyBootstrap     string
+	EnvoyDebugMode     bool
 	DisableGatewayAPI  bool
 	Config             *kubelbv1alpha1.Config
 }
@@ -286,9 +287,10 @@ func (r *EnvoyCPReconciler) getEnvoyProxyPodSpec(namespace, appName, snapshotNam
 	envoyProxy := r.Config.Spec.EnvoyProxy
 	template := corev1.PodTemplateSpec{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      appName,
-			Namespace: namespace,
-			Labels:    map[string]string{kubelb.LabelAppKubernetesName: appName},
+			Name:        appName,
+			Namespace:   namespace,
+			Labels:      map[string]string{kubelb.LabelAppKubernetesName: appName},
+			Annotations: map[string]string{},
 		},
 		Spec: corev1.PodSpec{
 			Containers: []corev1.Container{
@@ -303,6 +305,20 @@ func (r *EnvoyCPReconciler) getEnvoyProxyPodSpec(namespace, appName, snapshotNam
 				},
 			},
 		},
+	}
+
+	if r.EnvoyDebugMode {
+		// Admin interface is enabled, and exposes Prometheus metrics.
+		template.Annotations["prometheus.io/scrape"] = "true"
+		template.Annotations["prometheus.io/port"] = "9001"
+		template.Annotations["prometheus.io/path"] = "/stats/prometheus"
+
+		template.Spec.Containers[0].Ports = []corev1.ContainerPort{
+			{
+				Name:          "admin",
+				ContainerPort: 9001,
+			},
+		}
 	}
 
 	if envoyProxy.Resources != nil {

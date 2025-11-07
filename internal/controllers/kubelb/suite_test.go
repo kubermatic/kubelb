@@ -87,7 +87,8 @@ var _ = BeforeSuite(func() {
 	sigCtx := ctrl.SetupSignalHandler()
 	ctx, cancel = context.WithCancel(sigCtx)
 
-	envoyServer, err = envoy.NewServer(":8001", true)
+	envoyDebugMode := true
+	envoyServer, err = envoy.NewServer(":8001", envoyDebugMode)
 
 	Expect(err).ToNot(HaveOccurred())
 
@@ -148,6 +149,7 @@ var _ = BeforeSuite(func() {
 		EnvoyCache:         envoyServer.Cache,
 		EnvoyProxyTopology: EnvoyProxyTopologyShared,
 		EnvoyBootstrap:     envoyServer.GenerateBootstrap(),
+		EnvoyDebugMode:     envoyDebugMode,
 		Namespace:          LBNamespace,
 		PortAllocator:      portAllocator,
 	}
