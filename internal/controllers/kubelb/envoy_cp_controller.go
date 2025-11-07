@@ -35,6 +35,7 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/apimachinery/pkg/util/intstr"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	ctrlruntimeclient "sigs.k8s.io/controller-runtime/pkg/client"
@@ -56,6 +57,7 @@ type EnvoyCPReconciler struct {
 	PortAllocator      *portlookup.PortAllocator
 	Namespace          string
 	EnvoyBootstrap     string
+	EnvoyDebugMode     bool
 	DisableGatewayAPI  bool
 	Config             *kubelbv1alpha1.Config
 }
@@ -286,9 +288,10 @@ func (r *EnvoyCPReconciler) getEnvoyProxyPodSpec(namespace, appName, snapshotNam
 	envoyProxy := r.Config.Spec.EnvoyProxy
 	template := corev1.PodTemplateSpec{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      appName,
-			Namespace: namespace,
-			Labels:    map[string]string{kubelb.LabelAppKubernetesName: appName},
+			Name:        appName,
+			Namespace:   namespace,
+			Labels:      map[string]string{kubelb.LabelAppKubernetesName: appName},
+			Annotations: map[string]string{},
 		},
 		Spec: corev1.PodSpec{
 			Containers: []corev1.Container{
@@ -303,6 +306,48 @@ func (r *EnvoyCPReconciler) getEnvoyProxyPodSpec(namespace, appName, snapshotNam
 				},
 			},
 		},
+	}
+
+	if r.EnvoyDebugMode {
+		template.Spec.Containers[0].StartupProbe = &corev1.Probe{
+			ProbeHandler: corev1.ProbeHandler{
+				HTTPGet: &corev1.HTTPGetAction{
+					Path:   "/ready",
+					Port:   intstr.IntOrString{Type: intstr.Int, IntVal: 9001},
+					Scheme: corev1.URISchemeHTTP,
+				},
+			},
+			TimeoutSeconds:   1,
+			PeriodSeconds:    10,
+			SuccessThreshold: 1,
+			FailureThreshold: 30,
+		}
+		template.Spec.Containers[0].ReadinessProbe = &corev1.Probe{
+			ProbeHandler: corev1.ProbeHandler{
+				HTTPGet: &corev1.HTTPGetAction{
+					Path:   "/ready",
+					Port:   intstr.IntOrString{Type: intstr.Int, IntVal: 9001},
+					Scheme: corev1.URISchemeHTTP,
+				},
+			},
+			TimeoutSeconds:   1,
+			PeriodSeconds:    5,
+			SuccessThreshold: 1,
+			FailureThreshold: 1,
+		}
+		template.Spec.Containers[0].LivenessProbe = &corev1.Probe{
+			ProbeHandler: corev1.ProbeHandler{
+				HTTPGet: &corev1.HTTPGetAction{
+					Path:   "/ready",
+					Port:   intstr.IntOrString{Type: intstr.Int, IntVal: 9001},
+					Scheme: corev1.URISchemeHTTP,
+				},
+			},
+			TimeoutSeconds:   1,
+			PeriodSeconds:    10,
+			SuccessThreshold: 1,
+			FailureThreshold: 3,
+		}
 	}
 
 	if envoyProxy.Resources != nil {

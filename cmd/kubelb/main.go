@@ -185,6 +185,7 @@ func main() {
 		PortAllocator:      portAllocator,
 		Namespace:          opt.namespace,
 		EnvoyBootstrap:     envoyServer.GenerateBootstrap(),
+		EnvoyDebugMode:     opt.enableDebugMode,
 		DisableGatewayAPI:  disableGatewayAPI,
 	}).SetupWithManager(ctx, envoyMgr); err != nil {
 		setupLog.Error(err, "unable to create envoy control-plane controller", "controller", "LoadBalancer")
