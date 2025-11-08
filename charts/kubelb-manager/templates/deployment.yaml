@@ -44,6 +44,7 @@ spec:
             {{ if .Values.kubelb.enableTenantMigration -}}
             - --enable-tenant-migration=true
             {{ end -}}
+            - --enable-tenant-envoy-monitoring={{ .Values.kubelb.enableTenantEnvoyMonitoring }}
             - --debug={{ .Values.kubelb.debug }}
           env:
           - name: NAMESPACE
