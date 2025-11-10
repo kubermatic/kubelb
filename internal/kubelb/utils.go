@@ -55,6 +55,7 @@ const DefaultRouteStatus = "{}"
 const ServiceKind = "Service"
 
 const NameSuffixLength = 4
+
 // We limit the name length slightly lower than the kubernetes limit of 63 characters to avoid issues with the name length.
 // In case if the name exceeds the limit, we truncate the name and append a suffix ensuring that it's always less than 63 characters.
 const MaxNameLength = 60
