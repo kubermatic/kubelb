@@ -71,6 +71,7 @@ spec:
             - --gateway-api-crds-channel={{ .Values.kubelb.gatewayAPICRDsChannel }}
             {{ end -}}
             - --cluster-name={{ required "A valid .Values.kubelb.tenantName to specify the tenant name is required!" .Values.kubelb.tenantName }}
+            - --zap-log-level={{ .Values.kubelb.logLevel }}
           env:
           - name: NAMESPACE
             valueFrom:
