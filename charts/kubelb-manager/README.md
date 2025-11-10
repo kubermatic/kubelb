@@ -46,7 +46,7 @@ helm install kubelb-manager kubelb-manager/ --namespace kubelb -f values.yaml --
 | kubelb.debug | bool | `true` |  |
 | kubelb.enableGatewayAPI | bool | `false` | enableGatewayAPI specifies whether to enable the Gateway API and Gateway Controllers. By default Gateway API is disabled since without Gateway APIs installed the controller cannot start. |
 | kubelb.enableLeaderElection | bool | `true` |  |
-| kubelb.enableTenantMigration | bool | `true` |  |
+| kubelb.enableTenantMigration | bool | `true` | Migrate Tenant namespace to Tenant CRDs |
 | kubelb.envoyProxy.affinity | object | `{}` |  |
 | kubelb.envoyProxy.nodeSelector | object | `{}` |  |
 | kubelb.envoyProxy.replicas | int | `2` | The number of replicas for the Envoy Proxy deployment. |
@@ -55,6 +55,7 @@ helm install kubelb-manager kubelb-manager/ --namespace kubelb -f values.yaml --
 | kubelb.envoyProxy.tolerations | list | `[]` |  |
 | kubelb.envoyProxy.topology | string | `"shared"` | Topology defines the deployment topology for Envoy Proxy. Valid values are: shared and global. |
 | kubelb.envoyProxy.useDaemonset | bool | `false` | Use DaemonSet for Envoy Proxy deployment instead of Deployment. |
+| kubelb.logLevel | string | `"info"` | To configure the verbosity of logging. Can be one of 'debug', 'info', 'error', 'panic' or any integer value > 0 which corresponds to custom debug levels of increasing verbosity. |
 | kubelb.propagateAllAnnotations | bool | `false` | Propagate all annotations from the LB resource to the LB service. |
 | kubelb.propagatedAnnotations | object | `{}` | Allowed annotations that will be propagated from the LB resource to the LB service. |
 | kubelb.skipConfigGeneration | bool | `false` | Set to true to skip the generation of the Config CR. Useful when the config CR needs to be managed manually. |
