@@ -24,6 +24,7 @@ import (
 
 	kubelbv1alpha1 "k8c.io/kubelb/api/kubelb.k8c.io/v1alpha1"
 	"k8c.io/kubelb/internal/kubelb"
+	gatewayapihelpers "k8c.io/kubelb/internal/resources/gatewayapi"
 
 	"k8s.io/apimachinery/pkg/api/equality"
 	kerrors "k8s.io/apimachinery/pkg/api/errors"
@@ -90,6 +91,9 @@ func CreateOrUpdateGRPCRoute(ctx context.Context, log logr.Logger, client ctrlcl
 			}
 		}
 	}
+
+	// Normalize Parent References
+	object.Spec.ParentRefs = gatewayapihelpers.NormalizeParentRefs(object.Spec.ParentRefs)
 
 	// Process annotations.
 	object.Annotations = kubelb.PropagateAnnotations(object.Annotations, annotations)
