@@ -7,8 +7,8 @@ maintainers:
   - name: Kubermatic
     email: support@kubermatic.com
     url: https://kubermatic.com
-version: v0.1.0
-appVersion: v0.1.0
+version: v0.2.0
+appVersion: v0.2.0
 dependencies:
   - name: ingress-nginx
     repository: https://kubernetes.github.io/ingress-nginx
@@ -17,7 +17,7 @@ dependencies:
   - name: gateway-helm
     repository: oci://docker.io/envoyproxy
     condition: envoy-gateway.enabled
-    version: 1.3.0
+    version: 1.5.4
     alias: envoy-gateway
   - name: cert-manager
     repository: https://charts.jetstack.io
