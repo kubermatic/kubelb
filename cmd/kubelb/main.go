@@ -47,6 +47,7 @@ type options struct {
 	probeAddr                       string
 	kubeconfig                      string
 	enableDebugMode                 bool
+	enableTenantEnvoyMonitoring     bool
 	namespace                       string
 	enableTenantMigrationController bool
 	enableGatewayAPI                bool
@@ -72,6 +73,7 @@ func main() {
 	flag.BoolVar(&opt.enableLeaderElection, "enable-leader-election", true,
 		"Enable leader election for controller kubelb. Enabling this will ensure there is only one active controller kubelb.")
 	flag.BoolVar(&opt.enableDebugMode, "debug", false, "Enables debug mode")
+	flag.BoolVar(&opt.enableTenantEnvoyMonitoring, "enable-tenant-envoy-monitoring", true, "Enables stats listener and cluster in Envoy control-plane for Prometheus scraping")
 	flag.StringVar(&opt.namespace, "namespace", "kubelb", "The namespace where the controller will run.")
 
 	flag.BoolVar(&opt.enableTenantMigrationController, "enable-tenant-migration", true, "Enables a controller that performs automated migration from namespaces to tenants")
@@ -130,7 +132,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	envoyServer, err := envoy.NewServer(opt.envoyListenAddress, opt.enableDebugMode)
+	envoyServer, err := envoy.NewServer(opt.envoyListenAddress, opt.enableDebugMode, opt.enableTenantEnvoyMonitoring)
 	if err != nil {
 		setupLog.Error(err, "unable to create envoy server")
 		os.Exit(1)
@@ -179,13 +181,14 @@ func main() {
 	}
 
 	if err = (&kubelb.EnvoyCPReconciler{
-		Client:             envoyMgr.GetClient(),
-		EnvoyCache:         envoyServer.Cache,
-		EnvoyProxyTopology: kubelb.EnvoyProxyTopology(conf.GetEnvoyProxyTopology()),
-		PortAllocator:      portAllocator,
-		Namespace:          opt.namespace,
-		EnvoyBootstrap:     envoyServer.GenerateBootstrap(),
-		DisableGatewayAPI:  disableGatewayAPI,
+		Client:                envoyMgr.GetClient(),
+		EnvoyCache:            envoyServer.Cache,
+		EnvoyProxyTopology:    kubelb.EnvoyProxyTopology(conf.GetEnvoyProxyTopology()),
+		PortAllocator:         portAllocator,
+		Namespace:             opt.namespace,
+		EnvoyBootstrap:        envoyServer.GenerateBootstrap(),
+		EnvoyTenantMonitoring: opt.enableTenantEnvoyMonitoring,
+		DisableGatewayAPI:     disableGatewayAPI,
 	}).SetupWithManager(ctx, envoyMgr); err != nil {
 		setupLog.Error(err, "unable to create envoy control-plane controller", "controller", "LoadBalancer")
 		os.Exit(1)
