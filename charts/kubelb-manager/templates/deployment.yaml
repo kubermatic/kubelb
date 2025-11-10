@@ -45,6 +45,7 @@ spec:
             - --enable-tenant-migration=true
             {{ end -}}
             - --debug={{ .Values.kubelb.debug }}
+            - --zap-log-level={{ .Values.kubelb.logLevel }}
           env:
           - name: NAMESPACE
             valueFrom:
