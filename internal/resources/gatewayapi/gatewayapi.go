@@ -15,3 +15,14 @@ limitations under the License.
 */
 
 package gatewayapi
+
+import (
+	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
+)
+
+func NormalizeParentRefs(parentRefs []gwapiv1.ParentReference) []gwapiv1.ParentReference {
+	for i := range parentRefs {
+		parentRefs[i].Namespace = nil
+	}
+	return parentRefs
+}
