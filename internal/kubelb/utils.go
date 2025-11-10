@@ -56,13 +56,17 @@ const ServiceKind = "Service"
 
 const NameSuffixLength = 4
 
+// We limit the name length slightly lower than the kubernetes limit of 63 characters to avoid issues with the name length.
+// In case if the name exceeds the limit, we truncate the name and append a suffix ensuring that it's always less than 63 characters.
+const MaxNameLength = 60
+
 func GenerateName(appendUID bool, uid, name, namespace string) string {
 	output := fmt.Sprintf("%s-%s", namespace, name)
 	uidSuffix := uid[len(uid)-NameSuffixLength:]
 
-	// If the output is longer than 63 characters, truncate the name and append a suffix
-	if len(output) > 63 || (appendUID && len(output)+len(uidSuffix) > 63) {
-		output = output[:63-NameSuffixLength+1]
+	// If the output is longer than 60 characters, truncate the name and append a suffix
+	if len(output) >= MaxNameLength || (appendUID && (len(output)+len(uidSuffix)+1) >= MaxNameLength) {
+		output = output[:MaxNameLength-(NameSuffixLength+1)]
 		output = fmt.Sprintf("%s-%s", output, uidSuffix)
 	} else if appendUID {
 		output = fmt.Sprintf("%s-%s", output, uidSuffix)
