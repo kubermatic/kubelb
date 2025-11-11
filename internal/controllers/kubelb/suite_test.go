@@ -87,7 +87,7 @@ var _ = BeforeSuite(func() {
 	sigCtx := ctrl.SetupSignalHandler()
 	ctx, cancel = context.WithCancel(sigCtx)
 
-	envoyServer, err = envoy.NewServer(":8001", true, true)
+	envoyServer, err = envoy.NewServer(":8001", true)
 
 	Expect(err).ToNot(HaveOccurred())
 
