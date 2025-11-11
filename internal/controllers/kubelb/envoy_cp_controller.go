@@ -53,7 +53,7 @@ const (
 )
 
 type EnvoyCPReconciler struct {
-	client.Client
+	ctrlruntimeclient.Client
 	EnvoyCache         envoycachev3.SnapshotCache
 	EnvoyProxyTopology EnvoyProxyTopology
 	PortAllocator      *portlookup.PortAllocator
@@ -291,10 +291,15 @@ func (r *EnvoyCPReconciler) ensureEnvoyProxy(ctx context.Context, namespace, app
 func (r *EnvoyCPReconciler) getEnvoyProxyPodSpec(namespace, appName, snapshotName string) corev1.PodTemplateSpec {
 	envoyProxy := r.Config.Spec.EnvoyProxy
 	template := corev1.PodTemplateSpec{
-		ObjectMeta: v1.ObjectMeta{
+		ObjectMeta: metav1.ObjectMeta{
 			Name:      appName,
 			Namespace: namespace,
 			Labels:    map[string]string{kubelb.LabelAppKubernetesName: appName},
+			Annotations: map[string]string{
+				"prometheus.io/scrape": "true",
+				"prometheus.io/port":   fmt.Sprintf("%d", envoycp.EnvoyStatsPort),
+				"prometheus.io/path":   "/stats/prometheus",
+			},
 		},
 		Spec: corev1.PodSpec{
 			Containers: []corev1.Container{
@@ -306,15 +311,23 @@ func (r *EnvoyCPReconciler) getEnvoyProxyPodSpec(namespace, appName, snapshotNam
 						"--service-node", snapshotName,
 						"--service-cluster", namespace,
 					},
-					Ports: []corev1.ContainerPort{{
-						Name:          "probes",
-						ContainerPort: envoycp.EnvoyProbePort,
-					}},
+					Ports: []corev1.ContainerPort{
+						{
+							Name:          "readiness",
+							ContainerPort: envoycp.EnvoyReadinessPort,
+							Protocol:      corev1.ProtocolTCP,
+						},
+						{
+							Name:          "metrics",
+							ContainerPort: envoycp.EnvoyStatsPort,
+							Protocol:      corev1.ProtocolTCP,
+						},
+					},
 					StartupProbe: &corev1.Probe{
 						ProbeHandler: corev1.ProbeHandler{
 							HTTPGet: &corev1.HTTPGetAction{
-								Path:   "/ready",
-								Port:   intstr.IntOrString{Type: intstr.Int, IntVal: envoycp.EnvoyProbePort},
+								Path:   envoycp.EnvoyReadinessPath,
+								Port:   intstr.IntOrString{Type: intstr.Int, IntVal: envoycp.EnvoyReadinessPort},
 								Scheme: corev1.URISchemeHTTP,
 							},
 						},
@@ -326,8 +339,8 @@ func (r *EnvoyCPReconciler) getEnvoyProxyPodSpec(namespace, appName, snapshotNam
 					ReadinessProbe: &corev1.Probe{
 						ProbeHandler: corev1.ProbeHandler{
 							HTTPGet: &corev1.HTTPGetAction{
-								Path:   "/ready",
-								Port:   intstr.IntOrString{Type: intstr.Int, IntVal: envoycp.EnvoyProbePort},
+								Path:   envoycp.EnvoyReadinessPath,
+								Port:   intstr.IntOrString{Type: intstr.Int, IntVal: envoycp.EnvoyReadinessPort},
 								Scheme: corev1.URISchemeHTTP,
 							},
 						},
@@ -339,8 +352,8 @@ func (r *EnvoyCPReconciler) getEnvoyProxyPodSpec(namespace, appName, snapshotNam
 					LivenessProbe: &corev1.Probe{
 						ProbeHandler: corev1.ProbeHandler{
 							HTTPGet: &corev1.HTTPGetAction{
-								Path:   "/ready",
-								Port:   intstr.IntOrString{Type: intstr.Int, IntVal: envoycp.EnvoyProbePort},
+								Path:   envoycp.EnvoyReadinessPath,
+								Port:   intstr.IntOrString{Type: intstr.Int, IntVal: envoycp.EnvoyReadinessPort},
 								Scheme: corev1.URISchemeHTTP,
 							},
 						},
@@ -353,18 +366,6 @@ func (r *EnvoyCPReconciler) getEnvoyProxyPodSpec(namespace, appName, snapshotNam
 			},
 		},
 	}
-
-	if r.EnvoyTenantMonitoring {
-		template.Annotations["prometheus.io/scrape"] = "true"
-		template.Annotations["prometheus.io/port"] = fmt.Sprintf("%d", envoycp.EnvoyStatsPort)
-		template.Annotations["prometheus.io/path"] = "/stats/prometheus"
-
-		template.Spec.Containers[0].Ports = append(template.Spec.Containers[0].Ports, corev1.ContainerPort{
-			Name:          "metrics",
-			ContainerPort: envoycp.EnvoyStatsPort,
-		})
-	}
-
 	if envoyProxy.Resources != nil {
 		template.Spec.Containers[0].Resources = *envoyProxy.Resources
 	}
