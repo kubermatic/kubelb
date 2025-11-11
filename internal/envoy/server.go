@@ -51,14 +51,13 @@ func registerServer(grpcServer *grpc.Server, server serverv3.Server) {
 }
 
 type Server struct {
-	Cache                 cachev3.SnapshotCache
-	listenAddress         string
-	listenPort            uint32
-	enableDebug           bool
-	enableEnvoyMonitoring bool
+	Cache         cachev3.SnapshotCache
+	listenAddress string
+	listenPort    uint32
+	enableAdmin   bool
 }
 
-func NewServer(listenAddress string, enableDebug, enableMonitoring bool) (*Server, error) {
+func NewServer(listenAddress string, enableAdmin bool) (*Server, error) {
 	portString := strings.Split(listenAddress, ":")[1]
 	port, err := strconv.ParseUint(portString, 10, 32)
 	if err != nil {
@@ -66,11 +65,10 @@ func NewServer(listenAddress string, enableDebug, enableMonitoring bool) (*Serve
 	}
 
 	return &Server{
-		listenAddress:         listenAddress,
-		listenPort:            uint32(port),
-		Cache:                 cachev3.NewSnapshotCache(false, cachev3.IDHash{}, Logger{enableDebug}),
-		enableDebug:           enableDebug,
-		enableEnvoyMonitoring: enableMonitoring,
+		listenAddress: listenAddress,
+		listenPort:    uint32(port),
+		Cache:         cachev3.NewSnapshotCache(false, cachev3.IDHash{}, Logger{enableAdmin}),
+		enableAdmin:   enableAdmin,
 	}, nil
 }
 
