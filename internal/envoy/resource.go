@@ -34,7 +34,6 @@ import (
 	envoycache "github.com/envoyproxy/go-control-plane/pkg/cache/v3"
 	"github.com/envoyproxy/go-control-plane/pkg/resource/v3"
 	"github.com/envoyproxy/go-control-plane/pkg/wellknown"
-	"google.golang.org/protobuf/types/known/anypb"
 	"google.golang.org/protobuf/types/known/durationpb"
 	"google.golang.org/protobuf/types/known/wrapperspb"
 
@@ -250,10 +249,7 @@ func makeTCPListener(clusterName string, listenerName string, listenerPort uint3
 	tcpProxyAccessLog := &envoyFileAccessLog.FileAccessLog{
 		Path: "/dev/stdout",
 	}
-	tcpProxyAccessLogAny, err := anypb.New(tcpProxyAccessLog)
-	if err != nil {
-		panic(err)
-	}
+	tcpProxyAccessLogAny := marshalAny(tcpProxyAccessLog)
 
 	tcpProxy := &envoyTcpProxy.TcpProxy{
 		StatPrefix: listenerName,
@@ -269,10 +265,7 @@ func makeTCPListener(clusterName string, listenerName string, listenerPort uint3
 			},
 		},
 	}
-	pbst, err := anypb.New(tcpProxy)
-	if err != nil {
-		panic(err)
-	}
+	pbst := marshalAny(tcpProxy)
 
 	return &envoyListener.Listener{
 		Name: listenerName,
@@ -306,10 +299,7 @@ func makeUDPListener(clusterName string, listenerName string, listenerPort uint3
 		},
 	}
 
-	pbst, err := anypb.New(udpProxy)
-	if err != nil {
-		panic(err)
-	}
+	pbst := marshalAny(udpProxy)
 
 	return &envoyListener.Listener{
 		Name: listenerName,
