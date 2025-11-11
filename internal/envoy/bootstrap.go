@@ -24,12 +24,16 @@ import (
 	envoyCore "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	envoyEndpoint "github.com/envoyproxy/go-control-plane/envoy/config/endpoint/v3"
 	envoyListener "github.com/envoyproxy/go-control-plane/envoy/config/listener/v3"
+	envoyRoute "github.com/envoyproxy/go-control-plane/envoy/config/route/v3"
+	envoyFiltersRouterV3 "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/http/router/v3"
+	envoyFiltersHcmV3 "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/network/http_connection_manager/v3"
+	envoyExtensionsUpstreamsHttpV3 "github.com/envoyproxy/go-control-plane/envoy/extensions/upstreams/http/v3"
 	"github.com/envoyproxy/go-control-plane/pkg/wellknown"
-	"github.com/planetscale/vtprotobuf/types/known/wrapperspb"
 	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/anypb"
 	"google.golang.org/protobuf/types/known/durationpb"
+	"google.golang.org/protobuf/types/known/wrapperspb"
 )
 
 const xdsClusterName = "xds_cluster"
