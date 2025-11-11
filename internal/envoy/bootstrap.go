@@ -27,21 +27,26 @@ import (
 	envoyRoute "github.com/envoyproxy/go-control-plane/envoy/config/route/v3"
 	envoyFiltersRouterV3 "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/http/router/v3"
 	envoyFiltersHcmV3 "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/network/http_connection_manager/v3"
+	envoyExtensionsUpstreamsHttpV3 "github.com/envoyproxy/go-control-plane/envoy/extensions/upstreams/http/v3"
 	"github.com/envoyproxy/go-control-plane/pkg/wellknown"
 	"google.golang.org/protobuf/encoding/protojson"
+	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/anypb"
 	"google.golang.org/protobuf/types/known/durationpb"
 	"google.golang.org/protobuf/types/known/wrapperspb"
 )
 
 const xdsClusterName = "xds_cluster"
-
 const controlPlaneAddress = "envoycp.kubelb.svc"
+const adminClusterName = "admin_cluster"
 
 const EnvoyAdminPort = 9001
 
 const EnvoyStatsPort = 19001
-const EnvoyProbePort = 19003
+const EnvoyStatsPath = "/stats/prometheus"
+
+const EnvoyReadinessPort = 19002
+const EnvoyReadinessPath = "/ready"
 
 // By default, the admin interface is only accessible from localhost, to prevent
 // potential security issues while keeping it available for the stats and probe listeners.
@@ -49,9 +54,24 @@ var EnvoyAdminListenerAddress = "127.0.0.1"
 
 func (s *Server) GenerateBootstrap() string {
 	// If debug is enabled, allow external access to the admin interface
-	if s.enableDebug {
+	if s.enableAdmin {
 		EnvoyAdminListenerAddress = "0.0.0.0"
 	}
+
+	http2ProtocolOptions := marshalAny(&envoyExtensionsUpstreamsHttpV3.HttpProtocolOptions{
+		UpstreamProtocolOptions: &envoyExtensionsUpstreamsHttpV3.HttpProtocolOptions_ExplicitHttpConfig_{
+			ExplicitHttpConfig: &envoyExtensionsUpstreamsHttpV3.HttpProtocolOptions_ExplicitHttpConfig{
+				ProtocolConfig: &envoyExtensionsUpstreamsHttpV3.HttpProtocolOptions_ExplicitHttpConfig_Http2ProtocolOptions{
+					Http2ProtocolOptions: &envoyCore.Http2ProtocolOptions{
+						ConnectionKeepalive: &envoyCore.KeepaliveSettings{
+							Interval: durationpb.New(30 * time.Second),
+							Timeout:  durationpb.New(5 * time.Second),
+						},
+					},
+				},
+			},
+		},
+	})
 
 	cfg := &envoyBootstrap.Bootstrap{
 		DynamicResources: &envoyBootstrap.Bootstrap_DynamicResources{
@@ -94,7 +114,8 @@ func (s *Server) GenerateBootstrap() string {
 		},
 		StaticResources: &envoyBootstrap.Bootstrap_StaticResources{
 			Listeners: []*envoyListener.Listener{
-				getProbesListener(),
+				getReadinessProbeListener(),
+				getStatsListener(),
 			},
 			Clusters: []*envoyCluster.Cluster{
 				{
@@ -128,6 +149,16 @@ func (s *Server) GenerateBootstrap() string {
 						},
 					},
 					Http2ProtocolOptions: &envoyCore.Http2ProtocolOptions{},
+					TypedExtensionProtocolOptions: map[string]*anypb.Any{
+						"envoy.extensions.upstreams.http.v3.HttpProtocolOptions": http2ProtocolOptions,
+					},
+					UpstreamConnectionOptions: &envoyCluster.UpstreamConnectionOptions{
+						TcpKeepalive: &envoyCore.TcpKeepalive{
+							KeepaliveInterval: &wrapperspb.UInt32Value{Value: 5},
+							KeepaliveProbes:   &wrapperspb.UInt32Value{Value: 3},
+							KeepaliveTime:     &wrapperspb.UInt32Value{Value: 30},
+						},
+					},
 					CircuitBreakers: &envoyCluster.CircuitBreakers{
 						Thresholds: []*envoyCluster.CircuitBreakers_Thresholds{
 							{
@@ -136,6 +167,7 @@ func (s *Server) GenerateBootstrap() string {
 								MaxPendingRequests: &wrapperspb.UInt32Value{Value: 100000},
 								MaxRequests:        &wrapperspb.UInt32Value{Value: 60000000},
 								MaxRetries:         &wrapperspb.UInt32Value{Value: 50},
+								TrackRemaining:     true,
 							},
 							{
 								Priority:           envoyCore.RoutingPriority_DEFAULT,
@@ -143,17 +175,18 @@ func (s *Server) GenerateBootstrap() string {
 								MaxPendingRequests: &wrapperspb.UInt32Value{Value: 100000},
 								MaxRequests:        &wrapperspb.UInt32Value{Value: 60000000},
 								MaxRetries:         &wrapperspb.UInt32Value{Value: 50},
+								TrackRemaining:     true,
 							},
 						},
 					},
 				},
 				{
-					Name:                 "admin_cluster",
+					Name:                 adminClusterName,
 					ConnectTimeout:       durationpb.New(1 * time.Second),
 					ClusterDiscoveryType: &envoyCluster.Cluster_Type{Type: envoyCluster.Cluster_STATIC},
 					LbPolicy:             envoyCluster.Cluster_ROUND_ROBIN,
 					LoadAssignment: &envoyEndpoint.ClusterLoadAssignment{
-						ClusterName: "admin_cluster",
+						ClusterName: adminClusterName,
 						Endpoints: []*envoyEndpoint.LocalityLbEndpoints{{
 							LbEndpoints: []*envoyEndpoint.LbEndpoint{{
 								HostIdentifier: &envoyEndpoint.LbEndpoint_Endpoint{
@@ -188,11 +221,6 @@ func (s *Server) GenerateBootstrap() string {
 		},
 	}
 
-	// Stats listener and cluster rely on admin being enabled
-	if s.enableEnvoyMonitoring {
-		cfg.StaticResources.Listeners = append(cfg.StaticResources.Listeners, getStatsListener())
-	}
-
 	jsonBytes, err := protojson.Marshal(cfg)
 	if err != nil {
 		panic(err)
@@ -201,12 +229,8 @@ func (s *Server) GenerateBootstrap() string {
 	return string(jsonBytes)
 }
 
-func getProbesListener() *envoyListener.Listener {
-	typedRouterFilterConfig, err := anypb.New(&envoyFiltersRouterV3.Router{})
-	if err != nil {
-		panic(err)
-	}
-
+func getReadinessProbeListener() *envoyListener.Listener {
+	typedRouterFilterConfig := marshalAny(&envoyFiltersRouterV3.Router{})
 	hcm := &envoyFiltersHcmV3.HttpConnectionManager{
 		StatPrefix: "stats_probe",
 		HttpFilters: []*envoyFiltersHcmV3.HttpFilter{{
@@ -234,7 +258,7 @@ func getProbesListener() *envoyListener.Listener {
 						Action: &envoyRoute.Route_Route{
 							Route: &envoyRoute.RouteAction{
 								ClusterSpecifier: &envoyRoute.RouteAction_Cluster{
-									Cluster: "admin_cluster",
+									Cluster: adminClusterName,
 								},
 							},
 						},
@@ -244,10 +268,7 @@ func getProbesListener() *envoyListener.Listener {
 		},
 	}
 
-	typedConfig, err := anypb.New(hcm)
-	if err != nil {
-		panic(err)
-	}
+	typedConfig := marshalAny(hcm)
 
 	return &envoyListener.Listener{
 		Name: "probe_listener",
@@ -256,7 +277,7 @@ func getProbesListener() *envoyListener.Listener {
 				SocketAddress: &envoyCore.SocketAddress{
 					Address: "0.0.0.0",
 					PortSpecifier: &envoyCore.SocketAddress_PortValue{
-						PortValue: EnvoyProbePort,
+						PortValue: EnvoyReadinessPort,
 					},
 				},
 			},
@@ -271,10 +292,7 @@ func getProbesListener() *envoyListener.Listener {
 }
 
 func getStatsListener() *envoyListener.Listener {
-	typedRouterFilterConfig, err := anypb.New(&envoyFiltersRouterV3.Router{})
-	if err != nil {
-		panic(err)
-	}
+	typedRouterFilterConfig := marshalAny(&envoyFiltersRouterV3.Router{})
 
 	hcm := &envoyFiltersHcmV3.HttpConnectionManager{
 		StatPrefix: "stats_http",
@@ -303,7 +321,7 @@ func getStatsListener() *envoyListener.Listener {
 						Action: &envoyRoute.Route_Route{
 							Route: &envoyRoute.RouteAction{
 								ClusterSpecifier: &envoyRoute.RouteAction_Cluster{
-									Cluster: "admin_cluster",
+									Cluster: adminClusterName,
 								},
 							},
 						},
@@ -313,10 +331,7 @@ func getStatsListener() *envoyListener.Listener {
 		},
 	}
 
-	typedConfig, err := anypb.New(hcm)
-	if err != nil {
-		panic(err)
-	}
+	typedConfig := marshalAny(hcm)
 
 	return &envoyListener.Listener{
 		Name: "stats_listener",
@@ -337,4 +352,12 @@ func getStatsListener() *envoyListener.Listener {
 			}},
 		}},
 	}
+}
+
+func marshalAny(pb proto.Message) *anypb.Any {
+	marshalledPB, err := anypb.New(pb)
+	if err != nil {
+		panic(err)
+	}
+	return marshalledPB
 }
