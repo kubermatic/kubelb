@@ -57,7 +57,7 @@ type Server struct {
 	enableAdmin   bool
 }
 
-func NewServer(listenAddress string, enableDebug bool) (*Server, error) {
+func NewServer(listenAddress string, enableAdmin bool) (*Server, error) {
 	portString := strings.Split(listenAddress, ":")[1]
 	port, err := strconv.ParseUint(portString, 10, 32)
 	if err != nil {
@@ -67,8 +67,8 @@ func NewServer(listenAddress string, enableDebug bool) (*Server, error) {
 	return &Server{
 		listenAddress: listenAddress,
 		listenPort:    uint32(port),
-		Cache:         cachev3.NewSnapshotCache(false, cachev3.IDHash{}, Logger{enableDebug}),
-		enableAdmin:   enableDebug,
+		Cache:         cachev3.NewSnapshotCache(false, cachev3.IDHash{}, Logger{enableAdmin}),
+		enableAdmin:   enableAdmin,
 	}, nil
 }
 

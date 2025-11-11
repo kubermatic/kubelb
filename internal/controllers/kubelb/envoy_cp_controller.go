@@ -36,6 +36,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/apimachinery/pkg/util/intstr"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -52,7 +53,7 @@ const (
 )
 
 type EnvoyCPReconciler struct {
-	client.Client
+	ctrlruntimeclient.Client
 	EnvoyCache         envoycachev3.SnapshotCache
 	EnvoyProxyTopology EnvoyProxyTopology
 	PortAllocator      *portlookup.PortAllocator
@@ -290,10 +291,15 @@ func (r *EnvoyCPReconciler) ensureEnvoyProxy(ctx context.Context, namespace, app
 func (r *EnvoyCPReconciler) getEnvoyProxyPodSpec(namespace, appName, snapshotName string) corev1.PodTemplateSpec {
 	envoyProxy := r.Config.Spec.EnvoyProxy
 	template := corev1.PodTemplateSpec{
-		ObjectMeta: v1.ObjectMeta{
+		ObjectMeta: metav1.ObjectMeta{
 			Name:      appName,
 			Namespace: namespace,
 			Labels:    map[string]string{kubelb.LabelAppKubernetesName: appName},
+			Annotations: map[string]string{
+				"prometheus.io/scrape": "true",
+				"prometheus.io/port":   fmt.Sprintf("%d", envoycp.EnvoyStatsPort),
+				"prometheus.io/path":   "/stats/prometheus",
+			},
 		},
 		Spec: corev1.PodSpec{
 			Containers: []corev1.Container{
@@ -305,11 +311,61 @@ func (r *EnvoyCPReconciler) getEnvoyProxyPodSpec(namespace, appName, snapshotNam
 						"--service-node", snapshotName,
 						"--service-cluster", namespace,
 					},
+					Ports: []corev1.ContainerPort{
+						{
+							Name:          "readiness",
+							ContainerPort: envoycp.EnvoyReadinessPort,
+							Protocol:      corev1.ProtocolTCP,
+						},
+						{
+							Name:          "metrics",
+							ContainerPort: envoycp.EnvoyStatsPort,
+							Protocol:      corev1.ProtocolTCP,
+						},
+					},
+					StartupProbe: &corev1.Probe{
+						ProbeHandler: corev1.ProbeHandler{
+							HTTPGet: &corev1.HTTPGetAction{
+								Path:   envoycp.EnvoyReadinessPath,
+								Port:   intstr.IntOrString{Type: intstr.Int, IntVal: envoycp.EnvoyReadinessPort},
+								Scheme: corev1.URISchemeHTTP,
+							},
+						},
+						TimeoutSeconds:   1,
+						PeriodSeconds:    10,
+						SuccessThreshold: 1,
+						FailureThreshold: 30,
+					},
+					ReadinessProbe: &corev1.Probe{
+						ProbeHandler: corev1.ProbeHandler{
+							HTTPGet: &corev1.HTTPGetAction{
+								Path:   envoycp.EnvoyReadinessPath,
+								Port:   intstr.IntOrString{Type: intstr.Int, IntVal: envoycp.EnvoyReadinessPort},
+								Scheme: corev1.URISchemeHTTP,
+							},
+						},
+						TimeoutSeconds:   1,
+						PeriodSeconds:    5,
+						SuccessThreshold: 1,
+						FailureThreshold: 1,
+					},
+					LivenessProbe: &corev1.Probe{
+						ProbeHandler: corev1.ProbeHandler{
+							HTTPGet: &corev1.HTTPGetAction{
+								Path:   envoycp.EnvoyReadinessPath,
+								Port:   intstr.IntOrString{Type: intstr.Int, IntVal: envoycp.EnvoyReadinessPort},
+								Scheme: corev1.URISchemeHTTP,
+							},
+						},
+						TimeoutSeconds:   1,
+						PeriodSeconds:    10,
+						SuccessThreshold: 1,
+						FailureThreshold: 3,
+					},
 				},
 			},
 		},
 	}
-
 	if envoyProxy.Resources != nil {
 		template.Spec.Containers[0].Resources = *envoyProxy.Resources
 	}
