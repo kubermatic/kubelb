@@ -142,6 +142,18 @@ func (r *KubeLBNodeReconciler) GenerateAddresses(nodes *corev1.NodeList) (*kubel
 func (r *KubeLBNodeReconciler) getEndpoints(nodes *corev1.NodeList) []string {
 	var clusterEndpoints []string
 	for _, node := range nodes.Items {
+		// Only process nodes that are ready and have an IP address.
+		isReady := false
+		for _, condition := range node.Status.Conditions {
+			if condition.Type == corev1.NodeReady && condition.Status == corev1.ConditionTrue {
+				isReady = true
+				break
+			}
+		}
+		if !isReady {
+			continue
+		}
+
 		var internalIP string
 		for _, address := range node.Status.Addresses {
 			if address.Type == r.EndpointAddressType {
