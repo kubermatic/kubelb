@@ -116,7 +116,7 @@ vet: ## Run go vet against code.
 	go vet ./...
 
 lint: ## Run golangci-lint against code.
-	golangci-lint run -v --timeout=5m
+	golangci-lint run -v
 
 yamllint:  ## Run yamllint against code.
 	yamllint -c .yamllint.conf .
