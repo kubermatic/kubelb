@@ -171,64 +171,17 @@ func applyDefaultAnnotations(loadbalancer map[string]string, annotations kubelbv
 	return loadbalancer
 }
 
-func MergeAnnotations(existing, desired map[string]string, annotationSettings kubelbv1alpha1.AnnotationSettings) map[string]string {
+func MergeAnnotations(existing, desired map[string]string) map[string]string {
 	// First, check if both are equal. If they are, return the existing annotations.
 	if k8sutils.CompareAnnotations(existing, desired) {
 		return existing
 	}
 
-	// If they are not equal, we need to check the annotation settings to check whether a handful can be merged or all of them in case propagateAllAnnotations is set to true.
-	if annotationSettings.PropagateAllAnnotations != nil && *annotationSettings.PropagateAllAnnotations {
-		// merge desired annotations with the existing annotations.
-		for k, v := range desired {
-			existing[k] = v
-		}
-		return existing
-	}
-
-	// If propagateAllAnnotations is not set, we need to check the annotation settings to check whether a handful can be merged.
-	if annotationSettings.PropagatedAnnotations != nil {
-		permitted := *annotationSettings.PropagatedAnnotations
-
-		// Create a map to track which annotations are permitted with their allowed values
-		permittedMap := make(map[string][]string)
-		for k, v := range permitted {
-			if v == "" {
-				// Empty value means accept any value for this key
-				permittedMap[k] = []string{}
-			} else {
-				// Parse comma-separated values and trim whitespace
-				filterValues := strings.Split(v, ",")
-				for i, val := range filterValues {
-					filterValues[i] = strings.TrimSpace(val)
-				}
-				permittedMap[k] = filterValues
-			}
-		}
-
-		// Check each existing annotation to see if it should be propagated
-		for k, v := range existing {
-			// Skip if this annotation is already in desired
-			if _, exists := desired[k]; exists {
-				continue
-			}
-
-			// Check if this annotation key is permitted
-			if valuesFilter, ok := permittedMap[k]; ok {
-				if len(valuesFilter) == 0 {
-					// No value filter, accept any value
-					desired[k] = v
-				} else {
-					// Check if the value matches one of the allowed values
-					for _, allowedValue := range valuesFilter {
-						if v == allowedValue {
-							desired[k] = v
-							break
-						}
-					}
-				}
-			}
-		}
+	// Merge desired annotations with the existing annotations.
+	// While creating native resources against the KubeLB CRs, we don't care about the annotation settings and would like to retain all the annotations
+	// configured by third party controllers on the existing resource.
+	for k, v := range desired {
+		existing[k] = v
 	}
 	return desired
 }
