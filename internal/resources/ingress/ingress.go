@@ -24,7 +24,7 @@ import (
 
 	kubelbv1alpha1 "k8c.io/kubelb/api/kubelb.k8c.io/v1alpha1"
 	"k8c.io/kubelb/internal/kubelb"
-	util "k8c.io/kubelb/internal/util/kubernetes"
+	k8sutils "k8c.io/kubelb/internal/util/kubernetes"
 
 	networkingv1 "k8s.io/api/networking/v1"
 	v1 "k8s.io/api/networking/v1"
@@ -72,7 +72,7 @@ func CreateOrUpdateIngress(ctx context.Context, log logr.Logger, client ctrlclie
 	// Process secrets.
 	if object.Spec.TLS != nil {
 		for i := range object.Spec.TLS {
-			secretName := util.GetSecretNameIfExists(ctx, client, object.Spec.TLS[i].SecretName, object.Namespace, namespace)
+			secretName := k8sutils.GetSecretNameIfExists(ctx, client, object.Spec.TLS[i].SecretName, object.Namespace, namespace)
 			if secretName != "" {
 				object.Spec.TLS[i].SecretName = secretName
 			}
@@ -102,10 +102,13 @@ func CreateOrUpdateIngress(ctx context.Context, log logr.Logger, client ctrlclie
 		return nil
 	}
 
+	// Merge the annotations with the existing annotations to allow annotations that are configured by third party controllers on the existing service to be preserved.
+	object.Annotations = k8sutils.MergeAnnotations(existingObject.Annotations, object.Annotations)
+
 	// Update the Ingress object if it is different from the existing one.
 	if equality.Semantic.DeepEqual(existingObject.Spec, object.Spec) &&
 		equality.Semantic.DeepEqual(existingObject.Labels, object.Labels) &&
-		equality.Semantic.DeepEqual(existingObject.Annotations, object.Annotations) {
+		k8sutils.CompareAnnotations(existingObject.Annotations, object.Annotations) {
 		return nil
 	}
 
