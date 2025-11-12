@@ -24,7 +24,7 @@ import (
 
 	kubelbv1alpha1 "k8c.io/kubelb/api/ce/kubelb.k8c.io/v1alpha1"
 	"k8c.io/kubelb/internal/kubelb"
-	util "k8c.io/kubelb/internal/util/kubernetes"
+	k8sutils "k8c.io/kubelb/internal/util/kubernetes"
 
 	"k8s.io/apimachinery/pkg/api/equality"
 	kerrors "k8s.io/apimachinery/pkg/api/errors"
@@ -69,7 +69,7 @@ func CreateOrUpdateGateway(ctx context.Context, log logr.Logger, client ctrlclie
 	for i, listener := range object.Spec.Listeners {
 		if listener.TLS != nil {
 			for j, reference := range listener.TLS.CertificateRefs {
-				secretName := util.GetSecretNameIfExists(ctx, client, string(reference.Name), object.Namespace, namespace)
+				secretName := k8sutils.GetSecretNameIfExists(ctx, client, string(reference.Name), object.Namespace, namespace)
 				if secretName != "" {
 					object.Spec.Listeners[i].TLS.CertificateRefs[j].Name = gwapiv1.ObjectName(secretName)
 				}
@@ -106,12 +106,12 @@ func CreateOrUpdateGateway(ctx context.Context, log logr.Logger, client ctrlclie
 	}
 
 	// Merge the annotations with the existing annotations to allow annotations that are configured by third party controllers on the existing service to be preserved.
-	object.Annotations = kubelb.MergeAnnotations(existingGateway.Annotations, object.Annotations)
+	object.Annotations = k8sutils.MergeAnnotations(existingGateway.Annotations, object.Annotations)
 
 	// Update the Gateway object if it is different from the existing one.
 	if equality.Semantic.DeepEqual(existingGateway.Spec, object.Spec) &&
 		equality.Semantic.DeepEqual(existingGateway.Labels, object.Labels) &&
-		util.CompareAnnotations(existingGateway.Annotations, object.Annotations) {
+		k8sutils.CompareAnnotations(existingGateway.Annotations, object.Annotations) {
 		return nil
 	}
 
