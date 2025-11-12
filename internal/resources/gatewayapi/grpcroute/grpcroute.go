@@ -25,6 +25,7 @@ import (
 	kubelbv1alpha1 "k8c.io/kubelb/api/kubelb.k8c.io/v1alpha1"
 	"k8c.io/kubelb/internal/kubelb"
 	gatewayapihelpers "k8c.io/kubelb/internal/resources/gatewayapi"
+	k8sutils "k8c.io/kubelb/internal/util/kubernetes"
 
 	"k8s.io/apimachinery/pkg/api/equality"
 	kerrors "k8s.io/apimachinery/pkg/api/errors"
@@ -120,10 +121,13 @@ func CreateOrUpdateGRPCRoute(ctx context.Context, log logr.Logger, client ctrlcl
 		return nil
 	}
 
+	// Merge the annotations with the existing annotations to allow annotations that are configured by third party controllers on the existing service to be preserved.
+	object.Annotations = k8sutils.MergeAnnotations(existingObject.Annotations, object.Annotations)
+
 	// Update the Ingress object if it is different from the existing one.
 	if equality.Semantic.DeepEqual(existingObject.Spec, object.Spec) &&
 		equality.Semantic.DeepEqual(existingObject.Labels, object.Labels) &&
-		equality.Semantic.DeepEqual(existingObject.Annotations, object.Annotations) {
+		k8sutils.CompareAnnotations(existingObject.Annotations, object.Annotations) {
 		return nil
 	}
 

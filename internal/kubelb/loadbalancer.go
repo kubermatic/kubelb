@@ -18,10 +18,10 @@ package kubelb
 
 import (
 	"fmt"
-	"reflect"
 	"strings"
 
 	kubelbiov1alpha1 "k8c.io/kubelb/api/kubelb.k8c.io/v1alpha1"
+	k8sutils "k8c.io/kubelb/internal/util/kubernetes"
 
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -73,6 +73,12 @@ func MapLoadBalancer(userService *corev1.Service, clusterEndpoints []string, use
 
 	lbEndpointSubsets = append(lbEndpointSubsets, lbEndpoints)
 
+	// Last applied configuration annotation is not relevant for the load balancer.
+	annotations := userService.Annotations
+	if annotations != nil {
+		delete(annotations, corev1.LastAppliedConfigAnnotation)
+	}
+
 	return &kubelbiov1alpha1.LoadBalancer{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      string(userService.UID),
@@ -82,7 +88,7 @@ func MapLoadBalancer(userService *corev1.Service, clusterEndpoints []string, use
 				LabelOriginName:      userService.Name,
 				LabelTenantName:      clusterName,
 			},
-			Annotations: userService.Annotations,
+			Annotations: annotations,
 		},
 		Spec: kubelbiov1alpha1.LoadBalancerSpec{
 			Ports:     lbServicePorts,
@@ -147,5 +153,5 @@ func LoadBalancerIsDesiredState(actual, desired *kubelbiov1alpha1.LoadBalancer) 
 		}
 	}
 
-	return reflect.DeepEqual(actual.Annotations, desired.Annotations)
+	return k8sutils.CompareAnnotations(actual.Annotations, desired.Annotations)
 }
