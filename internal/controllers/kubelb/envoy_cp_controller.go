@@ -226,6 +226,11 @@ func (r *EnvoyCPReconciler) ensureEnvoyProxy(ctx context.Context, namespace, app
 	objMeta := metav1.ObjectMeta{
 		Name:      fmt.Sprintf(envoyResourcePattern, appName),
 		Namespace: namespace,
+		Labels: map[string]string{
+			kubelb.LabelAppKubernetesName:      "kubelb-envoy-proxy",
+			kubelb.LabelAppKubernetesInstance:  appName,
+			kubelb.LabelAppKubernetesManagedBy: "kubelb",
+		},
 	}
 	if r.Config.Spec.EnvoyProxy.UseDaemonset {
 		envoyProxy = &appsv1.DaemonSet{
@@ -289,7 +294,10 @@ func (r *EnvoyCPReconciler) getEnvoyProxyPodSpec(namespace, appName, snapshotNam
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      appName,
 			Namespace: namespace,
-			Labels:    map[string]string{kubelb.LabelAppKubernetesName: appName},
+			Labels: map[string]string{
+				kubelb.LabelAppKubernetesName:      appName,
+				kubelb.LabelAppKubernetesManagedBy: "kubelb",
+			},
 			Annotations: map[string]string{
 				"prometheus.io/scrape": "true",
 				"prometheus.io/port":   fmt.Sprintf("%d", envoycp.EnvoyStatsPort),
