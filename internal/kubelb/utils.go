@@ -22,7 +22,6 @@ import (
 
 	kubelbv1alpha1 "k8c.io/kubelb/api/ce/kubelb.k8c.io/v1alpha1"
 	"k8c.io/kubelb/internal/resources"
-	k8sutils "k8c.io/kubelb/internal/util/kubernetes"
 
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
@@ -169,21 +168,6 @@ func applyDefaultAnnotations(loadbalancer map[string]string, annotations kubelbv
 		}
 	}
 	return loadbalancer
-}
-
-func MergeAnnotations(existing, desired map[string]string) map[string]string {
-	// First, check if both are equal. If they are, return the existing annotations.
-	if k8sutils.CompareAnnotations(existing, desired) {
-		return existing
-	}
-
-	// Merge desired annotations with the existing annotations.
-	// While creating native resources against the KubeLB CRs, we don't care about the annotation settings and would like to retain all the annotations
-	// configured by third party controllers on the existing resource.
-	for k, v := range desired {
-		existing[k] = v
-	}
-	return desired
 }
 
 func AddKubeLBLabels(labels map[string]string, name, namespace, gvk string) map[string]string {

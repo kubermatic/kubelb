@@ -17,6 +17,8 @@ limitations under the License.
 package kubernetes
 
 import (
+	"maps"
+
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/equality"
 )
@@ -37,13 +39,22 @@ func CompareAnnotations(a, b map[string]string) bool {
 	// Create copies to avoid mutating the original maps.
 	aCopy := make(map[string]string)
 	bCopy := make(map[string]string)
-	for k, v := range a {
-		aCopy[k] = v
-	}
-	for k, v := range b {
-		bCopy[k] = v
-	}
+	maps.Copy(aCopy, a)
+	maps.Copy(bCopy, b)
 	delete(aCopy, corev1.LastAppliedConfigAnnotation)
 	delete(bCopy, corev1.LastAppliedConfigAnnotation)
 	return equality.Semantic.DeepEqual(aCopy, bCopy)
+}
+
+func MergeAnnotations(existing, desired map[string]string) map[string]string {
+	// First, check if both are equal. If they are, return the existing annotations.
+	if CompareAnnotations(existing, desired) {
+		return existing
+	}
+
+	// Merge desired annotations with the existing annotations.
+	// While creating native resources against the KubeLB CRs, we don't care about the annotation settings and would like to retain all the annotations
+	// configured by third party controllers on the existing resource.
+	maps.Copy(existing, desired)
+	return desired
 }

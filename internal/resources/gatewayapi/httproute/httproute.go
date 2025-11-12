@@ -123,7 +123,7 @@ func CreateOrUpdateHTTPRoute(ctx context.Context, log logr.Logger, client ctrlcl
 	}
 
 	// Merge the annotations with the existing annotations to allow annotations that are configured by third party controllers on the existing service to be preserved.
-	object.Annotations = kubelb.MergeAnnotations(existingObject.Annotations, object.Annotations)
+	object.Annotations = k8sutils.MergeAnnotations(existingObject.Annotations, object.Annotations)
 
 	// Update the Ingress object if it is different from the existing one.
 	if equality.Semantic.DeepEqual(existingObject.Spec, object.Spec) &&
@@ -306,7 +306,7 @@ func CreateHTTPRouteForHostname(ctx context.Context, client ctrlclient.Client, l
 		log.V(2).Info("created httproute", "name", httpRouteName)
 	} else {
 		// Merge the annotations with the existing annotations to allow annotations that are configured by third party controllers on the existing service to be preserved.
-		httpRoute.Annotations = kubelb.MergeAnnotations(existingHTTPRoute.Annotations, httpRoute.Annotations)
+		httpRoute.Annotations = k8sutils.MergeAnnotations(existingHTTPRoute.Annotations, httpRoute.Annotations)
 
 		// HTTPRoute already exists, we need to check if it needs to be updated.
 		if !equality.Semantic.DeepEqual(existingHTTPRoute.Spec, httpRoute.Spec) ||

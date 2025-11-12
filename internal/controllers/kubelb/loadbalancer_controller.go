@@ -305,7 +305,7 @@ func (r *LoadBalancerReconciler) reconcileService(ctx context.Context, loadBalan
 		}
 	} else {
 		// Merge the annotations with the existing annotations to allow annotations that are configured by third party controllers on the existing service to be preserved.
-		desiredService.Annotations = kubelb.MergeAnnotations(existingService.Annotations, desiredService.Annotations)
+		desiredService.Annotations = k8sutils.MergeAnnotations(existingService.Annotations, desiredService.Annotations)
 
 		// Service already exists, we need to check if it needs to be updated.
 		if !equality.Semantic.DeepEqual(existingService.Spec.Ports, desiredService.Spec.Ports) ||

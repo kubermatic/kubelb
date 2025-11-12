@@ -122,7 +122,7 @@ func CreateOrUpdateGRPCRoute(ctx context.Context, log logr.Logger, client ctrlcl
 	}
 
 	// Merge the annotations with the existing annotations to allow annotations that are configured by third party controllers on the existing service to be preserved.
-	object.Annotations = kubelb.MergeAnnotations(existingObject.Annotations, object.Annotations)
+	object.Annotations = k8sutils.MergeAnnotations(existingObject.Annotations, object.Annotations)
 
 	// Update the Ingress object if it is different from the existing one.
 	if equality.Semantic.DeepEqual(existingObject.Spec, object.Spec) &&
