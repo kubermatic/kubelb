@@ -105,10 +105,13 @@ func CreateOrUpdateGateway(ctx context.Context, log logr.Logger, client ctrlclie
 		return nil
 	}
 
+	// Merge the annotations with the existing annotations to allow annotations that are configured by third party controllers on the existing service to be preserved.
+	object.Annotations = kubelb.MergeAnnotations(existingGateway.Annotations, object.Annotations, annotations)
+
 	// Update the Gateway object if it is different from the existing one.
 	if equality.Semantic.DeepEqual(existingGateway.Spec, object.Spec) &&
 		equality.Semantic.DeepEqual(existingGateway.Labels, object.Labels) &&
-		equality.Semantic.DeepEqual(existingGateway.Annotations, object.Annotations) {
+		util.CompareAnnotations(existingGateway.Annotations, object.Annotations) {
 		return nil
 	}
 
