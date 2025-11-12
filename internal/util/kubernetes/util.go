@@ -55,6 +55,8 @@ func MergeAnnotations(existing, desired map[string]string) map[string]string {
 	// Merge desired annotations with the existing annotations.
 	// While creating native resources against the KubeLB CRs, we don't care about the annotation settings and would like to retain all the annotations
 	// configured by third party controllers on the existing resource.
-	maps.Copy(existing, desired)
-	return desired
+	merged := make(map[string]string)
+	maps.Copy(merged, existing)
+	maps.Copy(merged, desired)
+	return merged
 }
