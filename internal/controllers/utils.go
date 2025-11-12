@@ -22,7 +22,6 @@ import (
 	"k8c.io/kubelb/internal/kubelb"
 
 	corev1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/api/equality"
 	"k8s.io/apimachinery/pkg/types"
 	ctrlruntimeclient "sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/event"
@@ -79,18 +78,4 @@ func workqueueFilter(filter func(o ctrlruntimeclient.Object) bool) predicate.Fun
 			return filter(e.Object)
 		},
 	}
-}
-
-// CompareAnnotations compares two annotation maps while ignoring the last-applied-configuration annotation
-func CompareAnnotations(a, b map[string]string) bool {
-	if a == nil && b == nil {
-		return true
-	}
-	if a == nil || b == nil {
-		return false
-	}
-
-	delete(a, corev1.LastAppliedConfigAnnotation)
-	delete(b, corev1.LastAppliedConfigAnnotation)
-	return equality.Semantic.DeepEqual(a, b)
 }
