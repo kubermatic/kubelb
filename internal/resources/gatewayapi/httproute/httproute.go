@@ -23,9 +23,9 @@ import (
 	"github.com/go-logr/logr"
 
 	kubelbv1alpha1 "k8c.io/kubelb/api/ce/kubelb.k8c.io/v1alpha1"
-	utils "k8c.io/kubelb/internal/controllers"
 	"k8c.io/kubelb/internal/kubelb"
 	gatewayapihelpers "k8c.io/kubelb/internal/resources/gatewayapi"
+	k8sutils "k8c.io/kubelb/internal/util/kubernetes"
 
 	"k8s.io/apimachinery/pkg/api/equality"
 	kerrors "k8s.io/apimachinery/pkg/api/errors"
@@ -122,10 +122,13 @@ func CreateOrUpdateHTTPRoute(ctx context.Context, log logr.Logger, client ctrlcl
 		return nil
 	}
 
+	// Merge the annotations with the existing annotations to allow annotations that are configured by third party controllers on the existing service to be preserved.
+	object.Annotations = k8sutils.MergeAnnotations(existingObject.Annotations, object.Annotations)
+
 	// Update the Ingress object if it is different from the existing one.
 	if equality.Semantic.DeepEqual(existingObject.Spec, object.Spec) &&
 		equality.Semantic.DeepEqual(existingObject.Labels, object.Labels) &&
-		equality.Semantic.DeepEqual(existingObject.Annotations, object.Annotations) {
+		k8sutils.CompareAnnotations(existingObject.Annotations, object.Annotations) {
 		return nil
 	}
 
@@ -301,18 +304,23 @@ func CreateHTTPRouteForHostname(ctx context.Context, client ctrlclient.Client, l
 			return fmt.Errorf("failed to create httproute: %w", err)
 		}
 		log.V(2).Info("created httproute", "name", httpRouteName)
-	} else if !equality.Semantic.DeepEqual(existingHTTPRoute.Spec, httpRoute.Spec) ||
-		!equality.Semantic.DeepEqual(existingHTTPRoute.Labels, httpRoute.Labels) ||
-		!utils.CompareAnnotations(existingHTTPRoute.Annotations, httpRoute.Annotations) {
-		// Update existing HTTPRoute if needed
-		existingHTTPRoute.Spec = httpRoute.Spec
-		existingHTTPRoute.Labels = httpRoute.Labels
-		existingHTTPRoute.Annotations = httpRoute.Annotations
-		if err := client.Update(ctx, existingHTTPRoute); err != nil {
-			return fmt.Errorf("failed to update httproute: %w", err)
-		}
-		log.V(2).Info("updated httproute", "name", httpRouteName)
-	}
+	} else {
+		// Merge the annotations with the existing annotations to allow annotations that are configured by third party controllers on the existing service to be preserved.
+		httpRoute.Annotations = k8sutils.MergeAnnotations(existingHTTPRoute.Annotations, httpRoute.Annotations)
 
+		// HTTPRoute already exists, we need to check if it needs to be updated.
+		if !equality.Semantic.DeepEqual(existingHTTPRoute.Spec, httpRoute.Spec) ||
+			!equality.Semantic.DeepEqual(existingHTTPRoute.Labels, httpRoute.Labels) ||
+			!k8sutils.CompareAnnotations(existingHTTPRoute.Annotations, httpRoute.Annotations) {
+			// Update existing HTTPRoute if needed
+			existingHTTPRoute.Spec = httpRoute.Spec
+			existingHTTPRoute.Labels = httpRoute.Labels
+			existingHTTPRoute.Annotations = httpRoute.Annotations
+			if err := client.Update(ctx, existingHTTPRoute); err != nil {
+				return fmt.Errorf("failed to update httproute: %w", err)
+			}
+			log.V(2).Info("updated httproute", "name", httpRouteName)
+		}
+	}
 	return nil
 }

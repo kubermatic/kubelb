@@ -115,7 +115,7 @@ func PropagateAnnotations(loadbalancer map[string]string, annotations kubelbv1al
 	permittedMap := make(map[string][]string)
 	for k, v := range permitted {
 		if _, found := permittedMap[k]; !found {
-			if len(v) == 0 || v == "" {
+			if v == "" {
 				permittedMap[k] = []string{}
 			} else {
 				filterValues := strings.Split(v, ",")
