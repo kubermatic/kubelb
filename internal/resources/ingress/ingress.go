@@ -102,10 +102,13 @@ func CreateOrUpdateIngress(ctx context.Context, log logr.Logger, client ctrlclie
 		return nil
 	}
 
+	// Merge the annotations with the existing annotations to allow annotations that are configured by third party controllers on the existing service to be preserved.
+	object.Annotations = kubelb.MergeAnnotations(existingObject.Annotations, object.Annotations)
+
 	// Update the Ingress object if it is different from the existing one.
 	if equality.Semantic.DeepEqual(existingObject.Spec, object.Spec) &&
 		equality.Semantic.DeepEqual(existingObject.Labels, object.Labels) &&
-		equality.Semantic.DeepEqual(existingObject.Annotations, object.Annotations) {
+		k8sutils.CompareAnnotations(existingObject.Annotations, object.Annotations) {
 		return nil
 	}
 
@@ -239,7 +242,7 @@ func CreateIngressForHostname(ctx context.Context, client ctrlclient.Client, loa
 		log.V(2).Info("created ingress", "name", ingressName)
 	} else {
 		// Merge the annotations with the existing annotations to allow annotations that are configured by third party controllers on the existing service to be preserved.
-		ingress.Annotations = kubelb.MergeAnnotations(existingIngress.Annotations, ingress.Annotations, annotations)
+		ingress.Annotations = kubelb.MergeAnnotations(existingIngress.Annotations, ingress.Annotations)
 
 		// Ingress already exists, we need to check if it needs to be updated.
 		if !equality.Semantic.DeepEqual(existingIngress.Spec, ingress.Spec) ||
