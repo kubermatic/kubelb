@@ -46,8 +46,8 @@ presubmits:
             - lint
           resources:
             requests:
-              cpu: 800m
-              memory: 4Gi
+              cpu: 1
+              memory: 6Gi
 
   - name: pull-kubelb-yamllint
     always_run: true
