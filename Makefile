@@ -25,7 +25,7 @@ export CGO_ENABLED=0
 export GOPROXY?=https://proxy.golang.org
 export GO111MODULE=on
 export GOFLAGS?=-mod=readonly -trimpath
-export GIT_TAG ?= $(shell git tag --points-at HEAD | head -n1)
+export GIT_TAG ?= $(shell git tag --points-at HEAD 2>/dev/null | head -n1)
 
 GIT_VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
 GIT_COMMIT ?= $(shell git rev-parse HEAD 2>/dev/null || echo "unknown")
@@ -36,7 +36,7 @@ LDFLAGS := -X 'k8c.io/kubelb/internal/version.GitVersion=$(GIT_VERSION)' \
 	-X 'k8c.io/kubelb/internal/version.BuildDate=$(BUILD_DATE)'
 
 IMAGE_TAG = \
-		$(shell echo $$(git rev-parse HEAD && if [[ -n $$(git status --porcelain) ]]; then echo '-dirty'; fi)|tr -d ' ')
+		$(shell echo $$(git rev-parse HEAD 2>/dev/null && if [[ -n $$(git status --porcelain 2>/dev/null) ]]; then echo '-dirty'; fi)|tr -d ' ')
 
 VERSION = $(shell cat VERSION)
 
