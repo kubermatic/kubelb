@@ -31,6 +31,7 @@ import (
 	portlookup "k8c.io/kubelb/internal/port-lookup"
 	"k8c.io/kubelb/internal/resources/gatewayapi/httproute"
 	ingress "k8c.io/kubelb/internal/resources/ingress"
+	k8sutils "k8c.io/kubelb/internal/util/kubernetes"
 
 	corev1 "k8s.io/api/core/v1"
 	networkingv1 "k8s.io/api/networking/v1"
@@ -302,18 +303,24 @@ func (r *LoadBalancerReconciler) reconcileService(ctx context.Context, loadBalan
 		if err := r.Create(ctx, desiredService); err != nil {
 			return fmt.Errorf("failed to create service: %w", err)
 		}
-	} else if !equality.Semantic.DeepEqual(existingService.Spec.Ports, desiredService.Spec.Ports) ||
-		!equality.Semantic.DeepEqual(existingService.Spec.Selector, desiredService.Spec.Selector) ||
-		!equality.Semantic.DeepEqual(existingService.Spec.Type, desiredService.Spec.Type) ||
-		!equality.Semantic.DeepEqual(existingService.Spec.LoadBalancerClass, desiredService.Spec.LoadBalancerClass) ||
-		!equality.Semantic.DeepEqual(existingService.Labels, desiredService.Labels) ||
-		!utils.CompareAnnotations(existingService.Annotations, desiredService.Annotations) {
-		log.V(2).Info("updating service", "name", svcName)
-		existingService.Spec = desiredService.Spec
-		existingService.Labels = desiredService.Labels
-		existingService.Annotations = desiredService.Annotations
-		if err := r.Update(ctx, existingService); err != nil {
-			return fmt.Errorf("failed to update service: %w", err)
+	} else {
+		// Merge the annotations with the existing annotations to allow annotations that are configured by third party controllers on the existing service to be preserved.
+		desiredService.Annotations = k8sutils.MergeAnnotations(existingService.Annotations, desiredService.Annotations)
+
+		// Service already exists, we need to check if it needs to be updated.
+		if !equality.Semantic.DeepEqual(existingService.Spec.Ports, desiredService.Spec.Ports) ||
+			!equality.Semantic.DeepEqual(existingService.Spec.Selector, desiredService.Spec.Selector) ||
+			!equality.Semantic.DeepEqual(existingService.Spec.Type, desiredService.Spec.Type) ||
+			!equality.Semantic.DeepEqual(existingService.Spec.LoadBalancerClass, desiredService.Spec.LoadBalancerClass) ||
+			!equality.Semantic.DeepEqual(existingService.Labels, desiredService.Labels) ||
+			!k8sutils.CompareAnnotations(existingService.Annotations, desiredService.Annotations) {
+			log.V(2).Info("updating service", "name", svcName)
+			existingService.Spec = desiredService.Spec
+			existingService.Labels = desiredService.Labels
+			existingService.Annotations = desiredService.Annotations
+			if err := r.Update(ctx, existingService); err != nil {
+				return fmt.Errorf("failed to update service: %w", err)
+			}
 		}
 	}
 	return nil

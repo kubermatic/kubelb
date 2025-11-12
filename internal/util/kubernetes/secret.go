@@ -19,15 +19,18 @@ package kubernetes
 import (
 	"context"
 
-	"k8c.io/kubelb/internal/kubelb"
-
 	corev1 "k8s.io/api/core/v1"
 	ctrlclient "sigs.k8s.io/controller-runtime/pkg/client"
 )
 
+const (
+	labelOriginName      = "kubelb.k8c.io/origin-name"
+	labelOriginNamespace = "kubelb.k8c.io/origin-ns"
+)
+
 func GetSecretNameIfExists(ctx context.Context, client ctrlclient.Client, name, namespace string, tenantNamespace string) string {
 	secrets := corev1.SecretList{}
-	err := client.List(ctx, &secrets, ctrlclient.InNamespace(tenantNamespace), ctrlclient.MatchingLabels{kubelb.LabelOriginName: name, kubelb.LabelOriginNamespace: namespace})
+	err := client.List(ctx, &secrets, ctrlclient.InNamespace(tenantNamespace), ctrlclient.MatchingLabels{labelOriginName: name, labelOriginNamespace: namespace})
 	if err != nil {
 		return ""
 	}
