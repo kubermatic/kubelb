@@ -57,13 +57,24 @@ echodate "Install kubelb"
 make install
 make e2e-deploy-kubelb
 
-tenants=("tenant-primary" "tenant-secondary")
+tenants=("primary" "secondary")
 i=1
 for tenant in "${tenants[@]}"; do
+  tenantNamespace="tenant-$tenant"
   echodate "Install ccm for $tenant"
-  kubectl create ns "$tenant"
-  kubectl label ns "$tenant" kubelb.k8c.io/managed-by=kubelb
-  kubectl config set-context $(kubectl config current-context) --namespace="$tenant"
+  cat << EOF | kubectl apply -f -
+apiVersion: kubelb.k8c.io/v1alpha1
+kind: Tenant
+metadata:
+  name: $tenant
+spec:
+  propagateAllAnnotations: true
+EOF
+  # Let KubeLB create the required resources including namespace
+  kubectl create ns "$tenantNamespace" || true
+  kubectl label ns "$tenantNamespace" kubelb.k8c.io/managed-by=kubelb
+  sleep 10
+  kubectl config set-context $(kubectl config current-context) --namespace="$tenantNamespace"
   kubectl create secret generic kubelb-cluster --from-file=kubelb="${TMPDIR}"/kubelb.kubeconfig --from-file=tenant="${TMPDIR}/tenant${i}.kubeconfig"
   make "e2e-deploy-ccm-tenant-${i}"
   i=$((i + 1))
