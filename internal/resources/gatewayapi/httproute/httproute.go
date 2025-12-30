@@ -244,7 +244,7 @@ func CreateHTTPRouteForHostname(ctx context.Context, client ctrlclient.Client, l
 	namespace := loadBalancer.Namespace
 
 	// Create HTTPRoute
-	port := gwapiv1.PortNumber(loadBalancer.Spec.Ports[0].Port)
+	port := loadBalancer.Spec.Ports[0].Port
 	serviceKind := gwapiv1.Kind("Service")
 
 	httpRoute := &gwapiv1.HTTPRoute{
