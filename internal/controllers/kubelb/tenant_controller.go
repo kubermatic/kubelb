@@ -25,6 +25,7 @@ import (
 	"html/template"
 	"net"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/go-logr/logr"
@@ -499,4 +500,12 @@ func (r *TenantReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		Named(TenantControllerName).
 		For(&kubelbv1alpha1.Tenant{}).
 		Complete(r)
+}
+
+func RemoveTenantPrefix(namespace string) string {
+	prefix := "tenant-"
+	if strings.HasPrefix(namespace, prefix) {
+		return strings.TrimPrefix(namespace, prefix)
+	}
+	return namespace
 }
