@@ -48,6 +48,7 @@ helm install kubelb-manager kubelb-manager/ --namespace kubelb -f values.yaml --
 | kubelb.enableLeaderElection | bool | `true` |  |
 | kubelb.enableTenantMigration | bool | `true` | Migrate Tenant namespace to Tenant CRDs |
 | kubelb.envoyProxy.affinity | object | `{}` |  |
+| kubelb.envoyProxy.gracefulShutdown.disabled | bool | `false` | Disable graceful shutdown (default: false) |
 | kubelb.envoyProxy.nodeSelector | object | `{}` |  |
 | kubelb.envoyProxy.replicas | int | `2` | The number of replicas for the Envoy Proxy deployment. |
 | kubelb.envoyProxy.resources | object | `{}` |  |

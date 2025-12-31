@@ -111,6 +111,42 @@ type EnvoyProxy struct {
 	// Image defines the Envoy Proxy image to use.
 	// +optional
 	Image string `json:"image,omitempty"`
+
+	// GracefulShutdown defines the graceful shutdown configuration for Envoy Proxy.
+	// +optional
+	GracefulShutdown *EnvoyProxyGracefulShutdown `json:"gracefulShutdown,omitempty"`
+}
+
+// EnvoyProxyGracefulShutdown defines the graceful shutdown configuration for Envoy Proxy
+type EnvoyProxyGracefulShutdown struct {
+	// Disabled controls whether graceful shutdown is disabled
+	// +optional
+	Disabled bool `json:"disabled,omitempty"`
+
+	// DrainTimeout is the maximum time to wait for connections to drain.
+	// Defaults to 60s. Must be less than TerminationGracePeriodSeconds.
+	// +kubebuilder:default="60s"
+	// +optional
+	DrainTimeout *metav1.Duration `json:"drainTimeout,omitempty"`
+
+	// MinDrainDuration is the minimum time to wait before checking connection count.
+	// This prevents premature termination. Defaults to 5s.
+	// +kubebuilder:default="5s"
+	// +optional
+	MinDrainDuration *metav1.Duration `json:"minDrainDuration,omitempty"`
+
+	// TerminationGracePeriodSeconds is the grace period for pod termination.
+	// Must be greater than DrainTimeout. Defaults to 300s.
+	// +kubebuilder:default=300
+	// +kubebuilder:validation:Minimum=30
+	// +optional
+	TerminationGracePeriodSeconds *int64 `json:"terminationGracePeriodSeconds,omitempty"`
+
+	// ShutdownManagerImage is the Docker image for the shutdown-manager sidecar.
+	// Defaults to "docker.io/envoyproxy/gateway:v1.3.0"
+	// +kubebuilder:default="docker.io/envoyproxy/gateway:v1.3.0"
+	// +optional
+	ShutdownManagerImage string `json:"shutdownManagerImage,omitempty"`
 }
 
 // +kubebuilder:object:root=true

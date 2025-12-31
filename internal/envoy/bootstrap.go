@@ -45,8 +45,19 @@ const EnvoyAdminPort = 9001
 const EnvoyStatsPort = 19001
 const EnvoyStatsPath = "/stats/prometheus"
 
-const EnvoyReadinessPort = 19002
+const EnvoyReadinessPort = 19003
 const EnvoyReadinessPath = "/ready"
+
+// Shutdown manager constants
+const ShutdownManagerPort = 19002
+const ShutdownManagerHealthCheckPath = "/healthz"
+const ShutdownManagerReadyPath = "/shutdown/ready"
+
+// Graceful shutdown configuration defaults
+const DefaultEnvoyDrainTimeout = 60
+const DefaultEnvoyMinDrainDuration = 5
+const DefaultEnvoyTerminationGracePeriod = 300
+const DefaultShutdownManagerImage = "docker.io/envoyproxy/gateway:v1.3.0"
 
 // By default, the admin interface is only accessible from localhost, to prevent
 // potential security issues while keeping it available for the stats and probe listeners.

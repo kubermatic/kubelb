@@ -1006,6 +1006,41 @@ spec:
                             x-kubernetes-list-type: atomic
                         type: object
                     type: object
+                  gracefulShutdown:
+                    description: GracefulShutdown defines the graceful shutdown configuration
+                      for Envoy Proxy.
+                    properties:
+                      disabled:
+                        description: Disabled controls whether graceful shutdown is
+                          disabled
+                        type: boolean
+                      drainTimeout:
+                        default: 60s
+                        description: |-
+                          DrainTimeout is the maximum time to wait for connections to drain.
+                          Defaults to 60s. Must be less than TerminationGracePeriodSeconds.
+                        type: string
+                      minDrainDuration:
+                        default: 5s
+                        description: |-
+                          MinDrainDuration is the minimum time to wait before checking connection count.
+                          This prevents premature termination. Defaults to 5s.
+                        type: string
+                      shutdownManagerImage:
+                        default: docker.io/envoyproxy/gateway:v1.3.0
+                        description: |-
+                          ShutdownManagerImage is the Docker image for the shutdown-manager sidecar.
+                          Defaults to "docker.io/envoyproxy/gateway:v1.3.0"
+                        type: string
+                      terminationGracePeriodSeconds:
+                        default: 300
+                        description: |-
+                          TerminationGracePeriodSeconds is the grace period for pod termination.
+                          Must be greater than DrainTimeout. Defaults to 300s.
+                        format: int64
+                        minimum: 30
+                        type: integer
+                    type: object
                   image:
                     description: Image defines the Envoy Proxy image to use.
                     type: string

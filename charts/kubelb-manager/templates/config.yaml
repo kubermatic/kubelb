@@ -25,6 +25,10 @@ spec:
     resources:
     {{- toYaml . | nindent 6 }}
     {{- end }}
+    {{- with .Values.kubelb.envoyProxy.gracefulShutdown }}
+    gracefulShutdown:
+      disabled: {{ .disabled }}
+    {{- end }}
   {{- with .Values.kubelb.propagatedAnnotations }}
   propagatedAnnotations:
   {{- toYaml . | nindent 4 }}

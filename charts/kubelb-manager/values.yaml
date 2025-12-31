@@ -30,6 +30,9 @@ kubelb:
     tolerations: []
     resources: {}
     affinity: {}
+    gracefulShutdown:
+      # -- Disable graceful shutdown (default: false)
+      disabled: false
   # -- Allowed annotations that will be propagated from the LB resource to the LB service.
   propagatedAnnotations: {}
   # -- Propagate all annotations from the LB resource to the LB service.
