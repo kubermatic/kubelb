@@ -1006,11 +1006,6 @@ spec:
                             x-kubernetes-list-type: atomic
                         type: object
                     type: object
-<<<<<<< HEAD
-                  image:
-                    description: Image defines the Envoy Proxy image to use.
-                    type: string
-=======
                   gracefulShutdown:
                     description: GracefulShutdown defines the graceful shutdown configuration
                       for Envoy Proxy.
@@ -1046,7 +1041,9 @@ spec:
                         minimum: 30
                         type: integer
                     type: object
->>>>>>> 9df992c (Graceful shutdown for Envoy Proxy)
+                  image:
+                    description: Image defines the Envoy Proxy image to use.
+                    type: string
                   nodeSelector:
                     additionalProperties:
                       type: string

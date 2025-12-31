@@ -111,7 +111,7 @@ type EnvoyProxy struct {
 	// Image defines the Envoy Proxy image to use.
 	// +optional
 	Image string `json:"image,omitempty"`
-	
+
 	// GracefulShutdown defines the graceful shutdown configuration for Envoy Proxy.
 	// +optional
 	GracefulShutdown *EnvoyProxyGracefulShutdown `json:"gracefulShutdown,omitempty"`

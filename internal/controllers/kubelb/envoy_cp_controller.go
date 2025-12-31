@@ -476,73 +476,8 @@ func (r *EnvoyCPReconciler) getEnvoyProxyPodSpec(namespace, appName, snapshotNam
 			},
 		},
 		Spec: corev1.PodSpec{
-<<<<<<< HEAD
-			Containers: []corev1.Container{
-				{
-					Name:  envoyProxyContainerName,
-					Image: image,
-					Args: []string{
-						"--config-yaml", r.EnvoyBootstrap,
-						"--service-node", snapshotName,
-						"--service-cluster", namespace,
-					},
-					Ports: []corev1.ContainerPort{
-						{
-							Name:          "readiness",
-							ContainerPort: envoycp.EnvoyReadinessPort,
-							Protocol:      corev1.ProtocolTCP,
-						},
-						{
-							Name:          "metrics",
-							ContainerPort: envoycp.EnvoyStatsPort,
-							Protocol:      corev1.ProtocolTCP,
-						},
-					},
-					StartupProbe: &corev1.Probe{
-						ProbeHandler: corev1.ProbeHandler{
-							HTTPGet: &corev1.HTTPGetAction{
-								Path:   envoycp.EnvoyReadinessPath,
-								Port:   intstr.IntOrString{Type: intstr.Int, IntVal: envoycp.EnvoyReadinessPort},
-								Scheme: corev1.URISchemeHTTP,
-							},
-						},
-						TimeoutSeconds:   1,
-						PeriodSeconds:    10,
-						SuccessThreshold: 1,
-						FailureThreshold: 30,
-					},
-					ReadinessProbe: &corev1.Probe{
-						ProbeHandler: corev1.ProbeHandler{
-							HTTPGet: &corev1.HTTPGetAction{
-								Path:   envoycp.EnvoyReadinessPath,
-								Port:   intstr.IntOrString{Type: intstr.Int, IntVal: envoycp.EnvoyReadinessPort},
-								Scheme: corev1.URISchemeHTTP,
-							},
-						},
-						TimeoutSeconds:   1,
-						PeriodSeconds:    5,
-						SuccessThreshold: 1,
-						FailureThreshold: 1,
-					},
-					LivenessProbe: &corev1.Probe{
-						ProbeHandler: corev1.ProbeHandler{
-							HTTPGet: &corev1.HTTPGetAction{
-								Path:   envoycp.EnvoyReadinessPath,
-								Port:   intstr.IntOrString{Type: intstr.Int, IntVal: envoycp.EnvoyReadinessPort},
-								Scheme: corev1.URISchemeHTTP,
-							},
-						},
-						TimeoutSeconds:   1,
-						PeriodSeconds:    10,
-						SuccessThreshold: 1,
-						FailureThreshold: 3,
-					},
-				},
-			},
-=======
 			TerminationGracePeriodSeconds: ptr.To(terminationGracePeriod),
 			Containers:                    containers,
->>>>>>> 9df992c (Graceful shutdown for Envoy Proxy)
 		},
 	}
 
