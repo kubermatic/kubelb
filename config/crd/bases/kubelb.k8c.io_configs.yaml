@@ -1006,6 +1006,9 @@ spec:
                             x-kubernetes-list-type: atomic
                         type: object
                     type: object
+                  image:
+                    description: Image defines the Envoy Proxy image to use.
+                    type: string
                   nodeSelector:
                     additionalProperties:
                       type: string
