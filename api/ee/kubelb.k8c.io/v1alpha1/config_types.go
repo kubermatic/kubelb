@@ -143,6 +143,10 @@ type EnvoyProxy struct {
 	// Affinity is used to schedule Envoy Proxy pods on nodes with matching affinity.
 	// +optional
 	Affinity *corev1.Affinity `json:"affinity,omitempty"`
+
+	// Image defines the Envoy Proxy image to use.
+	// +optional
+	Image string `json:"image,omitempty"`
 }
 
 //+kubebuilder:object:root=true

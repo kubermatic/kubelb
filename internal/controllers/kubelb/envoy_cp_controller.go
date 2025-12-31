@@ -290,6 +290,13 @@ func (r *EnvoyCPReconciler) ensureEnvoyProxy(ctx context.Context, namespace, app
 
 func (r *EnvoyCPReconciler) getEnvoyProxyPodSpec(namespace, appName, snapshotName string) corev1.PodTemplateSpec {
 	envoyProxy := r.Config.Spec.EnvoyProxy
+
+	// Use configured image or fall back to default
+	image := envoyProxy.Image
+	if image == "" {
+		image = envoyImage
+	}
+
 	template := corev1.PodTemplateSpec{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      appName,
@@ -308,7 +315,7 @@ func (r *EnvoyCPReconciler) getEnvoyProxyPodSpec(namespace, appName, snapshotNam
 			Containers: []corev1.Container{
 				{
 					Name:  envoyProxyContainerName,
-					Image: envoyImage,
+					Image: image,
 					Args: []string{
 						"--config-yaml", r.EnvoyBootstrap,
 						"--service-node", snapshotName,
