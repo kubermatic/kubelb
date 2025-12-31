@@ -33,9 +33,11 @@ import (
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/intstr"
+	"k8s.io/utils/ptr"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	ctrlruntimeclient "sigs.k8s.io/controller-runtime/pkg/client"
@@ -251,22 +253,25 @@ func (r *EnvoyCPReconciler) ensureEnvoyProxy(ctx context.Context, namespace, app
 		return err
 	}
 
-	original := envoyProxy.DeepCopyObject()
+	desiredTemplate := r.getEnvoyProxyPodSpec(namespace, appName, snapshotName)
+	var originalTemplate corev1.PodTemplateSpec
 	if r.Config.Spec.EnvoyProxy.UseDaemonset {
 		daemonset := envoyProxy.(*appsv1.DaemonSet)
+		originalTemplate = daemonset.Spec.Template
 		daemonset.Spec.Selector = &metav1.LabelSelector{
 			MatchLabels: map[string]string{kubelb.LabelAppKubernetesName: appName},
 		}
-		daemonset.Spec.Template = r.getEnvoyProxyPodSpec(namespace, appName, snapshotName)
+		daemonset.Spec.Template = desiredTemplate
 		envoyProxy = daemonset
 	} else {
 		deployment := envoyProxy.(*appsv1.Deployment)
+		originalTemplate = deployment.Spec.Template
 		var replicas = r.Config.Spec.EnvoyProxy.Replicas
 		deployment.Spec.Replicas = &replicas
 		deployment.Spec.Selector = &metav1.LabelSelector{
 			MatchLabels: map[string]string{kubelb.LabelAppKubernetesName: appName},
 		}
-		deployment.Spec.Template = r.getEnvoyProxyPodSpec(namespace, appName, snapshotName)
+		deployment.Spec.Template = desiredTemplate
 		envoyProxy = deployment
 	}
 
@@ -275,16 +280,12 @@ func (r *EnvoyCPReconciler) ensureEnvoyProxy(ctx context.Context, namespace, app
 			return err
 		}
 	} else {
-		if !reflect.DeepEqual(original, envoyProxy) {
-			envoyProxy.SetManagedFields([]metav1.ManagedFieldsEntry{})
-			envoyProxy.SetResourceVersion("")
-			if err := r.Patch(ctx, envoyProxy, ctrlruntimeclient.Apply, ctrlruntimeclient.ForceOwnership, ctrlruntimeclient.FieldOwner("kubelb")); err != nil {
-				return err
+		if podTemplateSpecNeedsUpdate(originalTemplate, desiredTemplate) {
+			if err := r.Update(ctx, envoyProxy); err != nil {
+				return fmt.Errorf("failed to update envoy proxy: %w", err)
 			}
 		}
 	}
-	log.V(5).Info("desired", "envoy-proxy", envoyProxy)
-
 	return nil
 }
 
@@ -295,6 +296,169 @@ func (r *EnvoyCPReconciler) getEnvoyProxyPodSpec(namespace, appName, snapshotNam
 	image := envoyProxy.Image
 	if image == "" {
 		image = envoyImage
+	}
+
+	// Extract graceful shutdown configuration
+	gracefulShutdownEnabled := true
+	drainTimeout := int64(envoycp.DefaultEnvoyDrainTimeout)
+	terminationGracePeriod := int64(envoycp.DefaultEnvoyTerminationGracePeriod)
+	shutdownManagerImage := envoycp.DefaultShutdownManagerImage
+
+	if envoyProxy.GracefulShutdown != nil {
+		if envoyProxy.GracefulShutdown.Disabled {
+			gracefulShutdownEnabled = false
+		}
+		if envoyProxy.GracefulShutdown.DrainTimeout != nil {
+			drainTimeout = int64(envoyProxy.GracefulShutdown.DrainTimeout.Seconds())
+		}
+		if envoyProxy.GracefulShutdown.TerminationGracePeriodSeconds != nil {
+			terminationGracePeriod = *envoyProxy.GracefulShutdown.TerminationGracePeriodSeconds
+		}
+		if envoyProxy.GracefulShutdown.ShutdownManagerImage != "" {
+			shutdownManagerImage = envoyProxy.GracefulShutdown.ShutdownManagerImage
+		}
+	}
+
+	// Build envoy proxy container
+	envoyContainer := corev1.Container{
+		Name:  envoyProxyContainerName,
+		Image: image,
+		Args: []string{
+			"--config-yaml", r.EnvoyBootstrap,
+			"--service-node", snapshotName,
+			"--service-cluster", namespace,
+		},
+		Ports: []corev1.ContainerPort{
+			{
+				Name:          "readiness",
+				ContainerPort: envoycp.EnvoyReadinessPort,
+				Protocol:      corev1.ProtocolTCP,
+			},
+			{
+				Name:          "metrics",
+				ContainerPort: envoycp.EnvoyStatsPort,
+				Protocol:      corev1.ProtocolTCP,
+			},
+		},
+		StartupProbe: &corev1.Probe{
+			ProbeHandler: corev1.ProbeHandler{
+				HTTPGet: &corev1.HTTPGetAction{
+					Path:   envoycp.EnvoyReadinessPath,
+					Port:   intstr.IntOrString{Type: intstr.Int, IntVal: envoycp.EnvoyReadinessPort},
+					Scheme: corev1.URISchemeHTTP,
+				},
+			},
+			TimeoutSeconds:   1,
+			PeriodSeconds:    10,
+			SuccessThreshold: 1,
+			FailureThreshold: 30,
+		},
+		ReadinessProbe: &corev1.Probe{
+			ProbeHandler: corev1.ProbeHandler{
+				HTTPGet: &corev1.HTTPGetAction{
+					Path:   envoycp.EnvoyReadinessPath,
+					Port:   intstr.IntOrString{Type: intstr.Int, IntVal: envoycp.EnvoyReadinessPort},
+					Scheme: corev1.URISchemeHTTP,
+				},
+			},
+			TimeoutSeconds:   1,
+			PeriodSeconds:    5,
+			SuccessThreshold: 1,
+			FailureThreshold: 1,
+		},
+		LivenessProbe: &corev1.Probe{
+			ProbeHandler: corev1.ProbeHandler{
+				HTTPGet: &corev1.HTTPGetAction{
+					Path:   envoycp.EnvoyReadinessPath,
+					Port:   intstr.IntOrString{Type: intstr.Int, IntVal: envoycp.EnvoyReadinessPort},
+					Scheme: corev1.URISchemeHTTP,
+				},
+			},
+			TimeoutSeconds:   1,
+			PeriodSeconds:    10,
+			SuccessThreshold: 1,
+			FailureThreshold: 3,
+		},
+	}
+
+	// Add lifecycle hook if graceful shutdown is enabled
+	if gracefulShutdownEnabled {
+		envoyContainer.Lifecycle = &corev1.Lifecycle{
+			PreStop: &corev1.LifecycleHandler{
+				HTTPGet: &corev1.HTTPGetAction{
+					Path:   envoycp.ShutdownManagerReadyPath,
+					Port:   intstr.FromInt(envoycp.ShutdownManagerPort),
+					Scheme: corev1.URISchemeHTTP,
+				},
+			},
+		}
+	}
+
+	containers := []corev1.Container{envoyContainer}
+	if gracefulShutdownEnabled {
+		shutdownManagerContainer := corev1.Container{
+			Name:    shutdownManagerContainerName,
+			Image:   shutdownManagerImage,
+			Command: []string{"envoy-gateway"},
+			Args: []string{
+				"envoy",
+				"shutdown-manager",
+				fmt.Sprintf("--ready-timeout=%ds", drainTimeout+10),
+			},
+			Ports: []corev1.ContainerPort{
+				{
+					Name:          "shutdown",
+					ContainerPort: envoycp.ShutdownManagerPort,
+					Protocol:      corev1.ProtocolTCP,
+				},
+			},
+			Resources: corev1.ResourceRequirements{
+				Requests: corev1.ResourceList{
+					corev1.ResourceCPU:    resource.MustParse("10m"),
+					corev1.ResourceMemory: resource.MustParse("32Mi"),
+				},
+			},
+			StartupProbe: &corev1.Probe{
+				ProbeHandler: corev1.ProbeHandler{
+					HTTPGet: &corev1.HTTPGetAction{
+						Path:   envoycp.ShutdownManagerHealthCheckPath,
+						Port:   intstr.FromInt(envoycp.ShutdownManagerPort),
+						Scheme: corev1.URISchemeHTTP,
+					},
+				},
+				TimeoutSeconds:   1,
+				PeriodSeconds:    10,
+				SuccessThreshold: 1,
+				FailureThreshold: 30,
+			},
+			ReadinessProbe: &corev1.Probe{
+				ProbeHandler: corev1.ProbeHandler{
+					HTTPGet: &corev1.HTTPGetAction{
+						Path:   envoycp.ShutdownManagerHealthCheckPath,
+						Port:   intstr.FromInt(envoycp.ShutdownManagerPort),
+						Scheme: corev1.URISchemeHTTP,
+					},
+				},
+				TimeoutSeconds:   1,
+				PeriodSeconds:    10,
+				SuccessThreshold: 1,
+				FailureThreshold: 3,
+			},
+			LivenessProbe: &corev1.Probe{
+				ProbeHandler: corev1.ProbeHandler{
+					HTTPGet: &corev1.HTTPGetAction{
+						Path:   envoycp.ShutdownManagerHealthCheckPath,
+						Port:   intstr.FromInt(envoycp.ShutdownManagerPort),
+						Scheme: corev1.URISchemeHTTP,
+					},
+				},
+				TimeoutSeconds:   1,
+				PeriodSeconds:    10,
+				SuccessThreshold: 1,
+				FailureThreshold: 3,
+			},
+		}
+		containers = append(containers, shutdownManagerContainer)
 	}
 
 	template := corev1.PodTemplateSpec{
@@ -312,6 +476,7 @@ func (r *EnvoyCPReconciler) getEnvoyProxyPodSpec(namespace, appName, snapshotNam
 			},
 		},
 		Spec: corev1.PodSpec{
+<<<<<<< HEAD
 			Containers: []corev1.Container{
 				{
 					Name:  envoyProxyContainerName,
@@ -374,8 +539,13 @@ func (r *EnvoyCPReconciler) getEnvoyProxyPodSpec(namespace, appName, snapshotNam
 					},
 				},
 			},
+=======
+			TerminationGracePeriodSeconds: ptr.To(terminationGracePeriod),
+			Containers:                    containers,
+>>>>>>> 9df992c (Graceful shutdown for Envoy Proxy)
 		},
 	}
+
 	if envoyProxy.Resources != nil {
 		template.Spec.Containers[0].Resources = *envoyProxy.Resources
 	}
@@ -405,6 +575,46 @@ func (r *EnvoyCPReconciler) getEnvoyProxyPodSpec(namespace, appName, snapshotNam
 		}
 	}
 	return template
+}
+
+// podTemplateSpecNeedsUpdate compares the relevant fields of two PodTemplateSpecs
+func podTemplateSpecNeedsUpdate(original, desired corev1.PodTemplateSpec) bool {
+	if !reflect.DeepEqual(original.Annotations, desired.Annotations) {
+		return true
+	}
+	if !reflect.DeepEqual(original.Labels, desired.Labels) {
+		return true
+	}
+
+	// Compare only the fields we actually configure in getEnvoyProxyPodSpec
+	origSpec := original.Spec
+	desiredSpec := desired.Spec
+
+	if !reflect.DeepEqual(origSpec.TerminationGracePeriodSeconds, desiredSpec.TerminationGracePeriodSeconds) {
+		return true
+	}
+
+	if !reflect.DeepEqual(origSpec.Containers, desiredSpec.Containers) {
+		return true
+	}
+
+	if !reflect.DeepEqual(origSpec.Affinity, desiredSpec.Affinity) {
+		return true
+	}
+
+	if !reflect.DeepEqual(origSpec.Tolerations, desiredSpec.Tolerations) {
+		return true
+	}
+
+	if !reflect.DeepEqual(origSpec.NodeSelector, desiredSpec.NodeSelector) {
+		return true
+	}
+
+	if !reflect.DeepEqual(origSpec.TopologySpreadConstraints, desiredSpec.TopologySpreadConstraints) {
+		return true
+	}
+
+	return false
 }
 
 func envoySnapshotAndAppName(topology EnvoyProxyTopology, req ctrl.Request) (string, string) {

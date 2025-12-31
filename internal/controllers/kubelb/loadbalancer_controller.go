@@ -56,6 +56,7 @@ import (
 const (
 	envoyImage                        = "envoyproxy/envoy:distroless-v1.33.1"
 	envoyProxyContainerName           = "envoy-proxy"
+	shutdownManagerContainerName      = "shutdown-manager"
 	envoyResourcePattern              = "envoy-%s"
 	envoyGlobalTopologyServicePattern = "envoy-%s-%s"
 	envoyProxyCleanupFinalizer        = "kubelb.k8c.io/cleanup-envoy-proxy"
