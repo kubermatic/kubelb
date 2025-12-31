@@ -1,0 +1,70 @@
+# KubeLB Manager Helm values for E2E testing
+replicaCount: 1
+
+image:
+  repository: quay.io/kubermatic/kubelb-manager
+  pullPolicy: Never # Using locally built images
+  # tag is set via CLI during deployment
+
+kubelb:
+  enableLeaderElection: true
+  debug: true
+  enableTenantMigration: false
+  skipConfigGeneration: true
+  enableGatewayAPI: true
+  # -- Propagate all annotations from the LB resource to the LB service.
+  propagateAllAnnotations: true
+
+# Create required resources for KKP integration.
+kkpintegration:
+  # -- Create RBAC for KKP integration.
+  rbac: true
+
+# Addons
+kubelb-addons:
+  enabled: true
+
+  gatewayClass:
+    create: false
+
+  # Ingress Nginx
+  ingress-nginx:
+    enabled: true
+    controller:
+      service:
+        externalTrafficPolicy: Local
+
+  # Envoy Gateway
+  envoy-gateway:
+    enabled: true
+
+  # Cert Manager
+  cert-manager:
+    enabled: true
+    crds:
+      enabled: true
+    config:
+      apiVersion: controller.config.cert-manager.io/v1alpha1
+      kind: ControllerConfiguration
+      enableGatewayAPI: true
+
+  # External DNS
+  external-dns:
+    enabled: false
+
+  # KGateway CRDs
+  kgateway-crds:
+    enabled: true
+
+  # KGateway
+  kgateway:
+    enabled: true
+    gateway:
+      aiExtension:
+        enabled: true
+    agentgateway:
+      enabled: true
+
+  # Metallb
+  metallb:
+    enabled: true

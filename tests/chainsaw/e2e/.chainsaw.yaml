@@ -1,0 +1,27 @@
+apiVersion: chainsaw.kyverno.io/v1alpha1
+kind: Configuration
+metadata:
+  name: kubelb-e2e
+spec:
+  timeouts:
+    apply: 2m
+    assert: 10m
+    cleanup: 2m
+    delete: 1m
+    error: 30s
+    exec: 5m
+  skipDelete: false
+  failFast: false
+  parallel: 1 # TODO: Eventually with multiple tenants we can run tests in parallel
+  reportFormat: JSON
+  reportName: "kubelb-e2e-report"
+  namespace: "chainsaw-tests"
+  clusters:
+    - name: management
+      kubeconfig: ${KUBECONFIG_DIR}/kubelb.kubeconfig
+    - name: vyse
+      kubeconfig: ${KUBECONFIG_DIR}/vyse.kubeconfig
+    - name: omen
+      kubeconfig: ${KUBECONFIG_DIR}/omen.kubeconfig
+  templating:
+    enabled: true

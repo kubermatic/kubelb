@@ -1,0 +1,91 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: kubelb
+---
+apiVersion: kubelb.k8c.io/v1alpha1
+kind: Config
+metadata:
+  name: default
+  namespace: kubelb
+spec:
+  defaultAnnotations:
+    # Just for testing purposes
+    service:
+      load-balancer.hetzner.cloud/location: fsn1
+  envoyProxy:
+    replicas: 1
+    topology: shared
+  ingress:
+    class: "nginx"
+  gatewayAPI:
+    class: "eg"
+  certificates:
+    defaultClusterIssuer: selfsigned
+---
+apiVersion: kubelb.k8c.io/v1alpha1
+kind: Tenant
+metadata:
+  name: vyse
+spec:
+  propagateAllAnnotations: true
+  ingress:
+    class: "nginx"
+  gatewayAPI:
+    class: "eg"
+    defaultGateway:
+      name: "default"
+      namespace: "kubelb"
+  dns:
+    wildcardDomain: "**.local.kubelb.com"
+    allowExplicitHostnames: false
+  certificates:
+    defaultClusterIssuer: selfsigned
+---
+apiVersion: kubelb.k8c.io/v1alpha1
+kind: Tenant
+metadata:
+  name: omen
+spec:
+  propagateAllAnnotations: true
+  ingress:
+    class: "nginx"
+  gatewayAPI:
+    class: "eg"
+    defaultGateway:
+      name: "default"
+      namespace: "kubelb"
+  dns:
+    wildcardDomain: "**.local.kubelb.com"
+    allowExplicitHostnames: false
+  certificates:
+    defaultClusterIssuer: selfsigned
+---
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: selfsigned
+spec:
+  selfSigned: {}
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: GatewayClass
+metadata:
+  name: eg
+spec:
+  controllerName: gateway.envoyproxy.io/gatewayclass-controller
+---
+apiVersion: metallb.io/v1beta1
+kind: IPAddressPool
+metadata:
+  name: kubelb
+  namespace: metallb-system
+spec:
+  addresses:
+  - ${GW}.255.200-${GW}.255.250
+---
+apiVersion: metallb.io/v1beta1
+kind: L2Advertisement
+metadata:
+  name: kubelb
+  namespace: metallb-system

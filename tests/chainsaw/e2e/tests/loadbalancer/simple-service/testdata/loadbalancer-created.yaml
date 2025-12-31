@@ -1,0 +1,9 @@
+apiVersion: kubelb.k8c.io/v1alpha1
+kind: LoadBalancer
+metadata:
+  name: ($name)
+  namespace: ($tenant_namespace)
+status:
+  service:
+    name: ($name)
+    namespace: ($namespace)
