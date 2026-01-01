@@ -130,7 +130,17 @@ func main() {
 		os.Exit(1)
 	}
 
-	envoyServer, err := envoy.NewServer(opt.envoyListenAddress, opt.enableDebugMode)
+	// setup signal handler
+	ctx := ctrl.SetupSignalHandler()
+
+	// Load the Config for controller
+	conf, err := config.GetConfig(ctx, mgr.GetAPIReader(), opt.namespace)
+	if err != nil {
+		setupLog.Error(err, "unable to load controller config")
+		os.Exit(1)
+	}
+
+	envoyServer, err := envoy.NewServer(&conf, opt.envoyListenAddress, opt.enableDebugMode)
 	if err != nil {
 		setupLog.Error(err, "unable to create envoy server")
 		os.Exit(1)
@@ -141,15 +151,6 @@ func main() {
 		os.Exit(1)
 	}
 
-	// setup signal handler
-	ctx := ctrl.SetupSignalHandler()
-
-	// Load the Config for controller
-	conf, err := config.GetConfig(ctx, mgr.GetAPIReader(), opt.namespace)
-	if err != nil {
-		setupLog.Error(err, "unable to load controller config")
-		os.Exit(1)
-	}
 	// We need to ensure that the port lookup table exists. If it doesn't, we create it since it's managed by this controller.
 	portAllocator := portlookup.NewPortAllocator()
 	if err := portAllocator.LoadState(ctx, mgr.GetAPIReader()); err != nil {
@@ -184,7 +185,7 @@ func main() {
 		EnvoyProxyTopology: kubelb.EnvoyProxyTopology(conf.GetEnvoyProxyTopology()),
 		PortAllocator:      portAllocator,
 		Namespace:          opt.namespace,
-		EnvoyBootstrap:     envoyServer.GenerateBootstrap(),
+		EnvoyServer:        envoyServer,
 		DisableGatewayAPI:  disableGatewayAPI,
 	}).SetupWithManager(ctx, envoyMgr); err != nil {
 		setupLog.Error(err, "unable to create envoy control-plane controller", "controller", "LoadBalancer")

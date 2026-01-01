@@ -115,6 +115,25 @@ type EnvoyProxy struct {
 	// GracefulShutdown defines the graceful shutdown configuration for Envoy Proxy.
 	// +optional
 	GracefulShutdown *EnvoyProxyGracefulShutdown `json:"gracefulShutdown,omitempty"`
+
+	// OverloadManager defines the overload manager configuration for Envoy XDS.
+	// +optional
+	OverloadManager *EnvoyProxyOverloadManager `json:"overloadManager,omitempty"`
+}
+
+// EnvoyProxyOverloadManager defines the overload manager configuration for Envoy XDS
+type EnvoyProxyOverloadManager struct {
+	// Enabled controls whether overload manager is enabled
+	// +optional
+	Enabled bool `json:"enabled,omitempty"`
+
+	// MaxActiveDownstreamConnections is the maximum number of active downstream connections for the Envoy.
+	// +optional
+	MaxActiveDownstreamConnections uint64 `json:"maxActiveDownstreamConnections,omitempty"`
+
+	// MaxHeapSizeBytes is the maximum heap size for the Envoy in bytes. On reaching the limit, the Envoy will start to reject new connections.
+	// +optional
+	MaxHeapSizeBytes uint64 `json:"maxHeapSizeBytes,omitempty"`
 }
 
 // EnvoyProxyGracefulShutdown defines the graceful shutdown configuration for Envoy Proxy

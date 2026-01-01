@@ -33,6 +33,8 @@ import (
 	serverv3 "github.com/envoyproxy/go-control-plane/pkg/server/v3"
 	"github.com/pkg/errors"
 	"google.golang.org/grpc"
+
+	"k8c.io/kubelb/api/ce/kubelb.k8c.io/v1alpha1"
 )
 
 const (
@@ -51,13 +53,14 @@ func registerServer(grpcServer *grpc.Server, server serverv3.Server) {
 }
 
 type Server struct {
+	config        *v1alpha1.Config
 	Cache         cachev3.SnapshotCache
 	listenAddress string
 	listenPort    uint32
 	enableAdmin   bool
 }
 
-func NewServer(listenAddress string, enableAdmin bool) (*Server, error) {
+func NewServer(config *v1alpha1.Config, listenAddress string, enableAdmin bool) (*Server, error) {
 	portString := strings.Split(listenAddress, ":")[1]
 	port, err := strconv.ParseUint(portString, 10, 32)
 	if err != nil {
@@ -65,10 +68,11 @@ func NewServer(listenAddress string, enableAdmin bool) (*Server, error) {
 	}
 
 	return &Server{
+		config:        config,
 		listenAddress: listenAddress,
 		listenPort:    uint32(port),
-		Cache:         cachev3.NewSnapshotCache(false, cachev3.IDHash{}, Logger{enableAdmin}),
 		enableAdmin:   enableAdmin,
+		Cache:         cachev3.NewSnapshotCache(false, cachev3.IDHash{}, Logger{enableAdmin}),
 	}, nil
 }
 
