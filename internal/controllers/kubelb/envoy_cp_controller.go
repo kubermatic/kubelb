@@ -58,7 +58,7 @@ type EnvoyCPReconciler struct {
 	EnvoyProxyTopology EnvoyProxyTopology
 	PortAllocator      *portlookup.PortAllocator
 	Namespace          string
-	EnvoyBootstrap     string
+	EnvoyServer        *envoycp.Server
 	DisableGatewayAPI  bool
 	Config             *kubelbv1alpha1.Config
 }
@@ -324,7 +324,7 @@ func (r *EnvoyCPReconciler) getEnvoyProxyPodSpec(namespace, appName, snapshotNam
 		Name:  envoyProxyContainerName,
 		Image: image,
 		Args: []string{
-			"--config-yaml", r.EnvoyBootstrap,
+			"--config-yaml", r.EnvoyServer.GenerateBootstrap(),
 			"--service-node", snapshotName,
 			"--service-cluster", namespace,
 		},

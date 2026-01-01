@@ -24,9 +24,12 @@ import (
 	envoyCore "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	envoyEndpoint "github.com/envoyproxy/go-control-plane/envoy/config/endpoint/v3"
 	envoyListener "github.com/envoyproxy/go-control-plane/envoy/config/listener/v3"
+	envoyConfigOverloadV3 "github.com/envoyproxy/go-control-plane/envoy/config/overload/v3"
 	envoyRoute "github.com/envoyproxy/go-control-plane/envoy/config/route/v3"
 	envoyFiltersRouterV3 "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/http/router/v3"
 	envoyFiltersHcmV3 "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/network/http_connection_manager/v3"
+	envoyDownstreamConnections "github.com/envoyproxy/go-control-plane/envoy/extensions/resource_monitors/downstream_connections/v3"
+	envoyFixedHeap "github.com/envoyproxy/go-control-plane/envoy/extensions/resource_monitors/fixed_heap/v3"
 	envoyExtensionsUpstreamsHttpV3 "github.com/envoyproxy/go-control-plane/envoy/extensions/upstreams/http/v3"
 	"github.com/envoyproxy/go-control-plane/pkg/wellknown"
 	"google.golang.org/protobuf/encoding/protojson"
@@ -58,6 +61,17 @@ const DefaultEnvoyDrainTimeout = 60
 const DefaultEnvoyMinDrainDuration = 5
 const DefaultEnvoyTerminationGracePeriod = 300
 const DefaultShutdownManagerImage = "docker.io/envoyproxy/gateway:v1.3.0"
+
+// Overload manager constants
+const (
+	fixedHeapMonitorName             = "envoy.resource_monitors.fixed_heap"
+	downstreamConnectionsMonitorName = "envoy.resource_monitors.global_downstream_max_connections"
+	shrinkHeapAction                 = "envoy.overload_actions.shrink_heap"
+	stopAcceptingRequestsAction      = "envoy.overload_actions.stop_accepting_requests"
+	// Default thresholds for heap-based overload actions
+	heapShrinkThreshold       = 0.95
+	heapStopRequestsThreshold = 0.98
+)
 
 // By default, the admin interface is only accessible from localhost, to prevent
 // potential security issues while keeping it available for the stats and probe listeners.
@@ -231,6 +245,9 @@ func (s *Server) GenerateBootstrap() string {
 			},
 		},
 	}
+	if s.config.Spec.EnvoyProxy.OverloadManager != nil && s.config.Spec.EnvoyProxy.OverloadManager.Enabled {
+		cfg.OverloadManager = s.buildOverloadManager()
+	}
 
 	jsonBytes, err := protojson.Marshal(cfg)
 	if err != nil {
@@ -371,4 +388,62 @@ func marshalAny(pb proto.Message) *anypb.Any {
 		panic(err)
 	}
 	return marshalledPB
+}
+
+func (s *Server) buildOverloadManager() *envoyConfigOverloadV3.OverloadManager {
+	om := &envoyConfigOverloadV3.OverloadManager{
+		RefreshInterval: durationpb.New(250 * time.Millisecond),
+	}
+
+	cfg := s.config.Spec.EnvoyProxy.OverloadManager
+
+	// Configure fixed heap monitoring if max heap size is specified
+	if cfg.MaxHeapSizeBytes > 0 {
+		om.ResourceMonitors = append(om.ResourceMonitors, &envoyConfigOverloadV3.ResourceMonitor{
+			Name: fixedHeapMonitorName,
+			ConfigType: &envoyConfigOverloadV3.ResourceMonitor_TypedConfig{
+				TypedConfig: marshalAny(&envoyFixedHeap.FixedHeapConfig{
+					MaxHeapSizeBytes: cfg.MaxHeapSizeBytes,
+				}),
+			},
+		})
+
+		// Add heap-based overload actions
+		om.Actions = append(om.Actions,
+			&envoyConfigOverloadV3.OverloadAction{
+				Name:     shrinkHeapAction,
+				Triggers: []*envoyConfigOverloadV3.Trigger{newThresholdTrigger(fixedHeapMonitorName, heapShrinkThreshold)},
+			},
+			&envoyConfigOverloadV3.OverloadAction{
+				Name:     stopAcceptingRequestsAction,
+				Triggers: []*envoyConfigOverloadV3.Trigger{newThresholdTrigger(fixedHeapMonitorName, heapStopRequestsThreshold)},
+			},
+		)
+	}
+
+	// Configure downstream connections monitoring if max connections is specified
+	if cfg.MaxActiveDownstreamConnections > 0 {
+		om.ResourceMonitors = append(om.ResourceMonitors, &envoyConfigOverloadV3.ResourceMonitor{
+			Name: downstreamConnectionsMonitorName,
+			ConfigType: &envoyConfigOverloadV3.ResourceMonitor_TypedConfig{
+				TypedConfig: marshalAny(&envoyDownstreamConnections.DownstreamConnectionsConfig{
+					MaxActiveDownstreamConnections: int64(cfg.MaxActiveDownstreamConnections),
+				}),
+			},
+		})
+	}
+
+	return om
+}
+
+// newThresholdTrigger creates a threshold trigger for the given resource monitor.
+func newThresholdTrigger(monitorName string, threshold float64) *envoyConfigOverloadV3.Trigger {
+	return &envoyConfigOverloadV3.Trigger{
+		Name: monitorName,
+		TriggerOneof: &envoyConfigOverloadV3.Trigger_Threshold{
+			Threshold: &envoyConfigOverloadV3.ThresholdTrigger{
+				Value: threshold,
+			},
+		},
+	}
 }

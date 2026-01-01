@@ -87,7 +87,7 @@ var _ = BeforeSuite(func() {
 	sigCtx := ctrl.SetupSignalHandler()
 	ctx, cancel = context.WithCancel(sigCtx)
 
-	envoyServer, err = envoy.NewServer(":8001", true)
+	envoyServer, err = envoy.NewServer(&v1alpha1.Config{}, ":8001", true)
 
 	Expect(err).ToNot(HaveOccurred())
 
@@ -147,7 +147,7 @@ var _ = BeforeSuite(func() {
 		Client:             k8sManager.GetClient(),
 		EnvoyCache:         envoyServer.Cache,
 		EnvoyProxyTopology: EnvoyProxyTopologyShared,
-		EnvoyBootstrap:     envoyServer.GenerateBootstrap(),
+		EnvoyServer:        envoyServer,
 		Namespace:          LBNamespace,
 		PortAllocator:      portAllocator,
 	}
