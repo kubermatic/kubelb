@@ -1,5 +1,5 @@
 /*
-Copyright 2026 The KubeLB Authors.
+Copyright 2024 The KubeLB Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -23,35 +23,34 @@ import (
 	"k8c.io/kubelb/internal/metrics"
 )
 
+// factory creates metrics and captures their descriptions for documentation.
+var factory = metrics.NewFactory(metrics.SubsystemManager, metrics.ComponentManager)
+
 // Reconciliation counters - track the number and outcome of reconciliation attempts.
 var (
 	// LoadBalancerReconcileTotal counts the total number of LoadBalancer reconciliation attempts.
-	LoadBalancerReconcileTotal = metrics.NewCounterVec(
-		metrics.SubsystemManager,
+	LoadBalancerReconcileTotal = factory.NewCounterVec(
 		"loadbalancer_reconcile_total",
 		"Total number of LoadBalancer reconciliation attempts",
 		[]string{metrics.LabelNamespace, metrics.LabelResult},
 	)
 
 	// RouteReconcileTotal counts the total number of Route reconciliation attempts.
-	RouteReconcileTotal = metrics.NewCounterVec(
-		metrics.SubsystemManager,
+	RouteReconcileTotal = factory.NewCounterVec(
 		"route_reconcile_total",
 		"Total number of Route reconciliation attempts",
 		[]string{metrics.LabelNamespace, metrics.LabelRouteType, metrics.LabelResult},
 	)
 
 	// TenantReconcileTotal counts the total number of Tenant reconciliation attempts.
-	TenantReconcileTotal = metrics.NewCounterVec(
-		metrics.SubsystemManager,
+	TenantReconcileTotal = factory.NewCounterVec(
 		"tenant_reconcile_total",
 		"Total number of Tenant reconciliation attempts",
 		[]string{metrics.LabelResult},
 	)
 
 	// EnvoyCPReconcileTotal counts the total number of EnvoyCP reconciliation attempts.
-	EnvoyCPReconcileTotal = metrics.NewCounterVec(
-		metrics.SubsystemManager,
+	EnvoyCPReconcileTotal = factory.NewCounterVec(
 		"envoycp_reconcile_total",
 		"Total number of Envoy control plane reconciliation attempts",
 		[]string{metrics.LabelResult},
@@ -61,8 +60,7 @@ var (
 // Reconciliation duration histograms - track how long reconciliations take.
 var (
 	// LoadBalancerReconcileDuration tracks the duration of LoadBalancer reconciliations.
-	LoadBalancerReconcileDuration = metrics.NewHistogramVec(
-		metrics.SubsystemManager,
+	LoadBalancerReconcileDuration = factory.NewHistogramVec(
 		"loadbalancer_reconcile_duration_seconds",
 		"Duration of LoadBalancer reconciliations in seconds",
 		[]string{metrics.LabelNamespace},
@@ -70,8 +68,7 @@ var (
 	)
 
 	// RouteReconcileDuration tracks the duration of Route reconciliations.
-	RouteReconcileDuration = metrics.NewHistogramVec(
-		metrics.SubsystemManager,
+	RouteReconcileDuration = factory.NewHistogramVec(
 		"route_reconcile_duration_seconds",
 		"Duration of Route reconciliations in seconds",
 		[]string{metrics.LabelNamespace},
@@ -79,8 +76,7 @@ var (
 	)
 
 	// TenantReconcileDuration tracks the duration of Tenant reconciliations.
-	TenantReconcileDuration = metrics.NewHistogramVec(
-		metrics.SubsystemManager,
+	TenantReconcileDuration = factory.NewHistogramVec(
 		"tenant_reconcile_duration_seconds",
 		"Duration of Tenant reconciliations in seconds",
 		[]string{},
@@ -88,8 +84,7 @@ var (
 	)
 
 	// EnvoyCPReconcileDuration tracks the duration of EnvoyCP reconciliations.
-	EnvoyCPReconcileDuration = metrics.NewHistogramVec(
-		metrics.SubsystemManager,
+	EnvoyCPReconcileDuration = factory.NewHistogramVec(
 		"envoycp_reconcile_duration_seconds",
 		"Duration of Envoy control plane reconciliations in seconds",
 		[]string{},
@@ -100,31 +95,27 @@ var (
 // Resource gauges - track the current count of resources.
 var (
 	// LoadBalancersTotal tracks the total number of LoadBalancer resources.
-	LoadBalancersTotal = metrics.NewGaugeVec(
-		metrics.SubsystemManager,
+	LoadBalancersTotal = factory.NewGaugeVec(
 		"loadbalancers",
 		"Current number of LoadBalancer resources",
 		[]string{metrics.LabelNamespace, metrics.LabelTenant, metrics.LabelTopology},
 	)
 
 	// RoutesTotal tracks the total number of Route resources.
-	RoutesTotal = metrics.NewGaugeVec(
-		metrics.SubsystemManager,
+	RoutesTotal = factory.NewGaugeVec(
 		"routes",
 		"Current number of Route resources",
 		[]string{metrics.LabelNamespace, metrics.LabelTenant, metrics.LabelRouteType},
 	)
 
 	// TenantsTotal tracks the total number of Tenant resources.
-	TenantsTotal = metrics.NewGauge(
-		metrics.SubsystemManager,
+	TenantsTotal = factory.NewGauge(
 		"tenants",
 		"Current number of Tenant resources",
 	)
 
 	// EnvoyProxiesTotal tracks the total number of Envoy proxy deployments.
-	EnvoyProxiesTotal = metrics.NewGaugeVec(
-		metrics.SubsystemManager,
+	EnvoyProxiesTotal = factory.NewGaugeVec(
 		"envoy_proxies",
 		"Current number of Envoy proxy deployments",
 		[]string{metrics.LabelNamespace, metrics.LabelTopology},
@@ -134,15 +125,13 @@ var (
 // Port allocator metrics.
 var (
 	// PortAllocatorAllocatedPorts tracks the total number of allocated ports.
-	PortAllocatorAllocatedPorts = metrics.NewGauge(
-		metrics.SubsystemManager,
+	PortAllocatorAllocatedPorts = factory.NewGauge(
 		"port_allocator_allocated_ports",
 		"Current number of allocated ports in the port allocator",
 	)
 
 	// PortAllocatorEndpoints tracks the total number of endpoints being tracked.
-	PortAllocatorEndpoints = metrics.NewGauge(
-		metrics.SubsystemManager,
+	PortAllocatorEndpoints = factory.NewGauge(
 		"port_allocator_endpoints",
 		"Current number of endpoints tracked by the port allocator",
 	)
@@ -151,32 +140,28 @@ var (
 // EnvoyCP snapshot metrics.
 var (
 	// EnvoyCPSnapshotUpdatesTotal counts the total number of snapshot updates.
-	EnvoyCPSnapshotUpdatesTotal = metrics.NewCounterVec(
-		metrics.SubsystemManager,
+	EnvoyCPSnapshotUpdatesTotal = factory.NewCounterVec(
 		"envoycp_snapshot_updates_total",
 		"Total number of Envoy snapshot updates",
 		[]string{"snapshot_name"},
 	)
 
 	// EnvoyCPClusters tracks the number of clusters in the Envoy snapshot.
-	EnvoyCPClusters = metrics.NewGaugeVec(
-		metrics.SubsystemManager,
+	EnvoyCPClusters = factory.NewGaugeVec(
 		"envoycp_clusters",
 		"Current number of clusters in the Envoy snapshot",
 		[]string{"snapshot_name"},
 	)
 
 	// EnvoyCPListeners tracks the number of listeners in the Envoy snapshot.
-	EnvoyCPListeners = metrics.NewGaugeVec(
-		metrics.SubsystemManager,
+	EnvoyCPListeners = factory.NewGaugeVec(
 		"envoycp_listeners",
 		"Current number of listeners in the Envoy snapshot",
 		[]string{"snapshot_name"},
 	)
 
 	// EnvoyCPEndpoints tracks the number of endpoints in the Envoy snapshot.
-	EnvoyCPEndpoints = metrics.NewGaugeVec(
-		metrics.SubsystemManager,
+	EnvoyCPEndpoints = factory.NewGaugeVec(
 		"envoycp_endpoints",
 		"Current number of endpoints in the Envoy snapshot",
 		[]string{"snapshot_name"},
@@ -215,4 +200,9 @@ func allCollectors() []prometheus.Collector {
 // Register registers all Manager metrics with the controller-runtime metrics registry.
 func Register() {
 	metrics.MustRegister(allCollectors()...)
+}
+
+// ListMetrics returns descriptions of all Manager metrics for documentation generation.
+func ListMetrics() []metrics.MetricDescription {
+	return factory.Descriptions()
 }
