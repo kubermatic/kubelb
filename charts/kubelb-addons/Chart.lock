@@ -21,4 +21,4 @@ dependencies:
   repository: oci://cr.kgateway.dev/kgateway-dev/charts
   version: v2.0.4
 digest: sha256:0a39069f5c00df4048a5b003a28c6b0232f2e14bbf6eaebf0ef70f53519b41d0
-generated: "2025-11-10T12:21:13.205041+05:00"
+generated: "2026-01-05T12:08:33.429571+05:00"
