@@ -21,11 +21,14 @@ import (
 	"encoding/json"
 	"fmt"
 	"reflect"
+	"time"
 
 	"github.com/go-logr/logr"
 
 	kubelbv1alpha1 "k8c.io/kubelb/api/ce/kubelb.k8c.io/v1alpha1"
 	"k8c.io/kubelb/internal/kubelb"
+	"k8c.io/kubelb/internal/metrics"
+	ccmmetrics "k8c.io/kubelb/internal/metrics/ccm"
 	ingressHelpers "k8c.io/kubelb/internal/resources/ingress"
 	serviceHelpers "k8c.io/kubelb/internal/resources/service"
 
@@ -75,6 +78,12 @@ type IngressReconciler struct {
 
 func (r *IngressReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	log := r.Log.WithValues("name", req.NamespacedName)
+	startTime := time.Now()
+
+	// Track reconciliation duration
+	defer func() {
+		ccmmetrics.IngressReconcileDuration.WithLabelValues(req.Namespace).Observe(time.Since(startTime).Seconds())
+	}()
 
 	log.Info("Reconciling Ingress")
 
@@ -83,6 +92,7 @@ func (r *IngressReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		if kerrors.IsNotFound(err) {
 			return reconcile.Result{}, nil
 		}
+		ccmmetrics.IngressReconcileTotal.WithLabelValues(req.Namespace, metrics.ResultError).Inc()
 		return reconcile.Result{}, err
 	}
 
@@ -96,6 +106,7 @@ func (r *IngressReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 	}
 
 	if !r.shouldReconcile(resource) {
+		ccmmetrics.IngressReconcileTotal.WithLabelValues(req.Namespace, metrics.ResultSkipped).Inc()
 		return reconcile.Result{}, nil
 	}
 
@@ -107,6 +118,7 @@ func (r *IngressReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		}
 
 		if err := r.Update(ctx, resource); err != nil {
+			ccmmetrics.IngressReconcileTotal.WithLabelValues(req.Namespace, metrics.ResultError).Inc()
 			return reconcile.Result{}, fmt.Errorf("failed to add finalizer: %w", err)
 		}
 	}
@@ -114,9 +126,12 @@ func (r *IngressReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 	err := r.reconcile(ctx, log, resource)
 	if err != nil {
 		log.Error(err, "reconciling failed")
+		ccmmetrics.IngressReconcileTotal.WithLabelValues(req.Namespace, metrics.ResultError).Inc()
+		return reconcile.Result{}, err
 	}
 
-	return reconcile.Result{}, err
+	ccmmetrics.IngressReconcileTotal.WithLabelValues(req.Namespace, metrics.ResultSuccess).Inc()
+	return reconcile.Result{}, nil
 }
 
 func (r *IngressReconciler) reconcile(ctx context.Context, log logr.Logger, ingress *networkingv1.Ingress) error {

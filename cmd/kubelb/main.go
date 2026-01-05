@@ -26,6 +26,7 @@ import (
 	"k8c.io/kubelb/internal/config"
 	"k8c.io/kubelb/internal/controllers/kubelb"
 	"k8c.io/kubelb/internal/envoy"
+	managermetrics "k8c.io/kubelb/internal/metrics/manager"
 	portlookup "k8c.io/kubelb/internal/port-lookup"
 
 	"k8s.io/apimachinery/pkg/runtime"
@@ -61,6 +62,9 @@ func init() {
 	utilruntime.Must(clientgoscheme.AddToScheme(scheme))
 	utilruntime.Must(kubelbv1alpha1.AddToScheme(scheme))
 	// +kubebuilder:scaffold:scheme
+
+	// Register KubeLB metrics with controller-runtime's metrics registry
+	managermetrics.Register()
 }
 
 func main() {

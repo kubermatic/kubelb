@@ -27,6 +27,8 @@ import (
 
 	kubelbv1alpha1 "k8c.io/kubelb/api/ce/kubelb.k8c.io/v1alpha1"
 	"k8c.io/kubelb/internal/kubelb"
+	"k8c.io/kubelb/internal/metrics"
+	managermetrics "k8c.io/kubelb/internal/metrics/manager"
 	portlookup "k8c.io/kubelb/internal/port-lookup"
 	gatewayHelpers "k8c.io/kubelb/internal/resources/gatewayapi/gateway"
 	grpcrouteHelpers "k8c.io/kubelb/internal/resources/gatewayapi/grpcroute"
@@ -85,6 +87,15 @@ type RouteReconciler struct {
 
 func (r *RouteReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	log := r.Log.WithValues("name", req.NamespacedName)
+	startTime := time.Now()
+
+	// Determine route type for metrics - will be updated once we fetch the resource
+	routeType := metrics.RouteTypeIngress
+
+	// Track reconciliation duration
+	defer func() {
+		managermetrics.RouteReconcileDuration.WithLabelValues(req.Namespace).Observe(time.Since(startTime).Seconds())
+	}()
 
 	log.Info("Reconciling")
 
@@ -93,13 +104,18 @@ func (r *RouteReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 		if kerrors.IsNotFound(err) {
 			return reconcile.Result{}, nil
 		}
+		managermetrics.RouteReconcileTotal.WithLabelValues(req.Namespace, routeType, metrics.ResultError).Inc()
 		return reconcile.Result{}, err
 	}
+
+	// Determine route type from source
+	routeType = getRouteType(resource)
 
 	// Before proceeding further we need to make sure that the resource is reconcilable.
 	tenant, config, err := GetTenantAndConfig(ctx, r.Client, r.Namespace, RemoveTenantPrefix(resource.Namespace))
 	if err != nil {
 		log.Error(err, "unable to fetch Tenant and Config, cannot proceed")
+		managermetrics.RouteReconcileTotal.WithLabelValues(req.Namespace, routeType, metrics.ResultError).Inc()
 		return reconcile.Result{}, err
 	}
 
@@ -115,6 +131,7 @@ func (r *RouteReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 	shouldReconcile, disabled, err := r.shouldReconcile(ctx, resource, tenant, config)
 	if err != nil {
 		log.Error(err, "unable to determine if the Route should be reconciled")
+		managermetrics.RouteReconcileTotal.WithLabelValues(req.Namespace, routeType, metrics.ResultError).Inc()
 		return reconcile.Result{}, err
 	}
 
@@ -124,6 +141,7 @@ func (r *RouteReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 	}
 
 	if !shouldReconcile {
+		managermetrics.RouteReconcileTotal.WithLabelValues(req.Namespace, routeType, metrics.ResultSkipped).Inc()
 		return reconcile.Result{}, nil
 	}
 
@@ -134,6 +152,7 @@ func (r *RouteReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 			return ctrl.Result{Requeue: true}, nil
 		}
 		if err := r.Update(ctx, resource); err != nil {
+			managermetrics.RouteReconcileTotal.WithLabelValues(req.Namespace, routeType, metrics.ResultError).Inc()
 			return reconcile.Result{}, fmt.Errorf("failed to add finalizer: %w", err)
 		}
 	}
@@ -141,9 +160,12 @@ func (r *RouteReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 	err = r.reconcile(ctx, log, resource, config, tenant)
 	if err != nil {
 		log.Error(err, "reconciling failed")
+		managermetrics.RouteReconcileTotal.WithLabelValues(req.Namespace, routeType, metrics.ResultError).Inc()
+		return reconcile.Result{}, err
 	}
 
-	return reconcile.Result{}, err
+	managermetrics.RouteReconcileTotal.WithLabelValues(req.Namespace, routeType, metrics.ResultSuccess).Inc()
+	return reconcile.Result{}, nil
 }
 
 func (r *RouteReconciler) reconcile(ctx context.Context, log logr.Logger, route *kubelbv1alpha1.Route, config *kubelbv1alpha1.Config, tenant *kubelbv1alpha1.Tenant) error {
@@ -673,5 +695,25 @@ func (r *RouteReconciler) enqueueRoutesForTenant() handler.MapFunc {
 			})
 		}
 		return result
+	}
+}
+
+// getRouteType determines the route type from the Route resource for metrics labeling.
+func getRouteType(route *kubelbv1alpha1.Route) string {
+	if route.Spec.Source.Kubernetes == nil {
+		return metrics.RouteTypeIngress
+	}
+
+	// Get kind from the embedded unstructured Route resource
+	kind := route.Spec.Source.Kubernetes.Route.GetKind()
+	switch kind {
+	case "Gateway":
+		return metrics.RouteTypeGateway
+	case "HTTPRoute":
+		return metrics.RouteTypeHTTPRoute
+	case "GRPCRoute":
+		return metrics.RouteTypeGRPCRoute
+	default:
+		return metrics.RouteTypeIngress
 	}
 }

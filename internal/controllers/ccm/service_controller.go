@@ -20,11 +20,14 @@ import (
 	"context"
 	"fmt"
 	"reflect"
+	"time"
 
 	"github.com/go-logr/logr"
 
 	kubelbv1alpha1 "k8c.io/kubelb/api/ce/kubelb.k8c.io/v1alpha1"
 	"k8c.io/kubelb/internal/kubelb"
+	"k8c.io/kubelb/internal/metrics"
+	ccmmetrics "k8c.io/kubelb/internal/metrics/ccm"
 
 	corev1 "k8s.io/api/core/v1"
 	kerrors "k8s.io/apimachinery/pkg/api/errors"
@@ -63,6 +66,13 @@ type KubeLBServiceReconciler struct {
 
 func (r *KubeLBServiceReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	log := r.Log.WithValues("name", req.Name, "namespace", req.Namespace)
+	startTime := time.Now()
+
+	// Track reconciliation duration
+	defer func() {
+		ccmmetrics.ServiceReconcileDuration.WithLabelValues(req.Namespace).Observe(time.Since(startTime).Seconds())
+	}()
+
 	log.V(2).Info("reconciling service")
 
 	var service corev1.Service
@@ -71,6 +81,7 @@ func (r *KubeLBServiceReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 	if err != nil {
 		if ctrlclient.IgnoreNotFound(err) != nil {
 			log.Error(err, "unable to fetch service")
+			ccmmetrics.ServiceReconcileTotal.WithLabelValues(req.Namespace, metrics.ResultError).Inc()
 		}
 		log.V(3).Info("service not found")
 
@@ -87,6 +98,7 @@ func (r *KubeLBServiceReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 	}
 
 	if !r.shouldReconcile(service) {
+		ccmmetrics.ServiceReconcileTotal.WithLabelValues(req.Namespace, metrics.ResultSkipped).Inc()
 		return ctrl.Result{}, nil
 	}
 
@@ -101,6 +113,7 @@ func (r *KubeLBServiceReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 		controllerutil.RemoveFinalizer(&service, LBFinalizerName)
 
 		if err := r.Update(ctx, &service); err != nil {
+			ccmmetrics.ServiceReconcileTotal.WithLabelValues(req.Namespace, metrics.ResultError).Inc()
 			return reconcile.Result{}, fmt.Errorf("failed to add finalizer: %w", err)
 		}
 	}
@@ -120,11 +133,17 @@ func (r *KubeLBServiceReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 
 	if err != nil {
 		if !kerrors.IsNotFound(err) {
+			ccmmetrics.ServiceReconcileTotal.WithLabelValues(req.Namespace, metrics.ResultError).Inc()
 			return ctrl.Result{}, err
 		}
 		log.V(1).Info("creating LoadBalancer", "name", desiredLB.Name, "namespace", desiredLB.Namespace)
 
-		return ctrl.Result{}, kubelbClient.Create(ctx, desiredLB)
+		if err := kubelbClient.Create(ctx, desiredLB); err != nil {
+			ccmmetrics.ServiceReconcileTotal.WithLabelValues(req.Namespace, metrics.ResultError).Inc()
+			return ctrl.Result{}, err
+		}
+		ccmmetrics.ServiceReconcileTotal.WithLabelValues(req.Namespace, metrics.ResultSuccess).Inc()
+		return ctrl.Result{}, nil
 	}
 
 	log.V(6).Info("load balancer status", "LoadBalancer", actualLB.Status.LoadBalancer.Ingress, "service", service.Status.LoadBalancer.Ingress)
@@ -146,12 +165,14 @@ func (r *KubeLBServiceReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 		})
 
 		if retErr != nil {
+			ccmmetrics.ServiceReconcileTotal.WithLabelValues(req.Namespace, metrics.ResultError).Inc()
 			return ctrl.Result{}, fmt.Errorf("failed to update status %s: %w", service.Name, retErr)
 		}
 	}
 
 	if kubelb.LoadBalancerIsDesiredState(&actualLB, desiredLB) {
 		log.V(2).Info("LoadBalancer is in desired state")
+		ccmmetrics.ServiceReconcileTotal.WithLabelValues(req.Namespace, metrics.ResultSuccess).Inc()
 		return ctrl.Result{}, nil
 	}
 
@@ -161,10 +182,12 @@ func (r *KubeLBServiceReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 
 	err = kubelbClient.Update(ctx, &actualLB)
 	if err != nil {
+		ccmmetrics.ServiceReconcileTotal.WithLabelValues(req.Namespace, metrics.ResultError).Inc()
 		return ctrl.Result{}, err
 	}
 
-	return ctrl.Result{}, err
+	ccmmetrics.ServiceReconcileTotal.WithLabelValues(req.Namespace, metrics.ResultSuccess).Inc()
+	return ctrl.Result{}, nil
 }
 
 func (r *KubeLBServiceReconciler) cleanupService(ctx context.Context, log logr.Logger, service *corev1.Service) (reconcile.Result, error) {

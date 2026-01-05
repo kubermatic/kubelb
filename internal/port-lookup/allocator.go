@@ -25,6 +25,7 @@ import (
 
 	kubelbv1alpha1 "k8c.io/kubelb/api/ce/kubelb.k8c.io/v1alpha1"
 	"k8c.io/kubelb/internal/kubelb"
+	managermetrics "k8c.io/kubelb/internal/metrics/manager"
 
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
@@ -143,6 +144,10 @@ func (pa *PortAllocator) recomputeAvailablePorts() {
 			pa.portLookupReverse[port] = true
 		}
 	}
+
+	// Update metrics
+	managermetrics.PortAllocatorAllocatedPorts.Set(float64(len(pa.portLookupReverse)))
+	managermetrics.PortAllocatorEndpoints.Set(float64(len(pa.portLookup)))
 }
 
 // LoadState loads the port lookup table from the existing loadbalancers.

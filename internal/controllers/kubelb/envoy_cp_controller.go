@@ -20,6 +20,7 @@ import (
 	"context"
 	"fmt"
 	"reflect"
+	"time"
 
 	envoycachev3 "github.com/envoyproxy/go-control-plane/pkg/cache/v3"
 	envoyresource "github.com/envoyproxy/go-control-plane/pkg/resource/v3"
@@ -28,6 +29,8 @@ import (
 	utils "k8c.io/kubelb/internal/controllers"
 	envoycp "k8c.io/kubelb/internal/envoy"
 	"k8c.io/kubelb/internal/kubelb"
+	"k8c.io/kubelb/internal/metrics"
+	managermetrics "k8c.io/kubelb/internal/metrics/manager"
 	portlookup "k8c.io/kubelb/internal/port-lookup"
 
 	appsv1 "k8s.io/api/apps/v1"
@@ -67,17 +70,30 @@ type EnvoyCPReconciler struct {
 // +kubebuilder:rbac:groups=kubelb.k8c.io,resources=loadbalancers/status,verbs=get
 func (r *EnvoyCPReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	log := ctrl.LoggerFrom(ctx)
+	startTime := time.Now()
+
+	// Track reconciliation duration
+	defer func() {
+		managermetrics.EnvoyCPReconcileDuration.WithLabelValues().Observe(time.Since(startTime).Seconds())
+	}()
 
 	log.V(2).Info("reconciling LoadBalancer")
 
 	// Retrieve updated config.
 	config, err := GetConfig(ctx, r.Client, r.Namespace)
 	if err != nil {
+		managermetrics.EnvoyCPReconcileTotal.WithLabelValues(metrics.ResultError).Inc()
 		return ctrl.Result{}, fmt.Errorf("failed to retrieve config: %w", err)
 	}
 	r.Config = config
 
-	return ctrl.Result{}, r.reconcile(ctx, req)
+	if err := r.reconcile(ctx, req); err != nil {
+		managermetrics.EnvoyCPReconcileTotal.WithLabelValues(metrics.ResultError).Inc()
+		return ctrl.Result{}, err
+	}
+
+	managermetrics.EnvoyCPReconcileTotal.WithLabelValues(metrics.ResultSuccess).Inc()
+	return ctrl.Result{}, nil
 }
 
 func (r *EnvoyCPReconciler) reconcile(ctx context.Context, req ctrl.Request) error {
@@ -126,7 +142,12 @@ func (r *EnvoyCPReconciler) updateCache(ctx context.Context, snapshotName string
 	currentSnapshot, err := r.EnvoyCache.GetSnapshot(snapshotName)
 	if err != nil {
 		log.Info("init snapshot", "service-node", snapshotName, "version", desiredSnapshot.GetVersion(envoyresource.ClusterType))
-		return r.EnvoyCache.SetSnapshot(ctx, snapshotName, desiredSnapshot)
+		if err := r.EnvoyCache.SetSnapshot(ctx, snapshotName, desiredSnapshot); err != nil {
+			return err
+		}
+		r.recordSnapshotMetrics(snapshotName, desiredSnapshot)
+		managermetrics.EnvoyCPSnapshotUpdatesTotal.WithLabelValues(snapshotName).Inc()
+		return nil
 	}
 
 	lastUsedVersion := currentSnapshot.GetVersion(envoyresource.ClusterType)
@@ -146,7 +167,21 @@ func (r *EnvoyCPReconciler) updateCache(ctx context.Context, snapshotName string
 		return fmt.Errorf("failed to set a new Envoy cache snapshot: %w", err)
 	}
 
+	r.recordSnapshotMetrics(snapshotName, desiredSnapshot)
+	managermetrics.EnvoyCPSnapshotUpdatesTotal.WithLabelValues(snapshotName).Inc()
+
 	return nil
+}
+
+// recordSnapshotMetrics records the resource counts for a snapshot.
+func (r *EnvoyCPReconciler) recordSnapshotMetrics(snapshotName string, snapshot envoycachev3.ResourceSnapshot) {
+	clusters := snapshot.GetResources(envoyresource.ClusterType)
+	listeners := snapshot.GetResources(envoyresource.ListenerType)
+	endpoints := snapshot.GetResources(envoyresource.EndpointType)
+
+	managermetrics.EnvoyCPClusters.WithLabelValues(snapshotName).Set(float64(len(clusters)))
+	managermetrics.EnvoyCPListeners.WithLabelValues(snapshotName).Set(float64(len(listeners)))
+	managermetrics.EnvoyCPEndpoints.WithLabelValues(snapshotName).Set(float64(len(endpoints)))
 }
 
 func (r *EnvoyCPReconciler) ListLoadBalancersAndRoutes(ctx context.Context, req ctrl.Request) ([]kubelbv1alpha1.LoadBalancer, []kubelbv1alpha1.Route, error) {
