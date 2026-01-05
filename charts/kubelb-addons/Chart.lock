@@ -4,21 +4,21 @@ dependencies:
   version: 4.13.0
 - name: gateway-helm
   repository: oci://docker.io/envoyproxy
-  version: 1.5.4
+  version: 1.6.1
 - name: cert-manager
   repository: https://charts.jetstack.io
-  version: v1.18.2
+  version: v1.19.2
 - name: external-dns
   repository: https://kubernetes-sigs.github.io/external-dns
-  version: 1.18.0
+  version: 1.20.0
 - name: metallb
   repository: https://metallb.github.io/metallb
-  version: 0.15.2
+  version: 0.15.3
 - name: kgateway-crds
   repository: oci://cr.kgateway.dev/kgateway-dev/charts
-  version: v2.0.4
+  version: v2.1.2
 - name: kgateway
   repository: oci://cr.kgateway.dev/kgateway-dev/charts
-  version: v2.0.4
-digest: sha256:0a39069f5c00df4048a5b003a28c6b0232f2e14bbf6eaebf0ef70f53519b41d0
-generated: "2025-11-10T12:21:13.205041+05:00"
+  version: v2.1.2
+digest: sha256:3c5766a42e4d238cc2c565fc6246cd10827d37e055c48f1b247177a71bd85255
+generated: "2026-01-05T12:15:55.939744+05:00"
