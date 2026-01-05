@@ -73,13 +73,13 @@ These are the default values to use when Gateway API is disabled for KubeLB in f
 
 | Repository | Name | Version |
 |------------|------|---------|
-| https://charts.jetstack.io | cert-manager | 1.18.2 |
-| https://kubernetes-sigs.github.io/external-dns | external-dns | 1.18.0 |
+| https://charts.jetstack.io | cert-manager | 1.19.2 |
+| https://kubernetes-sigs.github.io/external-dns | external-dns | 1.20.0 |
 | https://kubernetes.github.io/ingress-nginx | ingress-nginx | 4.13.0 |
-| https://metallb.github.io/metallb | metallb | 0.15.2 |
-| oci://cr.kgateway.dev/kgateway-dev/charts | kgateway | v2.0.4 |
-| oci://cr.kgateway.dev/kgateway-dev/charts | kgateway-crds | v2.0.4 |
-| oci://docker.io/envoyproxy | envoy-gateway(gateway-helm) | 1.5.4 |
+| https://metallb.github.io/metallb | metallb | 0.15.3 |
+| oci://cr.kgateway.dev/kgateway-dev/charts | kgateway | v2.1.2 |
+| oci://cr.kgateway.dev/kgateway-dev/charts | kgateway-crds | v2.1.2 |
+| oci://docker.io/envoyproxy | envoy-gateway(gateway-helm) | 1.6.1 |
 
 ## Values
 
