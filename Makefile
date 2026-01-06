@@ -96,7 +96,7 @@ manifests: generate controller-gen ## Generate WebhookConfiguration, ClusterRole
 generate: controller-gen ## Generate code containing DeepCopy, DeepCopyInto, and DeepCopyObject method implementations.
 	$(CONTROLLER_GEN) object:headerFile="hack/boilerplate/boilerplate.go.txt" paths="./..."
 
-update-codegen: generate controller-gen manifests reconciler-gen generate-helm-docs fmt vet go-mod-tidy
+update-codegen: generate controller-gen manifests reconciler-gen generate-helm-docs generate-metricsdocs fmt vet go-mod-tidy
 
 helm-dependency-update:
 	./hack/ensure-helm-repos.sh && \
@@ -296,6 +296,11 @@ generate-crd-docs: crd-ref-docs ## Generate API reference documentation.
 		--source-path ./api/ce/kubelb.k8c.io \
 		--config=./hack/crd-ref-docs.yaml \
 		--output-path ./docs/api-reference.md
+
+.PHONY: generate-metricsdocs
+generate-metricsdocs: ## Generate metrics reference documentation.
+	mkdir -p $(shell pwd)/docs
+	go run ./internal/metrics/metricsdocs > docs/metrics.md
 
 .PHONY: update-gateway-api-crds
 update-gateway-api-crds:

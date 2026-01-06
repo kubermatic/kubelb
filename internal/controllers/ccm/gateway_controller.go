@@ -21,11 +21,14 @@ import (
 	"encoding/json"
 	"fmt"
 	"reflect"
+	"time"
 
 	"github.com/go-logr/logr"
 
 	kubelbv1alpha1 "k8c.io/kubelb/api/ce/kubelb.k8c.io/v1alpha1"
 	"k8c.io/kubelb/internal/kubelb"
+	"k8c.io/kubelb/internal/metrics"
+	ccmmetrics "k8c.io/kubelb/internal/metrics/ccm"
 
 	kerrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -73,6 +76,12 @@ type GatewayReconciler struct {
 
 func (r *GatewayReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	log := r.Log.WithValues("name", req.NamespacedName)
+	startTime := time.Now()
+
+	// Track reconciliation duration
+	defer func() {
+		ccmmetrics.GatewayReconcileDuration.WithLabelValues(req.Namespace).Observe(time.Since(startTime).Seconds())
+	}()
 
 	log.Info("Reconciling Gateway")
 
@@ -81,6 +90,7 @@ func (r *GatewayReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		if kerrors.IsNotFound(err) {
 			return reconcile.Result{}, nil
 		}
+		ccmmetrics.GatewayReconcileTotal.WithLabelValues(req.Namespace, metrics.ResultError).Inc()
 		return reconcile.Result{}, err
 	}
 
@@ -94,6 +104,7 @@ func (r *GatewayReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 	}
 
 	if !r.shouldReconcile(resource) {
+		ccmmetrics.GatewayReconcileTotal.WithLabelValues(req.Namespace, metrics.ResultSkipped).Inc()
 		return reconcile.Result{}, nil
 	}
 
@@ -105,6 +116,7 @@ func (r *GatewayReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		}
 
 		if err := r.Update(ctx, resource); err != nil {
+			ccmmetrics.GatewayReconcileTotal.WithLabelValues(req.Namespace, metrics.ResultError).Inc()
 			return reconcile.Result{}, fmt.Errorf("failed to add finalizer: %w", err)
 		}
 	}
@@ -112,9 +124,12 @@ func (r *GatewayReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 	err := r.reconcile(ctx, log, resource)
 	if err != nil {
 		log.Error(err, "reconciling failed")
+		ccmmetrics.GatewayReconcileTotal.WithLabelValues(req.Namespace, metrics.ResultError).Inc()
+		return reconcile.Result{}, err
 	}
 
-	return reconcile.Result{}, err
+	ccmmetrics.GatewayReconcileTotal.WithLabelValues(req.Namespace, metrics.ResultSuccess).Inc()
+	return reconcile.Result{}, nil
 }
 
 func (r *GatewayReconciler) reconcile(ctx context.Context, log logr.Logger, gateway *gwapiv1.Gateway) error {

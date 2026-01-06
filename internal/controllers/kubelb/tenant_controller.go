@@ -32,6 +32,8 @@ import (
 
 	kubelbv1alpha1 "k8c.io/kubelb/api/ce/kubelb.k8c.io/v1alpha1"
 	tenantresources "k8c.io/kubelb/internal/controllers/kubelb/resources/tenant"
+	"k8c.io/kubelb/internal/metrics"
+	managermetrics "k8c.io/kubelb/internal/metrics/manager"
 	"k8c.io/kubelb/internal/version"
 	"k8c.io/reconciler/pkg/reconciling"
 
@@ -109,6 +111,12 @@ type TenantReconciler struct {
 
 func (r *TenantReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	log := r.Log.WithValues("name", req.NamespacedName)
+	startTime := time.Now()
+
+	// Track reconciliation duration
+	defer func() {
+		managermetrics.TenantReconcileDuration.WithLabelValues().Observe(time.Since(startTime).Seconds())
+	}()
 
 	log.Info("Reconciling Tenant")
 
@@ -117,6 +125,7 @@ func (r *TenantReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 		if kerrors.IsNotFound(err) {
 			return reconcile.Result{}, nil
 		}
+		managermetrics.TenantReconcileTotal.WithLabelValues(metrics.ResultError).Inc()
 		return reconcile.Result{}, err
 	}
 
@@ -136,6 +145,7 @@ func (r *TenantReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 			return ctrl.Result{Requeue: true}, nil
 		}
 		if err := r.Update(ctx, resource); err != nil {
+			managermetrics.TenantReconcileTotal.WithLabelValues(metrics.ResultError).Inc()
 			return reconcile.Result{}, fmt.Errorf("failed to add finalizer: %w", err)
 		}
 	}
@@ -143,9 +153,12 @@ func (r *TenantReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 	err := r.reconcile(ctx, log, resource)
 	if err != nil {
 		log.Error(err, "reconciling failed")
+		managermetrics.TenantReconcileTotal.WithLabelValues(metrics.ResultError).Inc()
+		return reconcile.Result{}, err
 	}
 
-	return reconcile.Result{}, err
+	managermetrics.TenantReconcileTotal.WithLabelValues(metrics.ResultSuccess).Inc()
+	return reconcile.Result{}, nil
 }
 
 func (r *TenantReconciler) reconcile(ctx context.Context, log logr.Logger, tenant *kubelbv1alpha1.Tenant) error {

@@ -21,11 +21,14 @@ import (
 	"encoding/json"
 	"fmt"
 	"reflect"
+	"time"
 
 	"github.com/go-logr/logr"
 
 	kubelbv1alpha1 "k8c.io/kubelb/api/ce/kubelb.k8c.io/v1alpha1"
 	"k8c.io/kubelb/internal/kubelb"
+	"k8c.io/kubelb/internal/metrics"
+	ccmmetrics "k8c.io/kubelb/internal/metrics/ccm"
 	grpcrouteHelpers "k8c.io/kubelb/internal/resources/gatewayapi/grpcroute"
 	serviceHelpers "k8c.io/kubelb/internal/resources/service"
 
@@ -73,6 +76,12 @@ type GRPCRouteReconciler struct {
 
 func (r *GRPCRouteReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	log := r.Log.WithValues("name", req.NamespacedName)
+	startTime := time.Now()
+
+	// Track reconciliation duration
+	defer func() {
+		ccmmetrics.GRPCRouteReconcileDuration.WithLabelValues(req.Namespace).Observe(time.Since(startTime).Seconds())
+	}()
 
 	log.Info("Reconciling GRPCRoute")
 
@@ -81,6 +90,7 @@ func (r *GRPCRouteReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		if kerrors.IsNotFound(err) {
 			return reconcile.Result{}, nil
 		}
+		ccmmetrics.GRPCRouteReconcileTotal.WithLabelValues(req.Namespace, metrics.ResultError).Inc()
 		return reconcile.Result{}, err
 	}
 
@@ -94,6 +104,7 @@ func (r *GRPCRouteReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	}
 
 	if !r.shouldReconcile(resource) {
+		ccmmetrics.GRPCRouteReconcileTotal.WithLabelValues(req.Namespace, metrics.ResultSkipped).Inc()
 		return reconcile.Result{}, nil
 	}
 
@@ -101,6 +112,7 @@ func (r *GRPCRouteReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	if !controllerutil.ContainsFinalizer(resource, CleanupFinalizer) {
 		controllerutil.AddFinalizer(resource, CleanupFinalizer)
 		if err := r.Update(ctx, resource); err != nil {
+			ccmmetrics.GRPCRouteReconcileTotal.WithLabelValues(req.Namespace, metrics.ResultError).Inc()
 			return reconcile.Result{}, fmt.Errorf("failed to add finalizer: %w", err)
 		}
 	}
@@ -108,9 +120,12 @@ func (r *GRPCRouteReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	err := r.reconcile(ctx, log, resource)
 	if err != nil {
 		log.Error(err, "reconciling failed")
+		ccmmetrics.GRPCRouteReconcileTotal.WithLabelValues(req.Namespace, metrics.ResultError).Inc()
+		return reconcile.Result{}, err
 	}
 
-	return reconcile.Result{}, err
+	ccmmetrics.GRPCRouteReconcileTotal.WithLabelValues(req.Namespace, metrics.ResultSuccess).Inc()
+	return reconcile.Result{}, nil
 }
 
 func (r *GRPCRouteReconciler) reconcile(ctx context.Context, log logr.Logger, grpcRoute *gwapiv1.GRPCRoute) error {

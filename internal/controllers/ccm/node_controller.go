@@ -26,6 +26,8 @@ import (
 	"github.com/go-logr/logr"
 
 	kubelbiov1alpha1 "k8c.io/kubelb/api/ce/kubelb.k8c.io/v1alpha1"
+	"k8c.io/kubelb/internal/metrics"
+	ccmmetrics "k8c.io/kubelb/internal/metrics/ccm"
 
 	corev1 "k8s.io/api/core/v1"
 	kerrors "k8s.io/apimachinery/pkg/api/errors"
@@ -57,6 +59,12 @@ type KubeLBNodeReconciler struct {
 
 func (r *KubeLBNodeReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	log := r.Log.WithValues("name", req.Name)
+	startTime := time.Now()
+
+	// Track reconciliation duration
+	defer func() {
+		ccmmetrics.NodeReconcileDuration.WithLabelValues().Observe(time.Since(startTime).Seconds())
+	}()
 
 	log.V(2).Info("reconciling node")
 
@@ -64,6 +72,7 @@ func (r *KubeLBNodeReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 	err := r.List(ctx, nodeList)
 	if err != nil {
 		log.Error(err, "unable to list nodeList")
+		ccmmetrics.NodeReconcileTotal.WithLabelValues(metrics.ResultError).Inc()
 		return ctrl.Result{}, err
 	}
 
@@ -73,6 +82,7 @@ func (r *KubeLBNodeReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 		log.Error(err, "unable to find a node with an IP address")
 		// This is a transient error and happens when the nodes are coming up.
 		// We will requeue after a short period of time to give the nodes a chance to be ready and have an IP address.
+		ccmmetrics.NodeReconcileTotal.WithLabelValues(metrics.ResultError).Inc()
 		return ctrl.Result{RequeueAfter: requeueAfter}, err
 	}
 
@@ -83,8 +93,12 @@ func (r *KubeLBNodeReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 			// Create the default address object
 			if err = r.KubeLBClient.Create(ctx, currentAddresses); err != nil {
 				log.Error(err, "unable to create addresses")
+				ccmmetrics.NodeReconcileTotal.WithLabelValues(metrics.ResultError).Inc()
 				return ctrl.Result{}, err
 			}
+			ccmmetrics.NodeReconcileTotal.WithLabelValues(metrics.ResultSuccess).Inc()
+		} else {
+			ccmmetrics.NodeReconcileTotal.WithLabelValues(metrics.ResultError).Inc()
 		}
 		return reconcile.Result{}, err
 	}
@@ -92,6 +106,7 @@ func (r *KubeLBNodeReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 	// Compare the current state with the desired state
 	if reflect.DeepEqual(addresses.Spec.Addresses, currentAddresses.Spec.Addresses) {
 		log.V(2).Info("addresses are in desired state")
+		ccmmetrics.NodeReconcileTotal.WithLabelValues(metrics.ResultSuccess).Inc()
 		return ctrl.Result{}, nil
 	}
 
@@ -99,9 +114,11 @@ func (r *KubeLBNodeReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 	addresses.Spec.Addresses = currentAddresses.Spec.Addresses
 	if err = r.KubeLBClient.Update(ctx, &addresses); err != nil {
 		log.Error(err, "unable to update addresses")
+		ccmmetrics.NodeReconcileTotal.WithLabelValues(metrics.ResultError).Inc()
 		return ctrl.Result{}, err
 	}
 
+	ccmmetrics.NodeReconcileTotal.WithLabelValues(metrics.ResultSuccess).Inc()
 	return ctrl.Result{}, nil
 }
 
