@@ -80,6 +80,14 @@ rbac:
 serviceMonitor:
   enabled: false
 
+# Grafana Dashboard Configuration
+grafana:
+  dashboards:
+    # -- Enable Grafana dashboard ConfigMaps for automatic provisioning via sidecar
+    enabled: false
+    # -- Additional annotations for dashboard ConfigMaps
+    annotations: {}
+
 podSecurityContext:
   runAsNonRoot: true
   seccompProfile:
