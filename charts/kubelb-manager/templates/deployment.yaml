@@ -63,23 +63,32 @@ spec:
               port: 8081
             initialDelaySeconds: 5
             periodSeconds: 10
+          ports:
+            - containerPort: {{ .Values.metrics.manager.port }}
+              name: manager-metrics
+              protocol: TCP
+            - containerPort: {{ .Values.metrics.envoyCP.port }}
+              name: envoycp-metrics
+              protocol: TCP
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
           {{- with .Values.volumeMounts }}
           volumeMounts:
             {{- toYaml . | nindent 12 }}
           {{- end }}
-        - args:
-          - --secure-listen-address=0.0.0.0:8443
-          - --upstream=http://127.0.0.1:8080/
-          - --v=0
+        - name: kube-rbac-proxy
           image: quay.io/brancz/kube-rbac-proxy:v0.19.1
           imagePullPolicy: {{ .Values.image.pullPolicy }}
-          name: kube-rbac-proxy
+          args:
+            - --secure-listen-address=0.0.0.0:8443
+            - --upstream=http://127.0.0.1:{{ .Values.metrics.manager.port }}/
+            - --v=0
           ports:
-          - protocol: TCP
-            containerPort: 8443
-            name: https
+            - containerPort: 8443
+              name: metrics
+              protocol: TCP
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
       {{- with .Values.volumes }}
       volumes:
         {{- toYaml . | nindent 8 }}

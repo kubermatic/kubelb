@@ -68,6 +68,15 @@ rbac:
 serviceMonitor:
   enabled: false
 
+# Metrics Configuration
+metrics:
+  manager:
+    # -- Port where the manager exposes metrics
+    port: 9443
+  envoyCP:
+    # -- Port where the Envoy Control Plane exposes metrics
+    port: 9444
+
 # Grafana Dashboard Configuration
 grafana:
   dashboards:
