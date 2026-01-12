@@ -13,3 +13,7 @@ __debug*
 charts/*/charts
 .claude
 CLAUDE.md
+
+# Generated binaries (root only)
+/kubelb
+/ccm

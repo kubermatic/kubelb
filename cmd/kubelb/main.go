@@ -26,6 +26,7 @@ import (
 	"k8c.io/kubelb/internal/config"
 	"k8c.io/kubelb/internal/controllers/kubelb"
 	"k8c.io/kubelb/internal/envoy"
+	envoycpmetrics "k8c.io/kubelb/internal/metrics/envoycp"
 	managermetrics "k8c.io/kubelb/internal/metrics/manager"
 	portlookup "k8c.io/kubelb/internal/port-lookup"
 
@@ -42,7 +43,6 @@ import (
 
 type options struct {
 	metricsAddr                     string
-	envoyCPMetricsAddr              string
 	envoyListenAddress              string
 	enableLeaderElection            bool
 	probeAddr                       string
@@ -65,13 +65,13 @@ func init() {
 
 	// Register KubeLB metrics with controller-runtime's metrics registry
 	managermetrics.Register()
+	envoycpmetrics.Register()
 }
 
 func main() {
 	opt := &options{}
 	flag.StringVar(&opt.envoyListenAddress, "listen-address", ":8001", "Address to serve envoy control-plane on")
-	flag.StringVar(&opt.metricsAddr, "metrics-addr", ":9443", "The address the metric endpoint for the default controller manager binds to.")
-	flag.StringVar(&opt.envoyCPMetricsAddr, "envoy-cp-metrics-addr", ":9444", "The address the metric endpoint for the envoy control-plane manager binds to.")
+	flag.StringVar(&opt.metricsAddr, "metrics-addr", ":9443", "The address the metric endpoint binds to.")
 	flag.StringVar(&opt.probeAddr, "health-probe-bind-address", ":8081", "The address the probe endpoint binds to.")
 	flag.BoolVar(&opt.enableLeaderElection, "enable-leader-election", true,
 		"Enable leader election for controller kubelb. Enabling this will ensure there is only one active controller kubelb.")
@@ -126,7 +126,7 @@ func main() {
 
 	envoyMgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
 		Scheme:         scheme,
-		Metrics:        metricsserver.Options{BindAddress: opt.envoyCPMetricsAddr},
+		Metrics:        metricsserver.Options{BindAddress: "0"},
 		LeaderElection: false,
 	})
 	if err != nil {

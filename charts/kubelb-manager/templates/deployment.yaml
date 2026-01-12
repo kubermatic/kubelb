@@ -13,9 +13,16 @@ spec:
       {{- include "kubelb-manager.selectorLabels" . | nindent 6 }}
   template:
     metadata:
-      {{- with .Values.podAnnotations }}
+      {{- if or .Values.podAnnotations (not .Values.serviceMonitor.enabled) }}
       annotations:
+        {{- with .Values.podAnnotations }}
         {{- toYaml . | nindent 8 }}
+        {{- end }}
+        {{- if not .Values.serviceMonitor.enabled }}
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "{{ .Values.metrics.port }}"
+        prometheus.io/path: "/metrics"
+        {{- end }}
       {{- end }}
       labels:
         {{- include "kubelb-manager.labels" . | nindent 8 }}
@@ -63,23 +70,29 @@ spec:
               port: 8081
             initialDelaySeconds: 5
             periodSeconds: 10
+          ports:
+            - containerPort: {{ .Values.metrics.port }}
+              name: manager-metrics
+              protocol: TCP
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
           {{- with .Values.volumeMounts }}
           volumeMounts:
             {{- toYaml . | nindent 12 }}
           {{- end }}
-        - args:
-          - --secure-listen-address=0.0.0.0:8443
-          - --upstream=http://127.0.0.1:8080/
-          - --v=0
+        - name: kube-rbac-proxy
           image: quay.io/brancz/kube-rbac-proxy:v0.20.1
           imagePullPolicy: {{ .Values.image.pullPolicy }}
-          name: kube-rbac-proxy
+          args:
+            - --secure-listen-address=0.0.0.0:8443
+            - --upstream=http://127.0.0.1:{{ .Values.metrics.port }}/
+            - --v=0
           ports:
-          - protocol: TCP
-            containerPort: 8443
-            name: https
+            - containerPort: 8443
+              name: metrics
+              protocol: TCP
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
       {{- with .Values.volumes }}
       volumes:
         {{- toYaml . | nindent 8 }}
