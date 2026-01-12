@@ -109,7 +109,7 @@ spec:
             {{- toYaml . | nindent 8 }}
           {{- end }}
         - name: kube-rbac-proxy
-          image: quay.io/brancz/kube-rbac-proxy:v0.19.1
+          image: quay.io/brancz/kube-rbac-proxy:v0.20.1
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           args:
             - --secure-listen-address=0.0.0.0:8443
