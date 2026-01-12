@@ -49,6 +49,9 @@ helm install kubelb-ccm kubelb-ccm/ --namespace kubelb -f values.yaml
 | image.repository | string | `"quay.io/kubermatic/kubelb-ccm"` |  |
 | image.tag | string | `"v1.2.0"` |  |
 | imagePullSecrets | list | `[]` |  |
+| kubeRbacProxy.image.pullPolicy | string | `"IfNotPresent"` |  |
+| kubeRbacProxy.image.repository | string | `"quay.io/brancz/kube-rbac-proxy"` |  |
+| kubeRbacProxy.image.tag | string | `"v0.20.1"` |  |
 | kubelb.clusterSecretName | string | `"kubelb-cluster"` | Name of the secret that contains kubeconfig for the loadbalancer cluster |
 | kubelb.disableGRPCRouteController | bool | `false` | disableGRPCRouteController specifies whether to disable the GRPCRoute Controller. |
 | kubelb.disableGatewayController | bool | `false` | disableGatewayController specifies whether to disable the Gateway Controller. |
