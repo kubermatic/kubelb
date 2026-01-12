@@ -38,6 +38,8 @@ helm install kubelb-manager kubelb-manager/ --namespace kubelb -f values.yaml --
 | autoscaling.targetCPUUtilizationPercentage | int | `80` |  |
 | autoscaling.targetMemoryUtilizationPercentage | int | `80` |  |
 | fullnameOverride | string | `""` |  |
+| grafana.dashboards.annotations | object | `{}` | Additional annotations for dashboard ConfigMaps |
+| grafana.dashboards.enabled | bool | `false` | Enable Grafana dashboard ConfigMaps for automatic provisioning via sidecar |
 | image.pullPolicy | string | `"IfNotPresent"` |  |
 | image.repository | string | `"quay.io/kubermatic/kubelb-manager"` |  |
 | image.tag | string | `"v1.2.0"` |  |
@@ -60,6 +62,7 @@ helm install kubelb-manager kubelb-manager/ --namespace kubelb -f values.yaml --
 | kubelb.propagateAllAnnotations | bool | `false` | Propagate all annotations from the LB resource to the LB service. |
 | kubelb.propagatedAnnotations | object | `{}` | Allowed annotations that will be propagated from the LB resource to the LB service. |
 | kubelb.skipConfigGeneration | bool | `false` | Set to true to skip the generation of the Config CR. Useful when the config CR needs to be managed manually. |
+| metrics.port | int | `9443` | Port where the manager exposes metrics (includes both manager and envoycp metrics) |
 | nameOverride | string | `""` |  |
 | nodeSelector | object | `{}` |  |
 | podAnnotations | object | `{}` |  |

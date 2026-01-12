@@ -13,9 +13,16 @@ spec:
       {{- include "kubelb-manager.selectorLabels" . | nindent 6 }}
   template:
     metadata:
-      {{- with .Values.podAnnotations }}
+      {{- if or .Values.podAnnotations (not .Values.serviceMonitor.enabled) }}
       annotations:
+        {{- with .Values.podAnnotations }}
         {{- toYaml . | nindent 8 }}
+        {{- end }}
+        {{- if not .Values.serviceMonitor.enabled }}
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "{{ .Values.metrics.port }}"
+        prometheus.io/path: "/metrics"
+        {{- end }}
       {{- end }}
       labels:
         {{- include "kubelb-manager.labels" . | nindent 8 }}
@@ -64,11 +71,8 @@ spec:
             initialDelaySeconds: 5
             periodSeconds: 10
           ports:
-            - containerPort: {{ .Values.metrics.manager.port }}
+            - containerPort: {{ .Values.metrics.port }}
               name: manager-metrics
-              protocol: TCP
-            - containerPort: {{ .Values.metrics.envoyCP.port }}
-              name: envoycp-metrics
               protocol: TCP
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
@@ -81,7 +85,7 @@ spec:
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           args:
             - --secure-listen-address=0.0.0.0:8443
-            - --upstream=http://127.0.0.1:{{ .Values.metrics.manager.port }}/
+            - --upstream=http://127.0.0.1:{{ .Values.metrics.port }}/
             - --v=0
           ports:
             - containerPort: 8443

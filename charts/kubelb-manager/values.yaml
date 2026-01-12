@@ -70,12 +70,8 @@ serviceMonitor:
 
 # Metrics Configuration
 metrics:
-  manager:
-    # -- Port where the manager exposes metrics
-    port: 9443
-  envoyCP:
-    # -- Port where the Envoy Control Plane exposes metrics
-    port: 9444
+  # -- Port where the manager exposes metrics (includes both manager and envoycp metrics)
+  port: 9443
 
 # Grafana Dashboard Configuration
 grafana:

@@ -13,9 +13,16 @@ spec:
       {{- include "kubelb-ccm.selectorLabels" . | nindent 6 }}
   template:
     metadata:
-      {{- with .Values.podAnnotations }}
+      {{- if or .Values.podAnnotations (not .Values.serviceMonitor.enabled) }}
       annotations:
+        {{- with .Values.podAnnotations }}
         {{- toYaml . | nindent 8 }}
+        {{- end }}
+        {{- if not .Values.serviceMonitor.enabled }}
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "{{ .Values.metrics.port }}"
+        prometheus.io/path: "/metrics"
+        {{- end }}
       {{- end }}
       labels:
         {{- include "kubelb-ccm.labels" . | nindent 8 }}
