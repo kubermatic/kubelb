@@ -68,6 +68,19 @@ rbac:
 serviceMonitor:
   enabled: false
 
+# Metrics Configuration
+metrics:
+  # -- Port where the manager exposes metrics (includes both manager and envoycp metrics)
+  port: 9443
+
+# Grafana Dashboard Configuration
+grafana:
+  dashboards:
+    # -- Enable Grafana dashboard ConfigMaps for automatic provisioning via sidecar
+    enabled: false
+    # -- Additional annotations for dashboard ConfigMaps
+    annotations: {}
+
 podSecurityContext:
   runAsNonRoot: true
   seccompProfile:

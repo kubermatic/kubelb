@@ -1,0 +1,21 @@
+{{- if .Values.grafana.dashboards.enabled }}
+{{- $files := .Files }}
+{{- range $path, $_ := $files.Glob "dashboards/*.json" }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "kubelb-ccm.fullname" $ }}-{{ $path | base | trimSuffix ".json" }}
+  namespace: {{ $.Release.Namespace }}
+  labels:
+    {{- include "kubelb-ccm.labels" $ | nindent 4 }}
+    grafana_dashboard: "1"
+  {{- with $.Values.grafana.dashboards.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+data:
+  {{ $path | base }}: |-
+{{ $files.Get $path | indent 4 }}
+{{- end }}
+{{- end }}

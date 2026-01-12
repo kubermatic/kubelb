@@ -10,7 +10,7 @@ metadata:
 spec:
   selector:
     matchLabels:
-        {{- include "kubelb-ccm.selectorLabels" . | nindent 4 }}
+      {{- include "kubelb-ccm.selectorLabels" . | nindent 6 }}
   endpoints:
   - port: metrics
     path: /metrics

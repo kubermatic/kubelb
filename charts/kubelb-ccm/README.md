@@ -45,6 +45,8 @@ helm install kubelb-ccm kubelb-ccm/ --namespace kubelb -f values.yaml
 | extraVolumeMounts | list | `[]` |  |
 | extraVolumes | list | `[]` |  |
 | fullnameOverride | string | `""` |  |
+| grafana.dashboards.annotations | object | `{}` | Additional annotations for dashboard ConfigMaps |
+| grafana.dashboards.enabled | bool | `false` | Enable Grafana dashboard ConfigMaps for automatic provisioning via sidecar |
 | image.pullPolicy | string | `"IfNotPresent"` |  |
 | image.repository | string | `"quay.io/kubermatic/kubelb-ccm"` |  |
 | image.tag | string | `"v1.2.0"` |  |
@@ -65,6 +67,7 @@ helm install kubelb-ccm kubelb-ccm/ --namespace kubelb -f values.yaml
 | kubelb.useGatewayClass | bool | `true` | useGatewayClass specifies whether to target resources with `kubelb` gateway class or all resources. |
 | kubelb.useIngressClass | bool | `true` | useIngressClass specifies whether to target resources with `kubelb` ingress class or all resources. |
 | kubelb.useLoadBalancerClass | bool | `false` | useLoadBalancerClass specifies whether to target services of type LoadBalancer with `kubelb` load balancer class or all services of type LoadBalancer. |
+| metrics.port | int | `9445` | Port where the CCM exposes metrics |
 | nameOverride | string | `""` |  |
 | nodeSelector | object | `{}` |  |
 | podAnnotations | object | `{}` |  |
