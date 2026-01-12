@@ -48,7 +48,7 @@ func CreateOrUpdateHTTPRoute(ctx context.Context, log logr.Logger, client ctrlcl
 					if string(ref.Name) == service.Name {
 						ns := ref.Namespace
 						// Corresponding service found, update the name.
-						if ns == nil || ns == (*gwapiv1.Namespace)(&service.Namespace) {
+						if ns == nil || string(*ns) == service.Namespace {
 							object.Spec.Rules[i].Filters[j].RequestMirror.BackendRef.Name = gwapiv1.ObjectName(kubelb.GenerateName(globalTopology, string(service.UID), service.Name, service.Namespace))
 							// Set the namespace to nil since all the services are created in the same namespace as the Route.
 							object.Spec.Rules[i].Filters[j].RequestMirror.BackendRef.Namespace = nil
@@ -64,7 +64,7 @@ func CreateOrUpdateHTTPRoute(ctx context.Context, log logr.Logger, client ctrlcl
 					if string(ref.Name) == service.Name {
 						ns := ref.Namespace
 						// Corresponding service found, update the name.
-						if ns == nil || ns == (*gwapiv1.Namespace)(&service.Namespace) {
+						if ns == nil || string(*ns) == service.Namespace {
 							object.Spec.Rules[i].BackendRefs[j].Name = gwapiv1.ObjectName(kubelb.GenerateName(globalTopology, string(service.UID), service.Name, service.Namespace))
 							// Set the namespace to nil since all the services are created in the same namespace as the Route.
 							object.Spec.Rules[i].BackendRefs[j].Namespace = nil
@@ -81,7 +81,7 @@ func CreateOrUpdateHTTPRoute(ctx context.Context, log logr.Logger, client ctrlcl
 							if string(ref.Name) == service.Name {
 								ns := ref.Namespace
 								// Corresponding service found, update the name.
-								if ns == nil || ns == (*gwapiv1.Namespace)(&service.Namespace) {
+								if ns == nil || string(*ns) == service.Namespace {
 									object.Spec.Rules[i].Filters[j].RequestMirror.BackendRef.Name = gwapiv1.ObjectName(kubelb.GenerateName(globalTopology, string(service.UID), service.Name, service.Namespace))
 									// Set the namespace to nil since all the services are created in the same namespace as the Route.
 									object.Spec.Rules[i].Filters[j].RequestMirror.BackendRef.Namespace = nil
