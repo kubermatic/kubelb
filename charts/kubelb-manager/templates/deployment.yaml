@@ -81,8 +81,8 @@ spec:
             {{- toYaml . | nindent 12 }}
           {{- end }}
         - name: kube-rbac-proxy
-          image: quay.io/brancz/kube-rbac-proxy:v0.20.1
-          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          image: "{{ .Values.kubeRbacProxy.image.repository }}:{{ .Values.kubeRbacProxy.image.tag }}"
+          imagePullPolicy: {{ .Values.kubeRbacProxy.image.pullPolicy }}
           args:
             - --secure-listen-address=0.0.0.0:8443
             - --upstream=http://127.0.0.1:{{ .Values.metrics.port }}/

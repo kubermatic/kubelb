@@ -4,6 +4,13 @@ image:
   repository: quay.io/kubermatic/kubelb-ccm
   pullPolicy: IfNotPresent
   tag: v1.2.0
+
+kubeRbacProxy:
+  image:
+    repository: quay.io/brancz/kube-rbac-proxy
+    pullPolicy: IfNotPresent
+    tag: v0.20.1
+
 imagePullSecrets: []
 
 kubelb:
