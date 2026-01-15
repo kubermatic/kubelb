@@ -27,14 +27,14 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	runtime "k8s.io/apimachinery/pkg/runtime"
-	gwapiv1alpha2 "sigs.k8s.io/gateway-api/apis/v1alpha2"
 )
 
 // RouteSpec defines the desired state of the Route.
 type RouteSpec struct {
 	// Sets of addresses and ports that comprise an exposed user service on a cluster.
-	// +required
-	// +kubebuilder:validation:MinItems=1
+	// This field is required for Routes that represent traffic-forwarding resources (Ingress, Gateway routes).
+	// It is optional for policy resources like BackendTrafficPolicy.
+	// +optional
 	Endpoints []LoadBalancerEndpoints `json:"endpoints,omitempty"`
 
 	// Source contains the information about the source of the route. This is used when the route is created from external sources.
@@ -58,6 +58,7 @@ type KubernetesSource struct {
 	// - gateway.networking.k8s.io/tlsroute
 	// - gateway.networking.k8s.io/tcproute
 	// - gateway.networking.k8s.io/udproute
+	// - gateway.envoyproxy.io/backendtrafficpolicy
 
 	// +optional
 	// +kubebuilder:validation:EmbeddedResource
@@ -77,16 +78,6 @@ type UpstreamService struct {
 	// +kubebuilder:pruning:PreserveUnknownFields
 	// +kubebuilder:validation:EmbeddedResource
 	corev1.Service `json:",inline"`
-}
-
-// UpstreamReferenceGrant is a wrapper over the sigs.k8s.io/gateway-api/apis/v1alpha2.ReferenceGrant object.
-// This is required as kubebuilder:validation:EmbeddedResource marker adds the x-kubernetes-embedded-resource to the array instead of
-// the elements within it. Which results in a broken CRD; validation error. Without this marker, the embedded resource is not properly
-// serialized to the CRD.
-type UpstreamReferenceGrant struct {
-	// +kubebuilder:pruning:PreserveUnknownFields
-	// +kubebuilder:validation:EmbeddedResource
-	gwapiv1alpha2.ReferenceGrant `json:",inline"`
 }
 
 //+kubebuilder:object:root=true
@@ -176,14 +167,4 @@ func ConvertServicesToUpstreamServices(services []corev1.Service) []UpstreamServ
 		})
 	}
 	return upstreamServices
-}
-
-func ConvertReferenceGrantsToUpstreamReferenceGrants(referenceGrants []gwapiv1alpha2.ReferenceGrant) []UpstreamReferenceGrant {
-	var upstreamReferenceGrants []UpstreamReferenceGrant
-	for _, referenceGrant := range referenceGrants {
-		upstreamReferenceGrants = append(upstreamReferenceGrants, UpstreamReferenceGrant{
-			ReferenceGrant: referenceGrant,
-		})
-	}
-	return upstreamReferenceGrants
 }

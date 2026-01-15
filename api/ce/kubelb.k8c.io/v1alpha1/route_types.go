@@ -21,7 +21,6 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	runtime "k8s.io/apimachinery/pkg/runtime"
-	gwapiv1alpha2 "sigs.k8s.io/gateway-api/apis/v1alpha2"
 )
 
 // RouteSpec defines the desired state of the Route.
@@ -68,16 +67,6 @@ type UpstreamService struct {
 	// +kubebuilder:pruning:PreserveUnknownFields
 	// +kubebuilder:validation:EmbeddedResource
 	corev1.Service `json:",inline"`
-}
-
-// UpstreamReferenceGrant is a wrapper over the sigs.k8s.io/gateway-api/apis/v1alpha2.ReferenceGrant object.
-// This is required as kubebuilder:validation:EmbeddedResource marker adds the x-kubernetes-embedded-resource to the array instead of
-// the elements within it. Which results in a broken CRD; validation error. Without this marker, the embedded resource is not properly
-// serialized to the CRD.
-type UpstreamReferenceGrant struct {
-	// +kubebuilder:pruning:PreserveUnknownFields
-	// +kubebuilder:validation:EmbeddedResource
-	gwapiv1alpha2.ReferenceGrant `json:",inline"`
 }
 
 // +kubebuilder:object:root=true
@@ -167,14 +156,4 @@ func ConvertServicesToUpstreamServices(services []corev1.Service) []UpstreamServ
 		})
 	}
 	return upstreamServices
-}
-
-func ConvertReferenceGrantsToUpstreamReferenceGrants(referenceGrants []gwapiv1alpha2.ReferenceGrant) []UpstreamReferenceGrant {
-	var upstreamReferenceGrants []UpstreamReferenceGrant
-	for _, referenceGrant := range referenceGrants {
-		upstreamReferenceGrants = append(upstreamReferenceGrants, UpstreamReferenceGrant{
-			ReferenceGrant: referenceGrant,
-		})
-	}
-	return upstreamReferenceGrants
 }

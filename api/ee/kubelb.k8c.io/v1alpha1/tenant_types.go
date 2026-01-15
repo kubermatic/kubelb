@@ -37,6 +37,11 @@ type TenantSpec struct {
 	Certificates       CertificatesSettings `json:"certificates,omitempty"`
 	Tunnel             TenantTunnelSettings `json:"tunnel,omitempty"`
 
+	// CircuitBreaker defines the circuit breaker configuration for this tenant's Envoy clusters.
+	// Overrides Config-level settings.
+	// +optional
+	CircuitBreaker *CircuitBreaker `json:"circuitBreaker,omitempty"`
+
 	// +kubebuilder:default={"**"}
 
 	// List of allowed domains for the tenant. This is used to restrict the domains that can be used
@@ -99,11 +104,13 @@ type GatewayAPISettings struct {
 }
 
 type GatewayAPIsSettings struct {
-	DisableHTTPRoute bool `json:"disableHTTPRoute,omitempty"`
-	DisableGRPCRoute bool `json:"disableGRPCRoute,omitempty"`
-	DisableTCPRoute  bool `json:"disableTCPRoute,omitempty"`
-	DisableUDPRoute  bool `json:"disableUDPRoute,omitempty"`
-	DisableTLSRoute  bool `json:"disableTLSRoute,omitempty"`
+	DisableHTTPRoute            bool `json:"disableHTTPRoute,omitempty"`
+	DisableGRPCRoute            bool `json:"disableGRPCRoute,omitempty"`
+	DisableTCPRoute             bool `json:"disableTCPRoute,omitempty"`
+	DisableUDPRoute             bool `json:"disableUDPRoute,omitempty"`
+	DisableTLSRoute             bool `json:"disableTLSRoute,omitempty"`
+	DisableBackendTrafficPolicy bool `json:"disableBackendTrafficPolicy,omitempty"`
+	DisableClientTrafficPolicy  bool `json:"disableClientTrafficPolicy,omitempty"`
 }
 
 // GatewaySettings defines the settings for the gateway resource.
