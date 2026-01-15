@@ -59,6 +59,7 @@ type KubernetesSource struct {
 	// - gateway.networking.k8s.io/tcproute
 	// - gateway.networking.k8s.io/udproute
 	// - gateway.envoyproxy.io/backendtrafficpolicy
+	// - gateway.envoyproxy.io/clienttrafficpolicy
 
 	// +optional
 	// +kubebuilder:validation:EmbeddedResource
