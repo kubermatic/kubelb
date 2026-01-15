@@ -128,3 +128,57 @@ type AnnotationSettings struct {
 	// +optional
 	DefaultAnnotations map[AnnotatedResource]Annotations `json:"defaultAnnotations,omitempty"`
 }
+
+// CircuitBreaker defines the Circuit Breaker configuration for Envoy clusters.
+// Circuit breakers prevent cascading failures by limiting connections/requests to upstream clusters. For more info: https://www.envoyproxy.io/docs/envoy/latest/intro/arch_overview/upstream/circuit_breaking
+type CircuitBreaker struct {
+	// MaxConnections is the maximum number of connections that Envoy will establish to all endpoints in the cluster.
+	// If not specified, the default is 1024.
+	// +kubebuilder:validation:Minimum=0
+	// +kubebuilder:validation:Maximum=4294967295
+	// +optional
+	MaxConnections *int64 `json:"maxConnections,omitempty"`
+
+	// MaxPendingRequests is the maximum number of pending requests that Envoy will queue to the cluster.
+	// If not specified, the default is 1024.
+	// +kubebuilder:validation:Minimum=0
+	// +kubebuilder:validation:Maximum=4294967295
+	// +optional
+	MaxPendingRequests *int64 `json:"maxPendingRequests,omitempty"`
+
+	// MaxParallelRequests is the maximum number of parallel requests that Envoy will make to the cluster.
+	// This is applicable to HTTP/2 and gRPC connections.
+	// If not specified, the default is 1024.
+	// +kubebuilder:validation:Minimum=0
+	// +kubebuilder:validation:Maximum=4294967295
+	// +optional
+	MaxParallelRequests *int64 `json:"maxParallelRequests,omitempty"`
+
+	// MaxParallelRetries is the maximum number of parallel retries that Envoy will make to the cluster.
+	// If not specified, the default is 3.
+	// +kubebuilder:validation:Minimum=0
+	// +kubebuilder:validation:Maximum=4294967295
+	// +optional
+	MaxParallelRetries *int64 `json:"maxParallelRetries,omitempty"`
+
+	// MaxRequestsPerConnection is the maximum number of requests that Envoy will make over a single connection
+	// to the cluster. If not specified, there is no limit.
+	// +kubebuilder:validation:Minimum=0
+	// +kubebuilder:validation:Maximum=4294967295
+	// +optional
+	MaxRequestsPerConnection *int64 `json:"maxRequestsPerConnection,omitempty"`
+
+	// PerEndpoint configures circuit breaker thresholds that apply to individual endpoints rather than the whole cluster.
+	// +optional
+	PerEndpoint *PerEndpointCircuitBreaker `json:"perEndpoint,omitempty"`
+}
+
+// PerEndpointCircuitBreaker defines circuit breaker thresholds that apply to individual endpoints.
+type PerEndpointCircuitBreaker struct {
+	// MaxConnections is the maximum number of connections that Envoy will establish to a single endpoint.
+	// If not specified, the default is 1024.
+	// +kubebuilder:validation:Minimum=0
+	// +kubebuilder:validation:Maximum=4294967295
+	// +optional
+	MaxConnections *int64 `json:"maxConnections,omitempty"`
+}

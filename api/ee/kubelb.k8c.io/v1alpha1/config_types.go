@@ -47,6 +47,11 @@ type ConfigSpec struct {
 	DNS          ConfigDNSSettings          `json:"dns,omitempty"`
 	Certificates ConfigCertificatesSettings `json:"certificates,omitempty"`
 	Tunnel       TunnelSettings             `json:"tunnel,omitempty"`
+
+	// CircuitBreaker defines the default circuit breaker configuration for all Envoy clusters.
+	// These settings can be overridden at the Tenant level.
+	// +optional
+	CircuitBreaker *CircuitBreaker `json:"circuitBreaker,omitempty"`
 }
 
 // TunnelSettings defines the global settings for Tunnel resources.
@@ -159,9 +164,9 @@ type EnvoyProxy struct {
 
 // EnvoyProxyOverloadManager defines the overload manager configuration for Envoy XDS
 type EnvoyProxyOverloadManager struct {
-	// Disabled controls whether overload manager is disabled
+	// Enabled controls whether overload manager is enabled
 	// +optional
-	Disabled bool `json:"disabled,omitempty"`
+	Enabled bool `json:"enabled,omitempty"`
 
 	// MaxActiveDownstreamConnections is the maximum number of active downstream connections for the Envoy.
 	// +optional
