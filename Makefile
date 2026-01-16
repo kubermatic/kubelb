@@ -273,7 +273,7 @@ generate-helm-docs: helm-docs
 bump-chart:
 	$(SED) -i "s/^version:.*/version: $(IMAGE_TAG)/" charts/kubelb-ccm/Chart.yaml charts/kubelb-manager/Chart.yaml
 	$(SED) -i "s/^appVersion:.*/appVersion: $(IMAGE_TAG)/" charts/kubelb-ccm/Chart.yaml charts/kubelb-manager/Chart.yaml
-	$(SED) -i "s/tag:.*/tag: $(IMAGE_TAG)/" charts/kubelb-ccm/values.yaml charts/kubelb-manager/values.yaml
+	$(SED) -i "s/^  tag:.*/  tag: $(IMAGE_TAG)/" charts/kubelb-ccm/values.yaml charts/kubelb-manager/values.yaml
 
 .PHONY: release-charts helm-docs generate-helm-docs
 release-charts: bump-chart helm-lint helm-dependency-update generate-helm-docs

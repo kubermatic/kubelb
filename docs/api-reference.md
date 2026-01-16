@@ -254,6 +254,39 @@ _Appears in:_
 | `tolerations` _[Toleration](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.30/#toleration-v1-core) array_ | Tolerations is used to schedule Envoy Proxy pods on nodes with matching taints. |  |  |
 | `resources` _[ResourceRequirements](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.30/#resourcerequirements-v1-core)_ | Resources defines the resource requirements for Envoy Proxy. |  |  |
 | `affinity` _[Affinity](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.30/#affinity-v1-core)_ | Affinity is used to schedule Envoy Proxy pods on nodes with matching affinity. |  |  |
+| `image` _string_ | Image defines the Envoy Proxy image to use. |  |  |
+| `gracefulShutdown` _[EnvoyProxyGracefulShutdown](#envoyproxygracefulshutdown)_ | GracefulShutdown defines the graceful shutdown configuration for Envoy Proxy. |  |  |
+| `overloadManager` _[EnvoyProxyOverloadManager](#envoyproxyoverloadmanager)_ | OverloadManager defines the overload manager configuration for Envoy XDS. |  |  |
+
+#### EnvoyProxyGracefulShutdown
+
+EnvoyProxyGracefulShutdown defines the graceful shutdown configuration for Envoy Proxy
+
+_Appears in:_
+
+- [EnvoyProxy](#envoyproxy)
+
+| Field | Description | Default | Validation |
+| --- | --- | --- | --- |
+| `disabled` _boolean_ | Disabled controls whether graceful shutdown is disabled |  |  |
+| `drainTimeout` _[Duration](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.30/#duration-v1-meta)_ | DrainTimeout is the maximum time to wait for connections to drain.<br />Defaults to 60s. Must be less than TerminationGracePeriodSeconds. | 60s |  |
+| `minDrainDuration` _[Duration](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.30/#duration-v1-meta)_ | MinDrainDuration is the minimum time to wait before checking connection count.<br />This prevents premature termination. Defaults to 5s. | 5s |  |
+| `terminationGracePeriodSeconds` _integer_ | TerminationGracePeriodSeconds is the grace period for pod termination.<br />Must be greater than DrainTimeout. Defaults to 300s. | 300 | Minimum: 30 <br /> |
+| `shutdownManagerImage` _string_ | ShutdownManagerImage is the Docker image for the shutdown-manager sidecar.<br />Defaults to "docker.io/envoyproxy/gateway:v1.3.0" | docker.io/envoyproxy/gateway:v1.3.0 |  |
+
+#### EnvoyProxyOverloadManager
+
+EnvoyProxyOverloadManager defines the overload manager configuration for Envoy XDS
+
+_Appears in:_
+
+- [EnvoyProxy](#envoyproxy)
+
+| Field | Description | Default | Validation |
+| --- | --- | --- | --- |
+| `enabled` _boolean_ | Enabled controls whether overload manager is enabled |  |  |
+| `maxActiveDownstreamConnections` _integer_ | MaxActiveDownstreamConnections is the maximum number of active downstream connections for the Envoy. |  |  |
+| `maxHeapSizeBytes` _integer_ | MaxHeapSizeBytes is the maximum heap size for the Envoy in bytes. On reaching the limit, the Envoy will start to reject new connections. |  |  |
 
 #### EnvoyProxyTopology
 
