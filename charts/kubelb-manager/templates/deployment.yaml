@@ -48,9 +48,6 @@ spec:
             {{ if .Values.kubelb.enableGatewayAPI -}}
             - --enable-gateway-api=true
             {{ end -}}
-            {{ if .Values.kubelb.enableTenantMigration -}}
-            - --enable-tenant-migration=true
-            {{ end -}}
             - --debug={{ .Values.kubelb.debug }}
             - --zap-log-level={{ .Values.kubelb.logLevel }}
           env:

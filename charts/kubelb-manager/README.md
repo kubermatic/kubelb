@@ -51,7 +51,6 @@ helm install kubelb-manager kubelb-manager/ --namespace kubelb -f values.yaml --
 | kubelb.debug | bool | `true` |  |
 | kubelb.enableGatewayAPI | bool | `false` | enableGatewayAPI specifies whether to enable the Gateway API and Gateway Controllers. By default Gateway API is disabled since without Gateway APIs installed the controller cannot start. |
 | kubelb.enableLeaderElection | bool | `true` |  |
-| kubelb.enableTenantMigration | bool | `true` | Migrate Tenant namespace to Tenant CRDs |
 | kubelb.envoyProxy.affinity | object | `{}` |  |
 | kubelb.envoyProxy.gracefulShutdown.disabled | bool | `false` | Disable graceful shutdown (default: false) |
 | kubelb.envoyProxy.nodeSelector | object | `{}` |  |

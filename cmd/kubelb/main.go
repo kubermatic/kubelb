@@ -78,7 +78,7 @@ func main() {
 	flag.BoolVar(&opt.enableDebugMode, "debug", false, "Enables debug mode")
 	flag.StringVar(&opt.namespace, "namespace", "kubelb", "The namespace where the controller will run.")
 
-	flag.BoolVar(&opt.enableTenantMigrationController, "enable-tenant-migration", true, "Enables a controller that performs automated migration from namespaces to tenants")
+	flag.BoolVar(&opt.enableTenantMigrationController, "enable-tenant-migration", true, "NOOP: tenant migration controller has been deprecated and removed")
 	flag.BoolVar(&opt.enableGatewayAPI, "enable-gateway-api", false, "Enable the Gateway APIs and controllers. By default Gateway API is disabled since without Gateway API CRDs installed the controller cannot start.")
 
 	if flag.Lookup("kubeconfig") == nil {
