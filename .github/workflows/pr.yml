@@ -95,4 +95,3 @@ jobs:
               repo: context.repo.repo,
               body: '⚠️ **Security Scan Failed** - HIGH or CRITICAL vulnerabilities found. Check the workflow logs for details.'
             })
-
