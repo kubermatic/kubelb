@@ -17,7 +17,7 @@ dependencies:
   - name: gateway-helm
     repository: oci://docker.io/envoyproxy
     condition: envoy-gateway.enabled
-    version: 1.6.1
+    version: 1.6.2
     alias: envoy-gateway
   - name: cert-manager
     repository: https://charts.jetstack.io
