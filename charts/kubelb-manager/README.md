@@ -21,11 +21,33 @@ kubectl apply -f kubelb-manager/crds/
 helm install kubelb-manager kubelb-manager/ --namespace kubelb -f values.yaml --create-namespace
 ```
 
+## Security
+
+### Chart Signing
+
+All Helm charts are cryptographically signed using [Sigstore Cosign](https://github.com/sigstore/cosign) with keyless signing.
+
+### Verify Chart Signature
+
+```bash
+cosign verify quay.io/kubermatic/helm-charts/kubelb-manager:v1.3.0 \
+  --certificate-identity-regexp="^https://github.com/kubermatic/kubelb/.github/workflows/release.yml@refs/tags/v.*" \
+  --certificate-oidc-issuer=https://token.actions.githubusercontent.com
+```
+
+### Verify Image Signature
+
+```bash
+cosign verify quay.io/kubermatic/kubelb-manager:v1.3.0 \
+  --certificate-identity-regexp="^https://github.com/kubermatic/kubelb/.github/workflows/release.yml@refs/tags/v.*" \
+  --certificate-oidc-issuer=https://token.actions.githubusercontent.com
+```
+
 ## Requirements
 
 | Repository | Name | Version |
 |------------|------|---------|
-| oci://quay.io/kubermatic/helm-charts | kubelb-addons | v0.3.0 |
+| oci://quay.io/kubermatic/helm-charts | kubelb-addons | v0.2.0 |
 
 ## Values
 
