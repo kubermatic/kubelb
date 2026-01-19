@@ -12,6 +12,20 @@ helm pull oci://quay.io/kubermatic/helm-charts/kubelb-addons --version=v0.3.0 --
 helm install kubelb-addons kubelb-addons --namespace kubelb -f values.yaml --create-namespace
 ```
 
+## Security
+
+### Chart Signing
+
+All Helm charts are cryptographically signed using [Sigstore Cosign](https://github.com/sigstore/cosign) with keyless signing.
+
+### Verify Chart Signature
+
+```bash
+cosign verify quay.io/kubermatic/helm-charts/kubelb-addons:v0.3.0 \
+  --certificate-identity-regexp="^https://github.com/kubermatic/kubelb/.github/workflows/release.yml@refs/tags/v.*" \
+  --certificate-oidc-issuer=https://token.actions.githubusercontent.com
+```
+
 ## Overview
 
 This chart packages commonly used networking and certificate management tools that integrate well with KubeLB:
