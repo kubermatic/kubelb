@@ -63,10 +63,8 @@ builds:
       - -trimpath
 
 # Source tarball for reproducible builds
-# Disabled: requires full git history which CI shallow clones don't have
-# GitHub automatically adds source archives to releases
 source:
-  enabled: false
+  enabled: true
 
 gomod:
   proxy: false
