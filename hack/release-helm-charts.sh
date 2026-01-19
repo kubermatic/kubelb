@@ -23,6 +23,7 @@ JOB_NAME=${JOB_NAME:-}
 PROW_JOB_ID=${PROW_JOB_ID:-}
 CHART_VERSION=${CHART_VERSION:-}
 RELEASE_ADDONS_ONLY=${RELEASE_ADDONS_ONLY:-false}
+SIGN_CHARTS="${SIGN_CHARTS:-false}"
 
 ## When running out of CI, it's expected that the user has already configured vault
 if [ -n "$JOB_NAME" ] || [ -n "$PROW_JOB_ID" ]; then
@@ -47,6 +48,28 @@ REGISTRY_PASSWORD="${REGISTRY_PASSWORD:-$(vault kv get -field=password dev/kuber
 
 echo ${REGISTRY_PASSWORD} | helm registry login ${REGISTRY_HOST} --username ${REGISTRY_USER} --password-stdin
 
+# Setup signing if enabled
+if [ "$SIGN_CHARTS" = "true" ]; then
+  if ! command -v cosign &> /dev/null; then
+    echo "Error: SIGN_CHARTS=true but cosign is not installed"
+    exit 1
+  fi
+fi
+
+# Sign a Helm chart in OCI registry using keyless signing
+sign_chart() {
+  local name="$1"
+  local version="$2"
+
+  if [ "$SIGN_CHARTS" != "true" ]; then
+    return 0
+  fi
+
+  local oci_url="${REGISTRY_HOST}/${REPOSITORY_PREFIX}/${name}:${version}"
+  echodate "Signing ${oci_url}..."
+  cosign sign --yes "${oci_url}"
+}
+
 # Package and publish charts
 if [ "$RELEASE_ADDONS_ONLY" = "true" ]; then
   # Release only addons chart
@@ -60,6 +83,7 @@ if [ "$RELEASE_ADDONS_ONLY" = "true" ]; then
 
   echodate "Publishing helm chart to OCI registry ${REGISTRY_HOST}/${REPOSITORY_PREFIX}"
   helm push ${CHART_PACKAGE_ADDONS} oci://${REGISTRY_HOST}/${REPOSITORY_PREFIX}
+  sign_chart ${ADDONS} ${CHART_VERSION}
 
   rm ${CHART_PACKAGE_ADDONS}
 else
@@ -79,9 +103,13 @@ else
 
   echodate "Publishing helm charts to OCI registry ${REGISTRY_HOST}/${REPOSITORY_PREFIX}"
   helm push ${CHART_PACKAGE_MANAGER} oci://${REGISTRY_HOST}/${REPOSITORY_PREFIX}
+  sign_chart ${MANAGER} ${CHART_VERSION}
   helm push ${CHART_PACKAGE_CCM} oci://${REGISTRY_HOST}/${REPOSITORY_PREFIX}
+  sign_chart ${CCM} ${CHART_VERSION}
 
   rm ${CHART_PACKAGE_MANAGER}
   rm ${CHART_PACKAGE_CCM}
 fi
+
+# Logout from registry
 helm registry logout ${REGISTRY_HOST}

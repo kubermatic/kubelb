@@ -1,0 +1,382 @@
+# Copyright 2026 The KubeLB Authors.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# Trigger actions
+
+version: 2
+project_name: kubelb
+
+env:
+  - CGO_ENABLED=0
+  - GO111MODULE=on
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  # kubelb manager binary
+  - id: kubelb
+    main: ./cmd/kubelb
+    binary: kubelb
+    goos:
+      - linux
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -s -w
+      - -X 'k8c.io/kubelb/internal/version.GitVersion={{ .Version }}'
+      - -X 'k8c.io/kubelb/internal/version.GitCommit={{ .Commit }}'
+      - -X 'k8c.io/kubelb/internal/version.BuildDate={{ .Date }}'
+    mod_timestamp: "{{ .CommitTimestamp }}"
+    flags:
+      - -trimpath
+
+  # CCM binary
+  - id: ccm
+    main: ./cmd/ccm
+    binary: ccm
+    goos:
+      - linux
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -s -w
+      - -X 'k8c.io/kubelb/internal/version.GitVersion={{ .Version }}'
+      - -X 'k8c.io/kubelb/internal/version.GitCommit={{ .Commit }}'
+      - -X 'k8c.io/kubelb/internal/version.BuildDate={{ .Date }}'
+    mod_timestamp: "{{ .CommitTimestamp }}"
+    flags:
+      - -trimpath
+
+# Source tarball for reproducible builds
+# Disabled: requires full git history which CI shallow clones don't have
+# GitHub automatically adds source archives to releases
+source:
+  enabled: false
+
+gomod:
+  proxy: false
+
+archives:
+  - id: binaries
+    formats:
+      - tar.gz
+    name_template: >-
+      {{ .ProjectName }}_
+      {{- .Version }}_
+      {{- .Os }}_
+      {{- .Arch }}
+    files:
+      - LICENSE*
+      - README*
+      - SBOM.md
+
+sboms:
+  # SBOM for binary archives
+  - id: archive-sbom
+    artifacts: archive
+    documents:
+      - "{{ .ArtifactName }}.sbom.spdx.json"
+
+  # Individual binary SBOMs
+  - id: kubelb-sbom
+    artifacts: binary
+    ids:
+      - kubelb
+    documents:
+      - "{{ .Binary }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}.sbom.spdx.json"
+
+  - id: ccm-sbom
+    artifacts: binary
+    ids:
+      - ccm
+    documents:
+      - "{{ .Binary }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}.sbom.spdx.json"
+
+# Checksum signing with cosign (keyless)
+# Signs only checksums.txt - users verify checksums against this signed file
+# This is the CNCF/GoReleaser recommended approach
+signs:
+  - cmd: cosign
+    artifacts: checksum
+    signature: "${artifact}.sigstore.json"
+    args:
+      - sign-blob
+      - "--bundle=${signature}"
+      - "${artifact}"
+      - "--yes"
+    output: true
+
+# Checksum configuration
+checksum:
+  name_template: "checksums.txt"
+  algorithm: sha256
+
+snapshot:
+  version_template: "0.0.0-snapshot"
+
+# Docker images
+dockers:
+  # kubelb-manager - amd64
+  - id: kubelb-manager-amd64
+    ids:
+      - kubelb
+    goos: linux
+    goarch: amd64
+    image_templates:
+      - "quay.io/kubermatic/kubelb-manager:{{ .Tag }}-amd64"
+    dockerfile: kubelb.goreleaser.dockerfile
+    use: buildx
+    build_flag_templates:
+      - "--platform=linux/amd64"
+      - "--label=org.opencontainers.image.title=kubelb-manager"
+      - "--label=org.opencontainers.image.description=KubeLB Manager"
+      - "--label=org.opencontainers.image.source=https://github.com/kubermatic/kubelb"
+      - "--label=org.opencontainers.image.version={{ .Version }}"
+      - "--label=org.opencontainers.image.revision={{ .FullCommit }}"
+      - "--label=org.opencontainers.image.created={{ .Date }}"
+      - "--label=org.opencontainers.image.licenses=Apache-2.0"
+
+  # kubelb-manager - arm64
+  - id: kubelb-manager-arm64
+    ids:
+      - kubelb
+    goos: linux
+    goarch: arm64
+    image_templates:
+      - "quay.io/kubermatic/kubelb-manager:{{ .Tag }}-arm64"
+    dockerfile: kubelb.goreleaser.dockerfile
+    use: buildx
+    build_flag_templates:
+      - "--platform=linux/arm64"
+      - "--label=org.opencontainers.image.title=kubelb-manager"
+      - "--label=org.opencontainers.image.description=KubeLB Manager"
+      - "--label=org.opencontainers.image.source=https://github.com/kubermatic/kubelb"
+      - "--label=org.opencontainers.image.version={{ .Version }}"
+      - "--label=org.opencontainers.image.revision={{ .FullCommit }}"
+      - "--label=org.opencontainers.image.created={{ .Date }}"
+      - "--label=org.opencontainers.image.licenses=Apache-2.0"
+
+  # kubelb-ccm - amd64
+  - id: kubelb-ccm-amd64
+    ids:
+      - ccm
+    goos: linux
+    goarch: amd64
+    image_templates:
+      - "quay.io/kubermatic/kubelb-ccm:{{ .Tag }}-amd64"
+    dockerfile: ccm.goreleaser.dockerfile
+    use: buildx
+    build_flag_templates:
+      - "--platform=linux/amd64"
+      - "--label=org.opencontainers.image.title=kubelb-ccm"
+      - "--label=org.opencontainers.image.description=KubeLB Cloud Controller Manager"
+      - "--label=org.opencontainers.image.source=https://github.com/kubermatic/kubelb"
+      - "--label=org.opencontainers.image.version={{ .Version }}"
+      - "--label=org.opencontainers.image.revision={{ .FullCommit }}"
+      - "--label=org.opencontainers.image.created={{ .Date }}"
+      - "--label=org.opencontainers.image.licenses=Apache-2.0"
+
+  # kubelb-ccm - arm64
+  - id: kubelb-ccm-arm64
+    ids:
+      - ccm
+    goos: linux
+    goarch: arm64
+    image_templates:
+      - "quay.io/kubermatic/kubelb-ccm:{{ .Tag }}-arm64"
+    dockerfile: ccm.goreleaser.dockerfile
+    use: buildx
+    build_flag_templates:
+      - "--platform=linux/arm64"
+      - "--label=org.opencontainers.image.title=kubelb-ccm"
+      - "--label=org.opencontainers.image.description=KubeLB Cloud Controller Manager"
+      - "--label=org.opencontainers.image.source=https://github.com/kubermatic/kubelb"
+      - "--label=org.opencontainers.image.version={{ .Version }}"
+      - "--label=org.opencontainers.image.revision={{ .FullCommit }}"
+      - "--label=org.opencontainers.image.created={{ .Date }}"
+      - "--label=org.opencontainers.image.licenses=Apache-2.0"
+
+# Docker manifests for multi-arch images
+docker_manifests:
+  # kubelb-manager multi-arch manifest
+  - name_template: "quay.io/kubermatic/kubelb-manager:{{ .Tag }}"
+    image_templates:
+      - "quay.io/kubermatic/kubelb-manager:{{ .Tag }}-amd64"
+      - "quay.io/kubermatic/kubelb-manager:{{ .Tag }}-arm64"
+
+  - name_template: "quay.io/kubermatic/kubelb-manager:latest"
+    image_templates:
+      - "quay.io/kubermatic/kubelb-manager:{{ .Tag }}-amd64"
+      - "quay.io/kubermatic/kubelb-manager:{{ .Tag }}-arm64"
+
+  # kubelb-ccm multi-arch manifest
+  - name_template: "quay.io/kubermatic/kubelb-ccm:{{ .Tag }}"
+    image_templates:
+      - "quay.io/kubermatic/kubelb-ccm:{{ .Tag }}-amd64"
+      - "quay.io/kubermatic/kubelb-ccm:{{ .Tag }}-arm64"
+
+  - name_template: "quay.io/kubermatic/kubelb-ccm:latest"
+    image_templates:
+      - "quay.io/kubermatic/kubelb-ccm:{{ .Tag }}-amd64"
+      - "quay.io/kubermatic/kubelb-ccm:{{ .Tag }}-arm64"
+
+# Docker image signing with cosign (keyless)
+docker_signs:
+  - cmd: cosign
+    artifacts: manifests
+    args:
+      - sign
+      - --yes
+      - "${artifact}@${digest}"
+    output: true
+
+# Release configuration
+release:
+  draft: false
+  prerelease: auto
+  mode: replace
+  header: |
+    ## KubeLB Enterprise Edition {{ .Version }}
+
+    {{ if or (contains .Tag "rc") (contains .Tag "alpha") (contains .Tag "beta") }}
+    ⚠️  This is a **pre-release** and should not be used for any production-grade setup. Things might not be working. Use at your own risk.
+    {{ else }}
+    ### Release Notes
+
+    **For detailed release notes and changelog:** [{{ .Version }} release notes](https://docs.kubermatic.com/kubelb/v{{ .Major }}.{{ .Minor }}/release-notes)
+    {{ end }}
+
+    <details>
+    <summary><b>Docker Images</b></summary>
+
+    ```bash
+    docker pull quay.io/kubermatic/kubelb-manager:{{ .Tag }}
+    docker pull quay.io/kubermatic/kubelb-ccm:{{ .Tag }}
+    ```
+
+    </details>
+
+    <details>
+    <summary><b>Helm Charts</b></summary>
+
+    ```bash
+    helm pull oci://quay.io/kubermatic/helm-charts/kubelb-manager --version {{ .Tag }}
+    helm pull oci://quay.io/kubermatic/helm-charts/kubelb-ccm --version {{ .Tag }}
+    ```
+
+    </details>
+
+    <details>
+    <summary><b>SBOMs</b></summary>
+
+    **Binary SBOMs (from release assets):**
+
+    ```bash
+    curl -LO https://github.com/kubermatic/kubelb/releases/download/{{ .Tag }}/kubelb_{{ .Version }}_linux_amd64.sbom.spdx.json
+    curl -LO https://github.com/kubermatic/kubelb/releases/download/{{ .Tag }}/ccm_{{ .Version }}_linux_amd64.sbom.spdx.json
+    ```
+
+    **Container image SBOMs (OCI artifacts):**
+
+    ```bash
+    # kubelb-manager
+    SBOM_DIGEST=$(oras discover --format json --artifact-type application/spdx+json \
+      quay.io/kubermatic/kubelb-manager:{{ .Tag }} | jq -r '.referrers[0].digest')
+    oras pull quay.io/kubermatic/kubelb-manager@${SBOM_DIGEST} --output sbom/
+
+    # kubelb-ccm
+    SBOM_DIGEST=$(oras discover --format json --artifact-type application/spdx+json \
+      quay.io/kubermatic/kubelb-ccm:{{ .Tag }} | jq -r '.referrers[0].digest')
+    oras pull quay.io/kubermatic/kubelb-ccm@${SBOM_DIGEST} --output sbom/
+    ```
+
+    </details>
+
+    <details>
+    <summary><b>Verify Signatures</b></summary>
+
+    **Docker images:**
+
+    ```bash
+    cosign verify quay.io/kubermatic/kubelb-manager:{{ .Tag }} \
+      --certificate-identity-regexp="^https://github.com/kubermatic/kubelb/.github/workflows/release.yml@refs/tags/v.*" \
+      --certificate-oidc-issuer=https://token.actions.githubusercontent.com
+
+    cosign verify quay.io/kubermatic/kubelb-ccm:{{ .Tag }} \
+      --certificate-identity-regexp="^https://github.com/kubermatic/kubelb/.github/workflows/release.yml@refs/tags/v.*" \
+      --certificate-oidc-issuer=https://token.actions.githubusercontent.com
+    ```
+
+    **Helm charts:**
+
+    ```bash
+    cosign verify quay.io/kubermatic/helm-charts/kubelb-manager:{{ .Tag }} \
+      --certificate-identity-regexp="^https://github.com/kubermatic/kubelb/.github/workflows/release.yml@refs/tags/v.*" \
+      --certificate-oidc-issuer=https://token.actions.githubusercontent.com
+
+    cosign verify quay.io/kubermatic/helm-charts/kubelb-ccm:{{ .Tag }} \
+      --certificate-identity-regexp="^https://github.com/kubermatic/kubelb/.github/workflows/release.yml@refs/tags/v.*" \
+      --certificate-oidc-issuer=https://token.actions.githubusercontent.com
+
+    cosign verify quay.io/kubermatic/helm-charts/kubelb-addons:{{ .Env.KUBELB_ADDONS_VERSION }} \
+      --certificate-identity-regexp="^https://github.com/kubermatic/kubelb/.github/workflows/release.yml@refs/tags/v.*" \
+      --certificate-oidc-issuer=https://token.actions.githubusercontent.com
+    ```
+
+    **SBOM attestations:**
+
+    ```bash
+    cosign verify-attestation quay.io/kubermatic/kubelb-manager:{{ .Tag }} \
+      --type spdxjson \
+      --certificate-identity-regexp="^https://github.com/kubermatic/kubelb/.github/workflows/release.yml@refs/tags/v.*" \
+      --certificate-oidc-issuer=https://token.actions.githubusercontent.com
+
+    cosign verify-attestation quay.io/kubermatic/kubelb-ccm:{{ .Tag }} \
+      --type spdxjson \
+      --certificate-identity-regexp="^https://github.com/kubermatic/kubelb/.github/workflows/release.yml@refs/tags/v.*" \
+      --certificate-oidc-issuer=https://token.actions.githubusercontent.com
+    ```
+
+    **Release checksums:**
+
+    ```bash
+    cosign verify-blob --bundle checksums.txt.sigstore.json checksums.txt \
+      --certificate-identity-regexp="^https://github.com/kubermatic/kubelb/.github/workflows/release.yml@refs/tags/v.*" \
+      --certificate-oidc-issuer=https://token.actions.githubusercontent.com
+    ```
+
+    </details>
+
+    <details>
+    <summary><b>Tools</b></summary>
+
+    - [Cosign](https://github.com/sigstore/cosign) - Container signing
+    - [ORAS](https://oras.land) - OCI Registry As Storage
+
+    </details>
+
+  footer: |
+    **For detailed release notes and changelog:** [{{ .Version }} release notes](https://docs.kubermatic.com/kubelb/v{{ .Major }}.{{ .Minor }}/release-notes)
+
+# Disable changelog
+changelog:
+  disable: true
+
+# Skip announce
+announce:
+  skip: true

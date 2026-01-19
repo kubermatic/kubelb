@@ -11,6 +11,7 @@ cover.out
 kubelb-*.tgz
 __debug*
 charts/*/charts
+dist/
 
 # Generated binaries (root only)
 /kubelb

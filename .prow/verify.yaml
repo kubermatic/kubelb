@@ -212,3 +212,25 @@ presubmits:
             requests:
               memory: 2Gi
               cpu: 2
+
+  - name: pull-kubelb-gorelease-verify
+    run_if_changed: "^(\\.goreleaser\\.ya?ml|go\\.(mod|sum))$|Dockerfile|\\.dockerfile$"
+    decorate: true
+    clone_uri: "ssh://git@github.com/kubermatic/kubelb.git"
+    labels:
+      preset-goproxy: "true"
+    spec:
+      containers:
+        - image: quay.io/kubermatic/build:go-1.25-node-22-kind-0.30-5
+          command:
+            - goreleaser
+          args:
+            - release
+            - --snapshot
+            - --clean
+            - --skip=publish
+            - --skip=sign
+            - --skip=docker
+          resources:
+            requests:
+              cpu: 1
