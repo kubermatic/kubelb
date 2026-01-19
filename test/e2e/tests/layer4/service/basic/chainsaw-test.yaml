@@ -1,0 +1,215 @@
+# Copyright 2026 The KubeLB Authors.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# Basic L4 Service LoadBalancer Test
+# Verifies:
+# - LoadBalancer service gets external IP
+# - LoadBalancer CRD created in kubelb cluster with correct spec
+# - CRD has finalizer for cleanup
+# - HTTP connectivity works
+# - Service deletion removes LoadBalancer CRD from kubelb cluster
+apiVersion: chainsaw.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: basic-service-loadbalancer
+  labels:
+    all:
+    test: basic
+    resource: service
+    layer: layer4
+spec:
+  description: |
+    Test basic LoadBalancer service full lifecycle.
+    Creates LoadBalancer service pointing to echo-shared,
+    verifies LoadBalancer CRD in kubelb cluster with correct spec and finalizer,
+    tests HTTP connectivity, then verifies cleanup removes CRD.
+  bindings:
+    - name: service_name
+      value: echo-basic
+    - name: kubelb_namespace
+      value: tenant-primary
+  steps:
+    # Step 1: Create LoadBalancer service on tenant1
+    - name: create-loadbalancer-service
+      description: Create LoadBalancer service and wait for IP
+      cluster: tenant1
+      try:
+        - apply:
+            resource:
+              apiVersion: v1
+              kind: Service
+              metadata:
+                name: ($service_name)
+                namespace: default
+              spec:
+                type: LoadBalancer
+                selector:
+                  app: echo-shared
+                ports:
+                  - port: 80
+                    targetPort: 5678
+        - assert:
+            timeout: 60s
+            resource:
+              apiVersion: v1
+              kind: Service
+              metadata:
+                name: ($service_name)
+                namespace: default
+              status:
+                loadBalancer:
+                  ingress:
+                    - {}
+
+    # Step 2: Verify LoadBalancer CRD spec in kubelb cluster
+    - name: verify-loadbalancer-crd
+      description: Verify LoadBalancer CRD exists with correct port and endpoints
+      cluster: kubelb
+      try:
+        - script:
+            skipCommandOutput: true
+            timeout: 60s
+            env:
+              - name: LB_NS
+                value: ($kubelb_namespace)
+              - name: SERVICE_NAME
+                value: ($service_name)
+            content: |
+              set -e
+              EXPECTED_PORT=80
+
+              # Wait for LoadBalancer CRD
+              for i in $(seq 1 10); do
+                LB=$(kubectl get loadbalancers.kubelb.k8c.io -n "$LB_NS" \
+                  -l kubelb.k8c.io/origin-name="$SERVICE_NAME" -o name 2>/dev/null | head -1)
+                if [ -n "$LB" ]; then
+                  # Verify port
+                  PORT=$(kubectl get $LB -n "$LB_NS" -o jsonpath='{.spec.ports[0].port}')
+                  if [ "$PORT" != "$EXPECTED_PORT" ]; then
+                    echo "FAILED: Expected port $EXPECTED_PORT, got $PORT"
+                    exit 1
+                  fi
+
+                  # Verify endpoints reference exists
+                  ADDR_REF=$(kubectl get $LB -n "$LB_NS" -o jsonpath='{.spec.endpoints[0].addressesReference.name}')
+                  if [ -z "$ADDR_REF" ]; then
+                    echo "FAILED: No endpoint addressesReference found"
+                    exit 1
+                  fi
+
+                  echo "SUCCESS: LoadBalancer CRD validated"
+                  echo "  Port: $PORT"
+                  echo "  AddressesRef: $ADDR_REF"
+                  exit 0
+                fi
+                echo "Attempt $i: waiting for LoadBalancer CRD..."
+                sleep 2
+              done
+
+              echo "FAILED: No LoadBalancer CRD found in $LB_NS"
+              exit 1
+            check:
+              ($error == null): true
+
+    # Step 3: Verify status propagation
+    - name: verify-status-propagation
+      description: Verify LoadBalancer CRD status matches tenant service status
+      use:
+        template: ../../../../step-templates/layer4/verify-status-propagation.yaml
+        with:
+          bindings:
+            - name: service_name
+              value: ($service_name)
+            - name: tenant
+              value: tenant1
+            - name: kubelb_namespace
+              value: ($kubelb_namespace)
+
+    # Step 4: Verify HTTP connectivity
+    - name: verify-http-response
+      description: Verify HTTP connectivity to echo-shared
+      use:
+        template: ../../../../step-templates/layer4/verify-http-response.yaml
+        with:
+          bindings:
+            - name: service_name
+              value: ($service_name)
+            - name: expected
+              value: hello-shared
+            - name: port
+              value: "80"
+            - name: tenant
+              value: tenant1
+
+    # Step 5: Verify LoadBalancer CRD has finalizer
+    - name: verify-finalizer
+      description: Verify LoadBalancer CRD has cleanup finalizer
+      cluster: kubelb
+      try:
+        - script:
+            skipCommandOutput: true
+            timeout: 60s
+            env:
+              - name: LB_NS
+                value: ($kubelb_namespace)
+              - name: SERVICE_NAME
+                value: ($service_name)
+            content: |
+              set -e
+              FINALIZER="kubelb.k8c.io/cleanup"
+
+              LB=$(kubectl get loadbalancers.kubelb.k8c.io -n "$LB_NS" \
+                -l kubelb.k8c.io/origin-name="$SERVICE_NAME" -o name 2>/dev/null | head -1)
+
+              if [ -z "$LB" ]; then
+                echo "FAILED: LoadBalancer CRD not found"
+                exit 1
+              fi
+
+              FINALIZERS=$(kubectl get $LB -n "$LB_NS" -o jsonpath='{.metadata.finalizers}')
+              if echo "$FINALIZERS" | grep -q "$FINALIZER"; then
+                echo "SUCCESS: Finalizer found"
+                echo "  Finalizers: $FINALIZERS"
+                exit 0
+              fi
+
+              echo "FAILED: Missing finalizer $FINALIZER"
+              echo "  Finalizers: $FINALIZERS"
+              exit 1
+            check:
+              ($error == null): true
+
+    # Step 6: Delete service
+    - name: delete-service
+      description: Delete LoadBalancer service
+      cluster: tenant1
+      try:
+        - delete:
+            ref:
+              apiVersion: v1
+              kind: Service
+              name: ($service_name)
+              namespace: default
+
+    # Step 7: Verify LoadBalancer CRD is removed
+    - name: verify-crd-removed
+      description: Verify LoadBalancer CRD was removed after service deletion
+      use:
+        template: ../../../../step-templates/layer4/verify-lb-cleanup.yaml
+        with:
+          bindings:
+            - name: service_name
+              value: ($service_name)
+            - name: kubelb_namespace
+              value: ($kubelb_namespace)

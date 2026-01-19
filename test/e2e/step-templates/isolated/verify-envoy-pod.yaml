@@ -1,0 +1,76 @@
+# Copyright 2026 The KubeLB Authors.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# Verify Envoy pod properties
+# Bindings:
+#   - expected_image: (optional) Expected Envoy container image
+#   - has_shutdown_sidecar: (optional) Check for shutdown-manager sidecar
+#   - termination_grace_period: (optional) Expected terminationGracePeriodSeconds
+apiVersion: chainsaw.kyverno.io/v1alpha1
+kind: StepTemplate
+metadata:
+  name: verify-envoy-pod
+spec:
+  try:
+    - script:
+        skipCommandOutput: true
+        timeout: 10s
+        env:
+          - name: EXPECTED_IMAGE
+            value: ($expected_image)
+          - name: HAS_SIDECAR
+            value: ($has_shutdown_sidecar)
+          - name: TGP
+            value: ($termination_grace_period)
+        content: |
+          set -e
+          POD=$(kubectl get pods -n kubelb -l app=envoy -o name 2>/dev/null | head -1)
+          if [ -z "$POD" ]; then
+            echo "FAILED: No Envoy pod found"
+            exit 1
+          fi
+
+          # Verify image if expected
+          if [ -n "$EXPECTED_IMAGE" ] && [ "$EXPECTED_IMAGE" != "null" ]; then
+            IMAGE=$(kubectl get $POD -n kubelb -o jsonpath='{.spec.containers[?(@.name=="envoy")].image}')
+            if [ "$IMAGE" != "$EXPECTED_IMAGE" ]; then
+              echo "FAILED: Image mismatch - expected '$EXPECTED_IMAGE', got '$IMAGE'"
+              exit 1
+            fi
+            echo "SUCCESS: Envoy image verified: $IMAGE"
+          fi
+
+          # Verify shutdown sidecar if expected
+          if [ "$HAS_SIDECAR" = "true" ]; then
+            SIDECAR=$(kubectl get $POD -n kubelb -o jsonpath='{.spec.containers[?(@.name=="shutdown-manager")].name}')
+            if [ -z "$SIDECAR" ]; then
+              echo "FAILED: shutdown-manager sidecar not found"
+              exit 1
+            fi
+            echo "SUCCESS: shutdown-manager sidecar found"
+          fi
+
+          # Verify termination grace period if expected
+          if [ -n "$TGP" ] && [ "$TGP" != "null" ]; then
+            ACTUAL_TGP=$(kubectl get $POD -n kubelb -o jsonpath='{.spec.terminationGracePeriodSeconds}')
+            if [ "$ACTUAL_TGP" != "$TGP" ]; then
+              echo "FAILED: terminationGracePeriodSeconds mismatch - expected '$TGP', got '$ACTUAL_TGP'"
+              exit 1
+            fi
+            echo "SUCCESS: terminationGracePeriodSeconds verified: $ACTUAL_TGP"
+          fi
+
+          echo "SUCCESS: Envoy pod verification complete"
+        check:
+          ($error == null): true

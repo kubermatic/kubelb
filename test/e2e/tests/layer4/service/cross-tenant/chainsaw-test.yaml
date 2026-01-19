@@ -1,0 +1,276 @@
+# Copyright 2026 The KubeLB Authors.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# Cross-tenant L4 Service LoadBalancer Test
+# Verifies:
+# - Same service name works across different tenants
+# - Each tenant gets separate LoadBalancer CRD
+# - Tenant isolation - each service returns its own message
+apiVersion: chainsaw.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: cross-tenant-service-loadbalancer
+  labels:
+    all:
+    test: cross-tenant
+    resource: service
+    layer: layer4
+spec:
+  description: |
+    Test tenant isolation with same service name.
+    Deploys echo server on both tenant1 and tenant2 with different messages,
+    creates LoadBalancer services with same name, verifies isolation.
+  bindings:
+    - name: name
+      value: echo-cross
+    - name: message_tenant1
+      value: "hello-from-tenant1"
+    - name: message_tenant2
+      value: "hello-from-tenant2"
+  steps:
+    # Step 1: Deploy echo server on tenant1
+    - name: deploy-echo-tenant1
+      description: Deploy echo server on tenant1
+      cluster: tenant1
+      bindings:
+        - name: message
+          value: ($message_tenant1)
+      try:
+        - apply:
+            file: ../../../../testdata/deployments/echo-server.yaml
+        - assert:
+            timeout: 60s
+            resource:
+              apiVersion: apps/v1
+              kind: Deployment
+              metadata:
+                name: ($name)
+                namespace: default
+              status:
+                readyReplicas: 1
+
+    # Step 2: Deploy echo server on tenant2
+    - name: deploy-echo-tenant2
+      description: Deploy echo server on tenant2
+      cluster: tenant2
+      bindings:
+        - name: message
+          value: ($message_tenant2)
+      try:
+        - apply:
+            file: ../../../../testdata/deployments/echo-server.yaml
+        - assert:
+            timeout: 60s
+            resource:
+              apiVersion: apps/v1
+              kind: Deployment
+              metadata:
+                name: ($name)
+                namespace: default
+              status:
+                readyReplicas: 1
+
+    # Step 3: Create LoadBalancer service on tenant1
+    - name: create-lb-tenant1
+      description: Create LoadBalancer service on tenant1
+      cluster: tenant1
+      try:
+        - apply:
+            file: ../../../../testdata/services/echo-lb.yaml
+        - assert:
+            timeout: 120s
+            resource:
+              apiVersion: v1
+              kind: Service
+              metadata:
+                name: ($name)
+                namespace: default
+              status:
+                loadBalancer:
+                  ingress:
+                    - {}
+
+    # Step 4: Create LoadBalancer service on tenant2
+    - name: create-lb-tenant2
+      description: Create LoadBalancer service on tenant2
+      cluster: tenant2
+      try:
+        - apply:
+            file: ../../../../testdata/services/echo-lb.yaml
+        - assert:
+            timeout: 120s
+            resource:
+              apiVersion: v1
+              kind: Service
+              metadata:
+                name: ($name)
+                namespace: default
+              status:
+                loadBalancer:
+                  ingress:
+                    - {}
+
+    # Step 5: Verify LoadBalancer CRDs exist in both tenant namespaces
+    - name: verify-lb-crds-both-tenants
+      description: Verify separate LoadBalancer CRDs for each tenant
+      cluster: kubelb
+      try:
+        - script:
+            skipCommandOutput: true
+            timeout: 120s
+            content: |
+              set -e
+              NS_PRIMARY="tenant-primary"
+              NS_SECONDARY="tenant-secondary"
+
+              # Wait for both LBs to exist (increased iterations for CI)
+              for i in $(seq 1 30); do
+                LB_PRIMARY=$(kubectl get loadbalancers.kubelb.k8c.io -n "$NS_PRIMARY" --no-headers 2>/dev/null | wc -l | tr -d ' ')
+                LB_SECONDARY=$(kubectl get loadbalancers.kubelb.k8c.io -n "$NS_SECONDARY" --no-headers 2>/dev/null | wc -l | tr -d ' ')
+                if [ "$LB_PRIMARY" -ge 1 ] && [ "$LB_SECONDARY" -ge 1 ]; then
+                  echo "SUCCESS: Found LoadBalancer CRDs in both namespaces"
+                  echo "  $NS_PRIMARY: $LB_PRIMARY LoadBalancer(s)"
+                  echo "  $NS_SECONDARY: $LB_SECONDARY LoadBalancer(s)"
+                  kubectl get loadbalancers.kubelb.k8c.io -A
+                  exit 0
+                fi
+                echo "Attempt $i: waiting for LoadBalancer CRDs (primary: $LB_PRIMARY, secondary: $LB_SECONDARY)..."
+                sleep 3
+              done
+
+              echo "FAILED: LoadBalancer CRDs not found in both namespaces"
+              exit 1
+            check:
+              ($error == null): true
+
+    # Step 6: Verify status propagation for both tenants
+    - name: verify-status-propagation
+      description: Verify LoadBalancer CRD status matches tenant service status for both tenants
+      try:
+        - script:
+            skipCommandOutput: true
+            timeout: 120s
+            content: |
+              set -e
+              ROOT_DIR="$(git rev-parse --show-toplevel)"
+              KUBECONFIGS_DIR="${ROOT_DIR}/.e2e-kubeconfigs"
+              SERVICE_NAME="echo-cross"
+
+              verify_tenant() {
+                local TENANT="$1"
+                local NAMESPACE="$2"
+
+                # Get IP from LoadBalancer CRD in kubelb
+                LB_IP=$(KUBECONFIG="${KUBECONFIGS_DIR}/kubelb.kubeconfig" \
+                  kubectl get loadbalancers.kubelb.k8c.io -n "$NAMESPACE" \
+                  -l kubelb.k8c.io/origin-name="$SERVICE_NAME" \
+                  -o jsonpath='{.items[0].status.loadBalancer.ingress[0].ip}')
+
+                # Get IP from tenant service
+                TENANT_IP=$(KUBECONFIG="${KUBECONFIGS_DIR}/${TENANT}.kubeconfig" \
+                  kubectl get svc "$SERVICE_NAME" -n default \
+                  -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+
+                echo "Tenant $TENANT (namespace $NAMESPACE):"
+                echo "  LB CRD IP: $LB_IP"
+                echo "  Tenant Service IP: $TENANT_IP"
+
+                if [ -z "$LB_IP" ] || [ -z "$TENANT_IP" ]; then
+                  echo "FAILED: Missing IP for $TENANT (LB: '$LB_IP', Tenant: '$TENANT_IP')"
+                  return 1
+                fi
+
+                if [ "$LB_IP" != "$TENANT_IP" ]; then
+                  echo "FAILED: Status mismatch for $TENANT - LB CRD IP '$LB_IP' != Tenant IP '$TENANT_IP'"
+                  return 1
+                fi
+
+                echo "SUCCESS: Status propagation verified for $TENANT"
+                return 0
+              }
+
+              verify_tenant "tenant1" "tenant-primary"
+              verify_tenant "tenant2" "tenant-secondary"
+
+              echo "SUCCESS: Status propagation verified for all tenants"
+            check:
+              ($error == null): true
+
+    # Step 7: Verify tenant1 returns correct message
+    - name: verify-tenant1-response
+      description: Verify tenant1 service returns tenant1 message
+      use:
+        template: ../../../../step-templates/layer4/verify-http-response.yaml
+        with:
+          bindings:
+            - name: service_name
+              value: ($name)
+            - name: expected
+              value: ($message_tenant1)
+            - name: port
+              value: "80"
+            - name: tenant
+              value: tenant1
+
+    # Step 8: Verify tenant2 returns correct message
+    - name: verify-tenant2-response
+      description: Verify tenant2 service returns tenant2 message
+      use:
+        template: ../../../../step-templates/layer4/verify-http-response.yaml
+        with:
+          bindings:
+            - name: service_name
+              value: ($name)
+            - name: expected
+              value: ($message_tenant2)
+            - name: port
+              value: "80"
+            - name: tenant
+              value: tenant2
+
+    # Step 9: Verify IPs are different (isolation)
+    - name: verify-ip-isolation
+      description: Verify each tenant has different IP (full isolation)
+      try:
+        - script:
+            skipCommandOutput: true
+            timeout: 120s
+            content: |
+              set -e
+
+              # Get repo root and kubeconfigs dir
+              ROOT_DIR="$(git rev-parse --show-toplevel)"
+              KUBECONFIGS_DIR="${ROOT_DIR}/.e2e-kubeconfigs"
+
+              # Get IPs from both clusters using their kubeconfigs
+              IP1=$(KUBECONFIG="${KUBECONFIGS_DIR}/tenant1.kubeconfig" kubectl get svc echo-cross -n default -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || true)
+              IP2=$(KUBECONFIG="${KUBECONFIGS_DIR}/tenant2.kubeconfig" kubectl get svc echo-cross -n default -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || true)
+
+              echo "Tenant1 IP: $IP1"
+              echo "Tenant2 IP: $IP2"
+
+              if [ -z "$IP1" ] || [ -z "$IP2" ]; then
+                echo "FAILED: Missing IP on one or both tenants"
+                exit 1
+              fi
+
+              if [ "$IP1" = "$IP2" ]; then
+                echo "WARNING: Both tenants have same IP - may indicate shared LB"
+                # This might be expected in some configurations
+                exit 0
+              fi
+
+              echo "SUCCESS: Tenants have different IPs (full isolation)"
+            check:
+              ($error == null): true

@@ -1,0 +1,83 @@
+# Copyright 2026 The KubeLB Authors.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# Step Template: Deploy echo server with ClusterIP service
+# Bindings:
+#   - name: app name (e.g., echo-basic)
+#   - message: response message
+apiVersion: chainsaw.kyverno.io/v1alpha1
+kind: StepTemplate
+metadata:
+  name: deploy-echo-app
+spec:
+  bindings:
+    - name: name
+      value: echo-app
+    - name: message
+      value: "hello-from-test"
+  try:
+    - apply:
+        cluster: tenant1
+        resource:
+          apiVersion: apps/v1
+          kind: Deployment
+          metadata:
+            name: ($name)
+            namespace: default
+            labels:
+              app: ($name)
+          spec:
+            replicas: 1
+            selector:
+              matchLabels:
+                app: ($name)
+            template:
+              metadata:
+                labels:
+                  app: ($name)
+              spec:
+                containers:
+                  - name: echo
+                    image: hashicorp/http-echo:latest
+                    args:
+                      - -text=($message)
+                      - -listen=:8080
+                    ports:
+                      - containerPort: 8080
+    - apply:
+        cluster: tenant1
+        resource:
+          apiVersion: v1
+          kind: Service
+          metadata:
+            name: ($name)
+            namespace: default
+          spec:
+            type: ClusterIP
+            selector:
+              app: ($name)
+            ports:
+              - port: 80
+                targetPort: 8080
+    - assert:
+        cluster: tenant1
+        timeout: 10s
+        resource:
+          apiVersion: apps/v1
+          kind: Deployment
+          metadata:
+            name: ($name)
+            namespace: default
+          status:
+            readyReplicas: 1

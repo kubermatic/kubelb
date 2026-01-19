@@ -1,0 +1,305 @@
+# Copyright 2026 The KubeLB Authors.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# Basic L7 Ingress Test
+# Verifies:
+# - Ingress with kubelb ingressClass creates Route CRD in kubelb cluster
+# - Route CRD has correct labels (origin-name, origin-resource-kind)
+# - Generated Ingress created in kubelb cluster with transformed service names
+# - Status propagation (LoadBalancer IP from ingress-nginx)
+# - HTTP connectivity via nip.io hostname
+# - Finalizer presence on Route CRD
+# - Ingress deletion removes Route CRD from kubelb cluster
+apiVersion: chainsaw.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: basic-ingress
+  labels:
+    all:
+    test: basic
+    resource: ingress
+    layer: layer7
+spec:
+  description: |
+    Test basic Ingress full lifecycle.
+    Creates ClusterIP service pointing to echo-shared, creates Ingress with kubelb class,
+    verifies Route CRD in kubelb cluster, tests HTTP connectivity via nip.io,
+    then verifies cleanup removes Route CRD.
+  bindings:
+    - name: name
+      value: echo-ingress
+    - name: kubelb_namespace
+      value: tenant-primary
+  steps:
+    # Step 1: Create ClusterIP service pointing to echo-shared
+    - name: create-service
+      description: Create ClusterIP service pointing to echo-shared
+      cluster: tenant1
+      try:
+        - apply:
+            resource:
+              apiVersion: v1
+              kind: Service
+              metadata:
+                name: echo-ingress
+                namespace: default
+              spec:
+                type: ClusterIP
+                selector:
+                  app: echo-shared
+                ports:
+                  - port: 80
+                    targetPort: 5678
+
+    # Step 2: Create Ingress with static hostname
+    - name: create-ingress
+      description: Create Ingress with kubelb class
+      cluster: tenant1
+      try:
+        - apply:
+            resource:
+              apiVersion: networking.k8s.io/v1
+              kind: Ingress
+              metadata:
+                name: echo-ingress
+                namespace: default
+              spec:
+                ingressClassName: kubelb
+                rules:
+                  - host: echo-ingress.test.local
+                    http:
+                      paths:
+                        - path: /
+                          pathType: Prefix
+                          backend:
+                            service:
+                              name: echo-ingress
+                              port:
+                                number: 80
+
+    # Step 3: Verify Route CRD in kubelb cluster
+    - name: verify-route-crd
+      description: Verify Route CRD exists with correct labels
+      use:
+        template: ../../../../step-templates/common/verify-route-crd.yaml
+        with:
+          bindings:
+            - name: resource_name
+              value: ($name)
+            - name: expected_kind
+              value: Ingress.networking.k8s.io
+            - name: kubelb_namespace
+              value: ($kubelb_namespace)
+
+    # Step 4: Verify generated Ingress in kubelb cluster with transformed service
+    - name: verify-generated-ingress
+      description: Verify Ingress created in kubelb with transformed service name
+      cluster: kubelb
+      try:
+        - script:
+            skipCommandOutput: true
+            timeout: 60s
+            content: |
+              set -e
+              NAMESPACE="tenant-primary"
+              INGRESS_NAME="echo-ingress"
+
+              for i in $(seq 1 20); do
+                # Get generated Ingress by origin label
+                GEN_INGRESS=$(kubectl get ingress -n "$NAMESPACE" \
+                  -l kubelb.k8c.io/origin-name="$INGRESS_NAME" -o name 2>/dev/null | head -1)
+
+                if [ -n "$GEN_INGRESS" ]; then
+                  # Verify service name is transformed (not original name)
+                  SVC_NAME=$(kubectl get $GEN_INGRESS -n "$NAMESPACE" \
+                    -o jsonpath='{.spec.rules[0].http.paths[0].backend.service.name}')
+
+                  # Service name should be transformed (contains kubelb prefix or hash)
+                  if [ "$SVC_NAME" = "echo-ingress" ]; then
+                    echo "FAILED: Service name not transformed, still '$SVC_NAME'"
+                    exit 1
+                  fi
+
+                  echo "Generated Ingress verified: $GEN_INGRESS"
+                  echo "  Transformed service name: $SVC_NAME"
+                  exit 0
+                fi
+                sleep 2
+              done
+              echo "FAILED: Generated Ingress not found in kubelb"
+              exit 1
+            check:
+              ($error == null): true
+
+    # Step 5: Verify status propagation to tenant Ingress
+    - name: verify-status
+      description: Verify Ingress gets LoadBalancer IP
+      use:
+        template: ../../../../step-templates/ingress/verify-ingress-status.yaml
+        with:
+          bindings:
+            - name: ingress_name
+              value: ($name)
+
+    # Step 6: Verify HTTP connectivity via Host header
+    - name: verify-http
+      description: Verify HTTP response via Host header
+      cluster: tenant1
+      try:
+        - script:
+            skipCommandOutput: true
+            timeout: 60s
+            content: |
+              set -e
+              # Get IP from Ingress status (propagated from kubelb)
+              IP=$(kubectl get ingress echo-ingress -n default \
+                -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+              HOST="echo-ingress.test.local"
+              EXPECTED="hello-shared"
+
+              for i in $(seq 1 15); do
+                RESPONSE=$(curl -s --max-time 5 -H "Host: ${HOST}" "http://${IP}/" 2>/dev/null || true)
+                if echo "$RESPONSE" | grep -q "$EXPECTED"; then
+                  echo "HTTP response OK: $EXPECTED"
+                  exit 0
+                fi
+                echo "Attempt $i: waiting for route propagation..."
+                sleep 2
+              done
+              echo "FAILED: Expected '$EXPECTED', got '$RESPONSE'"
+              exit 1
+            check:
+              ($error == null): true
+
+    # Step 7: Update Ingress hostname and verify propagation
+    - name: update-ingress-hostname
+      description: Update Ingress with new hostname and verify Route CRD updated
+      cluster: tenant1
+      try:
+        - apply:
+            resource:
+              apiVersion: networking.k8s.io/v1
+              kind: Ingress
+              metadata:
+                name: echo-ingress
+                namespace: default
+              spec:
+                ingressClassName: kubelb
+                rules:
+                  - host: echo-ingress-updated.test.local
+                    http:
+                      paths:
+                        - path: /
+                          pathType: Prefix
+                          backend:
+                            service:
+                              name: echo-ingress
+                              port:
+                                number: 80
+
+    # Step 8: Verify Route CRD updated with new hostname
+    - name: verify-route-updated
+      description: Verify Route CRD reflects new hostname
+      cluster: kubelb
+      try:
+        - script:
+            skipCommandOutput: true
+            timeout: 60s
+            content: |
+              set -e
+              NAMESPACE="tenant-primary"
+              INGRESS_NAME="echo-ingress"
+
+              for i in $(seq 1 20); do
+                # Get generated Ingress
+                GEN_INGRESS=$(kubectl get ingress -n "$NAMESPACE" \
+                  -l kubelb.k8c.io/origin-name="$INGRESS_NAME" -o name 2>/dev/null | head -1)
+
+                if [ -n "$GEN_INGRESS" ]; then
+                  HOST=$(kubectl get $GEN_INGRESS -n "$NAMESPACE" \
+                    -o jsonpath='{.spec.rules[0].host}')
+                  if echo "$HOST" | grep -q "echo-ingress-updated"; then
+                    echo "Route CRD updated with new hostname: $HOST"
+                    exit 0
+                  fi
+                fi
+                sleep 2
+              done
+              echo "FAILED: Route CRD not updated with new hostname"
+              exit 1
+            check:
+              ($error == null): true
+
+    # Step 9: Verify HTTP connectivity via updated hostname
+    - name: verify-http-updated
+      description: Verify HTTP response via updated Host header
+      cluster: tenant1
+      try:
+        - script:
+            skipCommandOutput: true
+            timeout: 60s
+            content: |
+              set -e
+              # Get IP from Ingress status (propagated from kubelb)
+              IP=$(kubectl get ingress echo-ingress -n default \
+                -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+              HOST="echo-ingress-updated.test.local"
+              EXPECTED="hello-shared"
+
+              for i in $(seq 1 15); do
+                RESPONSE=$(curl -s --max-time 5 -H "Host: ${HOST}" "http://${IP}/" 2>/dev/null || true)
+                if echo "$RESPONSE" | grep -q "$EXPECTED"; then
+                  echo "HTTP response OK on updated host: $EXPECTED"
+                  exit 0
+                fi
+                echo "Attempt $i: waiting for route propagation..."
+                sleep 2
+              done
+              echo "FAILED: Expected '$EXPECTED', got '$RESPONSE'"
+              exit 1
+            check:
+              ($error == null): true
+
+    # Step 10: Delete Ingress and verify cleanup
+    - name: cleanup
+      description: Delete Ingress and verify Route CRD removed
+      cluster: tenant1
+      try:
+        - script:
+            skipCommandOutput: true
+            timeout: 60s
+            content: |
+              kubectl delete ingress echo-ingress -n default --wait=false
+              echo "Ingress deletion initiated"
+            check:
+              ($error == null): true
+      finally:
+        - script:
+            skipCommandOutput: true
+            cluster: tenant1
+            timeout: 60s
+            content: |
+              kubectl delete ingress echo-ingress -n default --ignore-not-found
+              kubectl delete service echo-ingress -n default --ignore-not-found
+
+    - name: verify-cleanup
+      description: Verify Route CRD removed
+      use:
+        template: ../../../../step-templates/common/verify-route-cleanup.yaml
+        with:
+          bindings:
+            - name: resource_name
+              value: ($name)
+            - name: kubelb_namespace
+              value: ($kubelb_namespace)

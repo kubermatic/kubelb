@@ -1,0 +1,67 @@
+# Copyright 2026 The KubeLB Authors.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# Step Template: Verify LoadBalancer CRD status matches tenant service status
+# Required bindings (pass via use.with.bindings):
+#   - service_name: service name to verify
+#   - tenant: tenant cluster name (e.g., tenant1)
+#   - kubelb_namespace: namespace in kubelb cluster (e.g., tenant-primary)
+apiVersion: chainsaw.kyverno.io/v1alpha1
+kind: StepTemplate
+metadata:
+  name: verify-status-propagation
+spec:
+  try:
+    - script:
+        timeout: 60s
+        env:
+          - name: SERVICE_NAME
+            value: ($service_name)
+          - name: TENANT
+            value: ($tenant)
+          - name: LB_NS
+            value: ($kubelb_namespace)
+        content: |
+          set -e
+          ROOT_DIR="$(git rev-parse --show-toplevel)"
+          KUBECONFIGS_DIR="${ROOT_DIR}/.e2e-kubeconfigs"
+
+          for i in $(seq 1 20); do
+            # Get IP from LoadBalancer CRD in kubelb
+            LB_IP=$(KUBECONFIG="${KUBECONFIGS_DIR}/kubelb.kubeconfig" \
+              kubectl get loadbalancers.kubelb.k8c.io -n "$LB_NS" \
+              -l kubelb.k8c.io/origin-name="$SERVICE_NAME" \
+              -o jsonpath='{.items[0].status.loadBalancer.ingress[0].ip}' 2>/dev/null || true)
+
+            # Get IP from tenant service
+            TENANT_IP=$(KUBECONFIG="${KUBECONFIGS_DIR}/${TENANT}.kubeconfig" \
+              kubectl get svc "$SERVICE_NAME" -n default \
+              -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || true)
+
+            if [ -n "$LB_IP" ] && [ -n "$TENANT_IP" ] && [ "$LB_IP" = "$TENANT_IP" ]; then
+              echo "LB CRD IP: $LB_IP"
+              echo "Tenant Service IP: $TENANT_IP"
+              echo "SUCCESS: Status propagation verified"
+              exit 0
+            fi
+            echo "Attempt $i: waiting... (LB: '$LB_IP', Tenant: '$TENANT_IP')"
+            sleep 2
+          done
+
+          echo "FAILED: Status propagation not verified after retries"
+          echo "LB CRD IP: $LB_IP"
+          echo "Tenant Service IP: $TENANT_IP"
+          exit 1
+        check:
+          ($error == null): true

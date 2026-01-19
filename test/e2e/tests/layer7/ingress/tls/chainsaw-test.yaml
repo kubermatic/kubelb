@@ -1,0 +1,212 @@
+# Copyright 2026 The KubeLB Authors.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# TLS Ingress Test
+# Verifies:
+# - Self-signed TLS secret creation
+# - Ingress with TLS termination and kubelb ingressClass creates Route CRD
+# - Route CRD has correct labels and includes TLS config
+# - Status propagation (LoadBalancer IP from ingress-nginx)
+# - HTTPS connectivity via nip.io hostname
+# - Cleanup removes Route CRD and resources
+apiVersion: chainsaw.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: tls-ingress
+  labels:
+    all:
+    test: tls
+    resource: ingress
+    layer: layer7
+spec:
+  description: |
+    Test Ingress with TLS termination.
+    Creates ClusterIP service pointing to echo-shared, creates self-signed TLS secret,
+    creates Ingress with TLS config and kubelb class,
+    verifies Route CRD in kubelb cluster, tests HTTPS connectivity,
+    then verifies cleanup removes Route CRD and secret.
+  bindings:
+    - name: name
+      value: echo-tls
+    - name: kubelb_namespace
+      value: tenant-primary
+  steps:
+    # Step 1: Create ClusterIP service pointing to echo-shared
+    - name: create-service
+      description: Create ClusterIP service pointing to echo-shared
+      cluster: tenant1
+      try:
+        - apply:
+            resource:
+              apiVersion: v1
+              kind: Service
+              metadata:
+                name: echo-tls
+                namespace: default
+              spec:
+                type: ClusterIP
+                selector:
+                  app: echo-shared
+                ports:
+                  - port: 80
+                    targetPort: 5678
+
+    # Step 2: Create self-signed TLS secret
+    - name: create-tls-secret
+      description: Create self-signed TLS certificate and secret
+      cluster: tenant1
+      try:
+        - script:
+            skipCommandOutput: true
+            timeout: 60s
+            content: |
+              set -e
+              HOST="tls-test.test.local"
+
+              # Generate self-signed certificate
+              openssl req -x509 -nodes -days 1 -newkey rsa:2048 \
+                -keyout /tmp/tls.key -out /tmp/tls.crt \
+                -subj "/CN=${HOST}" 2>/dev/null
+
+              # Create TLS secret with kubelb managed-by label
+              kubectl create secret tls tls-secret \
+                --cert=/tmp/tls.crt \
+                --key=/tmp/tls.key \
+                -n default --dry-run=client -o yaml | \
+                kubectl label --local -f - kubelb.k8c.io/managed-by=kubelb -o yaml | \
+                kubectl apply -f -
+
+              echo "Created TLS secret for host: $HOST"
+            check:
+              ($error == null): true
+
+    # Step 3: Create Ingress with TLS
+    - name: create-ingress
+      description: Create Ingress with TLS termination
+      cluster: tenant1
+      try:
+        - apply:
+            resource:
+              apiVersion: networking.k8s.io/v1
+              kind: Ingress
+              metadata:
+                name: echo-tls
+                namespace: default
+              spec:
+                ingressClassName: kubelb
+                tls:
+                  - hosts:
+                      - tls-test.test.local
+                    secretName: tls-secret
+                rules:
+                  - host: tls-test.test.local
+                    http:
+                      paths:
+                        - path: /
+                          pathType: Prefix
+                          backend:
+                            service:
+                              name: echo-tls
+                              port:
+                                number: 80
+
+    # Verify Route CRD in kubelb cluster
+    - name: verify-route-crd
+      description: Verify Route CRD exists with correct labels
+      use:
+        template: ../../../../step-templates/common/verify-route-crd.yaml
+        with:
+          bindings:
+            - name: resource_name
+              value: ($name)
+            - name: expected_kind
+              value: Ingress.networking.k8s.io
+            - name: kubelb_namespace
+              value: ($kubelb_namespace)
+
+    # Step 5: Verify status propagation to tenant Ingress
+    - name: verify-status
+      description: Verify Ingress gets LoadBalancer IP
+      use:
+        template: ../../../../step-templates/ingress/verify-ingress-status.yaml
+        with:
+          bindings:
+            - name: ingress_name
+              value: ($name)
+
+    # Step 6: Verify HTTPS connectivity via Host header
+    - name: verify-https
+      description: Verify HTTPS response via Host header
+      cluster: tenant1
+      try:
+        - script:
+            skipCommandOutput: true
+            timeout: 60s
+            content: |
+              set -e
+              # Get IP from Ingress status (propagated from kubelb)
+              IP=$(kubectl get ingress echo-tls -n default \
+                -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+              HOST="tls-test.test.local"
+              EXPECTED="hello-shared"
+
+              for i in $(seq 1 10); do
+                # Use -k to skip certificate verification (self-signed)
+                # Use --resolve to map hostname to IP for TLS SNI
+                RESPONSE=$(curl -sk --max-time 5 --resolve "${HOST}:443:${IP}" "https://${HOST}/" 2>/dev/null || true)
+                if echo "$RESPONSE" | grep -q "$EXPECTED"; then
+                  echo "HTTPS response OK: $EXPECTED"
+                  exit 0
+                fi
+                sleep 2
+              done
+              echo "FAILED: Expected '$EXPECTED', got '$RESPONSE'"
+              exit 1
+            check:
+              ($error == null): true
+
+    # Step 7: Delete Ingress and secret, verify cleanup
+    - name: cleanup
+      description: Delete Ingress and TLS secret
+      cluster: tenant1
+      try:
+        - script:
+            skipCommandOutput: true
+            timeout: 60s
+            content: |
+              kubectl delete ingress echo-tls -n default --wait=false
+              kubectl delete secret tls-secret -n default --wait=false
+              echo "Ingress and secret deletion initiated"
+            check:
+              ($error == null): true
+      finally:
+        - script:
+            skipCommandOutput: true
+            cluster: tenant1
+            timeout: 60s
+            content: |
+              kubectl delete ingress echo-tls -n default --ignore-not-found
+              kubectl delete secret tls-secret -n default --ignore-not-found
+              kubectl delete service echo-tls -n default --ignore-not-found
+
+    - name: verify-cleanup
+      description: Verify Route CRD removed
+      use:
+        template: ../../../../step-templates/common/verify-route-cleanup.yaml
+        with:
+          bindings:
+            - name: resource_name
+              value: ($name)
+            - name: kubelb_namespace
+              value: ($kubelb_namespace)

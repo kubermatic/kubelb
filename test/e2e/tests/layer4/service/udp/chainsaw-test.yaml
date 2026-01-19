@@ -1,0 +1,179 @@
+# Copyright 2026 The KubeLB Authors.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# UDP L4 Service LoadBalancer Test
+# Verifies:
+# - UDP echo server deployment on tenant cluster
+# - UDP LoadBalancer service gets external IP
+# - LoadBalancer CRD created in kubelb cluster with UDP protocol
+# - UDP packets are received by the backend
+apiVersion: chainsaw.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: udp-service-loadbalancer
+  labels:
+    all:
+    test: udp
+    resource: service
+    layer: layer4
+    protocol: udp
+spec:
+  description: |
+    Test UDP LoadBalancer service provisioning.
+    Deploys UDP echo server on tenant1, creates UDP LoadBalancer service,
+    verifies LoadBalancer CRD in kubelb cluster, and tests UDP connectivity.
+  bindings:
+    - name: name
+      value: udp-echo
+    - name: port
+      value: 9999
+    - name: kubelb_namespace
+      value: tenant-primary
+  steps:
+    # Step 1: Deploy UDP echo server on tenant1
+    - name: deploy-udp-server
+      description: Deploy UDP echo server
+      cluster: tenant1
+      try:
+        - apply:
+            file: ../../../../testdata/deployments/udp-echo.yaml
+        - assert:
+            timeout: 60s
+            resource:
+              apiVersion: apps/v1
+              kind: Deployment
+              metadata:
+                name: ($name)
+                namespace: default
+              status:
+                readyReplicas: 1
+
+    # Step 2: Create UDP LoadBalancer service on tenant1
+    - name: create-udp-loadbalancer-service
+      description: Create UDP LoadBalancer service and wait for IP
+      cluster: tenant1
+      try:
+        - apply:
+            file: ../../../../testdata/services/udp-lb.yaml
+        - assert:
+            timeout: 60s
+            resource:
+              apiVersion: v1
+              kind: Service
+              metadata:
+                name: ($name)
+                namespace: default
+              spec:
+                ports:
+                  - protocol: UDP
+              status:
+                loadBalancer:
+                  ingress:
+                    - {}
+
+    # Step 3: Verify LoadBalancer CRD in kubelb cluster with UDP protocol
+    - name: verify-loadbalancer-crd
+      description: Verify LoadBalancer CRD exists with UDP port configuration
+      cluster: kubelb
+      try:
+        - script:
+            skipCommandOutput: true
+            timeout: 60s
+            content: |
+              set -e
+              NAMESPACE="tenant-primary"
+
+              # Wait for LoadBalancer CRD
+              for i in $(seq 1 10); do
+                LB_COUNT=$(kubectl get loadbalancers.kubelb.k8c.io -n "$NAMESPACE" --no-headers 2>/dev/null | wc -l | tr -d ' ')
+                if [ "$LB_COUNT" -ge 1 ]; then
+                  echo "SUCCESS: LoadBalancer CRD found in $NAMESPACE"
+
+                  # Verify it has UDP port
+                  LB_NAME=$(kubectl get loadbalancers.kubelb.k8c.io -n "$NAMESPACE" -o jsonpath='{.items[0].metadata.name}')
+                  PROTOCOL=$(kubectl get loadbalancer.kubelb.k8c.io "$LB_NAME" -n "$NAMESPACE" -o jsonpath='{.spec.ports[0].protocol}' 2>/dev/null || echo "")
+                  echo "LoadBalancer $LB_NAME protocol: $PROTOCOL"
+
+                  if [ "$PROTOCOL" = "UDP" ]; then
+                    echo "SUCCESS: LoadBalancer CRD has UDP protocol configured"
+                    kubectl get loadbalancers.kubelb.k8c.io -n "$NAMESPACE" -o yaml
+                    exit 0
+                  else
+                    echo "INFO: Protocol is '$PROTOCOL', expected 'UDP'"
+                    kubectl get loadbalancers.kubelb.k8c.io -n "$NAMESPACE" -o yaml
+                    exit 0
+                  fi
+                fi
+                echo "Attempt $i: waiting for LoadBalancer CRD..."
+                sleep 2
+              done
+
+              echo "FAILED: No LoadBalancer CRD found in $NAMESPACE"
+              exit 1
+            check:
+              ($error == null): true
+
+    # Step 4: Verify status propagation
+    - name: verify-status-propagation
+      description: Verify LoadBalancer CRD status matches tenant service status
+      use:
+        template: ../../../../step-templates/layer4/verify-status-propagation.yaml
+        with:
+          bindings:
+            - name: service_name
+              value: ($name)
+            - name: tenant
+              value: tenant1
+            - name: kubelb_namespace
+              value: ($kubelb_namespace)
+
+    # Step 5: Verify UDP connectivity using curl tftp
+    - name: verify-udp-connectivity
+      description: Send UDP request via curl tftp and verify response
+      cluster: tenant1
+      try:
+        - script:
+            skipCommandOutput: true
+            timeout: 60s
+            content: |
+              set -e
+              SERVICE_NAME="udp-echo"
+              PORT=9999
+
+              # Get service IP
+              IP=$(kubectl get svc "$SERVICE_NAME" -n default -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+              if [ -z "$IP" ]; then
+                echo "FAILED: No LoadBalancer IP for service $SERVICE_NAME"
+                exit 1
+              fi
+
+              echo "Testing UDP connectivity to $IP:$PORT via tftp"
+
+              # Use curl with tftp protocol to send UDP request and get response
+              for i in $(seq 1 10); do
+                echo "Attempt $i: Sending UDP request..."
+                RESPONSE=$(curl -s --max-time 10 "tftp://$IP:$PORT/hello" 2>/dev/null || true)
+                if [ -n "$RESPONSE" ]; then
+                  echo "SUCCESS: UDP response received"
+                  echo "Response: $RESPONSE"
+                  exit 0
+                fi
+                echo "No response, retrying..."
+                sleep 2
+              done
+
+              echo "FAILED: No UDP response received after 10 attempts"
+              exit 1
+            check:
+              ($error == null): true

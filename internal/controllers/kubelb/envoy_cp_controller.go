@@ -45,6 +45,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	ctrlruntimeclient "sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
+	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
@@ -86,6 +87,8 @@ func (r *EnvoyCPReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		return ctrl.Result{}, fmt.Errorf("failed to retrieve config: %w", err)
 	}
 	r.Config = config
+	// Update EnvoyServer config so GenerateBootstrap() uses the latest config
+	r.EnvoyServer.UpdateConfig(config)
 
 	if err := r.reconcile(ctx, req); err != nil {
 		managermetrics.EnvoyCPReconcileTotal.WithLabelValues(metrics.ResultError).Inc()
@@ -614,26 +617,107 @@ func (r *EnvoyCPReconciler) enqueueLoadBalancers() handler.MapFunc {
 	}
 }
 
+// enqueueAllLoadBalancers enqueues reconciliation for all tenant namespaces.
+// Used when Config changes affect all Envoy deployments.
+func (r *EnvoyCPReconciler) enqueueAllLoadBalancers() handler.MapFunc {
+	return func(ctx context.Context, _ ctrlruntimeclient.Object) []ctrl.Request {
+		tenants := &kubelbv1alpha1.TenantList{}
+		if err := r.List(ctx, tenants); err != nil {
+			return nil
+		}
+
+		result := make([]reconcile.Request, 0, len(tenants.Items))
+		for _, tenant := range tenants.Items {
+			result = append(result, reconcile.Request{
+				NamespacedName: types.NamespacedName{
+					Name:      RequeueAllResources,
+					Namespace: fmt.Sprintf(tenantNamespacePattern, tenant.Name),
+				},
+			})
+		}
+		return result
+	}
+}
+
+// enqueueTenantLoadBalancers enqueues reconciliation for a specific tenant's namespace.
+// Used when Tenant changes affect that tenant's Envoy configuration.
+func (r *EnvoyCPReconciler) enqueueTenantLoadBalancers() handler.MapFunc {
+	return func(_ context.Context, o ctrlruntimeclient.Object) []ctrl.Request {
+		tenant := o.(*kubelbv1alpha1.Tenant)
+		return []reconcile.Request{{
+			NamespacedName: types.NamespacedName{
+				Name:      RequeueAllResources,
+				Namespace: fmt.Sprintf(tenantNamespacePattern, tenant.Name),
+			},
+		}}
+	}
+}
+
+// configSpecChangedPredicate triggers when Config spec fields affecting Envoy change.
+func configSpecChangedPredicate() predicate.Predicate {
+	return predicate.Funcs{
+		UpdateFunc: func(e event.UpdateEvent) bool {
+			oldConfig := e.ObjectOld.(*kubelbv1alpha1.Config)
+			newConfig := e.ObjectNew.(*kubelbv1alpha1.Config)
+			return !reflect.DeepEqual(oldConfig.Spec.EnvoyProxy, newConfig.Spec.EnvoyProxy)
+		},
+		CreateFunc:  func(_ event.CreateEvent) bool { return true },
+		DeleteFunc:  func(_ event.DeleteEvent) bool { return false },
+		GenericFunc: func(_ event.GenericEvent) bool { return false },
+	}
+}
+
+// tenantSpecChangedPredicate triggers when Tenant spec fields affecting Envoy change.
+func tenantSpecChangedPredicate() predicate.Predicate {
+	return predicate.Funcs{
+		UpdateFunc: func(e event.UpdateEvent) bool {
+			oldTenant := e.ObjectOld.(*kubelbv1alpha1.Tenant)
+			newTenant := e.ObjectNew.(*kubelbv1alpha1.Tenant)
+			return !reflect.DeepEqual(oldTenant.Spec.Ingress.Class, newTenant.Spec.Ingress.Class)
+		},
+		CreateFunc:  func(_ event.CreateEvent) bool { return false },
+		DeleteFunc:  func(_ event.DeleteEvent) bool { return false },
+		GenericFunc: func(_ event.GenericEvent) bool { return false },
+	}
+}
+
 func (r *EnvoyCPReconciler) SetupWithManager(ctx context.Context, mgr ctrl.Manager) error {
 	// 1. Watch for changes in LoadBalancer resources.
 	// 2. Resource must exist in a tenant namespace.
 	// 3. Watch for changes in Route resources and enqueue LoadBalancer resources. TODO: we need to
 	// find an alternative for this since it is more of a "hack".
+	// 4. Watch Config and Tenant for changes that affect Envoy proxy configuration.
+	//
+	// Note: namespace filtering is applied per-watch rather than globally via WithEventFilter
+	// because Config (in manager namespace) and Tenant (cluster-scoped) don't reside in tenant
+	// namespaces but still need to trigger reconciliation.
+
+	namespaceFilter := utils.ByLabelExistsOnNamespace(ctx, mgr.GetClient())
 	return ctrl.NewControllerManagedBy(mgr).
 		Named(EnvoyCPControllerName).
-		For(&kubelbv1alpha1.LoadBalancer{}).
+		For(&kubelbv1alpha1.LoadBalancer{}, builder.WithPredicates(namespaceFilter)).
 		// Disable concurrency to ensure that only one snapshot is created at a time.
 		WithOptions(controller.Options{MaxConcurrentReconciles: 1}).
-		WithEventFilter(utils.ByLabelExistsOnNamespace(ctx, mgr.GetClient())).
 		Watches(
 			&kubelbv1alpha1.Route{},
 			handler.EnqueueRequestsFromMapFunc(r.enqueueLoadBalancers()),
-			builder.WithPredicates(predicate.GenerationChangedPredicate{}),
+			builder.WithPredicates(namespaceFilter, predicate.GenerationChangedPredicate{}),
 		).
 		Watches(
 			&kubelbv1alpha1.Addresses{},
 			handler.EnqueueRequestsFromMapFunc(r.enqueueLoadBalancers()),
-			builder.WithPredicates(predicate.GenerationChangedPredicate{}),
+			builder.WithPredicates(namespaceFilter, predicate.GenerationChangedPredicate{}),
+		).
+		// Config and Tenant watches don't use namespace filter since they're not in tenant namespaces
+		Watches(
+			&kubelbv1alpha1.Config{},
+			handler.EnqueueRequestsFromMapFunc(r.enqueueAllLoadBalancers()),
+			builder.WithPredicates(configSpecChangedPredicate()),
+		).
+		Watches(
+			&kubelbv1alpha1.Tenant{},
+			handler.EnqueueRequestsFromMapFunc(r.enqueueTenantLoadBalancers()),
+			builder.WithPredicates(tenantSpecChangedPredicate()),
 		).
 		Complete(r)
 }

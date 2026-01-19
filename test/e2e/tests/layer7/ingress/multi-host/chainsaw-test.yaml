@@ -1,0 +1,237 @@
+# Copyright 2026 The KubeLB Authors.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# Multi-host Ingress Test
+# Verifies:
+# - Two echo servers with different messages
+# - Ingress with two hosts routes to correct backends
+# - Host app1.IP.nip.io returns "host1", app2.IP.nip.io returns "host2"
+apiVersion: chainsaw.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: multi-host-ingress
+  labels:
+    all:
+    test: multi-host
+    resource: ingress
+    layer: layer7
+spec:
+  description: |
+    Test host-based routing with Ingress.
+    Deploys two echo servers, creates Ingress with two hosts,
+    verifies each host routes to the correct backend.
+  bindings:
+    - name: name
+      value: multi-host-ingress
+    - name: kubelb_namespace
+      value: tenant-primary
+  steps:
+    # Step 1: Deploy host1 backend
+    - name: deploy-host1
+      cluster: tenant1
+      bindings:
+        - name: name
+          value: echo-host1
+        - name: message
+          value: "response-from-host1"
+      try:
+        - apply:
+            file: ../../../../testdata/deployments/echo-server.yaml
+        - apply:
+            file: ../../../../testdata/services/echo-clusterip.yaml
+        - assert:
+            timeout: 60s
+            resource:
+              apiVersion: apps/v1
+              kind: Deployment
+              metadata:
+                name: echo-host1
+                namespace: default
+              status:
+                readyReplicas: 1
+
+    # Step 2: Deploy host2 backend
+    - name: deploy-host2
+      cluster: tenant1
+      bindings:
+        - name: name
+          value: echo-host2
+        - name: message
+          value: "response-from-host2"
+      try:
+        - apply:
+            file: ../../../../testdata/deployments/echo-server.yaml
+        - apply:
+            file: ../../../../testdata/services/echo-clusterip.yaml
+        - assert:
+            timeout: 60s
+            resource:
+              apiVersion: apps/v1
+              kind: Deployment
+              metadata:
+                name: echo-host2
+                namespace: default
+              status:
+                readyReplicas: 1
+
+    # Step 3: Create multi-host Ingress
+    - name: create-ingress
+      cluster: tenant1
+      try:
+        - apply:
+            resource:
+              apiVersion: networking.k8s.io/v1
+              kind: Ingress
+              metadata:
+                name: multi-host-ingress
+                namespace: default
+              spec:
+                ingressClassName: kubelb
+                rules:
+                  - host: app1.test.local
+                    http:
+                      paths:
+                        - path: /
+                          pathType: Prefix
+                          backend:
+                            service:
+                              name: echo-host1
+                              port:
+                                number: 80
+                  - host: app2.test.local
+                    http:
+                      paths:
+                        - path: /
+                          pathType: Prefix
+                          backend:
+                            service:
+                              name: echo-host2
+                              port:
+                                number: 80
+
+    # Step 4: Verify Route CRD
+    - name: verify-route-crd
+      description: Verify Route CRD exists with correct labels
+      bindings:
+        - name: name
+          value: multi-host-ingress
+      use:
+        template: ../../../../step-templates/common/verify-route-crd.yaml
+        with:
+          bindings:
+            - name: resource_name
+              value: ($name)
+            - name: expected_kind
+              value: Ingress.networking.k8s.io
+            - name: kubelb_namespace
+              value: ($kubelb_namespace)
+
+    # Step 5: Verify Ingress status
+    - name: verify-status
+      description: Verify Ingress gets LoadBalancer IP
+      use:
+        template: ../../../../step-templates/ingress/verify-ingress-status.yaml
+        with:
+          bindings:
+            - name: ingress_name
+              value: ($name)
+
+    # Step 6: Verify host1 routes correctly
+    - name: verify-host1
+      cluster: tenant1
+      try:
+        - script:
+            skipCommandOutput: true
+            timeout: 60s
+            content: |
+              set -e
+              # Get IP from Ingress status (propagated from kubelb)
+              IP=$(kubectl get ingress multi-host-ingress -n default \
+                -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+              HOST="app1.test.local"
+              for i in $(seq 1 20); do
+                RESPONSE=$(curl -s --max-time 5 -H "Host: ${HOST}" "http://${IP}/" 2>/dev/null || true)
+                if echo "$RESPONSE" | grep -q "response-from-host1"; then
+                  echo "host1 OK: response-from-host1"
+                  exit 0
+                fi
+                sleep 2
+              done
+              echo "FAILED: host1 did not return expected response"
+              exit 1
+            check:
+              ($error == null): true
+
+    # Step 7: Verify host2 routes correctly
+    - name: verify-host2
+      cluster: tenant1
+      try:
+        - script:
+            skipCommandOutput: true
+            timeout: 60s
+            content: |
+              set -e
+              # Get IP from Ingress status (propagated from kubelb)
+              IP=$(kubectl get ingress multi-host-ingress -n default \
+                -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+              HOST="app2.test.local"
+              for i in $(seq 1 20); do
+                RESPONSE=$(curl -s --max-time 5 -H "Host: ${HOST}" "http://${IP}/" 2>/dev/null || true)
+                if echo "$RESPONSE" | grep -q "response-from-host2"; then
+                  echo "host2 OK: response-from-host2"
+                  exit 0
+                fi
+                sleep 2
+              done
+              echo "FAILED: host2 did not return expected response"
+              exit 1
+            check:
+              ($error == null): true
+
+    # Step 8: Cleanup
+    - name: cleanup
+      cluster: tenant1
+      try:
+        - script:
+            skipCommandOutput: true
+            timeout: 60s
+            content: |
+              kubectl delete ingress multi-host-ingress -n default --wait=false
+            check:
+              ($error == null): true
+      finally:
+        - script:
+            skipCommandOutput: true
+            cluster: tenant1
+            timeout: 60s
+            content: |
+              kubectl delete ingress multi-host-ingress -n default --ignore-not-found
+              kubectl delete deployment echo-host1 -n default --ignore-not-found
+              kubectl delete deployment echo-host2 -n default --ignore-not-found
+              kubectl delete service echo-host1 -n default --ignore-not-found
+              kubectl delete service echo-host2 -n default --ignore-not-found
+
+    - name: verify-cleanup
+      description: Verify Route CRD removed
+      bindings:
+        - name: name
+          value: multi-host-ingress
+      use:
+        template: ../../../../step-templates/common/verify-route-cleanup.yaml
+        with:
+          bindings:
+            - name: resource_name
+              value: ($name)
+            - name: kubelb_namespace
+              value: ($kubelb_namespace)

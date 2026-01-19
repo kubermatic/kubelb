@@ -1,0 +1,334 @@
+# Copyright 2026 The KubeLB Authors.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# Multiple Services on Same Tenant Test
+# Verifies:
+# - Multiple distinct services on the same tenant cluster
+# - Each service gets its own LoadBalancer CRD
+# - Each service returns its specific message
+# - Concurrent requests to different services work correctly
+apiVersion: chainsaw.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: multiple-services-loadbalancer
+  labels:
+    all:
+    test: multiple-services
+    resource: service
+    layer: layer4
+spec:
+  description: |
+    Test multiple distinct LoadBalancer services on the same tenant.
+    Deploys two separate echo servers with different messages,
+    creates two LoadBalancer services, verifies each works independently.
+  bindings:
+    - name: name1
+      value: echo-svc-one
+    - name: name2
+      value: echo-svc-two
+    - name: message1
+      value: "hello-from-service-one"
+    - name: message2
+      value: "hello-from-service-two"
+    - name: kubelb_namespace
+      value: tenant-primary
+  steps:
+    # Step 1: Deploy first echo server
+    - name: deploy-echo-server-one
+      description: Deploy first echo server
+      cluster: tenant1
+      bindings:
+        - name: name
+          value: ($name1)
+        - name: message
+          value: ($message1)
+      try:
+        - apply:
+            file: ../../../../testdata/deployments/echo-server.yaml
+        - assert:
+            timeout: 60s
+            resource:
+              apiVersion: apps/v1
+              kind: Deployment
+              metadata:
+                name: ($name1)
+                namespace: default
+              status:
+                readyReplicas: 1
+
+    # Step 2: Deploy second echo server
+    - name: deploy-echo-server-two
+      description: Deploy second echo server
+      cluster: tenant1
+      bindings:
+        - name: name
+          value: ($name2)
+        - name: message
+          value: ($message2)
+      try:
+        - apply:
+            file: ../../../../testdata/deployments/echo-server.yaml
+        - assert:
+            timeout: 60s
+            resource:
+              apiVersion: apps/v1
+              kind: Deployment
+              metadata:
+                name: ($name2)
+                namespace: default
+              status:
+                readyReplicas: 1
+
+    # Step 3: Create LoadBalancer service for first deployment
+    - name: create-loadbalancer-one
+      description: Create LoadBalancer service for first deployment
+      cluster: tenant1
+      bindings:
+        - name: name
+          value: ($name1)
+      try:
+        - apply:
+            file: ../../../../testdata/services/echo-lb.yaml
+        - assert:
+            timeout: 60s
+            resource:
+              apiVersion: v1
+              kind: Service
+              metadata:
+                name: ($name1)
+                namespace: default
+              status:
+                loadBalancer:
+                  ingress:
+                    - {}
+
+    # Step 4: Create LoadBalancer service for second deployment
+    - name: create-loadbalancer-two
+      description: Create LoadBalancer service for second deployment
+      cluster: tenant1
+      bindings:
+        - name: name
+          value: ($name2)
+      try:
+        - apply:
+            file: ../../../../testdata/services/echo-lb.yaml
+        - assert:
+            timeout: 60s
+            resource:
+              apiVersion: v1
+              kind: Service
+              metadata:
+                name: ($name2)
+                namespace: default
+              status:
+                loadBalancer:
+                  ingress:
+                    - {}
+
+    # Step 5: Verify both LoadBalancer CRDs exist in kubelb cluster
+    - name: verify-both-lb-crds
+      description: Verify both LoadBalancer CRDs exist
+      cluster: kubelb
+      try:
+        - script:
+            skipCommandOutput: true
+            timeout: 60s
+            content: |
+              set -e
+              NAMESPACE="tenant-primary"
+
+              # Wait for both LoadBalancer CRDs
+              for i in $(seq 1 10); do
+                LB_COUNT=$(kubectl get loadbalancers.kubelb.k8c.io -n "$NAMESPACE" --no-headers 2>/dev/null | wc -l | tr -d ' ')
+                if [ "$LB_COUNT" -ge 2 ]; then
+                  echo "SUCCESS: Found $LB_COUNT LoadBalancer CRDs in $NAMESPACE"
+                  kubectl get loadbalancers.kubelb.k8c.io -n "$NAMESPACE"
+                  exit 0
+                fi
+                echo "Attempt $i: waiting for both LoadBalancer CRDs... (found: $LB_COUNT)"
+                sleep 2
+              done
+
+              echo "FAILED: Expected at least 2 LoadBalancer CRDs, found $LB_COUNT"
+              exit 1
+            check:
+              ($error == null): true
+
+    # Step 6: Verify status propagation for both services
+    - name: verify-status-propagation
+      description: Verify LoadBalancer CRD status matches tenant service status for both services
+      try:
+        - script:
+            skipCommandOutput: true
+            timeout: 60s
+            content: |
+              set -e
+              ROOT_DIR="$(git rev-parse --show-toplevel)"
+              KUBECONFIGS_DIR="${ROOT_DIR}/.e2e-kubeconfigs"
+              NAMESPACE="tenant-primary"
+              TENANT="tenant1"
+
+              verify_service() {
+                local SERVICE_NAME="$1"
+
+                # Get IP from LoadBalancer CRD in kubelb
+                LB_IP=$(KUBECONFIG="${KUBECONFIGS_DIR}/kubelb.kubeconfig" \
+                  kubectl get loadbalancers.kubelb.k8c.io -n "$NAMESPACE" \
+                  -l kubelb.k8c.io/origin-name="$SERVICE_NAME" \
+                  -o jsonpath='{.items[0].status.loadBalancer.ingress[0].ip}')
+
+                # Get IP from tenant service
+                TENANT_IP=$(KUBECONFIG="${KUBECONFIGS_DIR}/${TENANT}.kubeconfig" \
+                  kubectl get svc "$SERVICE_NAME" -n default \
+                  -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+
+                echo "Service $SERVICE_NAME:"
+                echo "  LB CRD IP: $LB_IP"
+                echo "  Tenant Service IP: $TENANT_IP"
+
+                if [ -z "$LB_IP" ] || [ -z "$TENANT_IP" ]; then
+                  echo "FAILED: Missing IP for $SERVICE_NAME (LB: '$LB_IP', Tenant: '$TENANT_IP')"
+                  return 1
+                fi
+
+                if [ "$LB_IP" != "$TENANT_IP" ]; then
+                  echo "FAILED: Status mismatch for $SERVICE_NAME - LB CRD IP '$LB_IP' != Tenant IP '$TENANT_IP'"
+                  return 1
+                fi
+
+                echo "SUCCESS: Status propagation verified for $SERVICE_NAME"
+                return 0
+              }
+
+              verify_service "echo-svc-one"
+              verify_service "echo-svc-two"
+
+              echo "SUCCESS: Status propagation verified for all services"
+            check:
+              ($error == null): true
+
+    # Step 7: Verify first service returns correct message
+    - name: verify-service-one-response
+      description: Verify first service returns correct message
+      use:
+        template: ../../../../step-templates/layer4/verify-http-response.yaml
+        with:
+          bindings:
+            - name: service_name
+              value: ($name1)
+            - name: expected
+              value: ($message1)
+            - name: port
+              value: "80"
+            - name: tenant
+              value: tenant1
+
+    # Step 8: Verify second service returns correct message
+    - name: verify-service-two-response
+      description: Verify second service returns correct message
+      use:
+        template: ../../../../step-templates/layer4/verify-http-response.yaml
+        with:
+          bindings:
+            - name: service_name
+              value: ($name2)
+            - name: expected
+              value: ($message2)
+            - name: port
+              value: "80"
+            - name: tenant
+              value: tenant1
+
+    # Step 9: Verify services have different IPs
+    - name: verify-service-isolation
+      description: Verify each service has unique IP
+      cluster: tenant1
+      try:
+        - script:
+            skipCommandOutput: true
+            timeout: 60s
+            content: |
+              set -e
+              SVC1="echo-svc-one"
+              SVC2="echo-svc-two"
+
+              IP1=$(kubectl get svc "$SVC1" -n default -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+              IP2=$(kubectl get svc "$SVC2" -n default -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+
+              echo "Service $SVC1 IP: $IP1"
+              echo "Service $SVC2 IP: $IP2"
+
+              if [ -z "$IP1" ] || [ -z "$IP2" ]; then
+                echo "FAILED: Missing IP on one or both services"
+                exit 1
+              fi
+
+              if [ "$IP1" = "$IP2" ]; then
+                echo "FAILED: Both services have same IP $IP1 - expected different IPs"
+                exit 1
+              fi
+
+              echo "SUCCESS: Services have different IPs (correct isolation)"
+            check:
+              ($error == null): true
+
+    # Step 10: Verify concurrent requests to both services
+    - name: verify-concurrent-requests
+      description: Verify concurrent requests to both services work
+      cluster: tenant1
+      try:
+        - script:
+            skipCommandOutput: true
+            timeout: 60s
+            content: |
+              set -e
+              SVC1="echo-svc-one"
+              SVC2="echo-svc-two"
+              EXPECTED1="hello-from-service-one"
+              EXPECTED2="hello-from-service-two"
+              SUCCESS1=0
+              SUCCESS2=0
+              TOTAL_REQUESTS=10
+
+              IP1=$(kubectl get svc "$SVC1" -n default -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+              IP2=$(kubectl get svc "$SVC2" -n default -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+
+              echo "Sending $TOTAL_REQUESTS requests to each service"
+
+              for i in $(seq 1 $TOTAL_REQUESTS); do
+                # Request to service 1
+                RESP1=$(curl -s --max-time 5 "http://${IP1}" || true)
+                if echo "$RESP1" | grep -q "$EXPECTED1"; then
+                  SUCCESS1=$((SUCCESS1 + 1))
+                fi
+
+                # Request to service 2
+                RESP2=$(curl -s --max-time 5 "http://${IP2}" || true)
+                if echo "$RESP2" | grep -q "$EXPECTED2"; then
+                  SUCCESS2=$((SUCCESS2 + 1))
+                fi
+              done
+
+              echo "Service $SVC1: $SUCCESS1 / $TOTAL_REQUESTS"
+              echo "Service $SVC2: $SUCCESS2 / $TOTAL_REQUESTS"
+
+              if [ "$SUCCESS1" -eq "$TOTAL_REQUESTS" ] && [ "$SUCCESS2" -eq "$TOTAL_REQUESTS" ]; then
+                echo "SUCCESS: All requests to both services returned expected responses"
+                exit 0
+              else
+                echo "FAILED: Some requests failed"
+                exit 1
+              fi
+            check:
+              ($error == null): true

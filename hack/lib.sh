@@ -75,6 +75,28 @@ echodate() {
   echo "[$(date +%Y-%m-%dT%H:%M:%S%:z)]" "$@"
 }
 
+nowms() {
+  if [[ "${OS}" == "darwin" ]]; then
+    # macOS: use perl for millisecond precision (date doesn't support %N)
+    perl -MTime::HiRes=time -e 'printf "%.0f\n", time * 1000'
+  else
+    echo $(($(date +%s%N) / 1000000))
+  fi
+}
+
+elapsed() {
+  echo $(($(nowms) - $1))
+}
+
+printElapsed() {
+  local name=$1
+  local start=$2
+  local duration=$(elapsed $start)
+  local seconds=$((duration / 1000))
+  local ms=$((duration % 1000))
+  echodate "${name}: ${seconds}.${ms}s"
+}
+
 write_junit() {
   # Doesn't make any sense if we don't know a testname
   if [ -z "${TEST_NAME:-}" ]; then return; fi

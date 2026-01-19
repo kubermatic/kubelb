@@ -1,0 +1,135 @@
+# Copyright 2026 The KubeLB Authors.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# Negative Test: Wrong IngressClass Should Not Create Route CRD
+# Verifies:
+# - Ingress with non-kubelb ingressClassName is NOT processed
+# - No Route CRD is created in kubelb cluster
+apiVersion: chainsaw.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: wrong-ingressclass-no-route
+  labels:
+    all:
+    test: wrong-class
+    resource: ingress
+    layer: layer7
+    category: negative
+spec:
+  description: |
+    Negative test verifying that Ingress with ingressClassName other than 'kubelb'
+    does NOT create Route CRD in kubelb cluster. Only Ingresses with kubelb class
+    should be processed by the CCM.
+  bindings:
+    - name: name
+      value: echo-nginx-class
+    - name: message
+      value: "hello-from-nginx-class"
+    - name: kubelb_namespace
+      value: tenant-primary
+  steps:
+    # Step 1: Deploy echo server on tenant1
+    - name: deploy-echo-server
+      description: Deploy echo server
+      cluster: tenant1
+      try:
+        - apply:
+            file: ../../../../../testdata/deployments/echo-server.yaml
+        - apply:
+            file: ../../../../../testdata/services/echo-clusterip.yaml
+        - assert:
+            timeout: 60s
+            resource:
+              apiVersion: apps/v1
+              kind: Deployment
+              metadata:
+                name: echo-nginx-class
+                namespace: default
+              status:
+                readyReplicas: 1
+
+    # Step 2: Create Ingress with nginx class (NOT kubelb)
+    - name: create-ingress-wrong-class
+      description: Create Ingress with nginx ingressClassName
+      cluster: tenant1
+      try:
+        - script:
+            skipCommandOutput: true
+            timeout: 60s
+            content: |
+              set -e
+              cat <<EOF | kubectl apply -f -
+              apiVersion: networking.k8s.io/v1
+              kind: Ingress
+              metadata:
+                name: echo-nginx-class
+                namespace: default
+              spec:
+                ingressClassName: nginx
+                rules:
+                  - host: wrong-class.example.com
+                    http:
+                      paths:
+                        - path: /
+                          pathType: Prefix
+                          backend:
+                            service:
+                              name: echo-nginx-class
+                              port:
+                                number: 80
+              EOF
+              echo "Created Ingress with nginx class"
+            check:
+              ($error == null): true
+
+    # Step 3: Wait and verify NO Route CRD is created
+    - name: verify-no-route-crd
+      description: Verify NO Route CRD exists for nginx-class Ingress
+      cluster: kubelb
+      try:
+        - script:
+            skipCommandOutput: true
+            timeout: 15s
+            content: |
+              set -e
+              NAMESPACE="tenant-primary"
+              INGRESS_NAME="echo-nginx-class"
+
+              # Wait 2 seconds to ensure CCM has time to process (if it would)
+              echo "Waiting 2s to ensure CCM has time to process..."
+              sleep 2
+
+              # Check that NO Route CRD exists for this Ingress
+              ROUTE=$(kubectl get routes.kubelb.k8c.io -n "$NAMESPACE" \
+                -l kubelb.k8c.io/origin-name="$INGRESS_NAME" -o name 2>/dev/null | head -1)
+
+              if [ -n "$ROUTE" ]; then
+                echo "FAILED: Route CRD was created for nginx-class Ingress"
+                kubectl get $ROUTE -n "$NAMESPACE" -o yaml
+                exit 1
+              fi
+
+              echo "SUCCESS: No Route CRD created for nginx-class Ingress"
+              echo "Current Route CRDs in $NAMESPACE:"
+              kubectl get routes.kubelb.k8c.io -n "$NAMESPACE" --no-headers 2>/dev/null || echo "  (none)"
+              exit 0
+            check:
+              ($error == null): true
+      finally:
+        - script:
+            skipCommandOutput: true
+            cluster: tenant1
+            timeout: 60s
+            content: |
+              kubectl delete ingress echo-nginx-class -n default --ignore-not-found

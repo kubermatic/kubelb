@@ -1,6 +1,0 @@
-resources:
-- ../../../../../config/kubelb/
-images:
-- name: "controller"
-  newName: "kubermatic.io/kubelb"
-  newTag: "e2e"

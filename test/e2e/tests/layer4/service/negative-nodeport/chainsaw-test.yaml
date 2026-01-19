@@ -1,0 +1,98 @@
+# Copyright 2026 The KubeLB Authors.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# Negative Test: NodePort Service Should Not Create LoadBalancer CRD
+# Verifies:
+# - NodePort services do NOT trigger LoadBalancer CRD creation
+# - Only LoadBalancer type services are processed by kubelb-ccm
+apiVersion: chainsaw.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: nodeport-no-loadbalancer-crd
+  labels:
+    all:
+    test: negative-nodeport
+    resource: service
+    layer: layer4
+spec:
+  description: |
+    Negative test verifying that NodePort services do NOT create
+    LoadBalancer CRDs in the kubelb cluster. Only LoadBalancer type
+    services should be processed by the CCM.
+  bindings:
+    - name: name
+      value: echo-nodeport
+    - name: kubelb_namespace
+      value: tenant-primary
+  steps:
+    # Step 1: Create NodePort service (NOT LoadBalancer)
+    - name: create-nodeport-service
+      description: Create NodePort service pointing to echo-shared
+      cluster: tenant1
+      try:
+        - apply:
+            resource:
+              apiVersion: v1
+              kind: Service
+              metadata:
+                name: ($name)
+                namespace: default
+              spec:
+                type: NodePort
+                selector:
+                  app: echo-shared
+                ports:
+                  - port: 80
+                    targetPort: 5678
+        - assert:
+            timeout: 60s
+            resource:
+              apiVersion: v1
+              kind: Service
+              metadata:
+                name: ($name)
+                namespace: default
+              spec:
+                type: NodePort
+
+    # Step 2: Verify NO LoadBalancer CRD is created
+    - name: verify-no-loadbalancer-crd
+      description: Verify NO LoadBalancer CRD exists for NodePort service
+      cluster: kubelb
+      try:
+        - script:
+            skipCommandOutput: true
+            timeout: 60s
+            content: |
+              set -e
+              NAMESPACE="tenant-primary"
+              SERVICE_NAME="echo-nodeport"
+
+              # Wait a bit to ensure CCM has time to process (if it would)
+              sleep 2
+
+              # Check that NO LoadBalancer CRD exists for this service
+              LB=$(kubectl get loadbalancers.kubelb.k8c.io -n "$NAMESPACE" \
+                -l kubelb.k8c.io/origin-name="$SERVICE_NAME" -o name 2>/dev/null || true)
+
+              if [ -n "$LB" ]; then
+                echo "FAILED: LoadBalancer CRD was created for NodePort service"
+                kubectl get $LB -n "$NAMESPACE" -o yaml
+                exit 1
+              fi
+
+              echo "SUCCESS: No LoadBalancer CRD created for NodePort service"
+              exit 0
+            check:
+              ($error == null): true

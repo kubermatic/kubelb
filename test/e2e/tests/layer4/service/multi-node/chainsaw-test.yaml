@@ -1,0 +1,210 @@
+# Copyright 2026 The KubeLB Authors.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# Multi-node L4 Service LoadBalancer Test
+# Verifies:
+# - Multiple pod replicas are deployed
+# - All endpoints are synced to LoadBalancer CRD
+# - LoadBalancer correctly routes to multiple backends
+apiVersion: chainsaw.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: multi-node-service-loadbalancer
+  labels:
+    all:
+    test: multi-node
+    resource: service
+    layer: layer4
+spec:
+  description: |
+    Test LoadBalancer with multiple backend endpoints.
+    Deploys echo server with 3 replicas, creates LoadBalancer,
+    verifies all endpoints are synced and service responds correctly.
+  bindings:
+    - name: name
+      value: echo-multinode
+    - name: message
+      value: "hello-from-multinode"
+    - name: replicas
+      value: 3
+    - name: kubelb_namespace
+      value: tenant-primary
+  steps:
+    # Step 1: Deploy echo server with multiple replicas
+    - name: deploy-multi-replica-server
+      description: Deploy echo server with 3 replicas
+      cluster: tenant1
+      try:
+        - apply:
+            file: ../../../../testdata/deployments/echo-server-replicas.yaml
+        - assert:
+            timeout: 60s
+            resource:
+              apiVersion: apps/v1
+              kind: Deployment
+              metadata:
+                name: ($name)
+                namespace: default
+              status:
+                readyReplicas: ($replicas)
+
+    # Step 2: Create LoadBalancer service
+    - name: create-loadbalancer-service
+      description: Create LoadBalancer service
+      cluster: tenant1
+      try:
+        - apply:
+            file: ../../../../testdata/services/echo-lb.yaml
+        - assert:
+            timeout: 60s
+            resource:
+              apiVersion: v1
+              kind: Service
+              metadata:
+                name: ($name)
+                namespace: default
+              status:
+                loadBalancer:
+                  ingress:
+                    - {}
+
+    # Step 3: Verify LoadBalancer CRD exists with endpoints
+    - name: verify-loadbalancer-crd
+      description: Verify LoadBalancer CRD exists with endpoint reference
+      cluster: kubelb
+      try:
+        - script:
+            skipCommandOutput: true
+            timeout: 60s
+            content: |
+              set -e
+              NAMESPACE="tenant-primary"
+              SERVICE_NAME="echo-multinode"
+
+              # Wait for LoadBalancer CRD with endpoint reference
+              for i in $(seq 1 20); do
+                LB=$(kubectl get loadbalancers.kubelb.k8c.io -n "$NAMESPACE" \
+                  -l kubelb.k8c.io/origin-name="$SERVICE_NAME" -o name 2>/dev/null | head -1)
+                if [ -n "$LB" ]; then
+                  ADDR_REF=$(kubectl get $LB -n "$NAMESPACE" -o jsonpath='{.spec.endpoints[0].addressesReference.name}')
+                  if [ -n "$ADDR_REF" ]; then
+                    echo "SUCCESS: LoadBalancer CRD has endpoint reference: $ADDR_REF"
+                    exit 0
+                  fi
+                fi
+                echo "Attempt $i: waiting for LoadBalancer CRD..."
+                sleep 2
+              done
+
+              echo "FAILED: LoadBalancer CRD not found or missing endpoint reference"
+              exit 1
+            check:
+              ($error == null): true
+
+    # Step 4: Verify status propagation
+    - name: verify-status-propagation
+      description: Verify LoadBalancer CRD status matches tenant service status
+      use:
+        template: ../../../../step-templates/layer4/verify-status-propagation.yaml
+        with:
+          bindings:
+            - name: service_name
+              value: ($name)
+            - name: tenant
+              value: tenant1
+            - name: kubelb_namespace
+              value: ($kubelb_namespace)
+
+    # Step 5: Verify tenant cluster has correct endpoint count
+    - name: verify-endpoint-count
+      description: Verify tenant cluster endpoints match replicas
+      cluster: tenant1
+      try:
+        - script:
+            skipCommandOutput: true
+            timeout: 60s
+            content: |
+              set -e
+              SERVICE_NAME="echo-multinode"
+              EXPECTED=3
+
+              for i in $(seq 1 20); do
+                # Count ready addresses in EndpointSlice
+                EP_COUNT=$(kubectl get endpointslices -l kubernetes.io/service-name="$SERVICE_NAME" \
+                  -o jsonpath='{.items[*].endpoints[*].addresses}' 2>/dev/null | jq -s 'add | length' || echo "0")
+                if [ "$EP_COUNT" -eq "$EXPECTED" ]; then
+                  echo "SUCCESS: $EP_COUNT endpoints (expected $EXPECTED)"
+                  exit 0
+                fi
+                echo "Attempt $i: $EP_COUNT endpoints, expected $EXPECTED"
+                sleep 2
+              done
+
+              echo "FAILED: Endpoint count mismatch"
+              exit 1
+            check:
+              ($error == null): true
+
+    # Step 6: Verify HTTP response (any endpoint)
+    - name: verify-http-response
+      description: Verify HTTP response from LoadBalancer
+      use:
+        template: ../../../../step-templates/layer4/verify-http-response.yaml
+        with:
+          bindings:
+            - name: service_name
+              value: ($name)
+            - name: expected
+              value: ($message)
+            - name: port
+              value: "80"
+            - name: tenant
+              value: tenant1
+
+    # Step 7: Verify multiple requests succeed (basic load balancing check)
+    - name: verify-multiple-requests
+      description: Verify multiple requests are handled correctly
+      cluster: tenant1
+      try:
+        - script:
+            skipCommandOutput: true
+            timeout: 60s
+            content: |
+              set -e
+              SERVICE_NAME="echo-multinode"
+              EXPECTED="hello-from-multinode"
+              SUCCESS_COUNT=0
+              TOTAL_REQUESTS=10
+
+              # Get service IP
+              IP=$(kubectl get svc "$SERVICE_NAME" -n default -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+
+              echo "Sending $TOTAL_REQUESTS requests to $IP"
+              for i in $(seq 1 $TOTAL_REQUESTS); do
+                RESPONSE=$(curl -s --max-time 5 "http://${IP}" || true)
+                if echo "$RESPONSE" | grep -q "$EXPECTED"; then
+                  SUCCESS_COUNT=$((SUCCESS_COUNT + 1))
+                fi
+              done
+
+              echo "Successful requests: $SUCCESS_COUNT / $TOTAL_REQUESTS"
+              if [ "$SUCCESS_COUNT" -eq "$TOTAL_REQUESTS" ]; then
+                echo "SUCCESS: All requests returned expected response"
+                exit 0
+              else
+                echo "FAILED: Some requests failed"
+                exit 1
+              fi
+            check:
+              ($error == null): true

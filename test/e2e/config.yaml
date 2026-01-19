@@ -1,0 +1,53 @@
+# Copyright 2026 The KubeLB Authors.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+apiVersion: chainsaw.kyverno.io/v1alpha2
+kind: Configuration
+metadata:
+  name: kubelb-e2e
+spec:
+  # JUnit report configuration
+  report:
+    format: JUNIT-TEST
+    name: chainsaw-report
+    path: ./test/e2e/reports
+
+  # Timeouts for various operations
+  timeouts:
+    apply: 60s
+    assert: 120s
+    cleanup: 60s
+    delete: 30s
+    error: 30s
+    exec: 300s
+
+  # Cleanup resources after tests
+  cleanup:
+    skipDelete: false
+
+  # Execution settings
+  execution:
+    failFast: false
+    repeatCount: 1
+    parallel: 8
+
+  # Discovery settings
+  discovery:
+    testFile: chainsaw-test.yaml
+
+  # Multi-cluster configuration
+  # Clusters are passed via command line flags:
+  #   --cluster kubelb=$KUBECONFIGS_DIR/kubelb.kubeconfig
+  #   --cluster tenant1=$KUBECONFIGS_DIR/tenant1.kubeconfig
+  #   --cluster tenant2=$KUBECONFIGS_DIR/tenant2.kubeconfig

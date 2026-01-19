@@ -72,23 +72,28 @@ func IsValidGatewayAPICRDsChannel(channel string) bool {
 
 // +kubebuilder:rbac:groups=apiextensions.k8s.io,resources=customresourcedefinitions,verbs=get;list;watch;create;update
 func (r *GatewayCRDReconciler) Reconcile(ctx context.Context, req reconcile.Request) (reconcile.Result, error) {
-	if err := r.reconcileGatewayAPICRDs(ctx, req.Name); err != nil {
+	if err := r.reconcileCRD(ctx, req.Name); err != nil {
 		return reconcile.Result{}, err
 	}
 
 	return reconcile.Result{}, nil
 }
 
-func (r *GatewayCRDReconciler) reconcileGatewayAPICRDs(ctx context.Context, name string) error {
-	GatewayAPICRD, exists := r.GatewayAPICRDs[name]
-	if !exists {
-		return fmt.Errorf("CRD %s not found in Gateway API CRDs", name)
+func (r *GatewayCRDReconciler) reconcileCRD(ctx context.Context, name string) error {
+	var crd *apiextensionsv1.CustomResourceDefinition
+	var source string
+
+	if c, exists := r.GatewayAPICRDs[name]; exists {
+		crd = c
+		source = "Gateway API"
+	} else {
+		return fmt.Errorf("CRD %s not found in Gateway API or Envoy Gateway CRDs", name)
 	}
 
-	r.Log.Info("Reconciling Gateway API CRD", "name", name)
+	r.Log.Info("Reconciling CRD", "name", name, "source", source)
 
 	reconcilers := []reconciling.NamedCustomResourceDefinitionReconcilerFactory{}
-	reconcilers = append(reconcilers, r.gatewayAPICRDReconciler(name, GatewayAPICRD))
+	reconcilers = append(reconcilers, r.crdReconciler(name, crd))
 
 	if err := reconciling.ReconcileCustomResourceDefinitions(ctx, reconcilers, "", r.Client); err != nil {
 		return fmt.Errorf("failed to reconcile CRD %s: %w", name, err)
@@ -97,7 +102,7 @@ func (r *GatewayCRDReconciler) reconcileGatewayAPICRDs(ctx context.Context, name
 	return nil
 }
 
-func (r *GatewayCRDReconciler) gatewayAPICRDReconciler(name string, source *apiextensionsv1.CustomResourceDefinition) reconciling.NamedCustomResourceDefinitionReconcilerFactory {
+func (r *GatewayCRDReconciler) crdReconciler(name string, source *apiextensionsv1.CustomResourceDefinition) reconciling.NamedCustomResourceDefinitionReconcilerFactory {
 	return func() (string, reconciling.CustomResourceDefinitionReconciler) {
 		return name, func(crd *apiextensionsv1.CustomResourceDefinition) (*apiextensionsv1.CustomResourceDefinition, error) {
 			crd.Labels = source.Labels
@@ -167,6 +172,10 @@ func parseCRDFile(dir, filename string) (*apiextensionsv1.CustomResourceDefiniti
 }
 
 func (r *GatewayCRDReconciler) resourceFilter() predicate.Predicate {
+	isRelevantGroup := func(group string) bool {
+		return group == gwapiv1.GroupName
+	}
+
 	return predicate.Funcs{
 		CreateFunc: func(_ event.CreateEvent) bool {
 			return false // Only reconcile on update and delete
@@ -175,12 +184,12 @@ func (r *GatewayCRDReconciler) resourceFilter() predicate.Predicate {
 			oldCRD, okOld := e.ObjectOld.(*apiextensionsv1.CustomResourceDefinition)
 			newCRD, okNew := e.ObjectNew.(*apiextensionsv1.CustomResourceDefinition)
 			return okOld && okNew &&
-				oldCRD.Spec.Group == gwapiv1.GroupName &&
-				newCRD.Spec.Group == gwapiv1.GroupName
+				isRelevantGroup(oldCRD.Spec.Group) &&
+				isRelevantGroup(newCRD.Spec.Group)
 		},
 		DeleteFunc: func(e event.DeleteEvent) bool {
 			crd, ok := e.Object.(*apiextensionsv1.CustomResourceDefinition)
-			return ok && crd.Spec.Group == gwapiv1.GroupName
+			return ok && isRelevantGroup(crd.Spec.Group)
 		},
 	}
 }
@@ -210,4 +219,39 @@ func (r *GatewayCRDReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		WatchesRawSource(
 			source.Channel(bootstrapping, &handler.EnqueueRequestForObject{}),
 		).Complete(r)
+}
+
+// InstallCRDs installs Gateway API and Envoy Gateway CRDs synchronously.
+// Call this before mgr.Start() to ensure CRDs exist before controllers watch them.
+func InstallCRDs(ctx context.Context, c client.Client, log logr.Logger, channel GatewayAPIChannel) error {
+	gatewayAPICRDs, err := loadGatewayAPICRDs(channel)
+	if err != nil {
+		return fmt.Errorf("failed to load Gateway API CRDs: %w", err)
+	}
+
+	// Install all CRDs
+	allCRDs := make([]reconciling.NamedCustomResourceDefinitionReconcilerFactory, 0, len(gatewayAPICRDs))
+	for name, crd := range gatewayAPICRDs {
+		allCRDs = append(allCRDs, crdReconcilerFactory(name, crd))
+	}
+
+	log.Info("Installing CRDs", "gatewayAPI", len(gatewayAPICRDs))
+	if err := reconciling.ReconcileCustomResourceDefinitions(ctx, allCRDs, "", c); err != nil {
+		return fmt.Errorf("failed to install CRDs: %w", err)
+	}
+
+	log.Info("CRDs installed successfully")
+	return nil
+}
+
+func crdReconcilerFactory(name string, source *apiextensionsv1.CustomResourceDefinition) reconciling.NamedCustomResourceDefinitionReconcilerFactory {
+	return func() (string, reconciling.CustomResourceDefinitionReconciler) {
+		return name, func(crd *apiextensionsv1.CustomResourceDefinition) (*apiextensionsv1.CustomResourceDefinition, error) {
+			crd.Labels = source.Labels
+			crd.Annotations = source.Annotations
+			crd.Spec = source.Spec
+			crd.Spec.Conversion = &apiextensionsv1.CustomResourceConversion{Strategy: apiextensionsv1.NoneConverter}
+			return crd, nil
+		}
+	}
 }

@@ -1,0 +1,101 @@
+# Copyright 2026 The KubeLB Authors.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# SyncSecret Unlabeled Negative Test
+# Verifies:
+# - Secret WITHOUT kubelb.k8c.io/managed-by label does NOT create SyncSecret
+# - No propagation occurs for unlabeled secrets
+apiVersion: chainsaw.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: syncsecret-unlabeled
+  labels:
+    all:
+    test: syncsecret-unlabeled
+    resource: syncsecret
+spec:
+  description: |
+    Negative test - verify unlabeled secrets are NOT synced.
+    Creates secret without kubelb.k8c.io/managed-by label,
+    waits and asserts NO SyncSecret is created.
+  bindings:
+    - name: name
+      value: test-secret-unlabeled
+  steps:
+    # Step 1: Create unlabeled secret
+    - name: create-unlabeled-secret
+      description: Create secret WITHOUT kubelb managed-by label
+      cluster: tenant1
+      try:
+        - apply:
+            file: ../../../../testdata/secrets/unlabeled-secret.yaml
+
+    # Step 2: Wait and verify NO SyncSecret created
+    - name: verify-no-syncsecret
+      description: Verify SyncSecret is NOT created
+      cluster: tenant1
+      try:
+        - script:
+            skipCommandOutput: true
+            timeout: 60s
+            content: |
+              set -e
+              # Wait 2 seconds to give time for potential (unwanted) sync
+              echo "Waiting 2s to verify no SyncSecret is created..."
+              sleep 2
+
+              # Check that no SyncSecret exists
+              COUNT=$(kubectl get syncsecrets.kubelb.k8c.io test-secret-unlabeled --no-headers 2>/dev/null | wc -l | tr -d ' ' || echo "0")
+              if [ "$COUNT" -eq 0 ]; then
+                echo "SUCCESS: No SyncSecret created for unlabeled secret"
+                exit 0
+              fi
+
+              echo "FAILED: SyncSecret was unexpectedly created"
+              kubectl get syncsecrets.kubelb.k8c.io test-secret-unlabeled -o yaml
+              exit 1
+            check:
+              ($error == null): true
+
+    # Step 3: Also verify no secret in kubelb
+    - name: verify-no-secret-kubelb
+      description: Verify no secret propagated to kubelb
+      cluster: kubelb
+      try:
+        - script:
+            skipCommandOutput: true
+            timeout: 60s
+            content: |
+              set -e
+              COUNT=$(kubectl get secrets -n tenant-primary -l kubelb.k8c.io/origin-name=test-secret-unlabeled --no-headers 2>/dev/null | wc -l | tr -d ' ')
+              if [ "$COUNT" -eq 0 ]; then
+                echo "SUCCESS: No secret in kubelb for unlabeled secret"
+                exit 0
+              fi
+
+              echo "FAILED: Secret unexpectedly propagated to kubelb"
+              exit 1
+            check:
+              ($error == null): true
+      finally:
+        - script:
+            cluster: tenant1
+            skipCommandOutput: true
+            content: |
+              kubectl delete secret test-secret-unlabeled -n default --ignore-not-found
+        - script:
+            cluster: kubelb
+            skipCommandOutput: true
+            content: |
+              kubectl delete secrets -n tenant-primary -l kubelb.k8c.io/origin-name=test-secret-unlabeled --ignore-not-found

@@ -23,4 +23,4 @@ boilerplate \
   -exclude charts \
   -exclude Makefile \
   -exclude api/ee \
-  -exclude internal/resources/crds/gatewayapi
+  -exclude internal/resources/crds

@@ -1,0 +1,143 @@
+# Copyright 2026 The KubeLB Authors.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# Graceful Shutdown Test
+# Verifies:
+# - Config.spec.envoyProxy.gracefulShutdown enables shutdown-manager sidecar
+# - terminationGracePeriodSeconds defaults to 300
+# - shutdownManagerImage defaults to docker.io/envoyproxy/gateway:v1.3.0
+# - Cleanup reverts to default
+apiVersion: chainsaw.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: graceful-shutdown
+  labels:
+    all:
+    isolated: "true"
+    resource: config
+    feature: graceful-shutdown
+spec:
+  concurrent: false
+  description: |
+    Test that enabling graceful shutdown in Config.spec.envoyProxy.gracefulShutdown
+    adds shutdown-manager sidecar to Envoy pods.
+  steps:
+    - name: reset-configs
+      description: Reset Config and Tenant to default state
+      use:
+        template: ../../../../step-templates/isolated/reset-configs.yaml
+        with:
+          bindings:
+            - name: manifestsPath
+              value: ../../../../manifests
+
+    - name: patch-config-enable-graceful-shutdown
+      description: Enable graceful shutdown in Config
+      cluster: kubelb
+      try:
+        - script:
+            skipCommandOutput: true
+            timeout: 60s
+            content: |
+              set -e
+              kubectl patch config default -n kubelb --type=merge -p '{
+                "spec": {
+                  "envoyProxy": {
+                    "gracefulShutdown": {
+                      "disabled": false,
+                      "drainTimeout": "30s",
+                      "minDrainDuration": "5s"
+                    }
+                  }
+                }
+              }'
+              echo "SUCCESS: Config patched with graceful shutdown"
+            check:
+              ($error == null): true
+
+    - name: wait-for-envoy-rollout
+      description: Wait for Envoy deployment to roll out
+      cluster: kubelb
+      try:
+        - script:
+            skipCommandOutput: true
+            timeout: 60s
+            content: |
+              set -e
+              kubectl rollout status deployment/envoy-tenant-primary -n tenant-primary --timeout=90s
+              echo "SUCCESS: Envoy rollout complete"
+            check:
+              ($error == null): true
+
+    - name: verify-shutdown-manager-sidecar
+      description: Verify Envoy pods have shutdown-manager sidecar
+      cluster: kubelb
+      try:
+        - script:
+            skipCommandOutput: true
+            timeout: 60s
+            content: |
+              set -e
+
+              for i in $(seq 1 10); do
+                POD=$(kubectl get pods -n tenant-primary -l app.kubernetes.io/name=tenant-primary -o name 2>/dev/null | head -1)
+                if [ -z "$POD" ]; then
+                  echo "Attempt $i: No Envoy pod found, waiting..."
+                  sleep 2
+                  continue
+                fi
+
+                # Check for shutdown-manager container
+                SIDECAR=$(kubectl get $POD -n tenant-primary -o jsonpath='{.spec.containers[?(@.name=="shutdown-manager")].name}' 2>/dev/null)
+                if [ "$SIDECAR" = "shutdown-manager" ]; then
+                  echo "SUCCESS: shutdown-manager sidecar found"
+
+                  # Verify terminationGracePeriodSeconds (default: 300)
+                  TGP=$(kubectl get $POD -n tenant-primary -o jsonpath='{.spec.terminationGracePeriodSeconds}')
+                  if [ "$TGP" = "300" ]; then
+                    echo "SUCCESS: terminationGracePeriodSeconds is 300"
+                  else
+                    echo "FAILED: terminationGracePeriodSeconds is '$TGP', expected 300"
+                    exit 1
+                  fi
+
+                  # Verify shutdown-manager image (default: docker.io/envoyproxy/gateway:v1.3.0)
+                  IMG=$(kubectl get $POD -n tenant-primary -o jsonpath='{.spec.containers[?(@.name=="shutdown-manager")].image}')
+                  if [ "$IMG" = "docker.io/envoyproxy/gateway:v1.3.0" ]; then
+                    echo "SUCCESS: shutdown-manager image is docker.io/envoyproxy/gateway:v1.3.0"
+                    exit 0
+                  else
+                    echo "FAILED: shutdown-manager image is '$IMG', expected docker.io/envoyproxy/gateway:v1.3.0"
+                    exit 1
+                  fi
+                fi
+
+                echo "Attempt $i: waiting for shutdown-manager sidecar..."
+                sleep 2
+              done
+
+              echo "FAILED: shutdown-manager sidecar not found"
+              kubectl get pods -n tenant-primary -l app.kubernetes.io/name=tenant-primary -o yaml
+              exit 1
+            check:
+              ($error == null): true
+      finally:
+        - script:
+            skipCommandOutput: true
+            timeout: 90s
+            content: |
+              set -e
+              kubectl replace -f ../../../../manifests/kubelb-manager/manifests.yaml
+              kubectl rollout status deployment/envoy-tenant-primary -n tenant-primary --timeout=90s || true
+              echo "Cleanup complete: Config reverted"

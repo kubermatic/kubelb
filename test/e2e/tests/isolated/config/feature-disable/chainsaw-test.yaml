@@ -1,0 +1,114 @@
+# Copyright 2026 The KubeLB Authors.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# Feature Disable Test
+# Verifies:
+# - Config.spec.loadBalancer.disable prevents LB processing
+# - Config.spec.ingress.disable prevents Ingress processing
+apiVersion: chainsaw.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: feature-disable
+  labels:
+    all:
+    isolated: "true"
+    resource: config
+    feature: feature-disable
+spec:
+  concurrent: false
+  description: |
+    Test that Config.spec.loadBalancer.disable and Config.spec.ingress.disable
+    prevent processing of those resource types.
+  steps:
+    - name: reset-configs
+      description: Reset Config and Tenant to default state
+      use:
+        template: ../../../../step-templates/isolated/reset-configs.yaml
+        with:
+          bindings:
+            - name: manifestsPath
+              value: ../../../../manifests
+
+    - name: patch-config-disable-lb
+      description: Disable LoadBalancer processing in Config
+      cluster: kubelb
+      try:
+        - script:
+            skipCommandOutput: true
+            timeout: 60s
+            content: |
+              set -e
+              kubectl patch config default -n kubelb --type=merge -p '{
+                "spec": {
+                  "loadBalancer": {
+                    "disable": true
+                  }
+                }
+              }'
+              echo "SUCCESS: LoadBalancer disabled in Config"
+            check:
+              ($error == null): true
+
+    - name: create-loadbalancer-service
+      description: Create LoadBalancer service pointing to echo-shared (should not get IP)
+      cluster: tenant1
+      try:
+        - apply:
+            resource:
+              apiVersion: v1
+              kind: Service
+              metadata:
+                name: echo-disable-lb
+                namespace: default
+              spec:
+                type: LoadBalancer
+                selector:
+                  app: echo-shared
+                ports:
+                  - port: 80
+                    targetPort: 5678
+
+    - name: verify-service-no-ip
+      description: Verify tenant service has no external IP after 5s (LB disabled)
+      cluster: tenant1
+      try:
+        - script:
+            skipCommandOutput: true
+            timeout: 60s
+            content: |
+              set -e
+              # Wait to give time for IP assignment if LB processing was enabled
+              sleep 2
+              IP=$(kubectl get svc echo-disable-lb -n default -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null)
+              if [ -z "$IP" ]; then
+                echo "SUCCESS: Service has no external IP (LB disabled)"
+                exit 0
+              fi
+              echo "FAILED: Service got IP despite LB being disabled: $IP"
+              exit 1
+            check:
+              ($error == null): true
+      finally:
+        - script:
+            cluster: tenant1
+            skipCommandOutput: true
+            timeout: 60s
+            content: |
+              kubectl delete svc echo-disable-lb -n default --ignore-not-found
+        - script:
+            cluster: kubelb
+            skipCommandOutput: true
+            timeout: 60s
+            content: |
+              kubectl replace -f ../../../../manifests/kubelb-manager/manifests.yaml

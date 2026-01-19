@@ -11,9 +11,16 @@ cover.out
 kubelb-*.tgz
 __debug*
 charts/*/charts
-.claude
-CLAUDE.md
 
 # Generated binaries (root only)
 /kubelb
 /ccm
+
+# E2e
+.e2e-kubeconfigs
+chainsaw-report.xml
+
+## AI generated files
+.claude
+prd.md
+claude-plan.md

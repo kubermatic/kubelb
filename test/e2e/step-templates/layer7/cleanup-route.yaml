@@ -1,0 +1,74 @@
+# Copyright 2026 The KubeLB Authors.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# Step Template: Delete Route (HTTPRoute/TCPRoute/GRPCRoute/UDPRoute/TLSRoute) and verify Route CRD removed
+# Required bindings:
+#   - route_name: Name of the route
+#   - route_kind: Kind (HTTPRoute, TCPRoute, GRPCRoute, UDPRoute, TLSRoute)
+#   - namespace: Namespace of the route
+#   - tenant: Tenant cluster name (e.g., tenant1)
+#   - kubelb_namespace: Namespace in kubelb cluster where Route CRD exists (e.g., tenant-primary)
+apiVersion: chainsaw.kyverno.io/v1alpha1
+kind: StepTemplate
+metadata:
+  name: cleanup-route
+spec:
+  bindings:
+    - name: namespace
+      value: default
+  try:
+    # Delete route from tenant cluster
+    - script:
+        cluster: ($tenant)
+        timeout: 5s
+        env:
+          - name: ROUTE_NAME
+            value: ($route_name)
+          - name: ROUTE_KIND
+            value: ($route_kind)
+          - name: NAMESPACE
+            value: ($namespace)
+        content: |
+          # Convert kind to lowercase for kubectl
+          RESOURCE=$(echo "$ROUTE_KIND" | tr '[:upper:]' '[:lower:]')
+          kubectl delete "$RESOURCE" "$ROUTE_NAME" -n "$NAMESPACE" --wait=false 2>/dev/null || true
+          echo "$ROUTE_KIND deletion initiated"
+        check:
+          ($error == null): true
+    # Verify Route CRD removed from kubelb
+    - script:
+        cluster: kubelb
+        timeout: 10s
+        env:
+          - name: ROUTE_NAME
+            value: ($route_name)
+          - name: LB_NS
+            value: ($kubelb_namespace)
+        content: |
+          set -e
+          for i in $(seq 1 10); do
+            ROUTE=$(kubectl get routes.kubelb.k8c.io -n "$LB_NS" \
+              -l kubelb.k8c.io/origin-name="$ROUTE_NAME" -o name 2>/dev/null | head -1)
+            if [ -z "$ROUTE" ]; then
+              echo "SUCCESS: Route CRD removed"
+              exit 0
+            fi
+            echo "Attempt $i: Route CRD still exists, waiting..."
+            sleep 1
+          done
+          echo "FAILED: Route CRD not removed"
+          kubectl get routes.kubelb.k8c.io -n "$LB_NS" -o yaml
+          exit 1
+        check:
+          ($error == null): true
