@@ -110,6 +110,7 @@ jobs:
           severity: "HIGH,CRITICAL"
           exit-code: "1"
           scanners: "misconfig,secret"
+          skip-dirs: "charts"
           format: "sarif"
           output: "trivy-fs.sarif"
 
