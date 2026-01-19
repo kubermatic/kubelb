@@ -63,8 +63,9 @@ builds:
       - -trimpath
 
 # Source tarball for reproducible builds
+# Disabled: requires full git history which CI shallow clones don't have
 source:
-  enabled: true
+  enabled: false
 
 gomod:
   proxy: false
