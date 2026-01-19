@@ -13,7 +13,7 @@ dependencies:
   - name: ingress-nginx
     repository: https://kubernetes.github.io/ingress-nginx
     condition: ingress-nginx.enabled
-    version: 4.13.0
+    version: 4.14.1
   - name: gateway-helm
     repository: oci://docker.io/envoyproxy
     condition: envoy-gateway.enabled
