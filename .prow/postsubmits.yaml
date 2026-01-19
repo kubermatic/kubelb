@@ -20,8 +20,6 @@ postsubmits:
     clone_uri: "ssh://git@github.com/kubermatic/kubelb.git"
     branches:
       - ^main
-      # Match on tags
-      - ^v\d+\.\d+\.\d+.*
     reporter_config:
       slack:
         channel: dev-kubelb
@@ -67,36 +65,3 @@ postsubmits:
             requests:
               cpu: 100m
               memory: 1Gi
-
-  - name: ci-push-kubelb-charts
-    always_run: true
-    decorate: true
-    clone_uri: "ssh://git@github.com/kubermatic/kubelb.git"
-    branches:
-      # Match on tags
-      - ^v\d+\.\d+\.\d+.*
-    reporter_config:
-      slack:
-        channel: dev-kubelb
-    labels:
-      preset-docker-push: "true"
-      preset-goproxy: "true"
-      preset-vault: "true"
-    spec:
-      containers:
-        - image: quay.io/kubermatic/build:go-1.25-node-22-kind-0.30-5
-          command:
-            - /bin/bash
-            - -c
-            - |
-              set -euo pipefail
-
-              # Calculate Git Tag.
-              GIT_HEAD_TAG="$(git tag -l "${PULL_BASE_REF:-}")"
-              RELEASE_TAG="${TAG:-$GIT_HEAD_TAG}"
-
-              make IMAGE_TAG=$RELEASE_TAG release-charts
-          resources:
-            requests:
-              cpu: 100m
-              memory: 500m

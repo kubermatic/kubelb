@@ -1,0 +1,70 @@
+version: 2
+
+updates:
+  # Go modules
+  - package-ecosystem: "gomod"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 5
+    groups:
+      # Group minor/patch updates together
+      go-minor:
+        patterns:
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"
+    commit-message:
+      prefix: "deps"
+
+  # GitHub Actions
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 5
+    groups:
+      # Group all action updates together
+      actions:
+        patterns:
+          - "*"
+    commit-message:
+      prefix: "ci"
+
+  # Docker images (Dockerfiles)
+  - package-ecosystem: "docker"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "docker"
+
+  # Helm chart dependencies
+  - package-ecosystem: "helm"
+    directory: "/charts/kubelb-manager"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    commit-message:
+      prefix: "helm"
+
+  - package-ecosystem: "helm"
+    directory: "/charts/kubelb-ccm"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    commit-message:
+      prefix: "helm"
+
+  - package-ecosystem: "helm"
+    directory: "/charts/kubelb-addons"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    commit-message:
+      prefix: "helm"

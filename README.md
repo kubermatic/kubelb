@@ -5,6 +5,12 @@
 
 # KubeLB
 
+[![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/kubermatic/kubelb/badge)](https://scorecard.dev/viewer/?uri=github.com/kubermatic/kubelb)
+[![CodeQL](https://github.com/kubermatic/kubelb/actions/workflows/codeql-analysis.yml/badge.svg)](https://github.com/kubermatic/kubelb/actions/workflows/codeql-analysis.yml)
+[![Go Report Card](https://goreportcard.com/badge/k8c.io/kubelb)](https://goreportcard.com/report/k8c.io/kubelb)
+[![GitHub license](https://img.shields.io/github/license/kubermatic/kubelb.svg)](https://github.com/kubermatic/kubelb/blob/main/LICENSE)
+[![GitHub stars](https://img.shields.io/github/stars/kubermatic/kubelb.svg)](https://github.com/kubermatic/kubelb/stargazers)
+
 ## Overview
 
 KubeLB is a project by Kubermatic, it is a Kubernetes native tool, responsible for centrally managing Layer 4 and 7 load balancing configurations for Kubernetes clusters across multi-cloud and on-premise environments.
