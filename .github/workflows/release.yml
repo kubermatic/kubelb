@@ -241,4 +241,3 @@ jobs:
           SIGN_CHARTS: "true"
         run: |
           make IMAGE_TAG=${{ needs.release.outputs.version }} release-charts
-
