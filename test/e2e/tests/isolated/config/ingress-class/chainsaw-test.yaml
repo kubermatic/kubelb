@@ -1,0 +1,164 @@
+# Copyright 2026 The KubeLB Authors.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# Ingress Class Test
+# Verifies:
+# - Config.spec.ingress.class sets ingressClassName on Ingress in management cluster
+apiVersion: chainsaw.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: ingress-class
+  labels:
+    all:
+    isolated: "true"
+    resource: config
+    feature: ingress-class
+spec:
+  concurrent: false
+  description: |
+    Test that Config.spec.ingress.class sets the default ingressClassName
+    for created Ingress resources.
+  bindings:
+    - name: name
+      value: echo-ingclass
+  steps:
+    - name: reset-configs
+      description: Reset Config and Tenant to default state
+      use:
+        template: ../../../../step-templates/isolated/reset-configs.yaml
+        with:
+          bindings:
+            - name: manifestsPath
+              value: ../../../../manifests
+
+    - name: patch-config-with-ingress-class
+      description: Set ingress.class in Config
+      cluster: kubelb
+      try:
+        - script:
+            skipCommandOutput: true
+            timeout: 60s
+            content: |
+              set -e
+              kubectl patch config default -n kubelb --type=merge -p '{
+                "spec": {
+                  "ingress": {
+                    "class": "test-ingress-class"
+                  }
+                }
+              }'
+              echo "SUCCESS: Config patched with ingress class"
+            check:
+              ($error == null): true
+
+    - name: create-service
+      description: Create ClusterIP service pointing to echo-shared
+      cluster: tenant1
+      try:
+        - apply:
+            resource:
+              apiVersion: v1
+              kind: Service
+              metadata:
+                name: echo-ingclass
+                namespace: default
+              spec:
+                type: ClusterIP
+                selector:
+                  app: echo-shared
+                ports:
+                  - port: 80
+                    targetPort: 5678
+
+    - name: create-ingress
+      description: Create Ingress with kubelb class
+      cluster: tenant1
+      try:
+        - apply:
+            resource:
+              apiVersion: networking.k8s.io/v1
+              kind: Ingress
+              metadata:
+                name: echo-ingclass
+                namespace: default
+              spec:
+                ingressClassName: kubelb
+                rules:
+                  - host: ingclass.test.nip.io
+                    http:
+                      paths:
+                        - path: /
+                          pathType: Prefix
+                          backend:
+                            service:
+                              name: echo-ingclass
+                              port:
+                                number: 80
+
+    - name: verify-ingress-class
+      description: Verify Ingress in management cluster has configured ingress class
+      cluster: kubelb
+      try:
+        - script:
+            skipCommandOutput: true
+            timeout: 60s
+            content: |
+              set -e
+              NAMESPACE="tenant-primary"
+
+              for i in $(seq 1 20); do
+                # Get the generated Ingress name from Route status
+                ROUTE=$(kubectl get routes.kubelb.k8c.io -n "$NAMESPACE" \
+                  -l kubelb.k8c.io/origin-name=echo-ingclass -o name 2>/dev/null | head -1)
+
+                if [ -n "$ROUTE" ]; then
+                  # Get the generated Ingress name from Route status
+                  INGRESS_NAME=$(kubectl get $ROUTE -n "$NAMESPACE" \
+                    -o jsonpath='{.status.resources.route.generatedName}')
+
+                  if [ -n "$INGRESS_NAME" ]; then
+                    # Check ingressClassName on the actual Ingress in management cluster
+                    CLASS=$(kubectl get ingress "$INGRESS_NAME" -n "$NAMESPACE" \
+                      -o jsonpath='{.spec.ingressClassName}' 2>/dev/null)
+                    if [ "$CLASS" = "test-ingress-class" ]; then
+                      echo "SUCCESS: Ingress '$INGRESS_NAME' has ingressClassName 'test-ingress-class'"
+                      exit 0
+                    fi
+                    echo "Attempt $i: Ingress '$INGRESS_NAME' has ingressClassName '$CLASS'"
+                  fi
+                fi
+
+                echo "Attempt $i: waiting for Ingress..."
+                sleep 2
+              done
+
+              echo "FAILED: Ingress not found or ingressClassName not set"
+              kubectl get routes.kubelb.k8c.io -n "$NAMESPACE" -o yaml
+              kubectl get ingress -n "$NAMESPACE" -o yaml
+              exit 1
+            check:
+              ($error == null): true
+      finally:
+        - script:
+            cluster: tenant1
+            skipCommandOutput: true
+            timeout: 60s
+            content: |
+              kubectl delete ingress/echo-ingclass svc/echo-ingclass -n default --ignore-not-found
+        - script:
+            cluster: kubelb
+            skipCommandOutput: true
+            timeout: 60s
+            content: |
+              kubectl replace -f ../../../../manifests/kubelb-manager/manifests.yaml

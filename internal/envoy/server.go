@@ -76,6 +76,11 @@ func NewServer(config *v1alpha1.Config, listenAddress string, enableAdmin bool) 
 	}, nil
 }
 
+// UpdateConfig updates the server's config reference.
+func (s *Server) UpdateConfig(config *v1alpha1.Config) {
+	s.config = config
+}
+
 // Start the Envoy control plane server.
 func (s *Server) Start(ctx context.Context) error {
 	// Create a Cache

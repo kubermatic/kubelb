@@ -554,14 +554,18 @@ func (r *LoadBalancerReconciler) shouldReconcile(ctx context.Context, _ *kubelbv
 }
 
 func (r *LoadBalancerReconciler) SetupWithManager(ctx context.Context, mgr ctrl.Manager) error {
+	// Note: namespace filtering is applied per-watch rather than globally via WithEventFilter
+	// because Config (in manager namespace) and Tenant (cluster-scoped) don't reside in tenant
+	// namespaces but still need to trigger reconciliation.
+	namespaceFilter := utils.ByLabelExistsOnNamespace(ctx, mgr.GetClient())
+
 	return ctrl.NewControllerManagedBy(mgr).
 		Named(LoadBalancerControllerName).
-		For(&kubelbv1alpha1.LoadBalancer{}).
-		WithEventFilter(utils.ByLabelExistsOnNamespace(ctx, mgr.GetClient())).
+		For(&kubelbv1alpha1.LoadBalancer{}, builder.WithPredicates(namespaceFilter)).
+		// Config and Tenant watches don't use namespace filter since they're not in tenant namespaces
 		Watches(
 			&kubelbv1alpha1.Config{},
 			handler.EnqueueRequestsFromMapFunc(r.enqueueLoadBalancersForConfig()),
-			builder.WithPredicates(filterServicesPredicate()),
 		).
 		Watches(
 			&kubelbv1alpha1.Tenant{},
@@ -570,6 +574,7 @@ func (r *LoadBalancerReconciler) SetupWithManager(ctx context.Context, mgr ctrl.
 		Watches(
 			&corev1.Service{},
 			handler.EnqueueRequestsFromMapFunc(r.enqueueLoadBalancers()),
+			builder.WithPredicates(namespaceFilter, filterServicesPredicate()),
 		).
 		Complete(r)
 }

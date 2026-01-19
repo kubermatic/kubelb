@@ -1,0 +1,41 @@
+# Copyright 2026 The KubeLB Authors.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# Reset Tenant resources to default state
+# Use at the beginning of isolated tenant tests to ensure clean state
+# Bindings:
+#   - manifestsPath: relative path to manifests dir (e.g., '../../../../manifests')
+apiVersion: chainsaw.kyverno.io/v1alpha1
+kind: StepTemplate
+metadata:
+  name: reset-tenants
+spec:
+  try:
+    - script:
+        cluster: kubelb
+        skipCommandOutput: true
+        timeout: 30s
+        env:
+          - name: MANIFESTS
+            value: ($manifestsPath)
+        content: |
+          set -e
+
+          # Reset Tenants to default
+          kubectl replace -f "$MANIFESTS/tenants/primary.yaml"
+          kubectl replace -f "$MANIFESTS/tenants/secondary.yaml"
+
+          echo "SUCCESS: Tenants reset to default state"
+        check:
+          ($error == null): true

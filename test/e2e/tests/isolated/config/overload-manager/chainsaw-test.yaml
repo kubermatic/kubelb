@@ -1,0 +1,166 @@
+# Copyright 2026 The KubeLB Authors.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# Overload Manager Test
+# Verifies:
+# - Config.spec.envoyProxy.overloadManager enables overload management
+# - Envoy bootstrap contains overloadManager section
+# - Custom shutdownManagerImage is applied to shutdown-manager sidecar
+apiVersion: chainsaw.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: overload-manager
+  labels:
+    all:
+    isolated: "true"
+    resource: config
+    feature: overload-manager
+spec:
+  concurrent: false
+  description: |
+    Test that enabling overload manager in Config.spec.envoyProxy.overloadManager
+    adds overloadManager section to Envoy bootstrap config. Also verifies custom
+    shutdownManagerImage is applied when gracefulShutdown is enabled.
+  steps:
+    - name: reset-configs
+      description: Reset Config and Tenant to default state
+      use:
+        template: ../../../../step-templates/isolated/reset-configs.yaml
+        with:
+          bindings:
+            - name: manifestsPath
+              value: ../../../../manifests
+
+    - name: create-loadbalancer-service
+      description: Create LB service to ensure envoy proxy exists
+      cluster: tenant1
+      try:
+        - apply:
+            resource:
+              apiVersion: v1
+              kind: Service
+              metadata:
+                name: echo-overload-test
+                namespace: default
+              spec:
+                type: LoadBalancer
+                selector:
+                  app: echo-shared
+                ports:
+                  - port: 80
+                    targetPort: 5678
+
+    - name: wait-for-envoy-ready
+      description: Wait for envoy proxy to be ready
+      cluster: kubelb
+      try:
+        - script:
+            skipCommandOutput: true
+            timeout: 60s
+            content: |
+              set -e
+              kubectl wait --for=condition=Available deployment/envoy-tenant-primary \
+                -n tenant-primary --timeout=60s
+              echo "SUCCESS: Envoy deployment ready"
+            check:
+              ($error == null): true
+
+    - name: patch-config-enable-overload-manager
+      description: Enable overload manager and graceful shutdown with custom image
+      cluster: kubelb
+      try:
+        - script:
+            skipCommandOutput: true
+            timeout: 60s
+            content: |
+              set -e
+              kubectl patch config default -n kubelb --type=merge -p '{
+                "spec": {
+                  "envoyProxy": {
+                    "overloadManager": {
+                      "enabled": true,
+                      "maxActiveDownstreamConnections": 50000,
+                      "maxHeapSizeBytes": 1073741824
+                    },
+                    "gracefulShutdown": {
+                      "disabled": false,
+                      "shutdownManagerImage": "docker.io/envoyproxy/gateway:v1.6.1"
+                    }
+                  }
+                }
+              }'
+              echo "SUCCESS: Config patched with overload manager and graceful shutdown"
+            check:
+              ($error == null): true
+
+    - name: wait-for-deployment-rollout
+      description: Wait for deployment to rollout with new config
+      cluster: kubelb
+      try:
+        - script:
+            skipCommandOutput: true
+            timeout: 90s
+            content: |
+              set -e
+              NAMESPACE="tenant-primary"
+              DEPLOY="envoy-tenant-primary"
+              EXPECTED_IMAGE="docker.io/envoyproxy/gateway:v1.6.1"
+
+              # Wait for the deployment to pick up the new config
+              # The deployment args contain the bootstrap config, so we check for overloadManager
+              for i in $(seq 1 24); do
+                ARGS=$(kubectl get deployment "$DEPLOY" -n "$NAMESPACE" \
+                  -o jsonpath='{.spec.template.spec.containers[0].args[1]}' 2>/dev/null || true)
+
+                # Check if deployment has both overloadManager AND correct shutdown-manager image
+                SHUTDOWN_IMG=$(kubectl get deployment "$DEPLOY" -n "$NAMESPACE" \
+                  -o jsonpath='{.spec.template.spec.containers[?(@.name=="shutdown-manager")].image}' 2>/dev/null || true)
+
+                if echo "$ARGS" | grep -q "overloadManager" && [ "$SHUTDOWN_IMG" = "$EXPECTED_IMAGE" ]; then
+                  echo "SUCCESS: Deployment has overloadManager in bootstrap config"
+                  echo "SUCCESS: Deployment has shutdown-manager image $EXPECTED_IMAGE"
+                  # Wait for rollout to complete
+                  kubectl rollout status deployment/"$DEPLOY" -n "$NAMESPACE" --timeout=60s
+                  exit 0
+                fi
+
+                echo "Attempt $i: waiting for deployment update..."
+                sleep 5
+              done
+
+              echo "FAILED: Deployment not updated with overloadManager and/or shutdown-manager image"
+              echo "Current ARGS (overloadManager check): $(echo "$ARGS" | grep -o 'overloadManager' || echo 'not found')"
+              echo "Current shutdown-manager image: $SHUTDOWN_IMG (expected: $EXPECTED_IMAGE)"
+              exit 1
+            check:
+              ($error == null): true
+      finally:
+        - script:
+            cluster: tenant1
+            skipCommandOutput: true
+            timeout: 60s
+            content: |
+              kubectl delete svc echo-overload-test -n default --ignore-not-found
+        - script:
+            cluster: kubelb
+            skipCommandOutput: true
+            timeout: 60s
+            content: |
+              set -e
+              # Clean up management cluster resources
+              kubectl delete svc -n tenant-primary -l kubelb.k8c.io/origin-name=echo-overload-test --ignore-not-found
+              kubectl delete loadbalancers.kubelb.k8c.io -n tenant-primary -l kubelb.k8c.io/origin-name=echo-overload-test --ignore-not-found
+              # Reset Config
+              kubectl replace -f ../../../../manifests/kubelb-manager/manifests.yaml
+              echo "Cleanup complete: Config reverted"

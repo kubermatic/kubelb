@@ -218,7 +218,8 @@ func main() {
 		os.Exit(1)
 	}
 
-	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
+	restConfig := ctrl.GetConfigOrDie()
+	mgr, err := ctrl.NewManager(restConfig, ctrl.Options{
 		Scheme:                  scheme,
 		Metrics:                 metricsserver.Options{BindAddress: opt.metricsAddr},
 		HealthProbeBindAddress:  opt.probeAddr,
@@ -261,6 +262,20 @@ func main() {
 	if err := mgr.AddReadyzCheck("readyz", healthz.Ping); err != nil {
 		setupLog.Error(err, "unable to set up ready check")
 		os.Exit(1)
+	}
+
+	// Install CRDs synchronously before starting manager to avoid race conditions
+	// with controllers that watch these CRDs. Uses direct client since manager cache isn't started yet.
+	if opt.installGatewayAPICRDs {
+		directClient, err := client.New(restConfig, client.Options{Scheme: scheme})
+		if err != nil {
+			setupLog.Error(err, "unable to create direct client for CRD installation")
+			os.Exit(1)
+		}
+		if err := ccm.InstallCRDs(ctx, directClient, setupLog, ccm.GatewayAPIChannel(opt.gatewayAPICRDsChannel)); err != nil {
+			setupLog.Error(err, "unable to install Gateway API CRDs")
+			os.Exit(1)
+		}
 	}
 
 	setupLog.Info("starting kubelb CCM")

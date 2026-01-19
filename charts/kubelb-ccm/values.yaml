@@ -127,3 +127,6 @@ autoscaling:
 nodeSelector: {}
 tolerations: []
 affinity: {}
+
+# -- PriorityClassName for the manager pod (e.g., "system-cluster-critical")
+priorityClassName: ""

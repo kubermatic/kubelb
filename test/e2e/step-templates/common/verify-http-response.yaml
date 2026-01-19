@@ -1,0 +1,72 @@
+# Copyright 2026 The KubeLB Authors.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# Step Template: Verify HTTP response with optional Host header
+# Required bindings (pass via use.with.bindings):
+#   - ip: IP address to connect to
+#   - expected: expected substring in response
+# Optional bindings:
+#   - host: Host header value (empty = no Host header)
+#   - path: URL path (default: /)
+#   - protocol: http or https (default: http)
+#   - retries: number of retries (default: 10)
+apiVersion: chainsaw.kyverno.io/v1alpha1
+kind: StepTemplate
+metadata:
+  name: verify-http-response
+spec:
+  bindings:
+    - name: host
+      value: ""
+    - name: path
+      value: "/"
+    - name: protocol
+      value: http
+    - name: retries
+      value: "20"
+  try:
+    - script:
+        timeout: 60s
+        env:
+          - name: IP
+            value: ($ip)
+          - name: HOST
+            value: ($host)
+          - name: EXPECTED
+            value: ($expected)
+          - name: URL_PATH
+            value: ($path)
+          - name: PROTOCOL
+            value: ($protocol)
+          - name: RETRIES
+            value: ($retries)
+        content: |
+          set -e
+          for i in $(seq 1 $RETRIES); do
+            if [ -n "$HOST" ]; then
+              RESPONSE=$(curl -sk --max-time 5 -H "Host: $HOST" "${PROTOCOL}://${IP}${URL_PATH}" 2>/dev/null || true)
+            else
+              RESPONSE=$(curl -sk --max-time 5 "${PROTOCOL}://${IP}${URL_PATH}" 2>/dev/null || true)
+            fi
+            if echo "$RESPONSE" | grep -q "$EXPECTED"; then
+              echo "SUCCESS: Got expected response '$EXPECTED'"
+              exit 0
+            fi
+            echo "Attempt $i: waiting... (got: $RESPONSE)"
+            sleep 2
+          done
+          echo "FAILED: Expected '$EXPECTED', got '$RESPONSE'"
+          exit 1
+        check:
+          ($error == null): true

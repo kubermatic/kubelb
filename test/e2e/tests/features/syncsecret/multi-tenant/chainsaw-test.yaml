@@ -1,0 +1,193 @@
+# Copyright 2026 The KubeLB Authors.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# SyncSecret Multi-Tenant Isolation Test
+# Verifies:
+# - Same-named secrets on different tenants are isolated
+# - Each tenant's secret goes to correct namespace
+# - Data isolation between tenants
+apiVersion: chainsaw.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: syncsecret-multi-tenant
+  labels:
+    all:
+    test: syncsecret-multi-tenant
+    resource: syncsecret
+spec:
+  description: |
+    Test tenant isolation for secrets.
+    Creates same-named secret on tenant1 and tenant2 with different data,
+    verifies each propagates to correct namespace with correct data.
+  bindings:
+    - name: name
+      value: test-secret-multi
+    - name: value_tenant1
+      value: "tenant1-secret-data"
+    - name: value_tenant2
+      value: "tenant2-secret-data"
+  steps:
+    # Step 1: Create secret on tenant1
+    - name: create-secret-tenant1
+      description: Create secret on tenant1
+      cluster: tenant1
+      bindings:
+        - name: value1
+          value: ($value_tenant1)
+        - name: value2
+          value: "extra-data-1"
+      try:
+        - apply:
+            file: ../../../../testdata/secrets/opaque-secret.yaml
+
+    # Step 2: Create secret on tenant2
+    - name: create-secret-tenant2
+      description: Create secret on tenant2
+      cluster: tenant2
+      bindings:
+        - name: value1
+          value: ($value_tenant2)
+        - name: value2
+          value: "extra-data-2"
+      try:
+        - apply:
+            file: ../../../../testdata/secrets/opaque-secret.yaml
+
+    # Step 3: Verify SyncSecret in tenant1
+    - name: verify-syncsecret-tenant1
+      description: Verify SyncSecret created in tenant1
+      cluster: tenant1
+      try:
+        - assert:
+            timeout: 60s
+            resource:
+              apiVersion: kubelb.k8c.io/v1alpha1
+              kind: SyncSecret
+              metadata:
+                name: ($name)
+                namespace: default
+
+    # Step 4: Verify SyncSecret in tenant2
+    - name: verify-syncsecret-tenant2
+      description: Verify SyncSecret created in tenant2
+      cluster: tenant2
+      try:
+        - assert:
+            timeout: 60s
+            resource:
+              apiVersion: kubelb.k8c.io/v1alpha1
+              kind: SyncSecret
+              metadata:
+                name: ($name)
+                namespace: default
+
+    # Step 5: Verify tenant1 secret in tenant-primary namespace
+    - name: verify-secret-tenant-primary
+      description: Verify tenant1 secret in tenant-primary namespace
+      cluster: kubelb
+      try:
+        - script:
+            skipCommandOutput: true
+            timeout: 60s
+            content: |
+              set -e
+              for i in $(seq 1 20); do
+                SECRET=$(kubectl get secrets -n tenant-primary -l kubelb.k8c.io/origin-name=test-secret-multi -o name 2>/dev/null || true)
+                if [ -n "$SECRET" ]; then
+                  VALUE=$(kubectl get $SECRET -n tenant-primary -o jsonpath='{.data.key1}' | base64 -d)
+                  if [ "$VALUE" = "tenant1-secret-data" ]; then
+                    echo "SUCCESS: tenant-primary has tenant1 data"
+                    exit 0
+                  fi
+                fi
+                echo "Attempt $i: waiting..."
+                sleep 2
+              done
+              echo "FAILED: tenant-primary secret not found or data mismatch"
+              exit 1
+            check:
+              ($error == null): true
+
+    # Step 6: Verify tenant2 secret in tenant-secondary namespace
+    - name: verify-secret-tenant-secondary
+      description: Verify tenant2 secret in tenant-secondary namespace
+      cluster: kubelb
+      try:
+        - script:
+            skipCommandOutput: true
+            timeout: 60s
+            content: |
+              set -e
+              for i in $(seq 1 20); do
+                SECRET=$(kubectl get secrets -n tenant-secondary -l kubelb.k8c.io/origin-name=test-secret-multi -o name 2>/dev/null || true)
+                if [ -n "$SECRET" ]; then
+                  VALUE=$(kubectl get $SECRET -n tenant-secondary -o jsonpath='{.data.key1}' | base64 -d)
+                  if [ "$VALUE" = "tenant2-secret-data" ]; then
+                    echo "SUCCESS: tenant-secondary has tenant2 data"
+                    exit 0
+                  fi
+                fi
+                echo "Attempt $i: waiting..."
+                sleep 2
+              done
+              echo "FAILED: tenant-secondary secret not found or data mismatch"
+              exit 1
+            check:
+              ($error == null): true
+
+    # Step 7: Verify data isolation
+    - name: verify-data-isolation
+      description: Verify tenant data is isolated
+      cluster: kubelb
+      try:
+        - script:
+            skipCommandOutput: true
+            timeout: 60s
+            content: |
+              set -e
+              # Get values from both namespaces
+              SECRET1=$(kubectl get secrets -n tenant-primary -l kubelb.k8c.io/origin-name=test-secret-multi -o name)
+              SECRET2=$(kubectl get secrets -n tenant-secondary -l kubelb.k8c.io/origin-name=test-secret-multi -o name)
+
+              VALUE1=$(kubectl get $SECRET1 -n tenant-primary -o jsonpath='{.data.key1}' | base64 -d)
+              VALUE2=$(kubectl get $SECRET2 -n tenant-secondary -o jsonpath='{.data.key1}' | base64 -d)
+
+              if [ "$VALUE1" != "$VALUE2" ]; then
+                echo "SUCCESS: Data isolated - tenant1='$VALUE1', tenant2='$VALUE2'"
+                exit 0
+              fi
+
+              echo "FAILED: Data not isolated - both have '$VALUE1'"
+              exit 1
+            check:
+              ($error == null): true
+      finally:
+        - script:
+            cluster: tenant1
+            skipCommandOutput: true
+            content: |
+              kubectl delete secret test-secret-multi -n default --ignore-not-found
+              kubectl delete syncsecret.kubelb.k8c.io test-secret-multi -n default --ignore-not-found
+        - script:
+            cluster: tenant2
+            skipCommandOutput: true
+            content: |
+              kubectl delete secret test-secret-multi -n default --ignore-not-found
+              kubectl delete syncsecret.kubelb.k8c.io test-secret-multi -n default --ignore-not-found
+        - script:
+            cluster: kubelb
+            skipCommandOutput: true
+            content: |
+              kubectl delete secrets -n tenant-primary -l kubelb.k8c.io/origin-name=test-secret-multi --ignore-not-found
+              kubectl delete secrets -n tenant-secondary -l kubelb.k8c.io/origin-name=test-secret-multi --ignore-not-found

@@ -1,0 +1,163 @@
+# Copyright 2026 The KubeLB Authors.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# SyncSecret CRUD Lifecycle Test
+# Verifies:
+# - Secret with kubelb.k8c.io/managed-by label creates SyncSecret
+# - SyncSecret propagates to kubelb cluster as Secret
+# - Updates to secret data propagate correctly
+# - Deletion cleans up all resources
+apiVersion: chainsaw.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: syncsecret-crud
+  labels:
+    all:
+    test: syncsecret-crud
+    resource: syncsecret
+spec:
+  description: |
+    Test full secret lifecycle - create, update, delete.
+    Creates labeled secret on tenant1, verifies SyncSecret and Secret propagation,
+    updates data, verifies update, deletes and verifies cleanup.
+  bindings:
+    - name: name
+      value: test-secret-crud
+    - name: value1
+      value: "secret-value-1"
+    - name: value2
+      value: "secret-value-2"
+  steps:
+    # Step 1: Create labeled secret
+    - name: create-secret
+      description: Create secret with kubelb managed-by label
+      cluster: tenant1
+      try:
+        - apply:
+            file: ../../../../testdata/secrets/opaque-secret.yaml
+
+    # Step 2: Verify SyncSecret in tenant1
+    - name: verify-syncsecret-tenant
+      description: Verify SyncSecret created in tenant cluster
+      cluster: tenant1
+      try:
+        - assert:
+            timeout: 60s
+            resource:
+              apiVersion: kubelb.k8c.io/v1alpha1
+              kind: SyncSecret
+              metadata:
+                name: ($name)
+                namespace: default
+
+    # Step 3: Verify propagation to kubelb + data + labels
+    - name: verify-secret-kubelb
+      description: Verify secret propagated to kubelb with correct data and origin label
+      cluster: kubelb
+      try:
+        - script:
+            skipCommandOutput: true
+            timeout: 60s
+            content: |
+              set -e
+              ORIGIN_NAME="test-secret-crud"
+              ORIGIN_NS="default"
+
+              for i in $(seq 1 20); do
+                SECRET=$(kubectl get secrets -n tenant-primary -l kubelb.k8c.io/origin-name="$ORIGIN_NAME" -o name 2>/dev/null || true)
+                if [ -n "$SECRET" ]; then
+                  # Verify data
+                  VALUE=$(kubectl get $SECRET -n tenant-primary -o jsonpath='{.data.key1}' | base64 -d)
+                  if [ "$VALUE" != "secret-value-1" ]; then
+                    echo "FAILED: Data mismatch - expected secret-value-1, got $VALUE"
+                    exit 1
+                  fi
+
+                  # Verify origin labels
+                  LABEL_NAME=$(kubectl get $SECRET -n tenant-primary -o jsonpath='{.metadata.labels.kubelb\.k8c\.io/origin-name}')
+                  LABEL_NS=$(kubectl get $SECRET -n tenant-primary -o jsonpath='{.metadata.labels.kubelb\.k8c\.io/origin-ns}')
+
+                  if [ "$LABEL_NAME" != "$ORIGIN_NAME" ]; then
+                    echo "FAILED: origin-name label mismatch - expected $ORIGIN_NAME, got $LABEL_NAME"
+                    exit 1
+                  fi
+                  if [ "$LABEL_NS" != "$ORIGIN_NS" ]; then
+                    echo "FAILED: origin-namespace label mismatch - expected $ORIGIN_NS, got $LABEL_NS"
+                    exit 1
+                  fi
+
+                  echo "SUCCESS: Create verified"
+                  echo "  Data: key1=secret-value-1"
+                  echo "  Labels: origin-name=$LABEL_NAME, origin-namespace=$LABEL_NS"
+                  exit 0
+                fi
+                echo "Attempt $i: waiting for secret..."
+                sleep 2
+              done
+              echo "FAILED: Secret not found"
+              exit 1
+            check:
+              ($error == null): true
+
+    # Step 4: Update secret
+    - name: update-secret
+      description: Update secret with new key
+      cluster: tenant1
+      try:
+        - script:
+            skipCommandOutput: true
+            timeout: 60s
+            content: |
+              kubectl patch secret test-secret-crud -n default -p '{"stringData":{"key3":"new-value"}}'
+            check:
+              ($error == null): true
+
+    # Step 5: Verify update propagated
+    - name: verify-update
+      description: Verify updated data propagated to kubelb
+      cluster: kubelb
+      try:
+        - script:
+            skipCommandOutput: true
+            timeout: 60s
+            content: |
+              set -e
+              for i in $(seq 1 20); do
+                SECRET=$(kubectl get secrets -n tenant-primary -l kubelb.k8c.io/origin-name=test-secret-crud -o name 2>/dev/null || true)
+                if [ -n "$SECRET" ]; then
+                  VALUE=$(kubectl get $SECRET -n tenant-primary -o jsonpath='{.data.key3}' 2>/dev/null | base64 -d || true)
+                  if [ "$VALUE" = "new-value" ]; then
+                    echo "SUCCESS: Update verified - key3=new-value"
+                    exit 0
+                  fi
+                fi
+                echo "Attempt $i: waiting for update..."
+                sleep 2
+              done
+              echo "FAILED: Update not propagated"
+              exit 1
+            check:
+              ($error == null): true
+      finally:
+        - script:
+            cluster: tenant1
+            skipCommandOutput: true
+            content: |
+              kubectl delete secret test-secret-crud -n default --ignore-not-found
+              kubectl delete syncsecret.kubelb.k8c.io test-secret-crud -n default --ignore-not-found
+        - script:
+            cluster: kubelb
+            skipCommandOutput: true
+            content: |
+              kubectl delete secrets -n tenant-primary -l kubelb.k8c.io/origin-name=test-secret-crud --ignore-not-found

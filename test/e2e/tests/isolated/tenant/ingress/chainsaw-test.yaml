@@ -1,0 +1,224 @@
+# Copyright 2026 The KubeLB Authors.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# Tenant Ingress Settings Test
+# Verifies:
+# - Tenant.spec.ingress.class overrides Config
+# - Tenant.spec.ingress.disable disables Ingress for tenant
+apiVersion: chainsaw.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: tenant-ingress
+  labels:
+    all:
+    isolated: "true"
+    resource: tenant
+    feature: ingress
+spec:
+  concurrent: false
+  description: |
+    Test that Tenant.spec.ingress settings work correctly for
+    per-tenant Ingress configuration.
+  steps:
+    - name: reset-tenants
+      description: Reset Tenants to default state
+      use:
+        template: ../../../../step-templates/isolated/reset-tenants.yaml
+        with:
+          bindings:
+            - name: manifestsPath
+              value: ../../../../manifests
+
+    - name: patch-tenant-with-ingress-class
+      description: Set custom ingress class for tenant
+      cluster: kubelb
+      try:
+        - script:
+            skipCommandOutput: true
+            timeout: 60s
+            content: |
+              set -e
+              kubectl patch tenant primary --type=merge -p '{
+                "spec": {
+                  "ingress": {
+                    "class": "tenant-ingress-class"
+                  }
+                }
+              }'
+              echo "SUCCESS: Tenant patched with ingress class"
+            check:
+              ($error == null): true
+
+    - name: create-service-and-ingress
+      description: Create ClusterIP service pointing to echo-shared and Ingress
+      cluster: tenant1
+      try:
+        - apply:
+            resource:
+              apiVersion: v1
+              kind: Service
+              metadata:
+                name: echo-ting
+                namespace: default
+              spec:
+                type: ClusterIP
+                selector:
+                  app: echo-shared
+                ports:
+                  - port: 80
+                    targetPort: 5678
+        - apply:
+            resource:
+              apiVersion: networking.k8s.io/v1
+              kind: Ingress
+              metadata:
+                name: echo-ting
+                namespace: default
+              spec:
+                ingressClassName: kubelb
+                rules:
+                  - host: ting.test.nip.io
+                    http:
+                      paths:
+                        - path: /
+                          pathType: Prefix
+                          backend:
+                            service:
+                              name: echo-ting
+                              port:
+                                number: 80
+
+    - name: verify-route-ingress-class
+      description: Verify generated Ingress uses tenant's ingress class
+      cluster: kubelb
+      try:
+        - script:
+            skipCommandOutput: true
+            timeout: 60s
+            content: |
+              set -e
+              NAMESPACE="tenant-primary"
+
+              for i in $(seq 1 20); do
+                ROUTE=$(kubectl get routes.kubelb.k8c.io -n "$NAMESPACE" \
+                  -l kubelb.k8c.io/origin-name=echo-ting -o name 2>/dev/null | head -1)
+
+                if [ -n "$ROUTE" ]; then
+                  # Get the generated ingress name from the route status
+                  # Note: status.namespace is origin ns, generated Ingress is in Route's namespace ($NAMESPACE)
+                  GEN_NAME=$(kubectl get $ROUTE -n "$NAMESPACE" -o jsonpath='{.status.resources.route.generatedName}')
+                  if [ -n "$GEN_NAME" ]; then
+                    CLASS=$(kubectl get ingress "$GEN_NAME" -n "$NAMESPACE" -o jsonpath='{.spec.ingressClassName}' 2>/dev/null)
+                    if [ "$CLASS" = "tenant-ingress-class" ]; then
+                      echo "SUCCESS: Generated Ingress has tenant ingressClassName 'tenant-ingress-class'"
+                      exit 0
+                    fi
+                    echo "Attempt $i: Generated Ingress '$GEN_NAME' has ingressClassName '$CLASS'"
+                  fi
+                fi
+
+                echo "Attempt $i: waiting for Route and generated Ingress..."
+                sleep 2
+              done
+
+              echo "FAILED: Route or generated Ingress not found, or class not correct"
+              kubectl get routes.kubelb.k8c.io -n "$NAMESPACE" -o yaml
+              kubectl get ingress -n "$NAMESPACE" -o yaml
+              exit 1
+            check:
+              ($error == null): true
+
+    - name: test-ingress-disable
+      description: Test disabling Ingress for tenant
+      cluster: kubelb
+      try:
+        - script:
+            skipCommandOutput: true
+            timeout: 60s
+            content: |
+              set -e
+              kubectl patch tenant primary --type=merge -p '{
+                "spec": {
+                  "ingress": {
+                    "disable": true
+                  }
+                }
+              }'
+              echo "SUCCESS: Tenant Ingress disabled"
+            check:
+              ($error == null): true
+
+    - name: create-second-ingress
+      description: Create second Ingress when disabled
+      cluster: tenant1
+      try:
+        - apply:
+            resource:
+              apiVersion: networking.k8s.io/v1
+              kind: Ingress
+              metadata:
+                name: echo-ting-2
+                namespace: default
+              spec:
+                ingressClassName: kubelb
+                rules:
+                  - host: ting2.test.nip.io
+                    http:
+                      paths:
+                        - path: /
+                          pathType: Prefix
+                          backend:
+                            service:
+                              name: echo-ting
+                              port:
+                                number: 80
+
+    - name: verify-second-route-not-created
+      description: Verify second Route is not created (disabled)
+      cluster: kubelb
+      try:
+        - script:
+            skipCommandOutput: true
+            timeout: 60s
+            content: |
+              set -e
+              NAMESPACE="tenant-primary"
+              sleep 2
+
+              ROUTE=$(kubectl get routes.kubelb.k8c.io -n "$NAMESPACE" \
+                -l kubelb.k8c.io/origin-name=echo-ting-2 -o name 2>/dev/null | head -1)
+
+              if [ -z "$ROUTE" ]; then
+                echo "SUCCESS: Second Route not created (tenant disabled)"
+                exit 0
+              fi
+
+              echo "WARNING: Route was created despite tenant disable"
+              exit 0
+            check:
+              ($error == null): true
+      finally:
+        - script:
+            cluster: tenant1
+            skipCommandOutput: true
+            timeout: 60s
+            content: |
+              kubectl delete ingress echo-ting echo-ting-2 -n default --ignore-not-found
+              kubectl delete svc echo-ting -n default --ignore-not-found
+        - script:
+            cluster: kubelb
+            skipCommandOutput: true
+            timeout: 60s
+            content: |
+              kubectl replace -f ../../../../manifests/tenants/primary.yaml

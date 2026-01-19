@@ -1,0 +1,71 @@
+# Copyright 2026 The KubeLB Authors.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# Step Template: Delete Ingress and verify Route CRD removed
+# Bindings:
+#   - ingress_name: name of the Ingress resource
+#   - namespace: namespace of the Ingress (default: default)
+#   - kubelb_namespace: namespace in kubelb cluster (default: tenant-primary)
+apiVersion: chainsaw.kyverno.io/v1alpha1
+kind: StepTemplate
+metadata:
+  name: cleanup-ingress
+spec:
+  bindings:
+    - name: ingress_name
+      value: ""
+    - name: namespace
+      value: default
+    - name: kubelb_namespace
+      value: tenant-primary
+  try:
+    # Delete Ingress
+    - script:
+        cluster: tenant1
+        timeout: 5s
+        env:
+          - name: INGRESS_NAME
+            value: ($ingress_name)
+          - name: NS
+            value: ($namespace)
+        content: |
+          kubectl delete ingress "$INGRESS_NAME" -n "$NS" --wait=false 2>/dev/null || true
+          echo "Ingress deletion initiated"
+        check:
+          ($error == null): true
+    # Verify Route CRD removed
+    - script:
+        cluster: kubelb
+        timeout: 10s
+        env:
+          - name: NAMESPACE
+            value: ($kubelb_namespace)
+          - name: INGRESS_NAME
+            value: ($ingress_name)
+        content: |
+          set -e
+
+          for i in $(seq 1 5); do
+            ROUTE=$(kubectl get routes.kubelb.k8c.io -n "$NAMESPACE" \
+              -l kubelb.k8c.io/origin-name="$INGRESS_NAME" -o name 2>/dev/null | head -1)
+            if [ -z "$ROUTE" ]; then
+              echo "Route CRD removed"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "FAILED: Route CRD not removed"
+          exit 1
+        check:
+          ($error == null): true

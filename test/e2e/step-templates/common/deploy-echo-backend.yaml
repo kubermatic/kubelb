@@ -1,0 +1,92 @@
+# Copyright 2026 The KubeLB Authors.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# Step Template: Deploy echo backend (deployment + service)
+# Required bindings:
+#   - backend_name: name for deployment and service
+#   - backend_message: message the echo server will return
+# Optional bindings:
+#   - backend_namespace: namespace (default: default)
+#   - backend_port: service port (default: 80)
+#   - container_port: container port (default: 8080)
+#   - cluster: cluster context (default: tenant1)
+apiVersion: chainsaw.kyverno.io/v1alpha1
+kind: StepTemplate
+metadata:
+  name: deploy-echo-backend
+spec:
+  bindings:
+    - name: backend_namespace
+      value: default
+    - name: backend_port
+      value: "80"
+    - name: container_port
+      value: "8080"
+    - name: cluster
+      value: tenant1
+  try:
+    - apply:
+        cluster: ($cluster)
+        resource:
+          apiVersion: apps/v1
+          kind: Deployment
+          metadata:
+            name: ($backend_name)
+            namespace: ($backend_namespace)
+            labels:
+              app: ($backend_name)
+          spec:
+            replicas: 1
+            selector:
+              matchLabels:
+                app: ($backend_name)
+            template:
+              metadata:
+                labels:
+                  app: ($backend_name)
+              spec:
+                containers:
+                  - name: echo
+                    image: hashicorp/http-echo:latest
+                    args:
+                      - (join('', ['-text=', $backend_message]))
+                      - (join('', ['-listen=:', $container_port]))
+                    ports:
+                      - containerPort: ($container_port)
+    - apply:
+        cluster: ($cluster)
+        resource:
+          apiVersion: v1
+          kind: Service
+          metadata:
+            name: ($backend_name)
+            namespace: ($backend_namespace)
+          spec:
+            type: ClusterIP
+            selector:
+              app: ($backend_name)
+            ports:
+              - port: ($backend_port)
+                targetPort: ($container_port)
+    - assert:
+        cluster: ($cluster)
+        timeout: 60s
+        resource:
+          apiVersion: apps/v1
+          kind: Deployment
+          metadata:
+            name: ($backend_name)
+            namespace: ($backend_namespace)
+          status:
+            readyReplicas: 1

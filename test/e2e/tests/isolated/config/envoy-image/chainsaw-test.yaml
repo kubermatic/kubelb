@@ -1,0 +1,186 @@
+# Copyright 2026 The KubeLB Authors.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# Custom Envoy Image Test
+# Verifies:
+# - Config.spec.envoyProxy.image changes Envoy deployment container image
+# - Deployment spec reflects new image (no rollout wait needed)
+apiVersion: chainsaw.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: custom-envoy-image
+  labels:
+    all:
+    isolated: "true"
+    resource: config
+    feature: envoy-image
+spec:
+  concurrent: false
+  description: |
+    Test that setting a custom Envoy image in Config.spec.envoyProxy.image
+    causes the Envoy deployment spec to be updated with that image.
+  steps:
+    - name: reset-configs
+      description: Reset Config and Tenant to default state
+      use:
+        template: ../../../../step-templates/isolated/reset-configs.yaml
+        with:
+          bindings:
+            - name: manifestsPath
+              value: ../../../../manifests
+
+    - name: create-loadbalancer-setup
+      description: Create LB using shared echo deployment to trigger Envoy creation
+      cluster: tenant1
+      try:
+        - apply:
+            resource:
+              apiVersion: v1
+              kind: Service
+              metadata:
+                name: echo-setup
+                namespace: default
+              spec:
+                type: LoadBalancer
+                selector:
+                  app: echo-shared
+                ports:
+                  - port: 80
+                    targetPort: 5678
+        - assert:
+            timeout: 60s
+            resource:
+              apiVersion: v1
+              kind: Service
+              metadata:
+                name: echo-setup
+                namespace: default
+              status:
+                loadBalancer:
+                  ingress:
+                    - {}
+
+    - name: verify-loadbalancer-crd-exists
+      description: Verify LoadBalancer CRD exists in kubelb cluster
+      cluster: kubelb
+      try:
+        - script:
+            timeout: 60s
+            content: |
+              set -e
+              for i in $(seq 1 20); do
+                LB=$(kubectl get loadbalancers.kubelb.k8c.io -n tenant-primary -o name 2>/dev/null | head -1)
+                if [ -n "$LB" ]; then
+                  echo "LoadBalancer CRD found: $LB"
+                  exit 0
+                fi
+                echo "Waiting for LoadBalancer CRD... ($i)"
+                sleep 2
+              done
+              echo "FAILED: LoadBalancer CRD not found"
+              exit 1
+
+    - name: wait-for-envoy-deployment
+      description: Wait for Envoy deployment to exist
+      cluster: kubelb
+      try:
+        - script:
+            timeout: 60s
+            content: |
+              set -e
+              for i in $(seq 1 20); do
+                if kubectl get deployment/envoy-tenant-primary -n tenant-primary &>/dev/null; then
+                  # Get current image for reference
+                  CURRENT=$(kubectl get deployment envoy-tenant-primary -n tenant-primary \
+                    -o jsonpath='{.spec.template.spec.containers[?(@.name=="envoy-proxy")].image}')
+                  echo "Envoy deployment exists with image: $CURRENT"
+                  exit 0
+                fi
+                echo "Waiting for Envoy deployment... ($i)"
+                sleep 2
+              done
+              echo "FAILED: Envoy deployment not found"
+              exit 1
+
+    - name: patch-config-with-custom-image
+      description: Patch Config to use custom Envoy image
+      cluster: kubelb
+      try:
+        - script:
+            timeout: 60s
+            content: |
+              set -e
+              NEW_IMAGE="envoyproxy/envoy:distroless-v1.35.0"
+
+              # Patch the config
+              kubectl patch config default -n kubelb --type=merge \
+                -p "{\"spec\":{\"envoyProxy\":{\"image\":\"$NEW_IMAGE\"}}}"
+
+              # Verify the patch was applied
+              APPLIED=$(kubectl get config default -n kubelb \
+                -o jsonpath='{.spec.envoyProxy.image}')
+
+              if [ "$APPLIED" = "$NEW_IMAGE" ]; then
+                echo "SUCCESS: Config patched with image: $APPLIED"
+              else
+                echo "FAILED: Config image is '$APPLIED', expected '$NEW_IMAGE'"
+                exit 1
+              fi
+            check:
+              ($error == null): true
+
+    - name: verify-deployment-image-updated
+      description: Verify deployment spec has custom image
+      cluster: kubelb
+      try:
+        - script:
+            timeout: 60s
+            content: |
+              set -e
+              EXPECTED_IMAGE="envoyproxy/envoy:distroless-v1.35.0"
+
+              for i in $(seq 1 20); do
+                # Use container name selector to be more precise
+                IMAGE=$(kubectl get deployment envoy-tenant-primary -n tenant-primary \
+                  -o jsonpath='{.spec.template.spec.containers[?(@.name=="envoy-proxy")].image}' 2>/dev/null)
+
+                if [ "$IMAGE" = "$EXPECTED_IMAGE" ]; then
+                  echo "SUCCESS: Deployment image updated to: $IMAGE"
+                  exit 0
+                fi
+
+                echo "Attempt $i: current image='$IMAGE', expected='$EXPECTED_IMAGE'"
+                sleep 2
+              done
+
+              # Debug output on failure
+              echo "FAILED: Deployment image not updated"
+              echo "Current deployment spec:"
+              kubectl get deployment envoy-tenant-primary -n tenant-primary -o yaml
+              exit 1
+            check:
+              ($error == null): true
+      finally:
+        - script:
+            timeout: 60s
+            content: |
+              # Revert Config
+              kubectl replace -f ../../../../manifests/kubelb-manager/manifests.yaml || true
+              echo "Cleanup: Config reverted"
+        - script:
+            cluster: tenant1
+            timeout: 60s
+            content: |
+              kubectl delete svc echo-setup -n default --ignore-not-found
+              echo "Cleanup: Service deleted"

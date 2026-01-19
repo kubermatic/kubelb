@@ -1,0 +1,104 @@
+# Copyright 2026 The KubeLB Authors.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# SyncSecret TLS Type Test
+# Verifies:
+# - TLS secret type is preserved during sync
+# - tls.crt and tls.key data remain intact
+apiVersion: chainsaw.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: syncsecret-tls-type
+  labels:
+    all:
+    test: syncsecret-tls-type
+    resource: syncsecret
+spec:
+  description: |
+    Test TLS secret type synchronization.
+    Verifies that kubernetes.io/tls type is preserved and cert data is intact.
+  bindings:
+    - name: name
+      value: test-secret-tls
+    # Self-signed test certificate (base64 encoded)
+    - name: tls_crt
+      value: "LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0tLS0tCk1JSUJrVENDQVRlZ0F3SUJBZ0lKQUlVZmhNTmdveExNQTBHQ1NxR1NJYjNEUUVCQ3dVQU1CTXhFVEFQQmdOVgpCQU1NQ0hSbGMzUXVZMjl0TUI0WERUSTBNREV3TVRBd01EQXdNRm9YRFRJMk1ERXdNVEF3TURBd01Gb3dFekVSCk1BOEdBMVVFQXd3SWRHVnpkQzVqYjIwd1hEQU5CZ2txaGtpRzl3MEJBUUVGQUFOTEFEQklBa0VBMVp2SHBCK0cKZ0dFa0I1L3BPdG9JZy9Xb3NES2REaXhJaGpLMnJPWW5DTHFFMk1uaWJWOGJzR2tPUHVOeHp3Q1dQQUJLVE16SQpIaHQvYzFZeGdlSXdJUUlEQVFBQm8xQXdUakFkQmdOVkhRNEVGZ1FVYWJ0eXRTMjNKblFYcEs2dHNUS3E1WUd6CkNESXdId1lEVlIwakJCZ3dGb0FVYWJ0eXRTMjNKblFYcEs2dHNUS3E1WUd6Q0RJd0RBWURWUjBUQkFVd0F3RUIKL3pBTkJna3Foa2lHOXcwQkFRc0ZBQU5CQURYQjVYQ3ZGT0JZbElYUW5YcWRZWHExMjR6aE9EWDdNT3hrL1p2YQppNGNYMlBwVWZrSTRqZkRDdVdqV2I5MTVPT2s2cTdPTklGbEZlN3RxMmdvPQotLS0tLUVORCBDRVJUSUZJQ0FURS0tLS0tCg=="
+    - name: tls_key
+      value: "LS0tLS1CRUdJTiBQUklWQVRFIEtFWS0tLS0tCk1JSUJWQUlCQURBTkJna3Foa2lHOXcwQkFRRUZBQVNDQVQ0d2dnRTZBZ0VBQWtFQTFadkhwQitHZ0dFa0I1L3AKT3RvSWcvV29zREtkRGl4SWhqSzJyT1luQ0xxRTJNbmliVjhic0drT1B1Tnh6d0NXUEFCS1RNeklIaHQvYzFZeApnZUl3SVFJREFRQUJBa0JRWnVmWjFuN0ZBaTNTcmx5T3d4UmJqMUNqbkVxL0NqWFpzMElJd2dJZGVlWUtWZUtuClBtbnNWRXhUMUNBVWp5SkNhbzJSNzNMSGpLU0dNdDdQQnBIaEFpRUE3WFRaVDNrbUx3NW9XUEFER1ljdHFPNWMKRER6bVVESmV0WWFzL3VhYXFjRUNJUURtbVp4SStROGZ0am4ySWpGanJoRGVlRE9IK0s3Rno4Y1B1a21Dcml0aApjUUlnWTJvOE5FZ2tnNlU3Z1k3MlIrcHdCVjVkRTUvN2xoZmlQMnhvSFBQTjNHRUNJQjJyNHRJTGhXV1NaeW9BCk1yU1ZnWlZuZjhNN21wTVFyMXphRGVZaXJvbGhBaUVBeTlSTXZ6bjNPU3BVb3p0Tzl3SjRuV0p3NVdsaEVMejkKTXJtTlVYcmFabUU9Ci0tLS0tRU5EIFBSSVZBVEUgS0VZLS0tLS0K"
+  steps:
+    # Step 1: Create TLS secret
+    - name: create-tls-secret
+      description: Create TLS secret with kubelb managed-by label
+      cluster: tenant1
+      try:
+        - apply:
+            file: ../../../../testdata/secrets/tls-secret.yaml
+
+    # Step 2: Verify SyncSecret in tenant1
+    - name: verify-syncsecret-tenant
+      description: Verify SyncSecret created in tenant cluster
+      cluster: tenant1
+      try:
+        - assert:
+            timeout: 60s
+            resource:
+              apiVersion: kubelb.k8c.io/v1alpha1
+              kind: SyncSecret
+              metadata:
+                name: ($name)
+                namespace: default
+
+    # Step 3: Verify TLS type and data preserved in kubelb
+    - name: verify-tls-secret-kubelb
+      description: Verify TLS secret type and data preserved in kubelb
+      cluster: kubelb
+      try:
+        - script:
+            skipCommandOutput: true
+            timeout: 60s
+            content: |
+              set -e
+              for i in $(seq 1 20); do
+                SECRET=$(kubectl get secrets -n tenant-primary -l kubelb.k8c.io/origin-name=test-secret-tls -o name 2>/dev/null || true)
+                if [ -n "$SECRET" ]; then
+                  TYPE=$(kubectl get $SECRET -n tenant-primary -o jsonpath='{.type}')
+                  if [ "$TYPE" = "kubernetes.io/tls" ]; then
+                    # Verify tls.crt and tls.key exist
+                    CRT=$(kubectl get $SECRET -n tenant-primary -o jsonpath='{.data.tls\.crt}')
+                    KEY=$(kubectl get $SECRET -n tenant-primary -o jsonpath='{.data.tls\.key}')
+                    if [ -n "$CRT" ] && [ -n "$KEY" ]; then
+                      echo "SUCCESS: TLS type preserved, tls.crt and tls.key present"
+                      exit 0
+                    fi
+                  fi
+                fi
+                echo "Attempt $i: waiting for TLS secret..."
+                sleep 2
+              done
+              echo "FAILED: TLS secret not found or type mismatch"
+              exit 1
+            check:
+              ($error == null): true
+      finally:
+        - script:
+            cluster: tenant1
+            skipCommandOutput: true
+            content: |
+              kubectl delete secret test-secret-tls -n default --ignore-not-found
+              kubectl delete syncsecret.kubelb.k8c.io test-secret-tls -n default --ignore-not-found
+        - script:
+            cluster: kubelb
+            skipCommandOutput: true
+            content: |
+              kubectl delete secrets -n tenant-primary -l kubelb.k8c.io/origin-name=test-secret-tls --ignore-not-found

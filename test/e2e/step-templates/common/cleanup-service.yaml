@@ -1,0 +1,69 @@
+# Copyright 2026 The KubeLB Authors.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# Step Template: Delete LoadBalancer Service and verify LB CRD removed
+# Required bindings:
+#   - service_name: Name of the Service to delete
+#   - namespace: Namespace of the Service
+#   - tenant: Tenant cluster name (e.g., tenant1)
+#   - kubelb_namespace: Namespace in kubelb cluster where LB CRD exists (e.g., tenant-primary)
+apiVersion: chainsaw.kyverno.io/v1alpha1
+kind: StepTemplate
+metadata:
+  name: cleanup-service
+spec:
+  bindings:
+    - name: namespace
+      value: default
+  try:
+    # Delete Service from tenant cluster
+    - script:
+        cluster: ($tenant)
+        timeout: 5s
+        env:
+          - name: SERVICE_NAME
+            value: ($service_name)
+          - name: NAMESPACE
+            value: ($namespace)
+        content: |
+          kubectl delete service "$SERVICE_NAME" -n "$NAMESPACE" --wait=false 2>/dev/null || true
+          echo "Service deletion initiated"
+        check:
+          ($error == null): true
+    # Verify LoadBalancer CRD removed from kubelb
+    - script:
+        cluster: kubelb
+        timeout: 10s
+        env:
+          - name: SERVICE_NAME
+            value: ($service_name)
+          - name: LB_NS
+            value: ($kubelb_namespace)
+        content: |
+          set -e
+          for i in $(seq 1 10); do
+            LB=$(kubectl get loadbalancers.kubelb.k8c.io -n "$LB_NS" \
+              -l kubelb.k8c.io/origin-name="$SERVICE_NAME" -o name 2>/dev/null | head -1)
+            if [ -z "$LB" ]; then
+              echo "SUCCESS: LoadBalancer CRD removed"
+              exit 0
+            fi
+            echo "Attempt $i: CRD still exists, waiting..."
+            sleep 1
+          done
+          echo "FAILED: LoadBalancer CRD not removed"
+          kubectl get loadbalancers.kubelb.k8c.io -n "$LB_NS" -o yaml
+          exit 1
+        check:
+          ($error == null): true

@@ -12,6 +12,7 @@ CONTROLLER_TOOLS_VERSION ?= v0.20.0
 GO_VERSION = 1.25.5
 HELM_DOCS_VERSION ?= v1.14.2
 CRD_REF_DOCS_VERSION ?= v0.2.0
+CHAINSAW_VERSION ?= v0.2.13
 
 CRD_CODE_GEN_PATH = "./api/ce/..."
 RECONCILE_HELPER_PATH = "internal/resources/reconciling/zz_generated_reconcile.go"
@@ -206,14 +207,6 @@ deploy-%: manifests kustomize ## Deploy controller to the K8s cluster specified 
 #	cd config/$* && $(KUSTOMIZE) edit set image controller=${IMG}
 	$(KUSTOMIZE) build config/deploy/$* | kubectl apply -f -
 
-.PHONY: e2e-deploy-ccm
-e2e-deploy-ccm-%: manifests kustomize
-	$(KUSTOMIZE) build ./hack/ci/e2e/config/ccm/$* | kubectl apply -f -
-
-.PHONY: e2e-deploy-kubelb
-e2e-deploy-kubelb: manifests kustomize
-	$(KUSTOMIZE) build ./hack/ci/e2e/config/kubelb | kubectl apply -f -
-
 .PHONY: undeploy
 undeploy-%: ## Undeploy controller from the K8s cluster specified in ~/.kube/config. Call with ignore-not-found=true to ignore resource not found errors during deletion.
 	$(KUSTOMIZE) build config/deploy/$* | kubectl delete --ignore-not-found=$(ignore-not-found) -f -
@@ -234,6 +227,7 @@ $(LOCALBIN):
 KUSTOMIZE ?= $(LOCALBIN)/kustomize
 CONTROLLER_GEN ?= $(LOCALBIN)/controller-gen
 ENVTEST ?= $(LOCALBIN)/setup-envtest
+CHAINSAW ?= $(LOCALBIN)/chainsaw
 
 KUSTOMIZE_INSTALL_SCRIPT ?= "https://raw.githubusercontent.com/kubernetes-sigs/kustomize/master/hack/install_kustomize.sh"
 .PHONY: kustomize
@@ -250,6 +244,51 @@ $(CONTROLLER_GEN): $(LOCALBIN)
 envtest: $(ENVTEST) ## Download envtest-setup locally if necessary.
 $(ENVTEST): $(LOCALBIN)
 	test -s $(LOCALBIN)/setup-envtest || GOBIN=$(LOCALBIN) go install sigs.k8s.io/controller-runtime/tools/setup-envtest@latest
+
+.PHONY: chainsaw
+chainsaw: $(CHAINSAW) ## Download chainsaw locally if necessary.
+$(CHAINSAW): $(LOCALBIN)
+	test -s $(LOCALBIN)/chainsaw || GOPROXY=https://proxy.golang.org,direct GOBIN=$(LOCALBIN) go install github.com/kyverno/chainsaw@$(CHAINSAW_VERSION)
+
+##@ E2E Testing
+
+E2E_DIR ?= ./test/e2e
+KUBECONFIGS_DIR ?= $(shell pwd)/.e2e-kubeconfigs
+CHAINSAW_CONFIG ?= $(E2E_DIR)/config.yaml
+CHAINSAW_VALUES ?= $(E2E_DIR)/values.yaml
+CHAINSAW_CLUSTERS ?= --cluster kubelb=$(KUBECONFIGS_DIR)/kubelb.kubeconfig \
+	--cluster tenant1=$(KUBECONFIGS_DIR)/tenant1.kubeconfig \
+	--cluster tenant2=$(KUBECONFIGS_DIR)/tenant2.kubeconfig
+CHAINSAW_FLAGS ?= --quiet --config $(CHAINSAW_CONFIG) --values $(CHAINSAW_VALUES) $(CHAINSAW_CLUSTERS)
+
+.PHONY: e2e-setup-kind
+e2e-setup-kind: ## Setup Kind clusters for e2e tests
+	./hack/e2e/setup-kind.sh
+
+.PHONY: e2e-cleanup-kind
+e2e-cleanup-kind: ## Cleanup Kind clusters
+	./hack/e2e/cleanup-kind.sh
+
+.PHONY: e2e-deploy
+e2e-deploy: ## Deploy KubeLB to Kind clusters
+	KUBECONFIGS_DIR=$(KUBECONFIGS_DIR) ./hack/e2e/deploy.sh
+
+.PHONY: e2e-kind
+e2e-kind: e2e-setup-kind e2e-deploy e2e ## Full e2e with Kind setup
+
+.PHONY: e2e-local
+e2e-local: e2e-setup-local e2e
+
+.PHONY: e2e-setup-local
+e2e-setup-local: e2e-cleanup-kind e2e-setup-kind e2e-deploy ## Reset Kind clusters and redeploy
+
+.PHONY: e2e
+e2e: chainsaw ## Run e2e tests (requires KUBECONFIGS_DIR or existing clusters)
+	KUBECONFIG=$(KUBECONFIGS_DIR)/tenant1.kubeconfig $(CHAINSAW) test $(E2E_DIR)/tests $(CHAINSAW_FLAGS) --quiet
+
+.PHONY: e2e-select
+e2e-select: chainsaw ## Run e2e tests matching label selector (e.g., make e2e-select select=layer=layer4)
+	KUBECONFIG=$(KUBECONFIGS_DIR)/tenant1.kubeconfig $(CHAINSAW) test $(E2E_DIR)/tests $(CHAINSAW_FLAGS) --selector $(select)
 
 .PHONY: shfmt
 shfmt:

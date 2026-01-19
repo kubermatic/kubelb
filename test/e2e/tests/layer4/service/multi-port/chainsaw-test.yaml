@@ -1,0 +1,159 @@
+# Copyright 2026 The KubeLB Authors.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# Multi-port L4 Service LoadBalancer Test
+# Verifies:
+# - Two containers with different messages on different ports
+# - LoadBalancer service exposes both ports
+# - Correct message returned per port (Envoy xDS routing)
+apiVersion: chainsaw.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: multi-port-service-loadbalancer
+  labels:
+    all:
+    test: multi-port
+    resource: service
+    layer: layer4
+spec:
+  description: |
+    Test multi-port LoadBalancer service with correct port routing.
+    Deploys multi-echo server with two containers on different ports,
+    creates multi-port LoadBalancer, verifies each port returns correct message.
+  bindings:
+    - name: name
+      value: echo-multiport
+    - name: message1
+      value: "hello-from-port-80"
+    - name: message2
+      value: "hello-from-port-81"
+    - name: port1
+      value: 80
+    - name: port2
+      value: 81
+    - name: kubelb_namespace
+      value: tenant-primary
+  steps:
+    # Step 1: Deploy multi-echo server on tenant1
+    - name: deploy-multi-echo-server
+      description: Deploy multi-echo server with two containers
+      cluster: tenant1
+      try:
+        - apply:
+            file: ../../../../testdata/deployments/multi-echo.yaml
+        - assert:
+            timeout: 60s
+            resource:
+              apiVersion: apps/v1
+              kind: Deployment
+              metadata:
+                name: ($name)
+                namespace: default
+              status:
+                readyReplicas: 1
+
+    # Step 2: Create multi-port LoadBalancer service
+    - name: create-multiport-loadbalancer
+      description: Create multi-port LoadBalancer service
+      cluster: tenant1
+      try:
+        - apply:
+            file: ../../../../testdata/services/multi-echo-lb.yaml
+        - assert:
+            timeout: 60s
+            resource:
+              apiVersion: v1
+              kind: Service
+              metadata:
+                name: ($name)
+                namespace: default
+              status:
+                loadBalancer:
+                  ingress:
+                    - {}
+
+    # Step 3: Verify LoadBalancer CRD in kubelb cluster
+    - name: verify-loadbalancer-crd
+      description: Verify LoadBalancer CRD exists in tenant namespace
+      cluster: kubelb
+      try:
+        - script:
+            skipCommandOutput: true
+            timeout: 60s
+            content: |
+              set -e
+              NAMESPACE="tenant-primary"
+
+              # Wait for LoadBalancer CRD
+              for i in $(seq 1 10); do
+                LB_COUNT=$(kubectl get loadbalancers.kubelb.k8c.io -n "$NAMESPACE" --no-headers 2>/dev/null | wc -l | tr -d ' ')
+                if [ "$LB_COUNT" -ge 1 ]; then
+                  echo "SUCCESS: Found $LB_COUNT LoadBalancer CRD(s) in $NAMESPACE"
+                  kubectl get loadbalancers.kubelb.k8c.io -n "$NAMESPACE"
+                  exit 0
+                fi
+                echo "Attempt $i: waiting for LoadBalancer CRD..."
+                sleep 2
+              done
+
+              echo "FAILED: No LoadBalancer CRD found in $NAMESPACE"
+              exit 1
+            check:
+              ($error == null): true
+
+    # Step 4: Verify status propagation
+    - name: verify-status-propagation
+      description: Verify LoadBalancer CRD status matches tenant service status
+      use:
+        template: ../../../../step-templates/layer4/verify-status-propagation.yaml
+        with:
+          bindings:
+            - name: service_name
+              value: ($name)
+            - name: tenant
+              value: tenant1
+            - name: kubelb_namespace
+              value: ($kubelb_namespace)
+
+    # Step 5: Verify port 80 returns message1
+    - name: verify-port1-response
+      description: Verify port 80 returns correct message
+      use:
+        template: ../../../../step-templates/layer4/verify-http-response.yaml
+        with:
+          bindings:
+            - name: service_name
+              value: ($name)
+            - name: expected
+              value: ($message1)
+            - name: port
+              value: "80"
+            - name: tenant
+              value: tenant1
+
+    # Step 6: Verify port 81 returns message2
+    - name: verify-port2-response
+      description: Verify port 81 returns correct message
+      use:
+        template: ../../../../step-templates/layer4/verify-http-response.yaml
+        with:
+          bindings:
+            - name: service_name
+              value: ($name)
+            - name: expected
+              value: ($message2)
+            - name: port
+              value: "81"
+            - name: tenant
+              value: tenant1

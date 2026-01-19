@@ -1,0 +1,158 @@
+# Copyright 2026 The KubeLB Authors.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# LoadBalancer Class Test
+# Verifies:
+# - Config.spec.loadBalancer.class sets loadBalancerClass on LB service in management cluster
+# Note: Custom LB class won't be picked up by MetalLB, so we only verify the class is set correctly
+apiVersion: chainsaw.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: loadbalancer-class
+  labels:
+    all:
+    isolated: "true"
+    resource: config
+    feature: lb-class
+spec:
+  concurrent: false
+  description: |
+    Test that Config.spec.loadBalancer.class sets the loadBalancerClass
+    on the Envoy LoadBalancer service.
+  steps:
+    - name: reset-configs
+      description: Reset Config and Tenant to default state
+      use:
+        template: ../../../../step-templates/isolated/reset-configs.yaml
+        with:
+          bindings:
+            - name: manifestsPath
+              value: ../../../../manifests
+
+    - name: cleanup-existing-resources
+      description: Delete any existing LB resources to ensure clean state (loadBalancerClass is immutable)
+      cluster: kubelb
+      try:
+        - script:
+            skipCommandOutput: true
+            timeout: 60s
+            content: |
+              set -e
+              NAMESPACE="tenant-primary"
+              # Delete any existing services with origin-name=echo-lb-class to ensure clean slate
+              # loadBalancerClass cannot be changed once set
+              kubectl delete svc -n "$NAMESPACE" -l kubelb.k8c.io/origin-name=echo-lb-class --ignore-not-found
+              kubectl delete loadbalancers.kubelb.k8c.io -n "$NAMESPACE" -l kubelb.k8c.io/origin-name=echo-lb-class --ignore-not-found
+              echo "SUCCESS: Cleaned up existing resources"
+
+    - name: patch-config-with-lb-class
+      description: Set loadBalancer.class in Config BEFORE creating LB
+      cluster: kubelb
+      try:
+        - script:
+            skipCommandOutput: true
+            timeout: 60s
+            content: |
+              set -e
+              kubectl patch config default -n kubelb --type=merge -p '{
+                "spec": {
+                  "loadBalancer": {
+                    "class": "test-lb-class"
+                  }
+                }
+              }'
+              echo "SUCCESS: Config patched with LB class"
+            check:
+              ($error == null): true
+
+    - name: create-loadbalancer
+      description: Create LB service (won't get IP since custom class)
+      cluster: tenant1
+      try:
+        - apply:
+            resource:
+              apiVersion: v1
+              kind: Service
+              metadata:
+                name: echo-lb-class
+                namespace: default
+              spec:
+                type: LoadBalancer
+                selector:
+                  app: echo-shared
+                ports:
+                  - port: 80
+                    targetPort: 5678
+
+    - name: verify-lb-class-on-service
+      description: Verify LoadBalancer CRD and Service created with correct loadBalancerClass
+      cluster: kubelb
+      try:
+        - script:
+            skipCommandOutput: true
+            timeout: 60s
+            content: |
+              set -e
+              NAMESPACE="tenant-primary"
+
+              for i in $(seq 1 20); do
+                # Get the LoadBalancer CRD
+                LB=$(kubectl get loadbalancers.kubelb.k8c.io -n "$NAMESPACE" \
+                  -l kubelb.k8c.io/origin-name=echo-lb-class -o name 2>/dev/null | head -1)
+
+                if [ -n "$LB" ]; then
+                  LB_NAME=$(echo "$LB" | sed 's|loadbalancer.kubelb.k8c.io/||')
+                  SVC_NAME="envoy-${LB_NAME}"
+
+                  # Check if service exists and has correct loadBalancerClass
+                  CLASS=$(kubectl get svc "$SVC_NAME" -n "$NAMESPACE" \
+                    -o jsonpath='{.spec.loadBalancerClass}' 2>/dev/null)
+                  if [ "$CLASS" = "test-lb-class" ]; then
+                    echo "SUCCESS: LoadBalancer CRD created: $LB"
+                    echo "SUCCESS: Service '$SVC_NAME' has loadBalancerClass 'test-lb-class'"
+                    exit 0
+                  fi
+                  echo "Attempt $i: Service '$SVC_NAME' has loadBalancerClass '$CLASS' (expected: test-lb-class)"
+                else
+                  echo "Attempt $i: waiting for LoadBalancer CRD..."
+                fi
+
+                sleep 5
+              done
+
+              echo "FAILED: LoadBalancer not found or loadBalancerClass not set correctly"
+              kubectl get loadbalancers.kubelb.k8c.io -n "$NAMESPACE" -o yaml
+              kubectl get svc -n "$NAMESPACE" -o yaml
+              exit 1
+            check:
+              ($error == null): true
+      finally:
+        - script:
+            cluster: tenant1
+            skipCommandOutput: true
+            timeout: 60s
+            content: |
+              kubectl delete svc echo-lb-class -n default --ignore-not-found
+        - script:
+            cluster: kubelb
+            skipCommandOutput: true
+            timeout: 60s
+            content: |
+              # Delete management cluster resources first (before Config reset)
+              # to avoid reconciliation issues with immutable loadBalancerClass
+              NAMESPACE="tenant-primary"
+              kubectl delete svc -n "$NAMESPACE" -l kubelb.k8c.io/origin-name=echo-lb-class --ignore-not-found
+              kubectl delete loadbalancers.kubelb.k8c.io -n "$NAMESPACE" -l kubelb.k8c.io/origin-name=echo-lb-class --ignore-not-found
+              # Reset Config
+              kubectl replace -f ../../../../manifests/kubelb-manager/manifests.yaml
