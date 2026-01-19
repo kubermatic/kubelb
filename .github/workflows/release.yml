@@ -44,6 +44,7 @@ jobs:
     timeout-minutes: 60
     outputs:
       version: ${{ steps.version.outputs.version }}
+      hashes: ${{ steps.hash.outputs.hashes }}
     steps:
       - name: Checkout
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
@@ -154,6 +155,12 @@ jobs:
           sarif_file: trivy-kubelb-ccm.sarif
           category: release-kubelb-ccm
 
+      - name: Generate checksums hash
+        id: hash
+        run: |
+          cd dist
+          echo "hashes=$(sha256sum checksums.txt | base64 -w0)" >> $GITHUB_OUTPUT
+
       - name: Generate GitHub attestation for checksums
         uses: actions/attest-build-provenance@7668571508540a607bdfd90a87a560489fe372eb # v2.1.0
         with:
@@ -241,3 +248,15 @@ jobs:
           SIGN_CHARTS: "true"
         run: |
           make IMAGE_TAG=${{ needs.release.outputs.version }} release-charts
+
+  # Generate provenance for the release
+  provenance:
+    needs: release
+    permissions:
+      actions: read
+      id-token: write
+      contents: write
+    uses: slsa-framework/slsa-github-generator/.github/workflows/generator_generic_slsa3.yml@v2.0.0
+    with:
+      base64-subjects: "${{ needs.release.outputs.hashes }}"
+      upload-assets: true

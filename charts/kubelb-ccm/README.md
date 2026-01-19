@@ -32,28 +32,6 @@ kubectl apply -f kubelb-ccm/crds/
 helm install kubelb-ccm kubelb-ccm/ --namespace kubelb -f values.yaml
 ```
 
-## Security
-
-### Chart Signing
-
-All Helm charts are cryptographically signed using [Sigstore Cosign](https://github.com/sigstore/cosign) with keyless signing.
-
-### Verify Chart Signature
-
-```bash
-cosign verify quay.io/kubermatic/helm-charts/kubelb-ccm:v1.3.0 \
-  --certificate-identity-regexp="^https://github.com/kubermatic/kubelb/.github/workflows/release.yml@refs/tags/v.*" \
-  --certificate-oidc-issuer=https://token.actions.githubusercontent.com
-```
-
-### Verify Image Signature
-
-```bash
-cosign verify quay.io/kubermatic/kubelb-ccm:v1.3.0 \
-  --certificate-identity-regexp="^https://github.com/kubermatic/kubelb/.github/workflows/release.yml@refs/tags/v.*" \
-  --certificate-oidc-issuer=https://token.actions.githubusercontent.com
-```
-
 ## Values
 
 | Key | Type | Default | Description |
@@ -99,7 +77,6 @@ cosign verify quay.io/kubermatic/kubelb-ccm:v1.3.0 \
 | podLabels | object | `{}` |  |
 | podSecurityContext.runAsNonRoot | bool | `true` |  |
 | podSecurityContext.seccompProfile.type | string | `"RuntimeDefault"` |  |
-| priorityClassName | string | `""` | PriorityClassName for the manager pod (e.g., "system-cluster-critical") |
 | rbac.allowLeaderElectionRole | bool | `true` |  |
 | rbac.allowMetricsReaderRole | bool | `true` |  |
 | rbac.allowProxyRole | bool | `true` |  |

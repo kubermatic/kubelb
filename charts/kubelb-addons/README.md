@@ -2,28 +2,14 @@
 
 Helm chart for deploying optional addons to enhance KubeLB functionality.
 
-![Version: v0.2.0](https://img.shields.io/badge/Version-v0.2.0-informational?style=flat-square) ![Type: application](https://img.shields.io/badge/Type-application-informational?style=flat-square) ![AppVersion: v0.2.0](https://img.shields.io/badge/AppVersion-v0.2.0-informational?style=flat-square)
+![Version: v0.3.0](https://img.shields.io/badge/Version-v0.3.0-informational?style=flat-square) ![Type: application](https://img.shields.io/badge/Type-application-informational?style=flat-square) ![AppVersion: v0.3.0](https://img.shields.io/badge/AppVersion-v0.3.0-informational?style=flat-square)
 
 ## Installing the chart
 
 ```sh
-helm pull oci://quay.io/kubermatic/helm-charts/kubelb-addons --version=v0.2.0 --untardir "." --untar
+helm pull oci://quay.io/kubermatic/helm-charts/kubelb-addons --version=v0.3.0 --untardir "." --untar
 ## Create and update values.yaml with the required values.
 helm install kubelb-addons kubelb-addons --namespace kubelb -f values.yaml --create-namespace
-```
-
-## Security
-
-### Chart Signing
-
-All Helm charts are cryptographically signed using [Sigstore Cosign](https://github.com/sigstore/cosign) with keyless signing.
-
-### Verify Chart Signature
-
-```bash
-cosign verify quay.io/kubermatic/helm-charts/kubelb-addons:v0.2.0 \
-  --certificate-identity-regexp="^https://github.com/kubermatic/kubelb/.github/workflows/release.yml@refs/tags/v.*" \
-  --certificate-oidc-issuer=https://token.actions.githubusercontent.com
 ```
 
 ## Overview
