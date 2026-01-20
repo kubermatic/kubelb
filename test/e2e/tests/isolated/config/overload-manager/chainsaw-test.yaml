@@ -162,5 +162,5 @@ spec:
               kubectl delete svc -n tenant-primary -l kubelb.k8c.io/origin-name=echo-overload-test --ignore-not-found
               kubectl delete loadbalancers.kubelb.k8c.io -n tenant-primary -l kubelb.k8c.io/origin-name=echo-overload-test --ignore-not-found
               # Reset Config
-              kubectl replace -f ../../../../manifests/kubelb-manager/manifests.yaml
+              kubectl replace -f ../../../../manifests/kubelb-manager/config.yaml
               echo "Cleanup complete: Config reverted"

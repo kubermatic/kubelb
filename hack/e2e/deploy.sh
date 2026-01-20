@@ -96,7 +96,7 @@ build_images() {
 
   # Check if source files have changed since last build
   local src_hash
-  src_hash=$(git ls-files -s cmd/ internal/ api/ pkg/ go.mod go.sum 2> /dev/null | sha256sum | cut -c1-12)
+  src_hash=$(echo "TAGS=e2e $(git ls-files -s cmd/ internal/ api/ pkg/ go.mod go.sum 2> /dev/null)" | sha256sum | cut -c1-12)
   local src_hash_file="${bin_dir}/.src-hash"
 
   if [[ -f "${src_hash_file}" ]] && [[ "$(cat "${src_hash_file}")" == "${src_hash}" ]] &&
@@ -104,9 +104,11 @@ build_images() {
     echodate "Source unchanged (hash: ${src_hash}), skipping binary build"
   else
     # Build binaries using Makefile (uses host Go cache, cross-compile for linux)
+    # Use TAGS=e2e to enable relaxed gateway name restrictions for parallel e2e tests
     echodate "Building binaries via make (hash: ${src_hash})..."
     local build_log="${LOGS_DIR}/build.log"
     if ! GOOS=linux GOARCH=amd64 make build-kubelb build-ccm \
+      TAGS=e2e \
       GIT_VERSION="${GIT_VERSION}" \
       GIT_COMMIT="${GIT_COMMIT}" \
       BUILD_DATE="${BUILD_DATE}" \
@@ -276,6 +278,10 @@ EOF
     --set image.tag="${KUBELB_IMAGE#*:}" \
     --set image.pullPolicy="${pull_policy}" \
     --set imagePullSecrets=
+
+  # Apply Config CR (required for kubelb-manager when skipConfigGeneration=true)
+  echodate "Applying Config CR..."
+  kubectl apply -f "${E2E_MANIFESTS_DIR}/kubelb-manager/config.yaml"
 
   # Wait for kubelb manager only (required before tenant/CCM setup)
   echodate "Waiting for kubelb manager..."

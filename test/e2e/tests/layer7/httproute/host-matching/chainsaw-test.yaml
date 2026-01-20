@@ -1,0 +1,379 @@
+# Copyright 2026 The KubeLB Authors.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# HTTPRoute Host Matching Test
+# Verifies:
+# - HTTPRoute with multiple hostnames routes correctly
+# - Host-based routing works as expected
+apiVersion: chainsaw.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: host-matching-httproute
+  labels:
+    all:
+    test: host-matching
+    resource: httproute
+    layer: layer7
+spec:
+  description: |
+    Test HTTPRoute host matching.
+    Creates HTTPRoutes with different hostnames,
+    verifies each hostname routes to the correct backend.
+  bindings:
+    - name: namespace
+      value: default
+    - name: kubelb_namespace
+      value: tenant-primary
+  steps:
+    # Step 1: Deploy backend services
+    - name: deploy-backends
+      description: Deploy two echo servers with different messages
+      cluster: tenant1
+      try:
+        - apply:
+            resource:
+              apiVersion: apps/v1
+              kind: Deployment
+              metadata:
+                name: echo-host-a
+                namespace: default
+                labels:
+                  app: echo-host-a
+              spec:
+                replicas: 1
+                selector:
+                  matchLabels:
+                    app: echo-host-a
+                template:
+                  metadata:
+                    labels:
+                      app: echo-host-a
+                  spec:
+                    containers:
+                      - name: echo
+                        image: hashicorp/http-echo:latest
+                        args:
+                          - -text=host-a-response
+                          - -listen=:8080
+                        ports:
+                          - containerPort: 8080
+        - apply:
+            resource:
+              apiVersion: v1
+              kind: Service
+              metadata:
+                name: echo-host-a
+                namespace: default
+              spec:
+                type: ClusterIP
+                selector:
+                  app: echo-host-a
+                ports:
+                  - port: 80
+                    targetPort: 8080
+        - apply:
+            resource:
+              apiVersion: apps/v1
+              kind: Deployment
+              metadata:
+                name: echo-host-b
+                namespace: default
+                labels:
+                  app: echo-host-b
+              spec:
+                replicas: 1
+                selector:
+                  matchLabels:
+                    app: echo-host-b
+                template:
+                  metadata:
+                    labels:
+                      app: echo-host-b
+                  spec:
+                    containers:
+                      - name: echo
+                        image: hashicorp/http-echo:latest
+                        args:
+                          - -text=host-b-response
+                          - -listen=:8080
+                        ports:
+                          - containerPort: 8080
+        - apply:
+            resource:
+              apiVersion: v1
+              kind: Service
+              metadata:
+                name: echo-host-b
+                namespace: default
+              spec:
+                type: ClusterIP
+                selector:
+                  app: echo-host-b
+                ports:
+                  - port: 80
+                    targetPort: 8080
+        - assert:
+            timeout: 60s
+            resource:
+              apiVersion: apps/v1
+              kind: Deployment
+              metadata:
+                name: echo-host-a
+                namespace: default
+              status:
+                readyReplicas: 1
+        - assert:
+            timeout: 60s
+            resource:
+              apiVersion: apps/v1
+              kind: Deployment
+              metadata:
+                name: echo-host-b
+                namespace: default
+              status:
+                readyReplicas: 1
+
+    # Step 2: Create Gateway
+    - name: create-gateway
+      description: Create Gateway for HTTPRoutes
+      cluster: tenant1
+      try:
+        - apply:
+            resource:
+              apiVersion: gateway.networking.k8s.io/v1
+              kind: Gateway
+              metadata:
+                name: hr-host-gw
+                namespace: default
+              spec:
+                gatewayClassName: kubelb
+                listeners:
+                  - name: http
+                    protocol: HTTP
+                    port: 80
+                    allowedRoutes:
+                      namespaces:
+                        from: All
+
+    # Step 3: Wait for Gateway ready
+    - name: wait-gateway-ready
+      description: Wait for Gateway to have address
+      cluster: tenant1
+      try:
+        - script:
+            skipCommandOutput: true
+            timeout: 60s
+            content: |
+              set -e
+              for i in $(seq 1 10); do
+                IP=$(kubectl get gateway hr-host-gw -n default \
+                  -o jsonpath='{.status.addresses[0].value}' 2>/dev/null || true)
+                if [ -n "$IP" ]; then
+                  echo "Gateway ready with IP: $IP"
+                  exit 0
+                fi
+                sleep 2
+              done
+              echo "FAILED: Gateway not ready"
+              exit 1
+            check:
+              ($error == null): true
+
+    # Step 4: Create HTTPRoutes with different hostnames
+    - name: create-httproutes
+      description: Create HTTPRoutes with different hostnames
+      cluster: tenant1
+      try:
+        - script:
+            skipCommandOutput: true
+            timeout: 60s
+            content: |
+              set -e
+              IP=$(kubectl get gateway hr-host-gw -n default \
+                -o jsonpath='{.status.addresses[0].value}')
+
+              # Create HTTPRoute for host-a
+              cat <<EOF | kubectl apply -f -
+              apiVersion: gateway.networking.k8s.io/v1
+              kind: HTTPRoute
+              metadata:
+                name: hr-host-a
+                namespace: default
+              spec:
+                parentRefs:
+                  - name: hr-host-gw
+                hostnames:
+                  - "host-a.${IP}.nip.io"
+                rules:
+                  - backendRefs:
+                      - name: echo-host-a
+                        port: 80
+                    matches:
+                      - path:
+                          type: PathPrefix
+                          value: /
+              EOF
+
+              # Create HTTPRoute for host-b
+              cat <<EOF | kubectl apply -f -
+              apiVersion: gateway.networking.k8s.io/v1
+              kind: HTTPRoute
+              metadata:
+                name: hr-host-b
+                namespace: default
+              spec:
+                parentRefs:
+                  - name: hr-host-gw
+                hostnames:
+                  - "host-b.${IP}.nip.io"
+                rules:
+                  - backendRefs:
+                      - name: echo-host-b
+                        port: 80
+                    matches:
+                      - path:
+                          type: PathPrefix
+                          value: /
+              EOF
+              echo "Created HTTPRoutes with hosts: host-a.${IP}.nip.io, host-b.${IP}.nip.io"
+            check:
+              ($error == null): true
+
+    # Step 5: Verify Route CRDs
+    - name: verify-route-crds
+      description: Verify Route CRDs exist for both HTTPRoutes
+      cluster: kubelb
+      try:
+        - script:
+            skipCommandOutput: true
+            timeout: 60s
+            content: |
+              set -e
+              NAMESPACE="tenant-primary"
+              for i in $(seq 1 20); do
+                ROUTE_A=$(kubectl get routes.kubelb.k8c.io -n "$NAMESPACE" \
+                  -l kubelb.k8c.io/origin-name="hr-host-a" -o name 2>/dev/null | head -1)
+                ROUTE_B=$(kubectl get routes.kubelb.k8c.io -n "$NAMESPACE" \
+                  -l kubelb.k8c.io/origin-name="hr-host-b" -o name 2>/dev/null | head -1)
+                if [ -n "$ROUTE_A" ] && [ -n "$ROUTE_B" ]; then
+                  echo "Both Route CRDs found"
+                  exit 0
+                fi
+                sleep 2
+              done
+              echo "FAILED: Not all Route CRDs found"
+              exit 1
+            check:
+              ($error == null): true
+
+    # Step 6: Verify host-a routes to echo-host-a
+    - name: verify-host-a
+      description: Verify host-a routes to correct backend
+      cluster: tenant1
+      try:
+        - script:
+            skipCommandOutput: true
+            timeout: 60s
+            content: |
+              set -e
+              IP=$(kubectl get gateway hr-host-gw -n default \
+                -o jsonpath='{.status.addresses[0].value}')
+              HOST="host-a.${IP}.nip.io"
+
+              for i in $(seq 1 10); do
+                RESPONSE=$(curl -s --max-time 5 -H "Host: ${HOST}" "http://${IP}/" 2>/dev/null || true)
+                if echo "$RESPONSE" | grep -q "host-a-response"; then
+                  echo "SUCCESS: host-a routed correctly"
+                  exit 0
+                fi
+                sleep 2
+              done
+              echo "FAILED: host-a did not route correctly. Got: $RESPONSE"
+              exit 1
+            check:
+              ($error == null): true
+
+    # Step 7: Verify host-b routes to echo-host-b
+    - name: verify-host-b
+      description: Verify host-b routes to correct backend
+      cluster: tenant1
+      try:
+        - script:
+            skipCommandOutput: true
+            timeout: 60s
+            content: |
+              set -e
+              IP=$(kubectl get gateway hr-host-gw -n default \
+                -o jsonpath='{.status.addresses[0].value}')
+              HOST="host-b.${IP}.nip.io"
+
+              for i in $(seq 1 20); do
+                RESPONSE=$(curl -s --max-time 5 -H "Host: ${HOST}" "http://${IP}/" 2>/dev/null || true)
+                if echo "$RESPONSE" | grep -q "host-b-response"; then
+                  echo "SUCCESS: host-b routed correctly"
+                  exit 0
+                fi
+                sleep 2
+              done
+              echo "FAILED: host-b did not route correctly. Got: $RESPONSE"
+              exit 1
+            check:
+              ($error == null): true
+
+    # Step 8: Cleanup
+    - name: cleanup
+      description: Delete resources
+      cluster: tenant1
+      try:
+        - script:
+            skipCommandOutput: true
+            timeout: 60s
+            content: |
+              kubectl delete httproute hr-host-a hr-host-b -n default --wait=false
+              echo "Cleanup initiated"
+            check:
+              ($error == null): true
+
+    - name: verify-cleanup
+      description: Verify Route CRDs removed
+      cluster: kubelb
+      try:
+        - script:
+            skipCommandOutput: true
+            timeout: 60s
+            content: |
+              set -e
+              NAMESPACE="tenant-primary"
+              for i in $(seq 1 20); do
+                ROUTE_A=$(kubectl get routes.kubelb.k8c.io -n "$NAMESPACE" \
+                  -l kubelb.k8c.io/origin-name="hr-host-a" -o name 2>/dev/null | head -1)
+                ROUTE_B=$(kubectl get routes.kubelb.k8c.io -n "$NAMESPACE" \
+                  -l kubelb.k8c.io/origin-name="hr-host-b" -o name 2>/dev/null | head -1)
+                if [ -z "$ROUTE_A" ] && [ -z "$ROUTE_B" ]; then
+                  echo "Route CRDs removed"
+                  exit 0
+                fi
+                sleep 2
+              done
+              echo "FAILED: Route CRDs not removed"
+              exit 1
+            check:
+              ($error == null): true
+      finally:
+        - script:
+            skipCommandOutput: true
+            cluster: tenant1
+            timeout: 60s
+            content: |
+              kubectl delete httproute/hr-host-a httproute/hr-host-b gateway/hr-host-gw deployment/echo-host-a deployment/echo-host-b service/echo-host-a service/echo-host-b -n default --ignore-not-found

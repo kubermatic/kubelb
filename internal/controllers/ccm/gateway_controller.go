@@ -29,6 +29,7 @@ import (
 	"k8c.io/kubelb/internal/kubelb"
 	"k8c.io/kubelb/internal/metrics"
 	ccmmetrics "k8c.io/kubelb/internal/metrics/ccm"
+	gatewayhelper "k8c.io/kubelb/internal/resources/gatewayapi/gateway"
 
 	kerrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -50,8 +51,6 @@ import (
 
 const (
 	GatewayControllerName = "gateway-controller"
-	GatewayClassName      = "kubelb"
-	ParentGatewayName     = "kubelb"
 )
 
 // GatewayReconciler reconciles a Gateway Object
@@ -226,15 +225,7 @@ func (r *GatewayReconciler) resourceFilter() predicate.Predicate {
 // shouldReconcile checks if the Gateway should be reconciled by the controller.
 // In Community Edition, only a single Gateway with the name "kubelb" is reconciled.
 func (r *GatewayReconciler) shouldReconcile(gateway *gwapiv1.Gateway) bool {
-	if gateway.Name != ParentGatewayName {
-		return false
-	}
-
-	if r.UseGatewayClass && gateway.Spec.GatewayClassName != GatewayClassName {
-		return false
-	}
-
-	return true
+	return gatewayhelper.ShouldReconcileResource(gateway, r.UseGatewayClass)
 }
 
 func (r *GatewayReconciler) SetupWithManager(mgr ctrl.Manager) error {

@@ -111,4 +111,4 @@ spec:
             skipCommandOutput: true
             timeout: 60s
             content: |
-              kubectl replace -f ../../../../manifests/kubelb-manager/manifests.yaml
+              kubectl replace -f ../../../../manifests/kubelb-manager/config.yaml

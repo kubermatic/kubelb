@@ -176,7 +176,7 @@ spec:
             timeout: 60s
             content: |
               # Revert Config
-              kubectl replace -f ../../../../manifests/kubelb-manager/manifests.yaml || true
+              kubectl replace -f ../../../../manifests/kubelb-manager/config.yaml || true
               echo "Cleanup: Config reverted"
         - script:
             cluster: tenant1

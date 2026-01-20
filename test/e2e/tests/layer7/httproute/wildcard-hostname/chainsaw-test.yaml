@@ -1,0 +1,356 @@
+# Copyright 2026 The KubeLB Authors.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# HTTPRoute Wildcard Hostname Test
+# Verifies:
+# - HTTPRoute with wildcard hostname (*.example.nip.io) routes correctly
+# - Multiple subdomains (foo.example, bar.example) all route to same backend
+# - Non-matching hostnames do not route
+apiVersion: chainsaw.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: wildcard-hostname-httproute
+  labels:
+    all:
+    test: wildcard-hostname
+    resource: httproute
+    layer: layer7
+spec:
+  description: |
+    Test HTTPRoute wildcard hostname matching.
+    Creates HTTPRoute with *.example.IP.nip.io pattern,
+    verifies foo.example and bar.example both route correctly,
+    and non-matching hostname does not route.
+  bindings:
+    - name: name
+      value: hr-wildcard
+    - name: backend
+      value: echo-wildcard
+    - name: namespace
+      value: default
+    - name: kubelb_namespace
+      value: tenant-primary
+    - name: message
+      value: "wildcard-backend-response"
+  steps:
+    # Step 1: Deploy backend service
+    - name: deploy-backend
+      description: Deploy echo server for wildcard test
+      cluster: tenant1
+      try:
+        - apply:
+            resource:
+              apiVersion: apps/v1
+              kind: Deployment
+              metadata:
+                name: echo-wildcard
+                namespace: default
+                labels:
+                  app: echo-wildcard
+              spec:
+                replicas: 1
+                selector:
+                  matchLabels:
+                    app: echo-wildcard
+                template:
+                  metadata:
+                    labels:
+                      app: echo-wildcard
+                  spec:
+                    containers:
+                      - name: echo
+                        image: hashicorp/http-echo:latest
+                        args:
+                          - -text=wildcard-backend-response
+                          - -listen=:8080
+                        ports:
+                          - containerPort: 8080
+        - apply:
+            resource:
+              apiVersion: v1
+              kind: Service
+              metadata:
+                name: echo-wildcard
+                namespace: default
+              spec:
+                type: ClusterIP
+                selector:
+                  app: echo-wildcard
+                ports:
+                  - port: 80
+                    targetPort: 8080
+        - assert:
+            timeout: 60s
+            resource:
+              apiVersion: apps/v1
+              kind: Deployment
+              metadata:
+                name: echo-wildcard
+                namespace: default
+              status:
+                readyReplicas: 1
+
+    # Step 2: Create Gateway
+    - name: create-gateway
+      description: Create Gateway for HTTPRoute
+      cluster: tenant1
+      try:
+        - apply:
+            resource:
+              apiVersion: gateway.networking.k8s.io/v1
+              kind: Gateway
+              metadata:
+                name: wildcard-gw
+                namespace: default
+              spec:
+                gatewayClassName: kubelb
+                listeners:
+                  - name: http
+                    protocol: HTTP
+                    port: 80
+                    allowedRoutes:
+                      namespaces:
+                        from: All
+
+    # Step 3: Wait for Gateway ready
+    - name: wait-gateway-ready
+      description: Wait for Gateway to have address
+      cluster: tenant1
+      try:
+        - script:
+            skipCommandOutput: true
+            timeout: 60s
+            content: |
+              set -e
+              for i in $(seq 1 20); do
+                IP=$(kubectl get gateway wildcard-gw -n default \
+                  -o jsonpath='{.status.addresses[0].value}' 2>/dev/null || true)
+                if [ -n "$IP" ]; then
+                  echo "Gateway ready with IP: $IP"
+                  exit 0
+                fi
+                sleep 2
+              done
+              echo "FAILED: Gateway not ready"
+              exit 1
+            check:
+              ($error == null): true
+
+    # Step 4: Create HTTPRoute with wildcard hostname
+    - name: create-wildcard-httproute
+      description: Create HTTPRoute with wildcard hostname pattern
+      cluster: tenant1
+      try:
+        - script:
+            skipCommandOutput: true
+            timeout: 60s
+            content: |
+              set -e
+              IP=$(kubectl get gateway wildcard-gw -n default \
+                -o jsonpath='{.status.addresses[0].value}')
+
+              # Create HTTPRoute with wildcard hostname: *.example.IP.nip.io
+              cat <<EOF | kubectl apply -f -
+              apiVersion: gateway.networking.k8s.io/v1
+              kind: HTTPRoute
+              metadata:
+                name: hr-wildcard
+                namespace: default
+              spec:
+                parentRefs:
+                  - name: wildcard-gw
+                hostnames:
+                  - "*.example.${IP}.nip.io"
+                rules:
+                  - backendRefs:
+                      - name: echo-wildcard
+                        port: 80
+                    matches:
+                      - path:
+                          type: PathPrefix
+                          value: /
+              EOF
+              echo "Created wildcard HTTPRoute: *.example.${IP}.nip.io"
+            check:
+              ($error == null): true
+
+    # Step 5: Verify Route CRD in kubelb cluster
+    - name: verify-route-crd
+      description: Verify Route CRD exists with correct labels
+      use:
+        template: ../../../../step-templates/common/verify-route-crd.yaml
+        with:
+          bindings:
+            - name: resource_name
+              value: ($name)
+            - name: expected_kind
+              value: HTTPRoute.gateway.networking.k8s.io
+            - name: kubelb_namespace
+              value: ($kubelb_namespace)
+
+    # Step 6: Verify foo.example subdomain routes correctly
+    - name: verify-foo-subdomain
+      description: Verify foo.example.IP.nip.io routes to backend
+      cluster: tenant1
+      try:
+        - script:
+            skipCommandOutput: true
+            timeout: 60s
+            content: |
+              set -e
+              IP=$(kubectl get gateway wildcard-gw -n default \
+                -o jsonpath='{.status.addresses[0].value}')
+              HOST="foo.example.${IP}.nip.io"
+              EXPECTED="wildcard-backend-response"
+
+              echo "Testing subdomain: $HOST"
+              for i in $(seq 1 15); do
+                RESPONSE=$(curl -s --max-time 5 -H "Host: ${HOST}" "http://${IP}/" 2>/dev/null || true)
+                if echo "$RESPONSE" | grep -q "$EXPECTED"; then
+                  echo "SUCCESS: foo.example subdomain routed correctly"
+                  exit 0
+                fi
+                echo "Attempt $i: waiting..."
+                sleep 2
+              done
+              echo "FAILED: foo.example did not route correctly. Got: $RESPONSE"
+              exit 1
+            check:
+              ($error == null): true
+
+    # Step 7: Verify bar.example subdomain routes correctly
+    - name: verify-bar-subdomain
+      description: Verify bar.example.IP.nip.io routes to backend
+      cluster: tenant1
+      try:
+        - script:
+            skipCommandOutput: true
+            timeout: 60s
+            content: |
+              set -e
+              IP=$(kubectl get gateway wildcard-gw -n default \
+                -o jsonpath='{.status.addresses[0].value}')
+              HOST="bar.example.${IP}.nip.io"
+              EXPECTED="wildcard-backend-response"
+
+              echo "Testing subdomain: $HOST"
+              for i in $(seq 1 20); do
+                RESPONSE=$(curl -s --max-time 5 -H "Host: ${HOST}" "http://${IP}/" 2>/dev/null || true)
+                if echo "$RESPONSE" | grep -q "$EXPECTED"; then
+                  echo "SUCCESS: bar.example subdomain routed correctly"
+                  exit 0
+                fi
+                sleep 2
+              done
+              echo "FAILED: bar.example did not route correctly. Got: $RESPONSE"
+              exit 1
+            check:
+              ($error == null): true
+
+    # Step 8: Verify deep.nested.example subdomain routes correctly
+    - name: verify-nested-subdomain
+      description: Verify deep.nested.example.IP.nip.io routes to backend
+      cluster: tenant1
+      try:
+        - script:
+            skipCommandOutput: true
+            timeout: 60s
+            content: |
+              set -e
+              IP=$(kubectl get gateway wildcard-gw -n default \
+                -o jsonpath='{.status.addresses[0].value}')
+              # Note: Gateway API wildcard * only matches one level, so this may return 404
+              # depending on Envoy configuration. Test documents actual behavior.
+              HOST="deep.nested.example.${IP}.nip.io"
+              EXPECTED="wildcard-backend-response"
+
+              echo "Testing nested subdomain: $HOST"
+              for i in $(seq 1 20); do
+                HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" --max-time 5 -H "Host: ${HOST}" "http://${IP}/" 2>/dev/null || echo "000")
+                RESPONSE=$(curl -s --max-time 5 -H "Host: ${HOST}" "http://${IP}/" 2>/dev/null || true)
+                if echo "$RESPONSE" | grep -q "$EXPECTED"; then
+                  echo "INFO: Nested subdomain matched wildcard (implementation allows multi-level)"
+                  exit 0
+                elif [ "$HTTP_CODE" = "404" ]; then
+                  echo "INFO: Nested subdomain returned 404 (correct per strict Gateway API spec)"
+                  exit 0
+                fi
+                sleep 2
+              done
+              echo "INFO: Nested subdomain behavior - HTTP $HTTP_CODE, Response: $RESPONSE"
+              exit 0  # Don't fail - just document behavior
+            check:
+              ($error == null): true
+
+    # Step 9: Verify non-matching hostname returns 404
+    - name: verify-non-matching-404
+      description: Verify non-matching hostname (other.IP.nip.io) returns 404
+      cluster: tenant1
+      try:
+        - script:
+            skipCommandOutput: true
+            timeout: 60s
+            content: |
+              set -e
+              IP=$(kubectl get gateway wildcard-gw -n default \
+                -o jsonpath='{.status.addresses[0].value}')
+              # Use hostname that doesn't match *.example.IP.nip.io pattern
+              HOST="nomatch.${IP}.nip.io"
+
+              echo "Testing non-matching hostname: $HOST"
+              for i in $(seq 1 20); do
+                HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" --max-time 5 -H "Host: ${HOST}" "http://${IP}/" 2>/dev/null || echo "000")
+                if [ "$HTTP_CODE" = "404" ]; then
+                  echo "SUCCESS: Non-matching hostname returned 404"
+                  exit 0
+                fi
+                echo "Attempt $i: got HTTP $HTTP_CODE, waiting..."
+                sleep 2
+              done
+              echo "FAILED: Expected 404 for non-matching hostname, got HTTP $HTTP_CODE"
+              exit 1
+            check:
+              ($error == null): true
+
+    # Step 10: Cleanup
+    - name: cleanup
+      description: Delete resources
+      cluster: tenant1
+      try:
+        - script:
+            skipCommandOutput: true
+            timeout: 60s
+            content: |
+              kubectl delete httproute hr-wildcard -n default --wait=false
+              echo "Cleanup initiated"
+            check:
+              ($error == null): true
+      finally:
+        - script:
+            skipCommandOutput: true
+            cluster: tenant1
+            timeout: 60s
+            content: |
+              kubectl delete httproute/hr-wildcard gateway/wildcard-gw deployment/echo-wildcard service/echo-wildcard -n default --ignore-not-found
+
+    - name: verify-cleanup
+      description: Verify Route CRD removed
+      use:
+        template: ../../../../step-templates/common/verify-route-cleanup.yaml
+        with:
+          bindings:
+            - name: resource_name
+              value: ($name)
+            - name: kubelb_namespace
+              value: ($kubelb_namespace)

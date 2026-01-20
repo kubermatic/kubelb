@@ -155,4 +155,4 @@ spec:
               kubectl delete svc -n "$NAMESPACE" -l kubelb.k8c.io/origin-name=echo-lb-class --ignore-not-found
               kubectl delete loadbalancers.kubelb.k8c.io -n "$NAMESPACE" -l kubelb.k8c.io/origin-name=echo-lb-class --ignore-not-found
               # Reset Config
-              kubectl replace -f ../../../../manifests/kubelb-manager/manifests.yaml
+              kubectl replace -f ../../../../manifests/kubelb-manager/config.yaml

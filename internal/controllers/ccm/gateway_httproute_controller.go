@@ -29,6 +29,7 @@ import (
 	"k8c.io/kubelb/internal/kubelb"
 	"k8c.io/kubelb/internal/metrics"
 	ccmmetrics "k8c.io/kubelb/internal/metrics/ccm"
+	gatewayhelper "k8c.io/kubelb/internal/resources/gatewayapi/gateway"
 	httprouteHelpers "k8c.io/kubelb/internal/resources/gatewayapi/httproute"
 	serviceHelpers "k8c.io/kubelb/internal/resources/service"
 
@@ -282,13 +283,7 @@ func (r *HTTPRouteReconciler) resourceFilter() predicate.Predicate {
 // shouldReconcile returns true if the HTTPRoute should be reconciled by the controller.
 // In Community Edition, the controller only reconciles HTTPRoutes against the gateway named "kubelb".
 func (r *HTTPRouteReconciler) shouldReconcile(httpRoute *gwapiv1.HTTPRoute) bool {
-	if len(httpRoute.Spec.ParentRefs) == 1 {
-		parentRef := httpRoute.Spec.ParentRefs[0]
-		if parentRef.Name == ParentGatewayName {
-			return true
-		}
-	}
-	return false
+	return gatewayhelper.ShouldReconcileResource(httpRoute, false)
 }
 
 func (r *HTTPRouteReconciler) SetupWithManager(mgr ctrl.Manager) error {

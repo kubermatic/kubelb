@@ -1,0 +1,197 @@
+# Copyright 2026 The KubeLB Authors.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# Header Propagation Test (HTTPRoute)
+# Verifies:
+# - X-Custom-Header preserved exactly
+# - Authorization header preserved exactly
+# - X-Forwarded-For contains proxy IPs
+# Note: X-Request-ID preservation tested separately (requires PreserveXRequestID feature)
+apiVersion: chainsaw.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: headers-httproute
+  labels:
+    all:
+    test: headers-httproute
+    resource: headers
+    layer: layer7
+spec:
+  description: |
+    Test header propagation through KubeLB with HTTPRoute.
+    Deploys echo-server that returns received headers as JSON,
+    verifies custom headers, Authorization preserved,
+    and X-Forwarded-For contains proxy chain.
+  bindings:
+    - name: name
+      value: hr-headers
+    - name: backend
+      value: echo-headers
+    - name: kubelb_namespace
+      value: tenant-primary
+  steps:
+    # Step 1: Deploy echo-server backend
+    - name: deploy-backend
+      description: Deploy echo-server that returns headers as JSON
+      cluster: tenant1
+      bindings:
+        - name: name
+          value: ($backend)
+      try:
+        - apply:
+            file: ../../../../testdata/deployments/echo-json-server.yaml
+        - apply:
+            file: ../../../../testdata/services/echo-json-clusterip.yaml
+        - assert:
+            timeout: 60s
+            resource:
+              apiVersion: apps/v1
+              kind: Deployment
+              metadata:
+                name: ($backend)
+                namespace: default
+              status:
+                readyReplicas: 1
+
+    # Step 2: Create Gateway
+    - name: create-gateway
+      description: Create Gateway for HTTPRoute
+      cluster: tenant1
+      try:
+        - apply:
+            resource:
+              apiVersion: gateway.networking.k8s.io/v1
+              kind: Gateway
+              metadata:
+                name: headers-gw
+                namespace: default
+              spec:
+                gatewayClassName: kubelb
+                listeners:
+                  - name: http
+                    protocol: HTTP
+                    port: 80
+                    allowedRoutes:
+                      namespaces:
+                        from: All
+
+    # Step 3: Wait for Gateway address
+    - name: wait-gateway-ready
+      description: Wait for Gateway to have address
+      use:
+        template: ../../../../step-templates/gateway/verify-gateway-status.yaml
+        with:
+          bindings:
+            - name: gateway_name
+              value: headers-gw
+
+    # Step 4: Create HTTPRoute
+    - name: create-httproute
+      description: Create HTTPRoute referencing Gateway
+      cluster: tenant1
+      try:
+        - script:
+            skipCommandOutput: true
+            timeout: 30s
+            content: |
+              set -e
+              IP=$(kubectl get gateway headers-gw -n default \
+                -o jsonpath='{.status.addresses[0].value}')
+              HOST="hr-headers.${IP}.nip.io"
+              cat <<EOF | kubectl apply -f -
+              apiVersion: gateway.networking.k8s.io/v1
+              kind: HTTPRoute
+              metadata:
+                name: hr-headers
+                namespace: default
+              spec:
+                parentRefs:
+                  - name: headers-gw
+                hostnames:
+                  - "${HOST}"
+                rules:
+                  - backendRefs:
+                      - name: echo-headers
+                        port: 80
+                    matches:
+                      - path:
+                          type: PathPrefix
+                          value: /
+              EOF
+              echo "Created HTTPRoute with host: $HOST"
+            check:
+              ($error == null): true
+
+    # Step 5: Verify Route CRD
+    - name: verify-route-crd
+      description: Verify Route CRD exists with correct labels
+      use:
+        template: ../../../../step-templates/common/verify-route-crd.yaml
+        with:
+          bindings:
+            - name: resource_name
+              value: ($name)
+            - name: expected_kind
+              value: HTTPRoute.gateway.networking.k8s.io
+            - name: kubelb_namespace
+              value: ($kubelb_namespace)
+
+    # Step 6: Verify header propagation
+    - name: verify-headers
+      description: Verify headers are propagated correctly
+      use:
+        template: ../../../../step-templates/common/verify-headers.yaml
+        with:
+          bindings:
+            - name: gateway_name
+              value: headers-gw
+            - name: route_name
+              value: ($name)
+            - name: backend_name
+              value: ($backend)
+
+    # Step 7: Cleanup
+    - name: cleanup
+      description: Delete resources
+      cluster: tenant1
+      try:
+        - script:
+            skipCommandOutput: true
+            timeout: 60s
+            content: |
+              kubectl delete httproute hr-headers -n default --wait=false
+              echo "HTTPRoute deletion initiated"
+            check:
+              ($error == null): true
+      finally:
+        - script:
+            skipCommandOutput: true
+            cluster: tenant1
+            timeout: 60s
+            content: |
+              kubectl delete httproute hr-headers -n default --ignore-not-found
+              kubectl delete gateway headers-gw -n default --ignore-not-found
+              kubectl delete deployment echo-headers -n default --ignore-not-found
+              kubectl delete service echo-headers -n default --ignore-not-found
+
+    - name: verify-cleanup
+      description: Verify Route CRD removed
+      use:
+        template: ../../../../step-templates/common/verify-route-cleanup.yaml
+        with:
+          bindings:
+            - name: resource_name
+              value: ($name)
+            - name: kubelb_namespace
+              value: ($kubelb_namespace)

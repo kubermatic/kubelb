@@ -1,0 +1,136 @@
+# Copyright 2026 The KubeLB Authors.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# Gateway Wrong Class Negative Test
+# Verifies:
+# - Gateway with non-kubelb gatewayClass is NOT processed by KubeLB CCM
+# - No Route CRD is created in kubelb cluster
+apiVersion: chainsaw.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: wrong-class-gateway
+  labels:
+    all:
+    test: wrong-class
+    resource: gateway
+    layer: layer7
+    negative: "true"
+spec:
+  description: |
+    Test that Gateway with wrong gatewayClass is not processed.
+    Creates Gateway with non-kubelb class on tenant1,
+    verifies NO Route CRD is created in kubelb cluster.
+  bindings:
+    - name: name
+      value: gw-wrong-class
+    - name: namespace
+      value: default
+    - name: kubelb_namespace
+      value: tenant-primary
+  steps:
+    # Step 1: Create Gateway with wrong class
+    - name: create-gateway
+      description: Create Gateway with non-kubelb class
+      cluster: tenant1
+      try:
+        - apply:
+            resource:
+              apiVersion: gateway.networking.k8s.io/v1
+              kind: Gateway
+              metadata:
+                name: gw-wrong-class
+                namespace: default
+              spec:
+                gatewayClassName: some-other-class
+                listeners:
+                  - name: http
+                    protocol: HTTP
+                    port: 80
+                    allowedRoutes:
+                      namespaces:
+                        from: All
+
+    # Step 2: Verify NO Route CRD is created
+    - name: verify-no-route-crd
+      description: Verify Route CRD is NOT created in kubelb cluster
+      cluster: kubelb
+      try:
+        - script:
+            skipCommandOutput: true
+            timeout: 60s
+            content: |
+              set -e
+              NAMESPACE="tenant-primary"
+              GATEWAY_NAME="gw-wrong-class"
+
+              # Wait a bit to ensure controller has had time to process
+              sleep 2
+
+              ROUTE=$(kubectl get routes.kubelb.k8c.io -n "$NAMESPACE" \
+                -l kubelb.k8c.io/origin-name="$GATEWAY_NAME" -o name 2>/dev/null | head -1)
+
+              if [ -n "$ROUTE" ]; then
+                echo "FAILED: Route CRD was created for wrong-class Gateway"
+                exit 1
+              fi
+
+              echo "SUCCESS: No Route CRD created for wrong-class Gateway"
+              exit 0
+            check:
+              ($error == null): true
+
+    # Step 3: Verify no generated Gateway in kubelb
+    - name: verify-no-generated-gateway
+      description: Verify no Gateway created in kubelb cluster
+      cluster: kubelb
+      try:
+        - script:
+            skipCommandOutput: true
+            timeout: 60s
+            content: |
+              set -e
+              NAMESPACE="tenant-primary"
+              GATEWAY_NAME="gw-wrong-class"
+
+              GEN_GW=$(kubectl get gateway -n "$NAMESPACE" \
+                -l kubelb.k8c.io/origin-name="$GATEWAY_NAME" -o name 2>/dev/null | head -1)
+
+              if [ -n "$GEN_GW" ]; then
+                echo "FAILED: Gateway was created in kubelb for wrong-class Gateway"
+                exit 1
+              fi
+
+              echo "SUCCESS: No Gateway created in kubelb"
+              exit 0
+            check:
+              ($error == null): true
+
+    # Step 4: Cleanup
+    - name: cleanup
+      description: Delete Gateway
+      cluster: tenant1
+      try:
+        - delete:
+            ref:
+              apiVersion: gateway.networking.k8s.io/v1
+              kind: Gateway
+              name: gw-wrong-class
+              namespace: default
+      finally:
+        - script:
+            skipCommandOutput: true
+            cluster: tenant1
+            timeout: 60s
+            content: |
+              kubectl delete gateway gw-wrong-class -n default --ignore-not-found

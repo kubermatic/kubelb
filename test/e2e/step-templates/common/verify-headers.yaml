@@ -1,0 +1,133 @@
+# Copyright 2026 The KubeLB Authors.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# Step Template: Verify header propagation through KubeLB
+# Uses ealen/echo-server which returns headers at .request.headers (lowercase keys)
+# Verifies: x-custom-header, authorization preserved, x-forwarded-for present
+# Note: X-Request-ID preservation requires PreserveXRequestID feature (tested separately)
+# Required bindings:
+#   - gateway_name: Gateway name to get IP from (for HTTPRoute tests)
+#   - route_name: HTTPRoute name for hostname construction
+# OR:
+#   - ingress_name: Ingress name to get IP from (for Ingress tests)
+# Optional bindings:
+#   - namespace: namespace (default: default)
+#   - backend_name: Backend name for debugging (default: "")
+apiVersion: chainsaw.kyverno.io/v1alpha1
+kind: StepTemplate
+metadata:
+  name: verify-headers
+spec:
+  bindings:
+    - name: gateway_name
+      value: ""
+    - name: route_name
+      value: ""
+    - name: ingress_name
+      value: ""
+    - name: namespace
+      value: default
+    - name: backend_name
+      value: ""
+  try:
+    - script:
+        cluster: tenant1
+        timeout: 60s
+        env:
+          - name: GATEWAY_NAME
+            value: ($gateway_name)
+          - name: ROUTE_NAME
+            value: ($route_name)
+          - name: INGRESS_NAME
+            value: ($ingress_name)
+          - name: NS
+            value: ($namespace)
+          - name: BACKEND_NAME
+            value: ($backend_name)
+        content: |
+          set -e
+
+          # Determine IP and HOST based on whether using Gateway or Ingress
+          if [ -n "$GATEWAY_NAME" ]; then
+            IP=$(kubectl get gateway "$GATEWAY_NAME" -n "$NS" \
+              -o jsonpath='{.status.addresses[0].value}')
+            HOST="${ROUTE_NAME}.${IP}.nip.io"
+          elif [ -n "$INGRESS_NAME" ]; then
+            IP=$(kubectl get ingress "$INGRESS_NAME" -n "$NS" \
+              -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+            HOST=$(kubectl get ingress "$INGRESS_NAME" -n "$NS" \
+              -o jsonpath='{.spec.rules[0].host}')
+          else
+            echo "FAILED: Either gateway_name or ingress_name must be provided"
+            exit 1
+          fi
+
+          echo "Testing headers against IP=$IP HOST=$HOST"
+
+          for i in $(seq 1 15); do
+            RESPONSE=$(curl -s --max-time 5 \
+              -H "Host: ${HOST}" \
+              -H "X-Custom-Header: custom-value" \
+              -H "Authorization: Bearer test-token" \
+              -H "X-Request-ID: req-12345" \
+              "http://${IP}/" 2>/dev/null || true)
+
+            if [ -z "$RESPONSE" ]; then
+              echo "Attempt $i: No response"
+              sleep 2
+              continue
+            fi
+
+            # Check if response is JSON
+            if ! echo "$RESPONSE" | jq -e '.' >/dev/null 2>&1; then
+              echo "Attempt $i: Not JSON: $(echo "$RESPONSE" | head -c 80)"
+              sleep 2
+              continue
+            fi
+
+            # ealen/echo-server: headers at .request.headers (lowercase)
+            CUSTOM=$(echo "$RESPONSE" | jq -r '.request.headers["x-custom-header"] // empty' 2>/dev/null || true)
+            if [ "$CUSTOM" != "custom-value" ]; then
+              echo "Attempt $i: x-custom-header='$CUSTOM'"
+              sleep 2
+              continue
+            fi
+
+            AUTH=$(echo "$RESPONSE" | jq -r '.request.headers["authorization"] // empty' 2>/dev/null || true)
+            if [ "$AUTH" != "Bearer test-token" ]; then
+              echo "Attempt $i: authorization='$AUTH'"
+              sleep 2
+              continue
+            fi
+
+            XFF=$(echo "$RESPONSE" | jq -r '.request.headers["x-forwarded-for"] // empty' 2>/dev/null || true)
+            if [ -z "$XFF" ]; then
+              echo "Attempt $i: x-forwarded-for missing"
+              sleep 2
+              continue
+            fi
+
+            echo "SUCCESS: x-custom-header=$CUSTOM, authorization=$AUTH, x-forwarded-for=$XFF"
+            exit 0
+          done
+
+          echo "FAILED: Headers not verified after 15 attempts"
+          echo "Last response: $(echo "$RESPONSE" | head -c 300)"
+          if [ -n "$BACKEND_NAME" ]; then
+            kubectl get pods -n "$NS" -l "app=$BACKEND_NAME" -o wide 2>/dev/null || true
+            kubectl get endpoints "$BACKEND_NAME" -n "$NS" 2>/dev/null || true
+          fi
+          exit 1
+        check:
+          ($error == null): true
