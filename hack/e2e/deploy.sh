@@ -197,16 +197,12 @@ load_images() {
   echodate "Loading images into Kind clusters..."
   local load_start=$(nowms)
 
-  # Load kubelb image into kubelb cluster
-  # Load ccm image into kubelb cluster (CCM runs there)
+  # Load images in parallel to all clusters
+  # kubelb cluster: needs kubelb + ccm images
+  # tenant clusters: need ccm image (CCM runs there)
   kind load docker-image --name=kubelb "${KUBELB_IMAGE}" "${CCM_IMAGE}" &
-  local kubelb_pid=$!
-
-  # Also load ccm into tenant clusters if needed for local testing
-  kind load docker-image --name=tenant1 "${CCM_IMAGE}" &> /dev/null &
-  kind load docker-image --name=tenant2 "${CCM_IMAGE}" &> /dev/null &
-
-  wait ${kubelb_pid}
+  kind load docker-image --name=tenant1 "${CCM_IMAGE}" &
+  kind load docker-image --name=tenant2 "${CCM_IMAGE}" &
   wait
 
   printElapsed "image_loads" ${load_start}
@@ -414,7 +410,7 @@ deploy_ccms() {
 }
 
 #######################################
-# Wait for all deployments
+# Wait for all deployments (runs all checks in parallel)
 #######################################
 wait_for_ready() {
   echodate "Verifying deployments in parallel..."
@@ -425,7 +421,7 @@ wait_for_ready() {
     ["secondary"]="tenant2"
   )
 
-  # Launch all wait operations in parallel
+  # Launch all wait operations in parallel (manager already waited in deploy_kubelb_manager)
   # CCMs in tenant clusters
   local ccm_pids=()
   for tenant in "${!TENANT_MAP[@]}"; do
@@ -455,7 +451,7 @@ wait_for_ready() {
     kubectl -n kubelb wait --for=condition=available deployment/kubelb-ingress-nginx-controller --timeout=5m &
   local ingress_pid=$!
 
-  # MetalLB webhook (required before IPAddressPool can be created)
+  # MetalLB controller (required before IPAddressPool can be created)
   KUBECONFIG="${KUBECONFIGS_DIR}/kubelb.kubeconfig" \
     kubectl -n kubelb wait --for=condition=available deployment/kubelb-metallb-controller --timeout=5m &
   local metallb_pid=$!
@@ -477,6 +473,9 @@ wait_for_ready() {
   fi
 
   printElapsed "readiness_checks" ${wait_start}
+
+  # Configure MetalLB IP pool (metallb controller is now ready)
+  configure_metallb_pool
 
   echodate "Applying kubelb-manager manifests..."
   export KUBECONFIG="${KUBECONFIGS_DIR}/kubelb.kubeconfig"
@@ -530,7 +529,6 @@ deploy_kubelb_manager
 setup_tenants
 deploy_ccms
 wait_for_ready
-configure_metallb_pool
 deploy_test_apps
 
 echodate ""

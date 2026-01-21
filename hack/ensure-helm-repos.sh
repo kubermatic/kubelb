@@ -16,8 +16,11 @@
 
 set -euo pipefail
 
-# Function to extract and add repositories from Chart.yaml
-add_repos_from_chart() {
+# Collect repos to add (name:url pairs)
+REPOS_TO_ADD=()
+
+# Function to extract repositories from Chart.yaml (collect, don't add yet)
+collect_repos_from_chart() {
   local chart_path="$1"
 
   if [[ ! -f "$chart_path/Chart.yaml" ]]; then
@@ -27,8 +30,6 @@ add_repos_from_chart() {
 
   echo "Processing $chart_path/Chart.yaml..."
 
-  # Extract dependencies with HTTP(S) repositories
-  # Get both name and repository for each dependency
   local dep_count=$(yq eval '.dependencies | length' "$chart_path/Chart.yaml" 2> /dev/null || echo "0")
 
   if [[ "$dep_count" == "0" ]]; then
@@ -53,17 +54,7 @@ add_repos_from_chart() {
     fi
 
     found_repos=true
-
-    # Use the chart name as the repository name
-    repo_name="$chart_name"
-
-    # Check if the repository is already added
-    if helm repo list 2> /dev/null | grep -q "^${repo_name}[[:space:]]"; then
-      echo "Repository '$repo_name' already exists, skipping..."
-    else
-      echo "Adding repository '$repo_name' from $repo_url..."
-      helm repo add "$repo_name" "$repo_url"
-    fi
+    REPOS_TO_ADD+=("${chart_name}:${repo_url}")
   done
 
   if [[ "$found_repos" == "false" ]]; then
@@ -79,7 +70,30 @@ charts=(
 )
 
 for chart in "${charts[@]}"; do
-  add_repos_from_chart "$chart"
+  collect_repos_from_chart "$chart"
+done
+
+# Get existing repos once
+existing_repos=$(helm repo list 2> /dev/null | tail -n +2 | awk '{print $1}' || true)
+
+# Add repos in parallel
+add_pids=()
+for entry in "${REPOS_TO_ADD[@]}"; do
+  repo_name="${entry%%:*}"
+  repo_url="${entry#*:}"
+
+  if echo "$existing_repos" | grep -q "^${repo_name}$"; then
+    echo "Repository '$repo_name' already exists, skipping..."
+  else
+    echo "Adding repository '$repo_name' from $repo_url..."
+    helm repo add "$repo_name" "$repo_url" &
+    add_pids+=($!)
+  fi
+done
+
+# Wait for all parallel adds
+for pid in "${add_pids[@]}"; do
+  wait $pid 2> /dev/null || true
 done
 
 # Update all repositories
