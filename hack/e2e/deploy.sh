@@ -80,9 +80,7 @@ verify_kubeconfigs() {
 }
 
 #######################################
-# Build images in parallel
-# Uses host Go cache for fast builds, then packages with goreleaser dockerfiles
-# Skips docker build if image with same binary hash exists
+# Build images using centralized make targets
 #######################################
 build_images() {
   if [[ "${SKIP_BUILD}" == "true" ]]; then
@@ -92,86 +90,31 @@ build_images() {
 
   echodate "Building images..."
   local build_start=$(nowms)
-  local bin_dir="${ROOT_DIR}/bin"
+  local build_log="${LOGS_DIR}/build.log"
 
-  # Check if source files have changed since last build
-  local src_hash
-  src_hash=$(echo "TAGS=e2e $(git ls-files -s cmd/ internal/ api/ pkg/ go.mod go.sum 2> /dev/null)" | sha256sum | cut -c1-12)
-  local src_hash_file="${bin_dir}/.src-hash"
-
-  if [[ -f "${src_hash_file}" ]] && [[ "$(cat "${src_hash_file}")" == "${src_hash}" ]] &&
-    [[ -f "${bin_dir}/kubelb" ]] && [[ -f "${bin_dir}/ccm" ]]; then
-    echodate "Source unchanged (hash: ${src_hash}), skipping binary build"
-  else
-    # Build binaries using Makefile (uses host Go cache, cross-compile for linux)
-    # Use TAGS=e2e to enable relaxed gateway name restrictions for parallel e2e tests
-    echodate "Building binaries via make (hash: ${src_hash})..."
-    local build_log="${LOGS_DIR}/build.log"
-    if ! GOOS=linux GOARCH=amd64 make build-kubelb build-ccm \
-      TAGS=e2e \
-      GIT_VERSION="${GIT_VERSION}" \
-      GIT_COMMIT="${GIT_COMMIT}" \
-      BUILD_DATE="${BUILD_DATE}" \
-      &> "${build_log}"; then
-      echodate "FAILED: binary build (see ${build_log})"
-      exit 1
-    fi
-    echo "${src_hash}" > "${src_hash_file}"
-    echodate "Binaries built"
-  fi
-
-  # Compute per-binary hashes for granular cache detection
-  local kubelb_hash ccm_hash
-  kubelb_hash=$(sha256sum "${bin_dir}/kubelb" | cut -c1-12)
-  ccm_hash=$(sha256sum "${bin_dir}/ccm" | cut -c1-12)
-  local kubelb_hash_image="kubelb:${kubelb_hash}"
-  local ccm_hash_image="kubelb-ccm:${ccm_hash}"
-
-  # Package images using goreleaser dockerfiles (just COPY binary)
-  # Skip each image independently if hash already exists
-  local failed=()
-  local build_pids=()
-
-  if docker image inspect "${kubelb_hash_image}" &> /dev/null; then
-    echodate "kubelb image with hash ${kubelb_hash} exists, skipping"
-  else
-    echodate "Building kubelb image (hash: ${kubelb_hash})..."
-    docker build -t "${kubelb_hash_image}" -f kubelb.goreleaser.dockerfile "${bin_dir}" &
-    build_pids+=("kubelb:$!")
-  fi
-
-  if docker image inspect "${ccm_hash_image}" &> /dev/null; then
-    echodate "ccm image with hash ${ccm_hash} exists, skipping"
-  else
-    echodate "Building ccm image (hash: ${ccm_hash})..."
-    docker build -t "${ccm_hash_image}" -f ccm.goreleaser.dockerfile "${bin_dir}" &
-    build_pids+=("ccm:$!")
-  fi
-
-  # Wait for any builds that were started
-  for entry in "${build_pids[@]}"; do
-    local name="${entry%%:*}"
-    local pid="${entry##*:}"
-    if ! wait ${pid}; then
-      failed+=("${name}")
-      echodate "FAILED: ${name} image packaging"
-    else
-      echodate "Built ${name} image"
-    fi
-  done
-
-  if [[ ${#failed[@]} -gt 0 ]]; then
+  # Use fixed BUILD_DATE for reproducible builds (matches reload.sh)
+  if ! GOOS=linux GOARCH=amd64 make e2e-image-kubelb e2e-image-ccm \
+    GIT_VERSION="${GIT_VERSION}" \
+    GIT_COMMIT="${GIT_COMMIT}" \
+    BUILD_DATE=e2e \
+    &> "${build_log}"; then
+    echodate "FAILED: image build (see ${build_log})"
     exit 1
   fi
 
-  # Tag hash images with :e2e for helm to use
-  docker tag "${kubelb_hash_image}" "${KUBELB_IMAGE}"
-  docker tag "${ccm_hash_image}" "${CCM_IMAGE}"
-  echodate "Tagged ${KUBELB_IMAGE} and ${CCM_IMAGE}"
+  # Store binary hashes for reload.sh compatibility
+  local hash_dir="${KUBECONFIGS_DIR}/.reload-hashes"
+  mkdir -p "${hash_dir}"
+  sha256sum "${ROOT_DIR}/bin/kubelb" | cut -c1-12 > "${hash_dir}/kubelb.hash"
+  sha256sum "${ROOT_DIR}/bin/ccm" | cut -c1-12 > "${hash_dir}/ccm.hash"
+
+  echodate "Built ${KUBELB_IMAGE} and ${CCM_IMAGE}"
 
   # Push to registry if configured (for cloud clusters)
   if [[ -n "${IMAGE_REGISTRY}" ]]; then
     echodate "Pushing images to registry..."
+    docker tag kubelb:e2e "${KUBELB_IMAGE}"
+    docker tag kubelb-ccm:e2e "${CCM_IMAGE}"
     docker push "${KUBELB_IMAGE}" &
     docker push "${CCM_IMAGE}" &
     wait
@@ -197,10 +140,7 @@ load_images() {
   echodate "Loading images into Kind clusters..."
   local load_start=$(nowms)
 
-  # Load images in parallel to all clusters
-  # kubelb cluster: needs kubelb + ccm images
-  # tenant clusters: need ccm image (CCM runs there)
-  kind load docker-image --name=kubelb "${KUBELB_IMAGE}" "${CCM_IMAGE}" &
+  kind load docker-image --name=kubelb "${KUBELB_IMAGE}" &
   kind load docker-image --name=tenant1 "${CCM_IMAGE}" &
   kind load docker-image --name=tenant2 "${CCM_IMAGE}" &
   wait

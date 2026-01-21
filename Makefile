@@ -159,6 +159,14 @@ build-%: fmt vet ## Build manager binary.
 run-%: manifests generate fmt vet ## Run a controller from your host.
 	go run cmd/$*/main.go
 
+.PHONY: e2e-image-kubelb
+e2e-image-kubelb: build-kubelb ## Build kubelb e2e image
+	docker build -q -t kubelb:e2e -f kubelb.goreleaser.dockerfile bin/
+
+.PHONY: e2e-image-ccm
+e2e-image-ccm: build-ccm ## Build ccm e2e image
+	docker build -q -t kubelb-ccm:e2e -f ccm.goreleaser.dockerfile bin/
+
 .PHONY: download-gocache
 download-gocache:
 	@./hack/ci/download-gocache.sh
@@ -275,6 +283,10 @@ e2e-cleanup-kind: ## Cleanup Kind clusters
 .PHONY: e2e-deploy
 e2e-deploy: ## Deploy KubeLB to Kind clusters
 	KUBECONFIGS_DIR=$(KUBECONFIGS_DIR) ./hack/e2e/deploy.sh
+
+.PHONY: e2e-reload
+e2e-reload: ## Quick reload kubelb-manager into Kind cluster
+	KUBECONFIGS_DIR=$(KUBECONFIGS_DIR) ./hack/e2e/reload.sh
 
 .PHONY: e2e-kind
 e2e-kind: e2e-setup-kind e2e-deploy e2e ## Full e2e with Kind setup
