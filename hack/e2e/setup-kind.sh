@@ -225,7 +225,12 @@ create_cluster() {
   echodate "Creating ${name} cluster (log: ${logfile})"
 
   local config="kind: Cluster
-apiVersion: kind.x-k8s.io/v1alpha4"
+apiVersion: kind.x-k8s.io/v1alpha4
+kubeadmConfigPatches:
+  - |
+    kind: KubeletConfiguration
+    serializeImagePulls: false
+    maxParallelImagePulls: 10"
 
   if [[ "${type}" == "multinode" ]]; then
     config="${config}
@@ -250,6 +255,12 @@ prepull_images() {
     return 0
   fi
 
+  # In CI, skip prepull - on-demand pulls are faster for cold cache
+  if [[ "${CI:-}" == "true" ]] || [[ -n "${PROW_JOB_ID:-}" ]] || [[ -n "${JOB_NAME:-}" ]] || [[ -n "${GITHUB_ACTIONS:-}" ]]; then
+    echodate "CI detected, skipping pre-pull (on-demand faster)"
+    return 0
+  fi
+
   # Parse images from YAML (flat list under "images:")
   local images=()
   while IFS= read -r line; do
@@ -263,21 +274,29 @@ prepull_images() {
     return 0
   fi
 
-  echodate "Pre-pulling ${#images[@]} images for kubelb cluster..."
-
-  # Pull images to local Docker in parallel
-  local pull_pids=()
+  # Local dev: pull missing images to docker cache, then kind load
+  # This makes subsequent runs fast (kind load from cache vs network pull)
+  local missing_images=()
   for image in "${images[@]}"; do
     if ! docker image inspect "${image}" &> /dev/null; then
+      missing_images+=("${image}")
+    fi
+  done
+
+  if [[ ${#missing_images[@]} -gt 0 ]]; then
+    echodate "Caching ${#missing_images[@]} images to docker (one-time for faster future runs)..."
+    local pull_pids=()
+    for image in "${missing_images[@]}"; do
       echodate "  Pulling ${image}..."
       docker pull "${image}" &> /dev/null &
       pull_pids+=($!)
-    fi
-  done
-  # Wait for all pulls to complete
-  for pid in "${pull_pids[@]}"; do
-    wait ${pid} || true
-  done
+    done
+    for pid in "${pull_pids[@]}"; do
+      wait ${pid} || true
+    done
+  fi
+
+  echodate "Loading ${#images[@]} images into kubelb cluster..."
 
   # Load all images into kubelb cluster only
   echodate "  Loading images into kubelb cluster..."
@@ -391,7 +410,7 @@ for cluster in "${!CLUSTERS[@]}"; do
   patch_kubeconfig_with_container_ip "${cluster}"
 done
 
-# Pre-pull test images into clusters
+# Pre-pull test images (skipped in CI, caches locally for faster subsequent runs)
 echodate ""
 PREPULL_START=$(nowms)
 prepull_images
