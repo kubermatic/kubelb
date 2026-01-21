@@ -18,6 +18,7 @@ priorityClassName: kubelb-high-priority
 kubelb:
   enableGatewayAPI: true
   debug: true
+  skipConfigGeneration: true
 
 # Create required resources for KKP integration.
 kkpintegration:

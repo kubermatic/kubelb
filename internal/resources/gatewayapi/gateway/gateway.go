@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package httproute
+package gateway
 
 import (
 	"context"
@@ -58,8 +58,8 @@ func CreateOrUpdateGateway(ctx context.Context, log logr.Logger, client ctrlclie
 		}
 	}
 
-	if !found && len(gateways.Items) >= 1 {
-		return fmt.Errorf("multiple Gateway objects are not supported")
+	if !found && len(gateways.Items) >= MaxGatewaysPerTenant {
+		return fmt.Errorf("maximum of %d Gateway object(s) per tenant is supported", MaxGatewaysPerTenant)
 	}
 
 	// Process annotations.

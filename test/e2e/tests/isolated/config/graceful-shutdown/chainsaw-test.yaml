@@ -138,6 +138,6 @@ spec:
             timeout: 90s
             content: |
               set -e
-              kubectl replace -f ../../../../manifests/kubelb-manager/manifests.yaml
+              kubectl replace -f ../../../../manifests/kubelb-manager/config.yaml
               kubectl rollout status deployment/envoy-tenant-primary -n tenant-primary --timeout=90s || true
               echo "Cleanup complete: Config reverted"

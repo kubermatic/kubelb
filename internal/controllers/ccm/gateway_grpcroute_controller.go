@@ -29,6 +29,7 @@ import (
 	"k8c.io/kubelb/internal/kubelb"
 	"k8c.io/kubelb/internal/metrics"
 	ccmmetrics "k8c.io/kubelb/internal/metrics/ccm"
+	gatewayhelper "k8c.io/kubelb/internal/resources/gatewayapi/gateway"
 	grpcrouteHelpers "k8c.io/kubelb/internal/resources/gatewayapi/grpcroute"
 	serviceHelpers "k8c.io/kubelb/internal/resources/service"
 
@@ -276,15 +277,8 @@ func (r *GRPCRouteReconciler) resourceFilter() predicate.Predicate {
 }
 
 // shouldReconcile returns true if the GRPCRoute should be reconciled by the controller.
-// In Community Edition, the controller only reconciles GRPCRoutes against the gateway named "kubelb".
 func (r *GRPCRouteReconciler) shouldReconcile(grpcRoute *gwapiv1.GRPCRoute) bool {
-	if len(grpcRoute.Spec.ParentRefs) == 1 {
-		parentRef := grpcRoute.Spec.ParentRefs[0]
-		if parentRef.Name == ParentGatewayName {
-			return true
-		}
-	}
-	return false
+	return gatewayhelper.ShouldReconcileResource(grpcRoute, false)
 }
 
 func (r *GRPCRouteReconciler) SetupWithManager(mgr ctrl.Manager) error {

@@ -12,20 +12,22 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# Shared Gateway for HTTPRoute tests
-# This Gateway is deployed to tenant1 and used by HTTPRoute tests
-# to avoid creating multiple Gateways and simplify IP management.
-apiVersion: gateway.networking.k8s.io/v1
-kind: Gateway
+apiVersion: kubelb.k8c.io/v1alpha1
+kind: Config
 metadata:
-  name: shared
-  namespace: default
+  name: default
+  namespace: kubelb
 spec:
-  gatewayClassName: kubelb
-  listeners:
-    - name: http
-      protocol: HTTP
-      port: 80
-      allowedRoutes:
-        namespaces:
-          from: All
+  defaultAnnotations:
+    service:
+      # For testing purposes only, we are not using Hetzner for e2e tests.
+      load-balancer.hetzner.cloud/location: fsn1
+  envoyProxy:
+    replicas: 1
+    topology: shared
+  ingress:
+    class: "nginx"
+  gatewayAPI:
+    class: "eg"
+  certificates:
+    defaultClusterIssuer: issuer-self-signed

@@ -480,7 +480,7 @@ func (r *RouteReconciler) shouldReconcile(ctx context.Context, route *kubelbv1al
 			return false, true, nil
 		}
 
-		if v.Name != "kubelb" {
+		if !gatewayHelpers.ShouldReconcileGatewayByName(v) {
 			return false, false, nil
 		}
 

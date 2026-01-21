@@ -147,8 +147,11 @@ test: envtest ## Run tests.
 .PHONY: build
 build: build-ccm build-kubelb
 
+TAGS ?=
+
 build-%: fmt vet ## Build manager binary.
 	CGO_ENABLED=0 go build -v \
+		$(if $(TAGS),-tags $(TAGS),) \
 		-ldflags "$(LDFLAGS)" \
 		-o bin/$* cmd/$*/main.go
 
@@ -259,7 +262,7 @@ CHAINSAW_VALUES ?= $(E2E_DIR)/values.yaml
 CHAINSAW_CLUSTERS ?= --cluster kubelb=$(KUBECONFIGS_DIR)/kubelb.kubeconfig \
 	--cluster tenant1=$(KUBECONFIGS_DIR)/tenant1.kubeconfig \
 	--cluster tenant2=$(KUBECONFIGS_DIR)/tenant2.kubeconfig
-CHAINSAW_FLAGS ?= --quiet --config $(CHAINSAW_CONFIG) --values $(CHAINSAW_VALUES) $(CHAINSAW_CLUSTERS)
+CHAINSAW_FLAGS ?= --config $(CHAINSAW_CONFIG) --values $(CHAINSAW_VALUES) $(CHAINSAW_CLUSTERS)
 
 .PHONY: e2e-setup-kind
 e2e-setup-kind: ## Setup Kind clusters for e2e tests
