@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-FROM docker.io/golang:1.25.5 AS builder
+FROM docker.io/golang:1.25.6 AS builder
 
 ARG GIT_VERSION
 ARG GIT_COMMIT
