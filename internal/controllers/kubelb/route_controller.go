@@ -242,11 +242,19 @@ func (r *RouteReconciler) manageServices(ctx context.Context, log logr.Logger, r
 		return err
 	}
 
+	// Get original route name for port allocation key consistency
+	originalRouteName := route.Name
+	if route.Spec.Source.Kubernetes.Route.GetName() != "" {
+		originalRouteName = route.Spec.Source.Kubernetes.Route.GetName()
+	} else if name := route.GetLabels()[kubelb.LabelOriginName]; name != "" {
+		originalRouteName = name
+	}
+
 	appName := envoyApplicationName(r.EnvoyProxyTopology, route.Namespace)
 	services := []corev1.Service{}
 	for _, service := range route.Spec.Source.Kubernetes.Services {
 		// Transform the service into desired state.
-		svc := serviceHelpers.GenerateServiceForLBCluster(service.Service, appName, route.Namespace, r.PortAllocator, r.EnvoyProxyTopology.IsGlobalTopology(), annotations)
+		svc := serviceHelpers.GenerateServiceForLBCluster(service.Service, appName, route.Namespace, originalRouteName, r.PortAllocator, r.EnvoyProxyTopology.IsGlobalTopology(), annotations)
 
 		// We need a bridge service in the controller namespace.
 		if r.EnvoyProxyTopology.IsGlobalTopology() {
@@ -319,7 +327,15 @@ func (r *RouteReconciler) cleanupOrphanedServices(ctx context.Context, log logr.
 			}
 			delete(route.Status.Resources.Services, key)
 
-			endpointKey := fmt.Sprintf(kubelb.EnvoyEndpointRoutePattern, route.Namespace, value.Namespace, svc.Name)
+			// Get original route name for endpoint key
+			originalRouteName := route.Name
+			if route.Spec.Source.Kubernetes != nil && route.Spec.Source.Kubernetes.Route.GetName() != "" {
+				originalRouteName = route.Spec.Source.Kubernetes.Route.GetName()
+			} else if name := route.GetLabels()[kubelb.LabelOriginName]; name != "" {
+				originalRouteName = name
+			}
+			endpointKey := fmt.Sprintf(kubelb.EnvoyEndpointRoutePattern, route.Namespace, value.Namespace, svc.Name, originalRouteName)
+
 			// De-allocate the ports allocated for the service.
 			r.PortAllocator.DeallocateEndpoints([]string{endpointKey})
 		}

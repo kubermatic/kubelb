@@ -19,6 +19,7 @@ package envoy
 import (
 	"context"
 	"fmt"
+	"math"
 	"time"
 
 	envoyAccessLog "github.com/envoyproxy/go-control-plane/envoy/config/accesslog/v3"
@@ -26,14 +27,20 @@ import (
 	envoyCore "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	envoyEndpoint "github.com/envoyproxy/go-control-plane/envoy/config/endpoint/v3"
 	envoyListener "github.com/envoyproxy/go-control-plane/envoy/config/listener/v3"
+	envoyRoute "github.com/envoyproxy/go-control-plane/envoy/config/route/v3"
 	envoyFileAccessLog "github.com/envoyproxy/go-control-plane/envoy/extensions/access_loggers/file/v3"
+	envoy_filter_http_router_v3 "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/http/router/v3"
+	envoyHttpManager "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/network/http_connection_manager/v3"
 	envoyTcpProxy "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/network/tcp_proxy/v3"
 	envoyUdpProxy "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/udp/udp_proxy/v3"
+	envoyUpstreams "github.com/envoyproxy/go-control-plane/envoy/extensions/upstreams/http/v3"
 	envoytypev3 "github.com/envoyproxy/go-control-plane/envoy/type/v3"
 	"github.com/envoyproxy/go-control-plane/pkg/cache/types"
 	envoycache "github.com/envoyproxy/go-control-plane/pkg/cache/v3"
 	"github.com/envoyproxy/go-control-plane/pkg/resource/v3"
 	"github.com/envoyproxy/go-control-plane/pkg/wellknown"
+	"google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/types/known/anypb"
 	"google.golang.org/protobuf/types/known/durationpb"
 	"google.golang.org/protobuf/types/known/wrapperspb"
 
@@ -54,6 +61,9 @@ const (
 	defaultHealthCheckUnhealthyThreshold       = 3
 	defaultHealthCheckHealthyThreshold         = 2
 	defaultHealthCheckNoTrafficIntervalSeconds = 5
+
+	// Envoy extension type URL for HTTP protocol options
+	envoyHTTPProtocolOptionsTypeURL = "envoy.extensions.upstreams.http.v3.HttpProtocolOptions"
 )
 
 func MapSnapshot(ctx context.Context, client ctrlclient.Client, loadBalancers []kubelbv1alpha1.LoadBalancer, routes []kubelbv1alpha1.Route, portAllocator *portlookup.PortAllocator) (*envoycache.Snapshot, error) {
@@ -105,7 +115,7 @@ func MapSnapshot(ctx context.Context, client ctrlclient.Client, loadBalancers []
 				case corev1.ProtocolUDP:
 					listener = append(listener, makeUDPListener(key, key, port))
 				}
-				cluster = append(cluster, makeCluster(key, lbEndpoints, lbEndpointPort.Protocol))
+				cluster = append(cluster, makeCluster(key, lbEndpoints, lbEndpointPort.Protocol, ""))
 			}
 		}
 	}
@@ -114,6 +124,11 @@ func MapSnapshot(ctx context.Context, client ctrlclient.Client, loadBalancers []
 		if route.Spec.Source.Kubernetes == nil {
 			continue
 		}
+
+		// Determine route kind for listener type selection
+		routeKind := getRouteKind(&route)
+		isHTTP := IsHTTPRoute(routeKind)
+
 		for i, routeendpoint := range route.Spec.Endpoints {
 			if routeendpoint.AddressesReference != nil {
 				// Check if map already contains the key
@@ -132,8 +147,9 @@ func MapSnapshot(ctx context.Context, client ctrlclient.Client, loadBalancers []
 			}
 		}
 		source := route.Spec.Source.Kubernetes
+		originalRouteName := getOriginalRouteName(&route)
 		for _, svc := range source.Services {
-			endpointKey := fmt.Sprintf(kubelb.EnvoyEndpointRoutePattern, route.Namespace, svc.Namespace, svc.Name)
+			endpointKey := fmt.Sprintf(kubelb.EnvoyEndpointRoutePattern, route.Namespace, svc.Namespace, svc.Name, originalRouteName)
 			for _, port := range svc.Spec.Ports {
 				portLookupKey := fmt.Sprintf(kubelb.EnvoyListenerPattern, port.Port, port.Protocol)
 				var lbEndpoints []*envoyEndpoint.LbEndpoint
@@ -148,15 +164,20 @@ func MapSnapshot(ctx context.Context, client ctrlclient.Client, loadBalancers []
 					listenerPort = uint32(value)
 				}
 
-				key := fmt.Sprintf(kubelb.EnvoyRoutePortIdentifierPattern, route.Namespace, svc.Namespace, svc.Name, svc.UID, port.Port, port.Protocol)
+				key := fmt.Sprintf(kubelb.EnvoyRoutePortIdentifierPattern, route.Namespace, svc.Namespace, svc.Name, originalRouteName, svc.UID, port.Port, port.Protocol)
 
 				switch port.Protocol {
 				case corev1.ProtocolTCP:
-					listener = append(listener, makeTCPListener(key, key, listenerPort))
+					// Use HTTP Connection Manager for L7 HTTP routes, TCP Proxy for L4 routes
+					if isHTTP {
+						listener = append(listener, makeHTTPListener(key, key, listenerPort))
+					} else {
+						listener = append(listener, makeTCPListener(key, key, listenerPort))
+					}
 				case corev1.ProtocolUDP:
 					listener = append(listener, makeUDPListener(key, key, listenerPort))
 				}
-				cluster = append(cluster, makeCluster(key, lbEndpoints, port.Protocol))
+				cluster = append(cluster, makeCluster(key, lbEndpoints, port.Protocol, routeKind))
 			}
 		}
 	}
@@ -183,7 +204,7 @@ func MapSnapshot(ctx context.Context, client ctrlclient.Client, loadBalancers []
 	)
 }
 
-func makeCluster(clusterName string, lbEndpoints []*envoyEndpoint.LbEndpoint, protocol corev1.Protocol) *envoyCluster.Cluster {
+func makeCluster(clusterName string, lbEndpoints []*envoyEndpoint.LbEndpoint, protocol corev1.Protocol, routeKind string) *envoyCluster.Cluster {
 	defaultHealthCheck := []*envoyCore.HealthCheck{
 		{
 			Timeout:            &durationpb.Duration{Seconds: defaultHealthCheckTimeoutSeconds},
@@ -206,7 +227,7 @@ func makeCluster(clusterName string, lbEndpoints []*envoyEndpoint.LbEndpoint, pr
 		defaultHealthCheck = nil
 	}
 
-	return &envoyCluster.Cluster{
+	cluster := &envoyCluster.Cluster{
 		Name:                 clusterName,
 		ConnectTimeout:       durationpb.New(5 * time.Second),
 		ClusterDiscoveryType: &envoyCluster.Cluster_Type{Type: envoyCluster.Cluster_STRICT_DNS},
@@ -217,12 +238,44 @@ func makeCluster(clusterName string, lbEndpoints []*envoyEndpoint.LbEndpoint, pr
 				LbEndpoints: lbEndpoints,
 			}},
 		},
-		DnsLookupFamily: envoyCluster.Cluster_V4_ONLY,
-		HealthChecks:    defaultHealthCheck,
+		DnsLookupFamily:               envoyCluster.Cluster_V4_ONLY,
+		HealthChecks:                  defaultHealthCheck,
+		PerConnectionBufferLimitBytes: wrapperspb.UInt32(32768), // 32KB buffer limit
 		CommonLbConfig: &envoyCluster.Cluster_CommonLbConfig{
 			HealthyPanicThreshold: &envoytypev3.Percent{Value: 0},
 		},
 	}
+
+	// gRPC requires HTTP/2, while HTTPRoute/Ingress use HTTP/1.1 for NodePort backends
+	if routeKind == "GRPCRoute" {
+		httpOpts := &envoyUpstreams.HttpProtocolOptions{
+			UpstreamProtocolOptions: &envoyUpstreams.HttpProtocolOptions_ExplicitHttpConfig_{
+				ExplicitHttpConfig: &envoyUpstreams.HttpProtocolOptions_ExplicitHttpConfig{
+					ProtocolConfig: &envoyUpstreams.HttpProtocolOptions_ExplicitHttpConfig_Http2ProtocolOptions{
+						Http2ProtocolOptions: &envoyCore.Http2ProtocolOptions{},
+					},
+				},
+			},
+		}
+		cluster.TypedExtensionProtocolOptions = map[string]*anypb.Any{
+			envoyHTTPProtocolOptionsTypeURL: MustMarshalAny(httpOpts),
+		}
+	} else if IsHTTPRoute(routeKind) {
+		httpOpts := &envoyUpstreams.HttpProtocolOptions{
+			UpstreamProtocolOptions: &envoyUpstreams.HttpProtocolOptions_ExplicitHttpConfig_{
+				ExplicitHttpConfig: &envoyUpstreams.HttpProtocolOptions_ExplicitHttpConfig{
+					ProtocolConfig: &envoyUpstreams.HttpProtocolOptions_ExplicitHttpConfig_HttpProtocolOptions{
+						HttpProtocolOptions: &envoyCore.Http1ProtocolOptions{},
+					},
+				},
+			},
+		}
+		cluster.TypedExtensionProtocolOptions = map[string]*anypb.Any{
+			envoyHTTPProtocolOptionsTypeURL: MustMarshalAny(httpOpts),
+		}
+	}
+
+	return cluster
 }
 
 func makeEndpoint(address string, port uint32) *envoyEndpoint.LbEndpoint {
@@ -324,4 +377,139 @@ func makeUDPListener(clusterName string, listenerName string, listenerPort uint3
 		},
 		ReusePort: true,
 	}
+}
+
+// getOriginalRouteName extracts the original route name from a Route resource.
+func getOriginalRouteName(route *kubelbv1alpha1.Route) string {
+	if route.Spec.Source.Kubernetes != nil && route.Spec.Source.Kubernetes.Route.GetName() != "" {
+		return route.Spec.Source.Kubernetes.Route.GetName()
+	}
+	if labels := route.GetLabels(); labels != nil {
+		if name := labels[kubelb.LabelOriginName]; name != "" {
+			return name
+		}
+	}
+	return route.Name
+}
+
+// makeHTTPListener creates an HTTP Connection Manager listener for L7 HTTP routes.
+func makeHTTPListener(listenerName string, clusterName string, listenerPort uint32) *envoyListener.Listener {
+	routeConfig := &envoyRoute.RouteConfiguration{
+		Name: listenerName + "_route",
+		VirtualHosts: []*envoyRoute.VirtualHost{{
+			Name:    "default",
+			Domains: []string{"*"},
+			Routes: []*envoyRoute.Route{{
+				Match: &envoyRoute.RouteMatch{
+					PathSpecifier: &envoyRoute.RouteMatch_Prefix{Prefix: "/"},
+				},
+				Action: &envoyRoute.Route_Route{
+					Route: &envoyRoute.RouteAction{
+						ClusterSpecifier: &envoyRoute.RouteAction_Cluster{Cluster: clusterName},
+					},
+				},
+			}},
+		}},
+	}
+
+	accessLog := &envoyFileAccessLog.FileAccessLog{
+		Path: "/dev/stdout",
+	}
+	accessLogAny, err := anypb.New(accessLog)
+	if err != nil {
+		panic(err)
+	}
+
+	httpConnManager := &envoyHttpManager.HttpConnectionManager{
+		CodecType:  envoyHttpManager.HttpConnectionManager_AUTO,
+		StatPrefix: listenerName,
+		RouteSpecifier: &envoyHttpManager.HttpConnectionManager_RouteConfig{
+			RouteConfig: routeConfig,
+		},
+		HttpFilters: []*envoyHttpManager.HttpFilter{{
+			Name: wellknown.Router,
+			ConfigType: &envoyHttpManager.HttpFilter_TypedConfig{
+				TypedConfig: MustMarshalAny(&envoy_filter_http_router_v3.Router{}),
+			},
+		}},
+		AccessLog: []*envoyAccessLog.AccessLog{
+			{
+				Name: "envoy.access_loggers.file",
+				ConfigType: &envoyAccessLog.AccessLog_TypedConfig{
+					TypedConfig: accessLogAny,
+				},
+			},
+		},
+		// HTTP/2 protocol settings - max values to ensure KubeLB never bottlenecks
+		// EG/Ingress handles limits at edge; KubeLB should be transparent passthrough
+		Http2ProtocolOptions: &envoyCore.Http2ProtocolOptions{
+			MaxConcurrentStreams:        wrapperspb.UInt32(math.MaxInt32),
+			InitialStreamWindowSize:     wrapperspb.UInt32(math.MaxInt32),
+			InitialConnectionWindowSize: wrapperspb.UInt32(math.MaxInt32),
+		},
+		// Common HTTP protocol options
+		CommonHttpProtocolOptions: &envoyCore.HttpProtocolOptions{
+			IdleTimeout: durationpb.New(60 * time.Second),
+		},
+		// XFF and remote address handling
+		UseRemoteAddress:  &wrapperspb.BoolValue{Value: true},
+		XffNumTrustedHops: 1, // Trust 1 hop (Ingress/Gateway controller in front)
+		GenerateRequestId: &wrapperspb.BoolValue{Value: true},
+	}
+
+	httpConnManagerAny, err := anypb.New(httpConnManager)
+	if err != nil {
+		panic(err)
+	}
+
+	return &envoyListener.Listener{
+		Name: listenerName,
+		Address: &envoyCore.Address{
+			Address: &envoyCore.Address_SocketAddress{
+				SocketAddress: &envoyCore.SocketAddress{
+					Protocol: envoyCore.SocketAddress_TCP,
+					Address:  "0.0.0.0",
+					PortSpecifier: &envoyCore.SocketAddress_PortValue{
+						PortValue: listenerPort,
+					},
+				},
+			},
+		},
+		FilterChains: []*envoyListener.FilterChain{{
+			Filters: []*envoyListener.Filter{{
+				Name: wellknown.HTTPConnectionManager,
+				ConfigType: &envoyListener.Filter_TypedConfig{
+					TypedConfig: httpConnManagerAny,
+				},
+			}},
+		}},
+	}
+}
+
+func MustMarshalAny(pb proto.Message) *anypb.Any {
+	a, err := anypb.New(pb)
+	if err != nil {
+		panic(err.Error())
+	}
+
+	return a
+}
+
+func IsHTTPRoute(routeKind string) bool {
+	switch routeKind {
+	case "HTTPRoute", "GRPCRoute", "Ingress":
+		return true
+	default:
+		return false
+	}
+}
+
+func getRouteKind(route *kubelbv1alpha1.Route) string {
+	if route.Spec.Source.Kubernetes != nil && route.Spec.Source.Kubernetes.Route.GetKind() != "" {
+		return route.Spec.Source.Kubernetes.Route.GetKind()
+	}
+	if labels := route.GetLabels(); labels != nil {
+		return labels[kubelb.LabelOriginResourceKind]
+	}
+	return ""
 }

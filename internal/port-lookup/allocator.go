@@ -191,8 +191,15 @@ func (pa *PortAllocator) LoadState(ctx context.Context, apiReader client.Reader)
 		if route.Spec.Source.Kubernetes == nil {
 			continue
 		}
+		// Get original route name from source or labels
+		originalRouteName := route.Name
+		if route.Spec.Source.Kubernetes.Route.GetName() != "" {
+			originalRouteName = route.Spec.Source.Kubernetes.Route.GetName()
+		} else if name := route.GetLabels()[kubelb.LabelOriginName]; name != "" {
+			originalRouteName = name
+		}
 		for _, svc := range route.Spec.Source.Kubernetes.Services {
-			endpointKey := fmt.Sprintf(kubelb.EnvoyEndpointRoutePattern, route.Namespace, svc.Namespace, svc.Name)
+			endpointKey := fmt.Sprintf(kubelb.EnvoyEndpointRoutePattern, route.Namespace, svc.Namespace, svc.Name, originalRouteName)
 			if _, exists := lookupTable[endpointKey]; !exists {
 				lookupTable[endpointKey] = make(map[string]int)
 			}
