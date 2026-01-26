@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# Header Propagation Test (HTTPRoute)
+# Header Propagation Test (Ingress)
 # Verifies:
 # - X-Custom-Header preserved exactly
 # - Authorization header preserved exactly
@@ -21,23 +21,23 @@
 apiVersion: chainsaw.kyverno.io/v1alpha1
 kind: Test
 metadata:
-  name: headers-httproute
+  name: headers-ingress
   labels:
     all:
-    test: headers-httproute
+    test: headers-ingress
     resource: headers
     layer: layer7
 spec:
   description: |
-    Test header propagation through KubeLB with HTTPRoute.
+    Test header propagation through KubeLB with Ingress.
     Deploys echo-server that returns received headers as JSON,
     verifies custom headers, Authorization preserved,
     and X-Forwarded-For contains proxy chain.
   bindings:
     - name: name
-      value: hr-headers
+      value: echo-headers-ingress
     - name: backend
-      value: echo-headers
+      value: echo-headers-ing
     - name: kubelb_namespace
       value: tenant-primary
   steps:
@@ -64,76 +64,33 @@ spec:
               status:
                 readyReplicas: 1
 
-    # Step 2: Create Gateway
-    - name: create-gateway
-      description: Create Gateway for HTTPRoute
+    # Step 2: Create Ingress
+    - name: create-ingress
+      description: Create Ingress with kubelb class
       cluster: tenant1
       try:
         - apply:
             resource:
-              apiVersion: gateway.networking.k8s.io/v1
-              kind: Gateway
+              apiVersion: networking.k8s.io/v1
+              kind: Ingress
               metadata:
-                name: headers-gw
+                name: ($name)
                 namespace: default
               spec:
-                gatewayClassName: kubelb
-                listeners:
-                  - name: http
-                    protocol: HTTP
-                    port: 80
-                    allowedRoutes:
-                      namespaces:
-                        from: All
-
-    # Step 3: Wait for Gateway address
-    - name: wait-gateway-ready
-      description: Wait for Gateway to have address
-      use:
-        template: ../../../../step-templates/gateway/verify-gateway-status.yaml
-        with:
-          bindings:
-            - name: gateway_name
-              value: headers-gw
-
-    # Step 4: Create HTTPRoute
-    - name: create-httproute
-      description: Create HTTPRoute referencing Gateway
-      cluster: tenant1
-      try:
-        - script:
-            skipCommandOutput: true
-            timeout: 30s
-            content: |
-              set -e
-              IP=$(kubectl get gateway headers-gw -n default \
-                -o jsonpath='{.status.addresses[0].value}')
-              HOST="hr-headers.${IP}.nip.io"
-              cat <<EOF | kubectl apply -f -
-              apiVersion: gateway.networking.k8s.io/v1
-              kind: HTTPRoute
-              metadata:
-                name: hr-headers
-                namespace: default
-              spec:
-                parentRefs:
-                  - name: headers-gw
-                hostnames:
-                  - "${HOST}"
+                ingressClassName: kubelb
                 rules:
-                  - backendRefs:
-                      - name: echo-headers
-                        port: 80
-                    matches:
-                      - path:
-                          type: PathPrefix
-                          value: /
-              EOF
-              echo "Created HTTPRoute with host: $HOST"
-            check:
-              ($error == null): true
+                  - host: echo-headers.test.local
+                    http:
+                      paths:
+                        - path: /
+                          pathType: Prefix
+                          backend:
+                            service:
+                              name: ($backend)
+                              port:
+                                number: 80
 
-    # Step 5: Verify Route CRD
+    # Step 3: Verify Route CRD
     - name: verify-route-crd
       description: Verify Route CRD exists with correct labels
       use:
@@ -143,25 +100,31 @@ spec:
             - name: resource_name
               value: ($name)
             - name: expected_kind
-              value: HTTPRoute.gateway.networking.k8s.io
+              value: Ingress.networking.k8s.io
             - name: kubelb_namespace
               value: ($kubelb_namespace)
 
-    # Step 6: Verify header propagation
+    # Step 4: Wait for Ingress status
+    - name: wait-ingress-status
+      description: Wait for Ingress to get LoadBalancer IP
+      use:
+        template: ../../../../step-templates/ingress/verify-ingress-status.yaml
+        with:
+          bindings:
+            - name: ingress_name
+              value: ($name)
+
+    # Step 5: Verify header propagation
     - name: verify-headers
       description: Verify headers are propagated correctly
       use:
         template: ../../../../step-templates/common/verify-headers.yaml
         with:
           bindings:
-            - name: gateway_name
-              value: headers-gw
-            - name: route_name
+            - name: ingress_name
               value: ($name)
-            - name: backend_name
-              value: ($backend)
 
-    # Step 7: Cleanup
+    # Step 6: Cleanup
     - name: cleanup
       description: Delete resources
       cluster: tenant1
@@ -170,8 +133,8 @@ spec:
             skipCommandOutput: true
             timeout: 60s
             content: |
-              kubectl delete httproute hr-headers -n default --wait=false
-              echo "HTTPRoute deletion initiated"
+              kubectl delete ingress echo-headers-ingress -n default --wait=false
+              echo "Ingress deletion initiated"
             check:
               ($error == null): true
       finally:
@@ -180,10 +143,9 @@ spec:
             cluster: tenant1
             timeout: 60s
             content: |
-              kubectl delete httproute hr-headers -n default --ignore-not-found
-              kubectl delete gateway headers-gw -n default --ignore-not-found
-              kubectl delete deployment echo-headers -n default --ignore-not-found
-              kubectl delete service echo-headers -n default --ignore-not-found
+              kubectl delete ingress echo-headers-ingress -n default --ignore-not-found
+              kubectl delete deployment echo-headers-ing -n default --ignore-not-found
+              kubectl delete service echo-headers-ing -n default --ignore-not-found
 
     - name: verify-cleanup
       description: Verify Route CRD removed

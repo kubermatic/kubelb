@@ -133,7 +133,8 @@ presubmits:
               cpu: 4
 
   - name: pull-kubelb-e2e-tests
-    always_run: true
+    always_run: false
+    run_if_changed: "api/|cmd/|internal/|test/e2e/|go.mod|go.sum"
     decorate: true
     clone_uri: "ssh://git@github.com/kubermatic/kubelb.git"
     labels:
