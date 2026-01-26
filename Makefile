@@ -155,6 +155,20 @@ build-%: fmt vet ## Build manager binary.
 		-ldflags "$(LDFLAGS)" \
 		-o bin/$* cmd/$*/main.go
 
+.PHONY: e2e-image-kubelb
+e2e-image-kubelb: ## Build kubelb e2e image (linux/amd64)
+	CGO_ENABLED=0 go build -v -tags e2e \
+		-ldflags "$(LDFLAGS)" \
+		-o bin/kubelb cmd/kubelb/main.go
+	docker build -q -t kubelb:e2e -f kubelb.goreleaser.dockerfile bin/
+
+.PHONY: e2e-image-ccm
+e2e-image-ccm: ## Build ccm e2e image (linux/amd64)
+	CGO_ENABLED=0 go build -v -tags e2e \
+		-ldflags "$(LDFLAGS)" \
+		-o bin/ccm cmd/ccm/main.go
+	docker build -q -t kubelb-ccm:e2e -f ccm.goreleaser.dockerfile bin/
+
 .PHONY: run
 run-%: manifests generate fmt vet ## Run a controller from your host.
 	go run cmd/$*/main.go
@@ -275,6 +289,10 @@ e2e-cleanup-kind: ## Cleanup Kind clusters
 .PHONY: e2e-deploy
 e2e-deploy: ## Deploy KubeLB to Kind clusters
 	KUBECONFIGS_DIR=$(KUBECONFIGS_DIR) ./hack/e2e/deploy.sh
+
+.PHONY: e2e-reload
+e2e-reload: ## Quick reload of kubelb/ccm after code changes (faster than e2e-deploy)
+	KUBECONFIGS_DIR=$(KUBECONFIGS_DIR) ./hack/e2e/reload.sh
 
 .PHONY: e2e-kind
 e2e-kind: e2e-setup-kind e2e-deploy e2e ## Full e2e with Kind setup
