@@ -247,6 +247,13 @@ EOF
     "${temp_chart_dir}/kubelb-manager/Chart.yaml"
   rm -f "${temp_chart_dir}/kubelb-manager/Chart.yaml.bak"
 
+  # Patch dependency version to match local addons chart version
+  local addons_version
+  addons_version=$(grep '^version:' "${temp_chart_dir}/kubelb-addons/Chart.yaml" | awk '{print $2}')
+  sed -i.bak "/name: kubelb-addons/,/version:/{s|version: .*|version: ${addons_version}|}" \
+    "${temp_chart_dir}/kubelb-manager/Chart.yaml"
+  rm -f "${temp_chart_dir}/kubelb-manager/Chart.yaml.bak"
+
   # Update helm dependencies (skip if unchanged)
   local chart_hash
   chart_hash=$(sha256sum "${CHARTS_DIR}/kubelb-manager/Chart.yaml" "${CHARTS_DIR}/kubelb-addons/Chart.yaml" 2> /dev/null | sha256sum | cut -c1-8)
