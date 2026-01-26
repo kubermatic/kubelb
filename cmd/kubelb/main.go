@@ -200,7 +200,7 @@ func main() {
 		Client:             mgr.GetClient(),
 		Scheme:             mgr.GetScheme(),
 		Log:                ctrl.Log.WithName("controllers").WithName(kubelb.RouteControllerName),
-		Recorder:           mgr.GetEventRecorderFor(kubelb.RouteControllerName),
+		Recorder:           mgr.GetEventRecorder(kubelb.RouteControllerName),
 		EnvoyProxyTopology: kubelb.EnvoyProxyTopology(conf.GetEnvoyProxyTopology()),
 		PortAllocator:      portAllocator,
 		Namespace:          opt.namespace,
@@ -214,7 +214,7 @@ func main() {
 		Client:             mgr.GetClient(),
 		Scheme:             mgr.GetScheme(),
 		Log:                ctrl.Log.WithName("controllers").WithName(kubelb.SyncSecretControllerName),
-		Recorder:           mgr.GetEventRecorderFor(kubelb.SyncSecretControllerName),
+		Recorder:           mgr.GetEventRecorder(kubelb.SyncSecretControllerName),
 		EnvoyProxyTopology: kubelb.EnvoyProxyTopology(conf.GetEnvoyProxyTopology()),
 		Namespace:          opt.namespace,
 	}).SetupWithManager(mgr); err != nil {
@@ -227,7 +227,7 @@ func main() {
 		Scheme:    mgr.GetScheme(),
 		Config:    mgr.GetConfig(),
 		Log:       ctrl.Log.WithName("controllers").WithName(kubelb.RouteControllerName),
-		Recorder:  mgr.GetEventRecorderFor(kubelb.RouteControllerName),
+		Recorder:  mgr.GetEventRecorder(kubelb.RouteControllerName),
 		Namespace: opt.namespace,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", kubelb.RouteControllerName)
@@ -240,7 +240,7 @@ func main() {
 			Client:   mgr.GetClient(),
 			Scheme:   mgr.GetScheme(),
 			Log:      ctrl.Log.WithName("controllers").WithName(kubelb.BridgeServiceControllerName),
-			Recorder: mgr.GetEventRecorderFor(kubelb.BridgeServiceControllerName),
+			Recorder: mgr.GetEventRecorder(kubelb.BridgeServiceControllerName),
 		}).SetupWithManager(mgr); err != nil {
 			setupLog.Error(err, "unable to create controller", "controller", kubelb.BridgeServiceControllerName)
 			os.Exit(1)

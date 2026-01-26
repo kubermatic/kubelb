@@ -319,7 +319,7 @@ func setupControllers(mgr, kubeLBMgr ctrl.Manager, setupLog logr.Logger, opt *op
 			ClusterName:     clusterName,
 			Log:             ctrl.Log.WithName("controllers").WithName(ccm.IngressControllerName),
 			Scheme:          mgr.GetScheme(),
-			Recorder:        mgr.GetEventRecorderFor(ccm.IngressControllerName),
+			Recorder:        mgr.GetEventRecorder(ccm.IngressControllerName),
 			UseIngressClass: opt.useIngressClass,
 		}).SetupWithManager(mgr); err != nil {
 			setupLog.Error(err, "unable to create controller", "controller", ccm.IngressControllerName)
@@ -345,7 +345,7 @@ func setupControllers(mgr, kubeLBMgr ctrl.Manager, setupLog logr.Logger, opt *op
 			ClusterName:     clusterName,
 			Log:             ctrl.Log.WithName("controllers").WithName(ccm.GatewayControllerName),
 			Scheme:          mgr.GetScheme(),
-			Recorder:        mgr.GetEventRecorderFor(ccm.GatewayControllerName),
+			Recorder:        mgr.GetEventRecorder(ccm.GatewayControllerName),
 			UseGatewayClass: opt.useGatewayClass,
 		}).SetupWithManager(mgr); err != nil {
 			setupLog.Error(err, "unable to create controller", "controller", ccm.GatewayControllerName)
@@ -360,7 +360,7 @@ func setupControllers(mgr, kubeLBMgr ctrl.Manager, setupLog logr.Logger, opt *op
 			ClusterName: clusterName,
 			Log:         ctrl.Log.WithName("controllers").WithName(ccm.GatewayHTTPRouteControllerName),
 			Scheme:      mgr.GetScheme(),
-			Recorder:    mgr.GetEventRecorderFor(ccm.GatewayHTTPRouteControllerName),
+			Recorder:    mgr.GetEventRecorder(ccm.GatewayHTTPRouteControllerName),
 		}).SetupWithManager(mgr); err != nil {
 			setupLog.Error(err, "unable to create controller", "controller", ccm.GatewayHTTPRouteControllerName)
 			return err
@@ -374,7 +374,7 @@ func setupControllers(mgr, kubeLBMgr ctrl.Manager, setupLog logr.Logger, opt *op
 			ClusterName: clusterName,
 			Log:         ctrl.Log.WithName("controllers").WithName(ccm.GatewayGRPCRouteControllerName),
 			Scheme:      mgr.GetScheme(),
-			Recorder:    mgr.GetEventRecorderFor(ccm.GatewayGRPCRouteControllerName),
+			Recorder:    mgr.GetEventRecorder(ccm.GatewayGRPCRouteControllerName),
 		}).SetupWithManager(mgr); err != nil {
 			setupLog.Error(err, "unable to create controller", "controller", ccm.GatewayGRPCRouteControllerName)
 			return err
@@ -386,7 +386,7 @@ func setupControllers(mgr, kubeLBMgr ctrl.Manager, setupLog logr.Logger, opt *op
 			Client:   mgr.GetClient(),
 			Log:      ctrl.Log.WithName("controllers").WithName(ccm.SecretConversionControllerName),
 			Scheme:   mgr.GetScheme(),
-			Recorder: mgr.GetEventRecorderFor(ccm.SecretConversionControllerName),
+			Recorder: mgr.GetEventRecorder(ccm.SecretConversionControllerName),
 		}).SetupWithManager(mgr); err != nil {
 			setupLog.Error(err, "unable to create controller", "controller", ccm.SecretConversionControllerName)
 			return err
@@ -399,7 +399,7 @@ func setupControllers(mgr, kubeLBMgr ctrl.Manager, setupLog logr.Logger, opt *op
 		Log:         ctrl.Log.WithName("controllers").WithName(ccm.SyncSecretControllerName),
 		Scheme:      mgr.GetScheme(),
 		ClusterName: clusterName,
-		Recorder:    mgr.GetEventRecorderFor(ccm.SyncSecretControllerName),
+		Recorder:    mgr.GetEventRecorder(ccm.SyncSecretControllerName),
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", ccm.SyncSecretControllerName)
 		return err
