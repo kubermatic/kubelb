@@ -108,8 +108,11 @@ func NormalizeAndReplicateServices(ctx context.Context, log logr.Logger, client 
 	return services, nil
 }
 
-func GenerateServiceForLBCluster(service corev1.Service, appName, namespace string, portAllocator *portlookup.PortAllocator, globalTopology bool, annotations kubelbv1alpha1.AnnotationSettings) corev1.Service {
-	endpointKey := fmt.Sprintf(kubelb.EnvoyEndpointRoutePattern, namespace, service.Namespace, service.Name)
+func GenerateServiceForLBCluster(service corev1.Service, appName, namespace, routeName string, portAllocator *portlookup.PortAllocator, globalTopology bool, annotations kubelbv1alpha1.AnnotationSettings) corev1.Service {
+	// routeName is the route identifier for port allocation key.
+	// For L4 LoadBalancer services, pass service.Name (no separate route object).
+	// For L7 routes, pass the original HTTPRoute/GRPCRoute/etc name.
+	endpointKey := fmt.Sprintf(kubelb.EnvoyEndpointRoutePattern, namespace, service.Namespace, service.Name, routeName)
 
 	service.Name = kubelb.GenerateName(globalTopology, string(service.UID), GetServiceName(service), service.Namespace)
 	service.Namespace = namespace

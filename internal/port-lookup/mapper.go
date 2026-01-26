@@ -47,8 +47,16 @@ func (pa *PortAllocator) AllocatePortsForRoutes(routes []kubelbv1alpha1.Route) e
 			continue
 		}
 
+		// Get original route name from source or labels
+		originalRouteName := route.Name
+		if route.Spec.Source.Kubernetes.Route.GetName() != "" {
+			originalRouteName = route.Spec.Source.Kubernetes.Route.GetName()
+		} else if name := route.GetLabels()[kubelb.LabelOriginName]; name != "" {
+			originalRouteName = name
+		}
+
 		for _, svc := range route.Spec.Source.Kubernetes.Services {
-			endpointKey := fmt.Sprintf(kubelb.EnvoyEndpointRoutePattern, route.Namespace, svc.Namespace, svc.Name)
+			endpointKey := fmt.Sprintf(kubelb.EnvoyEndpointRoutePattern, route.Namespace, svc.Namespace, svc.Name, originalRouteName)
 			var keys []string
 			for _, svcPort := range svc.Spec.Ports {
 				keys = append(keys, fmt.Sprintf(kubelb.EnvoyListenerPattern, svcPort.Port, svcPort.Protocol))
@@ -66,9 +74,17 @@ func (pa *PortAllocator) DeallocatePortsForRoute(route kubelbv1alpha1.Route) err
 		return nil
 	}
 
+	// Get original route name from source or labels
+	originalRouteName := route.Name
+	if route.Spec.Source.Kubernetes.Route.GetName() != "" {
+		originalRouteName = route.Spec.Source.Kubernetes.Route.GetName()
+	} else if name := route.GetLabels()[kubelb.LabelOriginName]; name != "" {
+		originalRouteName = name
+	}
+
 	var keys []string
 	for _, svc := range route.Spec.Source.Kubernetes.Services {
-		keys = append(keys, fmt.Sprintf(kubelb.EnvoyEndpointRoutePattern, route.Namespace, svc.Namespace, svc.Name))
+		keys = append(keys, fmt.Sprintf(kubelb.EnvoyEndpointRoutePattern, route.Namespace, svc.Namespace, svc.Name, originalRouteName))
 	}
 
 	pa.DeallocateEndpoints(keys)

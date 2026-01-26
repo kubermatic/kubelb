@@ -132,8 +132,9 @@ func MapSnapshot(ctx context.Context, client ctrlclient.Client, loadBalancers []
 			}
 		}
 		source := route.Spec.Source.Kubernetes
+		originalRouteName := getOriginalRouteName(&route)
 		for _, svc := range source.Services {
-			endpointKey := fmt.Sprintf(kubelb.EnvoyEndpointRoutePattern, route.Namespace, svc.Namespace, svc.Name)
+			endpointKey := fmt.Sprintf(kubelb.EnvoyEndpointRoutePattern, route.Namespace, svc.Namespace, svc.Name, originalRouteName)
 			for _, port := range svc.Spec.Ports {
 				portLookupKey := fmt.Sprintf(kubelb.EnvoyListenerPattern, port.Port, port.Protocol)
 				var lbEndpoints []*envoyEndpoint.LbEndpoint
@@ -148,7 +149,7 @@ func MapSnapshot(ctx context.Context, client ctrlclient.Client, loadBalancers []
 					listenerPort = uint32(value)
 				}
 
-				key := fmt.Sprintf(kubelb.EnvoyRoutePortIdentifierPattern, route.Namespace, svc.Namespace, svc.Name, svc.UID, port.Port, port.Protocol)
+				key := fmt.Sprintf(kubelb.EnvoyRoutePortIdentifierPattern, route.Namespace, svc.Namespace, svc.Name, originalRouteName, svc.UID, port.Port, port.Protocol)
 
 				switch port.Protocol {
 				case corev1.ProtocolTCP:
@@ -324,4 +325,17 @@ func makeUDPListener(clusterName string, listenerName string, listenerPort uint3
 		},
 		ReusePort: true,
 	}
+}
+
+// getOriginalRouteName extracts the original route name from a Route resource.
+func getOriginalRouteName(route *kubelbv1alpha1.Route) string {
+	if route.Spec.Source.Kubernetes != nil && route.Spec.Source.Kubernetes.Route.GetName() != "" {
+		return route.Spec.Source.Kubernetes.Route.GetName()
+	}
+	if labels := route.GetLabels(); labels != nil {
+		if name := labels[kubelb.LabelOriginName]; name != "" {
+			return name
+		}
+	}
+	return route.Name
 }

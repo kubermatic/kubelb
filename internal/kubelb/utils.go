@@ -47,8 +47,12 @@ const LabelAppKubernetesManagedBy = "app.kubernetes.io/managed-by" // helm
 
 const EnvoyResourceIdentifierPattern = "%s-%s-ep-%d-port-%d-%s"
 const EnvoyEndpointPattern = "%s-%s-ep-%d"
-const EnvoyEndpointRoutePattern = "tenant-%s-route-%s-%s"
-const EnvoyRoutePortIdentifierPattern = "tenant-%s-route-%s-%s-svc-%s-port-%d-%s"
+
+// EnvoyEndpointRoutePattern includes route name for per-route port allocation (supports per-route WAF)
+const EnvoyEndpointRoutePattern = "tenant-%s-route-%s-%s-%s"
+
+// EnvoyRoutePortIdentifierPattern includes route name for unique listener keys (supports per-route WAF)
+const EnvoyRoutePortIdentifierPattern = "tenant-%s-route-%s-%s-%s-svc-%s-port-%d-%s"
 const EnvoyListenerPattern = "%v-%s"
 const RouteServiceMapKey = "%s/%s"
 const DefaultRouteStatus = "{}"
