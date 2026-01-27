@@ -127,6 +127,18 @@ func (r *GatewayReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		return reconcile.Result{}, err
 	}
 
+	// Update managed gateways gauge
+	gatewayList := &gwapiv1.GatewayList{}
+	if err := r.List(ctx, gatewayList, ctrlclient.InNamespace(req.Namespace)); err == nil {
+		count := 0
+		for _, gw := range gatewayList.Items {
+			if r.shouldReconcile(&gw) && gw.DeletionTimestamp == nil {
+				count++
+			}
+		}
+		ccmmetrics.ManagedGatewaysTotal.WithLabelValues(req.Namespace).Set(float64(count))
+	}
+
 	ccmmetrics.GatewayReconcileTotal.WithLabelValues(req.Namespace, metrics.ResultSuccess).Inc()
 	return reconcile.Result{}, nil
 }

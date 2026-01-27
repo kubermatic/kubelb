@@ -20,6 +20,13 @@ kubelb:
   debug: true
   skipConfigGeneration: true
 
+serviceMonitor:
+  enabled: false
+
+grafana:
+  dashboards:
+    enabled: true
+
 # Create required resources for KKP integration.
 kkpintegration:
   # -- Create RBAC for KKP integration.

@@ -128,7 +128,9 @@ func (r *KubeLBServiceReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 
 	var actualLB kubelbv1alpha1.LoadBalancer
 
-	err = kubelbClient.Get(ctx, ctrlclient.ObjectKeyFromObject(desiredLB), &actualLB)
+	err = recordKubeLBOperation("get", func() error {
+		return kubelbClient.Get(ctx, ctrlclient.ObjectKeyFromObject(desiredLB), &actualLB)
+	})
 	log.V(6).Info("actual", "LoadBalancer", actualLB)
 
 	if err != nil {
@@ -138,10 +140,13 @@ func (r *KubeLBServiceReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 		}
 		log.V(1).Info("creating LoadBalancer", "name", desiredLB.Name, "namespace", desiredLB.Namespace)
 
-		if err := kubelbClient.Create(ctx, desiredLB); err != nil {
+		if err := recordKubeLBOperation("create", func() error {
+			return kubelbClient.Create(ctx, desiredLB)
+		}); err != nil {
 			ccmmetrics.ServiceReconcileTotal.WithLabelValues(req.Namespace, metrics.ResultError).Inc()
 			return ctrl.Result{}, err
 		}
+		r.updateManagedServicesGauge(ctx, req.Namespace)
 		ccmmetrics.ServiceReconcileTotal.WithLabelValues(req.Namespace, metrics.ResultSuccess).Inc()
 		return ctrl.Result{}, nil
 	}
@@ -172,6 +177,7 @@ func (r *KubeLBServiceReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 
 	if kubelb.LoadBalancerIsDesiredState(&actualLB, desiredLB) {
 		log.V(2).Info("LoadBalancer is in desired state")
+		r.updateManagedServicesGauge(ctx, req.Namespace)
 		ccmmetrics.ServiceReconcileTotal.WithLabelValues(req.Namespace, metrics.ResultSuccess).Inc()
 		return ctrl.Result{}, nil
 	}
@@ -180,14 +186,30 @@ func (r *KubeLBServiceReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 	actualLB.Spec = desiredLB.Spec
 	actualLB.Annotations = desiredLB.Annotations
 
-	err = kubelbClient.Update(ctx, &actualLB)
+	err = recordKubeLBOperation("update", func() error {
+		return kubelbClient.Update(ctx, &actualLB)
+	})
 	if err != nil {
 		ccmmetrics.ServiceReconcileTotal.WithLabelValues(req.Namespace, metrics.ResultError).Inc()
 		return ctrl.Result{}, err
 	}
 
+	r.updateManagedServicesGauge(ctx, req.Namespace)
 	ccmmetrics.ServiceReconcileTotal.WithLabelValues(req.Namespace, metrics.ResultSuccess).Inc()
 	return ctrl.Result{}, nil
+}
+
+func (r *KubeLBServiceReconciler) updateManagedServicesGauge(ctx context.Context, namespace string) {
+	serviceList := &corev1.ServiceList{}
+	if err := r.List(ctx, serviceList, ctrlclient.InNamespace(namespace)); err == nil {
+		count := 0
+		for _, svc := range serviceList.Items {
+			if r.shouldReconcile(svc) && svc.DeletionTimestamp == nil {
+				count++
+			}
+		}
+		ccmmetrics.ManagedServicesTotal.WithLabelValues(namespace).Set(float64(count))
+	}
 }
 
 func (r *KubeLBServiceReconciler) cleanupService(ctx context.Context, log logr.Logger, service *corev1.Service) (reconcile.Result, error) {
@@ -197,7 +219,9 @@ func (r *KubeLBServiceReconciler) cleanupService(ctx context.Context, log logr.L
 			Namespace: r.ClusterName,
 		},
 	}
-	err := r.KubeLBManager.GetClient().Delete(ctx, lb)
+	err := recordKubeLBOperation("delete", func() error {
+		return r.KubeLBManager.GetClient().Delete(ctx, lb)
+	})
 	if err != nil && !kerrors.IsNotFound(err) {
 		return ctrl.Result{}, fmt.Errorf("deleting LoadBalancer: %w", err)
 	}

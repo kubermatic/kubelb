@@ -55,6 +55,13 @@ var (
 		"Total number of Envoy control plane reconciliation attempts",
 		[]string{metrics.LabelResult},
 	)
+
+	// SyncSecretReconcileTotal counts the total number of SyncSecret reconciliation attempts.
+	SyncSecretReconcileTotal = factory.NewCounterVec(
+		"sync_secret_reconcile_total",
+		"Total number of SyncSecret reconciliation attempts",
+		[]string{metrics.LabelNamespace, metrics.LabelResult},
+	)
 )
 
 // Reconciliation duration histograms - track how long reconciliations take.
@@ -88,6 +95,14 @@ var (
 		"envoycp_reconcile_duration_seconds",
 		"Duration of Envoy control plane reconciliations in seconds",
 		[]string{},
+		nil,
+	)
+
+	// SyncSecretReconcileDuration tracks the duration of SyncSecret reconciliations.
+	SyncSecretReconcileDuration = factory.NewHistogramVec(
+		"sync_secret_reconcile_duration_seconds",
+		"Duration of SyncSecret reconciliations in seconds",
+		[]string{metrics.LabelNamespace},
 		nil,
 	)
 )
@@ -176,11 +191,13 @@ func allCollectors() []prometheus.Collector {
 		RouteReconcileTotal,
 		TenantReconcileTotal,
 		EnvoyCPReconcileTotal,
+		SyncSecretReconcileTotal,
 		// Histograms
 		LoadBalancerReconcileDuration,
 		RouteReconcileDuration,
 		TenantReconcileDuration,
 		EnvoyCPReconcileDuration,
+		SyncSecretReconcileDuration,
 		// Resource gauges
 		LoadBalancersTotal,
 		RoutesTotal,

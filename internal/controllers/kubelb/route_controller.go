@@ -164,6 +164,19 @@ func (r *RouteReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 		return reconcile.Result{}, err
 	}
 
+	// Update route count gauge per namespace/type
+	routeList := &kubelbv1alpha1.RouteList{}
+	if listErr := r.List(ctx, routeList, ctrlruntimeclient.InNamespace(req.Namespace)); listErr == nil {
+		routesByType := map[string]int{}
+		for _, rt := range routeList.Items {
+			t := getRouteType(&rt)
+			routesByType[t]++
+		}
+		for t, count := range routesByType {
+			managermetrics.RoutesTotal.WithLabelValues(req.Namespace, RemoveTenantPrefix(req.Namespace), t).Set(float64(count))
+		}
+	}
+
 	managermetrics.RouteReconcileTotal.WithLabelValues(req.Namespace, routeType, metrics.ResultSuccess).Inc()
 	return reconcile.Result{}, nil
 }

@@ -76,6 +76,7 @@
           "refId": "A"
         }
       ],
+      "description": "Requires CCM metrics from tenant clusters. Enable serviceMonitor in kubelb-ccm chart and ensure metrics are available in the same Prometheus datasource.",
       "title": "CCM Connection",
       "type": "stat"
     },
@@ -394,6 +395,7 @@
           "refId": "C"
         }
       ],
+      "description": "Requires CCM metrics from tenant clusters. Enable serviceMonitor in kubelb-ccm chart and ensure metrics are available in the same Prometheus datasource.",
       "title": "CCM Managed Resources by Namespace",
       "type": "barchart"
     },
@@ -672,6 +674,7 @@
           "refId": "C"
         }
       ],
+      "description": "Requires CCM metrics from tenant clusters. Enable serviceMonitor in kubelb-ccm chart and ensure metrics are available in the same Prometheus datasource.",
       "title": "CCM Reconciliations by Result",
       "type": "timeseries"
     },

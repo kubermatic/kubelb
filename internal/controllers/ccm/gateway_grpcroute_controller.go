@@ -125,6 +125,18 @@ func (r *GRPCRouteReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		return reconcile.Result{}, err
 	}
 
+	// Update managed grpcroutes gauge
+	grpcRouteList := &gwapiv1.GRPCRouteList{}
+	if err := r.List(ctx, grpcRouteList, ctrlclient.InNamespace(req.Namespace)); err == nil {
+		count := 0
+		for _, gr := range grpcRouteList.Items {
+			if r.shouldReconcile(&gr) && gr.DeletionTimestamp == nil {
+				count++
+			}
+		}
+		ccmmetrics.ManagedGRPCRoutesTotal.WithLabelValues(req.Namespace).Set(float64(count))
+	}
+
 	ccmmetrics.GRPCRouteReconcileTotal.WithLabelValues(req.Namespace, metrics.ResultSuccess).Inc()
 	return reconcile.Result{}, nil
 }
