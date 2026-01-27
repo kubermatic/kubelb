@@ -22,11 +22,6 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/pkg/errors"
-	"google.golang.org/grpc"
-
-	envoycpmetrics "k8c.io/kubelb/internal/metrics/envoycp"
-
 	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	clusterservice "github.com/envoyproxy/go-control-plane/envoy/service/cluster/v3"
 	discoveryv3 "github.com/envoyproxy/go-control-plane/envoy/service/discovery/v3"
@@ -37,8 +32,11 @@ import (
 	secretservice "github.com/envoyproxy/go-control-plane/envoy/service/secret/v3"
 	cachev3 "github.com/envoyproxy/go-control-plane/pkg/cache/v3"
 	serverv3 "github.com/envoyproxy/go-control-plane/pkg/server/v3"
+	"github.com/pkg/errors"
+	"google.golang.org/grpc"
 
 	"k8c.io/kubelb/api/ce/kubelb.k8c.io/v1alpha1"
+	envoycpmetrics "k8c.io/kubelb/internal/metrics/envoycp"
 )
 
 const (
