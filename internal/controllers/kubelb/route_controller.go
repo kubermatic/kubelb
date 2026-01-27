@@ -43,7 +43,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/client-go/tools/record"
+	"k8s.io/client-go/tools/events"
 	"k8s.io/client-go/util/retry"
 	"k8s.io/utils/ptr"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -66,7 +66,7 @@ type RouteReconciler struct {
 	ctrlruntimeclient.Client
 	Log      logr.Logger
 	Scheme   *runtime.Scheme
-	Recorder record.EventRecorder
+	Recorder events.EventRecorder
 
 	Namespace          string
 	PortAllocator      *portlookup.PortAllocator
@@ -273,7 +273,7 @@ func (r *RouteReconciler) manageServices(ctx context.Context, log logr.Logger, r
 			// We only log the error and set the condition to false. The error will be set in the status.
 			log.Error(err, "failed to create or update Service", "name", svc.Name, "namespace", svc.Namespace)
 			errorMessage := fmt.Errorf("failed to create or update Service: %w", err)
-			r.Recorder.Eventf(route, corev1.EventTypeWarning, "ServiceApplyFailed", errorMessage.Error())
+			r.Recorder.Eventf(route, nil, corev1.EventTypeWarning, "ServiceApplyFailed", "Reconciling", errorMessage.Error())
 		}
 		updateServiceStatus(routeStatus, &svc, err)
 	}
