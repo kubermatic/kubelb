@@ -127,6 +127,14 @@ var (
 		[]string{},
 		nil,
 	)
+
+	// SyncSecretReconcileDuration tracks the duration of SyncSecret reconciliations.
+	SyncSecretReconcileDuration = factory.NewHistogramVec(
+		"sync_secret_reconcile_duration_seconds",
+		"Duration of SyncSecret reconciliations in seconds",
+		[]string{metrics.LabelNamespace},
+		nil,
+	)
 )
 
 // Resource gauges - track the current count of managed resources.
@@ -216,6 +224,7 @@ func allCollectors() []prometheus.Collector {
 		HTTPRouteReconcileDuration,
 		GRPCRouteReconcileDuration,
 		NodeReconcileDuration,
+		SyncSecretReconcileDuration,
 		// Resource gauges
 		ManagedServicesTotal,
 		ManagedIngressesTotal,

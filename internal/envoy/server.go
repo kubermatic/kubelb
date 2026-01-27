@@ -22,8 +22,14 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/pkg/errors"
+	"google.golang.org/grpc"
+
+	envoycpmetrics "k8c.io/kubelb/internal/metrics/envoycp"
+
+	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	clusterservice "github.com/envoyproxy/go-control-plane/envoy/service/cluster/v3"
-	discoverygrpc "github.com/envoyproxy/go-control-plane/envoy/service/discovery/v3"
+	discoveryv3 "github.com/envoyproxy/go-control-plane/envoy/service/discovery/v3"
 	endpointservice "github.com/envoyproxy/go-control-plane/envoy/service/endpoint/v3"
 	listenerservice "github.com/envoyproxy/go-control-plane/envoy/service/listener/v3"
 	routeservice "github.com/envoyproxy/go-control-plane/envoy/service/route/v3"
@@ -31,8 +37,6 @@ import (
 	secretservice "github.com/envoyproxy/go-control-plane/envoy/service/secret/v3"
 	cachev3 "github.com/envoyproxy/go-control-plane/pkg/cache/v3"
 	serverv3 "github.com/envoyproxy/go-control-plane/pkg/server/v3"
-	"github.com/pkg/errors"
-	"google.golang.org/grpc"
 
 	"k8c.io/kubelb/api/ce/kubelb.k8c.io/v1alpha1"
 )
@@ -43,7 +47,7 @@ const (
 
 func registerServer(grpcServer *grpc.Server, server serverv3.Server) {
 	// register services
-	discoverygrpc.RegisterAggregatedDiscoveryServiceServer(grpcServer, server)
+	discoveryv3.RegisterAggregatedDiscoveryServiceServer(grpcServer, server)
 	endpointservice.RegisterEndpointDiscoveryServiceServer(grpcServer, server)
 	clusterservice.RegisterClusterDiscoveryServiceServer(grpcServer, server)
 	routeservice.RegisterRouteDiscoveryServiceServer(grpcServer, server)
@@ -84,7 +88,22 @@ func (s *Server) UpdateConfig(config *v1alpha1.Config) {
 // Start the Envoy control plane server.
 func (s *Server) Start(ctx context.Context) error {
 	// Create a Cache
-	srv3 := serverv3.NewServer(ctx, s.Cache, nil)
+	srv3 := serverv3.NewServer(ctx, s.Cache, &serverv3.CallbackFuncs{
+		StreamOpenFunc: func(_ context.Context, _ int64, _ string) error {
+			envoycpmetrics.GRPCConnectionsTotal.Inc()
+			return nil
+		},
+		StreamClosedFunc: func(_ int64, _ *corev3.Node) {
+			envoycpmetrics.GRPCConnectionsTotal.Dec()
+		},
+		StreamRequestFunc: func(_ int64, req *discoveryv3.DiscoveryRequest) error {
+			envoycpmetrics.GRPCRequestsTotal.WithLabelValues(req.GetTypeUrl()).Inc()
+			return nil
+		},
+		StreamResponseFunc: func(_ context.Context, _ int64, _ *discoveryv3.DiscoveryRequest, resp *discoveryv3.DiscoveryResponse) {
+			envoycpmetrics.GRPCResponsesTotal.WithLabelValues(resp.GetTypeUrl()).Inc()
+		},
+	})
 
 	// gRPC golang library sets a very small upper bound for the number gRPC/h2
 	// streams over a single TCP connection. If a proxy multiplexes requests over

@@ -130,6 +130,18 @@ func (r *IngressReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		return reconcile.Result{}, err
 	}
 
+	// Update managed ingresses gauge
+	ingressList := &networkingv1.IngressList{}
+	if err := r.List(ctx, ingressList, ctrlclient.InNamespace(req.Namespace)); err == nil {
+		count := 0
+		for _, ing := range ingressList.Items {
+			if r.shouldReconcile(&ing) && ing.DeletionTimestamp == nil {
+				count++
+			}
+		}
+		ccmmetrics.ManagedIngressesTotal.WithLabelValues(req.Namespace).Set(float64(count))
+	}
+
 	ccmmetrics.IngressReconcileTotal.WithLabelValues(req.Namespace, metrics.ResultSuccess).Inc()
 	return reconcile.Result{}, nil
 }

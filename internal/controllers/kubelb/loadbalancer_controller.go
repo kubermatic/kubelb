@@ -270,6 +270,9 @@ func (r *LoadBalancerReconciler) Reconcile(ctx context.Context, req ctrl.Request
 		return ctrl.Result{}, err
 	}
 
+	// Update LB count gauge per namespace
+	managermetrics.LoadBalancersTotal.WithLabelValues(req.Namespace, RemoveTenantPrefix(req.Namespace), string(r.EnvoyProxyTopology)).Set(float64(len(loadBalancers.Items)))
+
 	managermetrics.LoadBalancerReconcileTotal.WithLabelValues(req.Namespace, metrics.ResultSuccess).Inc()
 	return ctrl.Result{}, nil
 }

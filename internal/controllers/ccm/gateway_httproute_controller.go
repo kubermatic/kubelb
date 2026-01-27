@@ -129,6 +129,18 @@ func (r *HTTPRouteReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		return reconcile.Result{}, err
 	}
 
+	// Update managed httproutes gauge
+	httpRouteList := &gwapiv1.HTTPRouteList{}
+	if err := r.List(ctx, httpRouteList, ctrlclient.InNamespace(req.Namespace)); err == nil {
+		count := 0
+		for _, hr := range httpRouteList.Items {
+			if r.shouldReconcile(&hr) && hr.DeletionTimestamp == nil {
+				count++
+			}
+		}
+		ccmmetrics.ManagedHTTPRoutesTotal.WithLabelValues(req.Namespace).Set(float64(count))
+	}
+
 	ccmmetrics.HTTPRouteReconcileTotal.WithLabelValues(req.Namespace, metrics.ResultSuccess).Inc()
 	return reconcile.Result{}, nil
 }

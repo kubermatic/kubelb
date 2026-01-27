@@ -278,6 +278,9 @@ func main() {
 		}
 	}
 
+	// Mark KubeLB cluster as connected since manager setup succeeded
+	ccmmetrics.KubeLBClusterConnected.Set(1)
+
 	setupLog.Info("starting kubelb CCM")
 	if err := mgr.Start(ctx); err != nil {
 		setupLog.Error(err, "problem running kubelb")

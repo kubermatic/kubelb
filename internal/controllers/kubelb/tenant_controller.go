@@ -157,6 +157,12 @@ func (r *TenantReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 		return reconcile.Result{}, err
 	}
 
+	// Update tenant count gauge
+	tenantList := &kubelbv1alpha1.TenantList{}
+	if listErr := r.List(ctx, tenantList); listErr == nil {
+		managermetrics.TenantsTotal.Set(float64(len(tenantList.Items)))
+	}
+
 	managermetrics.TenantReconcileTotal.WithLabelValues(metrics.ResultSuccess).Inc()
 	return reconcile.Result{}, nil
 }

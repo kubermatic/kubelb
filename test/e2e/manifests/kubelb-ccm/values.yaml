@@ -24,3 +24,10 @@ kubelb:
   enableGatewayAPI: true
   installGatewayAPICRDs: true
   gatewayAPICRDsChannel: standard
+
+serviceMonitor:
+  enabled: false
+
+grafana:
+  dashboards:
+    enabled: false

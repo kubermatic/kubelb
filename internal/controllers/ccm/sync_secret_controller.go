@@ -19,11 +19,14 @@ package ccm
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/go-logr/logr"
 
 	kubelbv1alpha1 "k8c.io/kubelb/api/ce/kubelb.k8c.io/v1alpha1"
 	"k8c.io/kubelb/internal/kubelb"
+	"k8c.io/kubelb/internal/metrics"
+	ccmmetrics "k8c.io/kubelb/internal/metrics/ccm"
 
 	"k8s.io/apimachinery/pkg/api/equality"
 	kerrors "k8s.io/apimachinery/pkg/api/errors"
@@ -88,12 +91,20 @@ func (r *SyncSecretReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 		}
 	}
 
+	startTime := time.Now()
 	err := r.reconcile(ctx, log, resource)
+
+	// Track reconciliation duration
+	ccmmetrics.SyncSecretReconcileDuration.WithLabelValues(req.Namespace).Observe(time.Since(startTime).Seconds())
+
 	if err != nil {
 		log.Error(err, "reconciling failed")
+		ccmmetrics.SyncSecretReconcileTotal.WithLabelValues(req.Namespace, metrics.ResultError).Inc()
+		return reconcile.Result{}, err
 	}
 
-	return reconcile.Result{}, err
+	ccmmetrics.SyncSecretReconcileTotal.WithLabelValues(req.Namespace, metrics.ResultSuccess).Inc()
+	return reconcile.Result{}, nil
 }
 
 func (r *SyncSecretReconciler) reconcile(ctx context.Context, _ logr.Logger, object *kubelbv1alpha1.SyncSecret) error {

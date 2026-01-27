@@ -30,6 +30,7 @@ import (
 	envoycp "k8c.io/kubelb/internal/envoy"
 	"k8c.io/kubelb/internal/kubelb"
 	"k8c.io/kubelb/internal/metrics"
+	envoycpmetrics "k8c.io/kubelb/internal/metrics/envoycp"
 	managermetrics "k8c.io/kubelb/internal/metrics/manager"
 	portlookup "k8c.io/kubelb/internal/port-lookup"
 
@@ -114,12 +115,15 @@ func (r *EnvoyCPReconciler) reconcile(ctx context.Context, req ctrl.Request) err
 
 	if len(lbs) == 0 && len(routes) == 0 {
 		r.EnvoyCache.ClearSnapshot(snapshotName)
+		envoycpmetrics.CacheClearsTotal.WithLabelValues(snapshotName).Inc()
 		return r.cleanupEnvoyProxy(ctx, appName, namespace)
 	}
 
 	if err := r.ensureEnvoyProxy(ctx, namespace, appName, snapshotName); err != nil {
 		return fmt.Errorf("failed to update Envoy proxy: %w", err)
 	}
+	managermetrics.EnvoyProxiesTotal.WithLabelValues(namespace, string(r.EnvoyProxyTopology)).Set(1)
+	envoycpmetrics.EnvoyProxiesTotal.WithLabelValues(namespace, string(r.EnvoyProxyTopology)).Set(1)
 
 	lbList := kubelbv1alpha1.LoadBalancerList{
 		Items: lbs,
@@ -137,21 +141,26 @@ func (r *EnvoyCPReconciler) reconcile(ctx context.Context, req ctrl.Request) err
 
 func (r *EnvoyCPReconciler) updateCache(ctx context.Context, snapshotName string, lbs []kubelbv1alpha1.LoadBalancer, routes []kubelbv1alpha1.Route) error {
 	log := ctrl.LoggerFrom(ctx)
+	snapshotStart := time.Now()
 	desiredSnapshot, err := envoycp.MapSnapshot(ctx, r.Client, lbs, routes, r.PortAllocator)
+	envoycpmetrics.SnapshotGenerationDuration.WithLabelValues(snapshotName).Observe(time.Since(snapshotStart).Seconds())
 	if err != nil {
 		return err
 	}
 
 	currentSnapshot, err := r.EnvoyCache.GetSnapshot(snapshotName)
 	if err != nil {
+		envoycpmetrics.CacheMissesTotal.WithLabelValues(snapshotName).Inc()
 		log.Info("init snapshot", "service-node", snapshotName, "version", desiredSnapshot.GetVersion(envoyresource.ClusterType))
 		if err := r.EnvoyCache.SetSnapshot(ctx, snapshotName, desiredSnapshot); err != nil {
 			return err
 		}
 		r.recordSnapshotMetrics(snapshotName, desiredSnapshot)
 		managermetrics.EnvoyCPSnapshotUpdatesTotal.WithLabelValues(snapshotName).Inc()
+		envoycpmetrics.SnapshotUpdatesTotal.WithLabelValues(snapshotName).Inc()
 		return nil
 	}
+	envoycpmetrics.CacheHitsTotal.WithLabelValues(snapshotName).Inc()
 
 	lastUsedVersion := currentSnapshot.GetVersion(envoyresource.ClusterType)
 	desiredVersion := desiredSnapshot.GetVersion(envoyresource.ClusterType)
@@ -172,6 +181,7 @@ func (r *EnvoyCPReconciler) updateCache(ctx context.Context, snapshotName string
 
 	r.recordSnapshotMetrics(snapshotName, desiredSnapshot)
 	managermetrics.EnvoyCPSnapshotUpdatesTotal.WithLabelValues(snapshotName).Inc()
+	envoycpmetrics.SnapshotUpdatesTotal.WithLabelValues(snapshotName).Inc()
 
 	return nil
 }
@@ -181,10 +191,18 @@ func (r *EnvoyCPReconciler) recordSnapshotMetrics(snapshotName string, snapshot 
 	clusters := snapshot.GetResources(envoyresource.ClusterType)
 	listeners := snapshot.GetResources(envoyresource.ListenerType)
 	endpoints := snapshot.GetResources(envoyresource.EndpointType)
+	routes := snapshot.GetResources(envoyresource.RouteType)
+	secrets := snapshot.GetResources(envoyresource.SecretType)
 
 	managermetrics.EnvoyCPClusters.WithLabelValues(snapshotName).Set(float64(len(clusters)))
 	managermetrics.EnvoyCPListeners.WithLabelValues(snapshotName).Set(float64(len(listeners)))
 	managermetrics.EnvoyCPEndpoints.WithLabelValues(snapshotName).Set(float64(len(endpoints)))
+
+	envoycpmetrics.ClustersTotal.WithLabelValues(snapshotName).Set(float64(len(clusters)))
+	envoycpmetrics.ListenersTotal.WithLabelValues(snapshotName).Set(float64(len(listeners)))
+	envoycpmetrics.EndpointsTotal.WithLabelValues(snapshotName).Set(float64(len(endpoints)))
+	envoycpmetrics.RoutesTotal.WithLabelValues(snapshotName).Set(float64(len(routes)))
+	envoycpmetrics.SecretsTotal.WithLabelValues(snapshotName).Set(float64(len(secrets)))
 }
 
 func (r *EnvoyCPReconciler) ListLoadBalancersAndRoutes(ctx context.Context, req ctrl.Request) ([]kubelbv1alpha1.LoadBalancer, []kubelbv1alpha1.Route, error) {
@@ -255,6 +273,7 @@ func (r *EnvoyCPReconciler) cleanupEnvoyProxy(ctx context.Context, appName strin
 	if err := r.Delete(ctx, envoyProxy); err != nil && !apierrors.IsNotFound(err) {
 		return fmt.Errorf("failed to delete envoy proxy %s: %w", envoyProxy.GetName(), err)
 	}
+	envoycpmetrics.EnvoyProxyDeleteTotal.WithLabelValues(namespace).Inc()
 	return nil
 }
 
@@ -317,11 +336,10 @@ func (r *EnvoyCPReconciler) ensureEnvoyProxy(ctx context.Context, namespace, app
 		if err := r.Create(ctx, envoyProxy); err != nil {
 			return err
 		}
-	} else {
-		if podTemplateSpecNeedsUpdate(originalTemplate, desiredTemplate) {
-			if err := r.Update(ctx, envoyProxy); err != nil {
-				return fmt.Errorf("failed to update envoy proxy: %w", err)
-			}
+		envoycpmetrics.EnvoyProxyCreateTotal.WithLabelValues(namespace).Inc()
+	} else if podTemplateSpecNeedsUpdate(originalTemplate, desiredTemplate) {
+		if err := r.Update(ctx, envoyProxy); err != nil {
+			return fmt.Errorf("failed to update envoy proxy: %w", err)
 		}
 	}
 	return nil

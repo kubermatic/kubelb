@@ -34,6 +34,8 @@ Metrics exposed by the KubeLB Manager component (kubelb-manager).
 | `kubelb_manager_route_reconcile_duration_seconds` | Histogram | Duration of Route reconciliations in seconds | `namespace` |
 | `kubelb_manager_route_reconcile_total` | Counter | Total number of Route reconciliation attempts | `namespace`, `route_type`, `result` |
 | `kubelb_manager_routes` | Gauge | Current number of Route resources | `namespace`, `tenant`, `route_type` |
+| `kubelb_manager_sync_secret_reconcile_duration_seconds` | Histogram | Duration of SyncSecret reconciliations in seconds | `namespace` |
+| `kubelb_manager_sync_secret_reconcile_total` | Counter | Total number of SyncSecret reconciliation attempts | `namespace`, `result` |
 | `kubelb_manager_tenant_reconcile_duration_seconds` | Histogram | Duration of Tenant reconciliations in seconds | - |
 | `kubelb_manager_tenant_reconcile_total` | Counter | Total number of Tenant reconciliation attempts | `result` |
 | `kubelb_manager_tenants` | Gauge | Current number of Tenant resources | - |
@@ -67,6 +69,7 @@ Metrics exposed by the KubeLB Cloud Controller Manager component (kubelb-ccm).
 | `kubelb_ccm_nodes` | Gauge | Current number of nodes in the cluster | - |
 | `kubelb_ccm_service_reconcile_duration_seconds` | Histogram | Duration of Service reconciliations in seconds | `namespace` |
 | `kubelb_ccm_service_reconcile_total` | Counter | Total number of Service reconciliation attempts | `namespace`, `result` |
+| `kubelb_ccm_sync_secret_reconcile_duration_seconds` | Histogram | Duration of SyncSecret reconciliations in seconds | `namespace` |
 | `kubelb_ccm_sync_secret_reconcile_total` | Counter | Total number of SyncSecret reconciliation attempts | `namespace`, `result` |
 
 ---

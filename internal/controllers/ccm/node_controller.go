@@ -76,6 +76,8 @@ func (r *KubeLBNodeReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 		return ctrl.Result{}, err
 	}
 
+	ccmmetrics.NodesTotal.Set(float64(len(nodeList.Items)))
+
 	// Compute current state
 	currentAddresses, err := r.GenerateAddresses(nodeList)
 	if err != nil {
@@ -88,10 +90,14 @@ func (r *KubeLBNodeReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 
 	// Retrieve current state from the LB cluster
 	var addresses kubelbiov1alpha1.Addresses
-	if err = r.KubeLBClient.Get(ctx, types.NamespacedName{Name: kubelbiov1alpha1.DefaultAddressName, Namespace: r.ClusterName}, &addresses); err != nil {
+	if err = recordKubeLBOperation("get", func() error {
+		return r.KubeLBClient.Get(ctx, types.NamespacedName{Name: kubelbiov1alpha1.DefaultAddressName, Namespace: r.ClusterName}, &addresses)
+	}); err != nil {
 		if kerrors.IsNotFound(err) {
 			// Create the default address object
-			if err = r.KubeLBClient.Create(ctx, currentAddresses); err != nil {
+			if err = recordKubeLBOperation("create", func() error {
+				return r.KubeLBClient.Create(ctx, currentAddresses)
+			}); err != nil {
 				log.Error(err, "unable to create addresses")
 				ccmmetrics.NodeReconcileTotal.WithLabelValues(metrics.ResultError).Inc()
 				return ctrl.Result{}, err
@@ -112,7 +118,9 @@ func (r *KubeLBNodeReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 
 	// Update the addresses
 	addresses.Spec.Addresses = currentAddresses.Spec.Addresses
-	if err = r.KubeLBClient.Update(ctx, &addresses); err != nil {
+	if err = recordKubeLBOperation("update", func() error {
+		return r.KubeLBClient.Update(ctx, &addresses)
+	}); err != nil {
 		log.Error(err, "unable to update addresses")
 		ccmmetrics.NodeReconcileTotal.WithLabelValues(metrics.ResultError).Inc()
 		return ctrl.Result{}, err
