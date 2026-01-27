@@ -25,7 +25,7 @@ serviceMonitor:
 
 grafana:
   dashboards:
-    enabled: false
+    enabled: true
 
 # Create required resources for KKP integration.
 kkpintegration:
