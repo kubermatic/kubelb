@@ -195,7 +195,7 @@ EOF
   # Patch dependency version to match local addons chart version
   local addons_version
   addons_version=$(grep '^version:' "${temp_chart_dir}/kubelb-addons/Chart.yaml" | awk '{print $2}')
-  sed -i.bak "/name: kubelb-addons/,/version:/{s|version: .*|version: ${addons_version}|}" \
+  sed -i.bak "/name: kubelb-addons/,/version:/ s|version: .*|version: ${addons_version}|" \
     "${temp_chart_dir}/kubelb-manager/Chart.yaml"
   rm -f "${temp_chart_dir}/kubelb-manager/Chart.yaml.bak"
 
