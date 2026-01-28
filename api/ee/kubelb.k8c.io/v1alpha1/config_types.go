@@ -52,6 +52,23 @@ type ConfigSpec struct {
 	// These settings can be overridden at the Tenant level.
 	// +optional
 	CircuitBreaker *CircuitBreaker `json:"circuitBreaker,omitempty"`
+
+	// WAF defines WAF-related settings.
+	// +optional
+	WAF WAFSettings `json:"waf,omitempty"`
+}
+
+// WAFSettings defines settings for the WAF (Web Application Firewall).
+type WAFSettings struct {
+	// WASMInitContainerImage overrides the image used for the WASM init container.
+	// If empty, defaults to the kubelb-manager image detected at runtime.
+	// +optional
+	WASMInitContainerImage string `json:"wasmInitContainerImage,omitempty"`
+
+	// SkipValidation skips directive validation for WAFPolicies.
+	// When true, all WAFPolicies are marked as valid without parsing.
+	// +optional
+	SkipValidation bool `json:"skipValidation,omitempty"`
 }
 
 // TunnelSettings defines the global settings for Tunnel resources.
