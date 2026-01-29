@@ -274,8 +274,14 @@ release:
     <summary><b>Helm Charts</b></summary>
 
     ```bash
+    # kubelb-manager
     helm pull oci://quay.io/kubermatic/helm-charts/kubelb-manager --version {{ .Tag }}
+
+    # kubelb-ccm
     helm pull oci://quay.io/kubermatic/helm-charts/kubelb-ccm --version {{ .Tag }}
+
+    # kubelb-addons
+    helm pull oci://quay.io/kubermatic/helm-charts/kubelb-addons --version {{ .Env.KUBELB_ADDONS_VERSION }}
     ```
 
     </details>
@@ -302,6 +308,20 @@ release:
     SBOM_DIGEST=$(oras discover --format json --artifact-type application/spdx+json \
       quay.io/kubermatic/kubelb-ccm:{{ .Tag }} | jq -r '.referrers[0].digest')
     oras pull quay.io/kubermatic/kubelb-ccm@${SBOM_DIGEST} --output sbom/
+    ```
+
+    **Verify SBOM attestation:**
+
+    ```bash
+    cosign verify-attestation quay.io/kubermatic/kubelb-manager:{{ .Tag }} \
+      --type spdxjson \
+      --certificate-identity-regexp="^https://github.com/kubermatic/kubelb/.github/workflows/release.yml@refs/tags/v.*" \
+      --certificate-oidc-issuer=https://token.actions.githubusercontent.com
+
+    cosign verify-attestation quay.io/kubermatic/kubelb-ccm:{{ .Tag }} \
+      --type spdxjson \
+      --certificate-identity-regexp="^https://github.com/kubermatic/kubelb/.github/workflows/release.yml@refs/tags/v.*" \
+      --certificate-oidc-issuer=https://token.actions.githubusercontent.com
     ```
 
     </details>
