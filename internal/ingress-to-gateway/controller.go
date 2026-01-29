@@ -25,7 +25,6 @@ import (
 
 	networkingv1 "k8s.io/api/networking/v1"
 	kerrors "k8s.io/apimachinery/pkg/api/errors"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/events"
@@ -109,59 +108,66 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 }
 
 func (r *Reconciler) reconcile(ctx context.Context, log logr.Logger, ingress *networkingv1.Ingress) error {
-	// Convert Ingress to HTTPRoute
+	// Convert Ingress to HTTPRoutes (one per host)
 	result := ConvertIngress(ingress, r.GatewayName, r.GatewayNamespace)
 
-	if result.HTTPRoute == nil {
-		return fmt.Errorf("conversion produced nil HTTPRoute")
+	if len(result.HTTPRoutes) == 0 {
+		return fmt.Errorf("conversion produced no HTTPRoutes")
 	}
 
-	// Add tracking label
-	if result.HTTPRoute.Labels == nil {
-		result.HTTPRoute.Labels = make(map[string]string)
-	}
-	result.HTTPRoute.Labels[LabelSourceIngress] = fmt.Sprintf("%s.%s", ingress.Name, ingress.Namespace)
+	// Track created route names for status annotation
+	var routeNames []string
 
-	// Set owner reference for garbage collection
-	if err := controllerutil.SetControllerReference(ingress, result.HTTPRoute, r.Scheme); err != nil {
-		return fmt.Errorf("failed to set owner reference: %w", err)
-	}
+	for _, httpRoute := range result.HTTPRoutes {
+		// Add tracking label
+		if httpRoute.Labels == nil {
+			httpRoute.Labels = make(map[string]string)
+		}
+		httpRoute.Labels[LabelSourceIngress] = fmt.Sprintf("%s.%s", ingress.Name, ingress.Namespace)
 
-	// Create or update HTTPRoute
-	existing := &gwapiv1.HTTPRoute{}
-	err := r.Get(ctx, types.NamespacedName{Name: result.HTTPRoute.Name, Namespace: result.HTTPRoute.Namespace}, existing)
-	if err != nil {
-		if kerrors.IsNotFound(err) {
-			log.Info("Creating HTTPRoute", "name", result.HTTPRoute.Name)
-			if err := r.Create(ctx, result.HTTPRoute); err != nil {
-				return fmt.Errorf("failed to create HTTPRoute: %w", err)
+		// Set owner reference for garbage collection
+		if err := controllerutil.SetControllerReference(ingress, httpRoute, r.Scheme); err != nil {
+			return fmt.Errorf("failed to set owner reference: %w", err)
+		}
+
+		// Create or update HTTPRoute
+		existing := &gwapiv1.HTTPRoute{}
+		err := r.Get(ctx, types.NamespacedName{Name: httpRoute.Name, Namespace: httpRoute.Namespace}, existing)
+		if err != nil {
+			if kerrors.IsNotFound(err) {
+				log.Info("Creating HTTPRoute", "name", httpRoute.Name)
+				if err := r.Create(ctx, httpRoute); err != nil {
+					return fmt.Errorf("failed to create HTTPRoute: %w", err)
+				}
+			} else {
+				return fmt.Errorf("failed to get HTTPRoute: %w", err)
 			}
 		} else {
-			return fmt.Errorf("failed to get HTTPRoute: %w", err)
+			// Update existing HTTPRoute
+			existing.Spec = httpRoute.Spec
+			existing.Labels = httpRoute.Labels
+			log.Info("Updating HTTPRoute", "name", httpRoute.Name)
+			if err := r.Update(ctx, existing); err != nil {
+				return fmt.Errorf("failed to update HTTPRoute: %w", err)
+			}
 		}
-	} else {
-		// Update existing HTTPRoute
-		existing.Spec = result.HTTPRoute.Spec
-		existing.Labels = result.HTTPRoute.Labels
-		log.Info("Updating HTTPRoute", "name", result.HTTPRoute.Name)
-		if err := r.Update(ctx, existing); err != nil {
-			return fmt.Errorf("failed to update HTTPRoute: %w", err)
-		}
+
+		routeNames = append(routeNames, fmt.Sprintf("%s/%s", httpRoute.Namespace, httpRoute.Name))
 	}
 
 	// Update Ingress annotations with conversion status
-	if err := r.updateIngressStatus(ctx, ingress, result.Warnings); err != nil {
+	if err := r.updateIngressStatus(ctx, ingress, result.Warnings, routeNames); err != nil {
 		return fmt.Errorf("failed to update Ingress status: %w", err)
 	}
 
-	log.Info("Successfully converted Ingress to HTTPRoute",
-		"httproute", result.HTTPRoute.Name,
+	log.Info("Successfully converted Ingress to HTTPRoutes",
+		"httproutes", len(result.HTTPRoutes),
 		"warnings", len(result.Warnings))
 
 	return nil
 }
 
-func (r *Reconciler) updateIngressStatus(ctx context.Context, ingress *networkingv1.Ingress, warnings []string) error {
+func (r *Reconciler) updateIngressStatus(ctx context.Context, ingress *networkingv1.Ingress, warnings, routeNames []string) error {
 	// Re-fetch to avoid conflicts
 	current := &networkingv1.Ingress{}
 	if err := r.Get(ctx, types.NamespacedName{Name: ingress.Name, Namespace: ingress.Namespace}, current); err != nil {
@@ -179,24 +185,29 @@ func (r *Reconciler) updateIngressStatus(ctx context.Context, ingress *networkin
 	}
 
 	current.Annotations[AnnotationConversionStatus] = status
-	current.Annotations[AnnotationConvertedHTTPRoute] = fmt.Sprintf("%s/%s", ingress.Namespace, ingress.Name)
+	current.Annotations[AnnotationConvertedHTTPRoute] = strings.Join(routeNames, ",")
 
 	return r.Update(ctx, current)
 }
 
 func (r *Reconciler) cleanup(ctx context.Context, log logr.Logger, ingress *networkingv1.Ingress) (ctrl.Result, error) {
-	log.Info("Cleaning up HTTPRoute for deleted Ingress")
+	log.Info("Cleaning up HTTPRoutes for deleted Ingress")
 
-	// Delete the HTTPRoute
-	httpRoute := &gwapiv1.HTTPRoute{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      ingress.Name,
-			Namespace: ingress.Namespace,
-		},
+	// Delete all HTTPRoutes owned by this Ingress via label selector
+	routeList := &gwapiv1.HTTPRouteList{}
+	labelSelector := ctrlclient.MatchingLabels{
+		LabelSourceIngress: fmt.Sprintf("%s.%s", ingress.Name, ingress.Namespace),
+	}
+	if err := r.List(ctx, routeList, ctrlclient.InNamespace(ingress.Namespace), labelSelector); err != nil {
+		return reconcile.Result{}, fmt.Errorf("failed to list HTTPRoutes: %w", err)
 	}
 
-	if err := r.Delete(ctx, httpRoute); err != nil && !kerrors.IsNotFound(err) {
-		return reconcile.Result{}, fmt.Errorf("failed to delete HTTPRoute: %w", err)
+	for i := range routeList.Items {
+		route := &routeList.Items[i]
+		log.V(1).Info("Deleting HTTPRoute", "name", route.Name)
+		if err := r.Delete(ctx, route); err != nil && !kerrors.IsNotFound(err) {
+			return reconcile.Result{}, fmt.Errorf("failed to delete HTTPRoute %s: %w", route.Name, err)
+		}
 	}
 
 	// Remove finalizer
@@ -205,7 +216,7 @@ func (r *Reconciler) cleanup(ctx context.Context, log logr.Logger, ingress *netw
 		return reconcile.Result{}, fmt.Errorf("failed to remove finalizer: %w", err)
 	}
 
-	log.Info("Cleanup complete")
+	log.Info("Cleanup complete", "deleted", len(routeList.Items))
 	return reconcile.Result{}, nil
 }
 

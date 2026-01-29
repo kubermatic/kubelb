@@ -142,6 +142,8 @@ func main() {
 
 	// Standalone conversion mode - skip LB cluster setup
 	if opt.conversionOpts.StandaloneMode {
+		// Standalone mode needs Gateway API for HTTPRoute creation
+		utilruntime.Must(gwapiv1.Install(scheme))
 		os.Exit(ingressconversion.RunStandalone(ctx, ingressconversion.StandaloneConfig{
 			Scheme:                  scheme,
 			MetricsAddr:             opt.metricsAddr,
