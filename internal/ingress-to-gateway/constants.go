@@ -25,6 +25,9 @@ const (
 	AnnotationConvertedHTTPRoute = "kubelb.k8c.io/converted-httproute"
 	AnnotationConversionWarnings = "kubelb.k8c.io/conversion-warnings"
 
+	// Legacy ingress class annotation (deprecated but still widely used)
+	AnnotationIngressClass = "kubernetes.io/ingress.class"
+
 	// Status values
 	ConversionStatusConverted = "converted"
 	ConversionStatusPartial   = "partial"

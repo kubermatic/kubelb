@@ -20,21 +20,55 @@ import (
 	"fmt"
 	"sort"
 
+	corev1 "k8s.io/api/core/v1"
 	networkingv1 "k8s.io/api/networking/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
 )
 
-// ConversionResult holds the converted HTTPRoutes and any warnings
+// ConversionInput holds input data for conversion including Services for port resolution
+type ConversionInput struct {
+	Ingress          *networkingv1.Ingress
+	GatewayName      string
+	GatewayNamespace string
+	// Services maps namespace/name to Service for port resolution (optional)
+	Services map[types.NamespacedName]*corev1.Service
+}
+
+// TLSListener represents a TLS listener configuration for the Gateway
+type TLSListener struct {
+	Hostname   gwapiv1.Hostname
+	SecretName string
+	// SecretNamespace is the namespace of the secret (same as Ingress namespace)
+	SecretNamespace string
+}
+
+// ConversionResult holds the converted HTTPRoutes, Gateway configs, and any warnings
 type ConversionResult struct {
 	// HTTPRoutes contains one HTTPRoute per unique host (or one for no-host rules)
 	HTTPRoutes []*gwapiv1.HTTPRoute
-	Warnings   []string
+	// TLSListeners contains HTTPS listener configs to add to Gateway
+	TLSListeners []TLSListener
+	Warnings     []string
 }
 
 // ConvertIngress converts a Kubernetes Ingress to Gateway API HTTPRoutes.
 // Returns one HTTPRoute per unique host to avoid cross-host path matching issues.
+//
+// Deprecated: Use ConvertIngressWithServices for better port resolution.
 func ConvertIngress(ingress *networkingv1.Ingress, gatewayName, gatewayNamespace string) ConversionResult {
+	return ConvertIngressWithServices(ConversionInput{
+		Ingress:          ingress,
+		GatewayName:      gatewayName,
+		GatewayNamespace: gatewayNamespace,
+		Services:         nil,
+	})
+}
+
+// ConvertIngressWithServices converts an Ingress with Service lookup for port resolution.
+func ConvertIngressWithServices(input ConversionInput) ConversionResult {
+	ingress := input.Ingress
 	result := ConversionResult{
 		Warnings: []string{},
 	}
@@ -43,14 +77,15 @@ func ConvertIngress(ingress *networkingv1.Ingress, gatewayName, gatewayNamespace
 	hostRules := make(map[string][]gwapiv1.HTTPRouteRule)
 	const noHostKey = ""
 
-	for _, rule := range ingress.Spec.Rules {
+	for i, rule := range ingress.Spec.Rules {
 		host := rule.Host
 		if rule.HTTP == nil {
+			result.Warnings = append(result.Warnings, fmt.Sprintf("rule[%d] has no HTTP configuration, skipped", i))
 			continue
 		}
 
 		for _, path := range rule.HTTP.Paths {
-			httpRouteRule, warnings := convertPath(path)
+			httpRouteRule, warnings := convertPathWithServices(path, ingress.Namespace, input.Services)
 			result.Warnings = append(result.Warnings, warnings...)
 			hostRules[host] = append(hostRules[host], httpRouteRule)
 		}
@@ -59,18 +94,16 @@ func ConvertIngress(ingress *networkingv1.Ingress, gatewayName, gatewayNamespace
 	// Handle default backend - applies to all hosts or creates catch-all
 	var defaultRule *gwapiv1.HTTPRouteRule
 	if ingress.Spec.DefaultBackend != nil {
-		rule, warnings := convertDefaultBackend(ingress.Spec.DefaultBackend)
+		rule, warnings := convertDefaultBackendWithServices(ingress.Spec.DefaultBackend, ingress.Namespace, input.Services)
 		defaultRule = rule
 		result.Warnings = append(result.Warnings, warnings...)
 	}
 
-	// Warn about TLS config (handled by Gateway, not HTTPRoute)
-	if len(ingress.Spec.TLS) > 0 {
-		result.Warnings = append(result.Warnings, "TLS configuration ignored; configure TLS on the Gateway listener instead")
-	}
+	// Convert TLS configuration to Gateway listeners
+	result.TLSListeners = convertTLSConfig(ingress.Spec.TLS, ingress.Namespace)
 
 	// Generate HTTPRoutes per host
-	parentRef := buildParentRef(gatewayName, gatewayNamespace, ingress.Namespace)
+	parentRef := buildParentRef(input.GatewayName, input.GatewayNamespace, ingress.Namespace)
 
 	// Sort hosts for deterministic output ordering
 	hosts := make([]string, 0, len(hostRules))
@@ -154,6 +187,35 @@ func ConvertIngress(ingress *networkingv1.Ingress, gatewayName, gatewayNamespace
 	return result
 }
 
+// convertTLSConfig converts Ingress TLS config to Gateway listener configurations
+func convertTLSConfig(tlsConfigs []networkingv1.IngressTLS, namespace string) []TLSListener {
+	var listeners []TLSListener
+
+	for _, tls := range tlsConfigs {
+		// Each TLS config can have multiple hosts sharing the same secret
+		for _, host := range tls.Hosts {
+			listener := TLSListener{
+				Hostname:        gwapiv1.Hostname(host),
+				SecretName:      tls.SecretName,
+				SecretNamespace: namespace,
+			}
+			listeners = append(listeners, listener)
+		}
+
+		// If no hosts specified but secret exists, it's a catch-all TLS
+		if len(tls.Hosts) == 0 && tls.SecretName != "" {
+			listener := TLSListener{
+				Hostname:        "*",
+				SecretName:      tls.SecretName,
+				SecretNamespace: namespace,
+			}
+			listeners = append(listeners, listener)
+		}
+	}
+
+	return listeners
+}
+
 // httpRouteName generates HTTPRoute name from Ingress name and host.
 // For host-specific routes, appends sanitized host suffix.
 func httpRouteName(ingressName, host string) string {
@@ -190,7 +252,7 @@ func buildParentRef(gatewayName, gatewayNamespace, routeNamespace string) gwapiv
 	return ref
 }
 
-func convertPath(path networkingv1.HTTPIngressPath) (gwapiv1.HTTPRouteRule, []string) {
+func convertPathWithServices(path networkingv1.HTTPIngressPath, namespace string, services map[types.NamespacedName]*corev1.Service) (gwapiv1.HTTPRouteRule, []string) {
 	var warnings []string
 	rule := gwapiv1.HTTPRouteRule{}
 
@@ -215,7 +277,7 @@ func convertPath(path networkingv1.HTTPIngressPath) (gwapiv1.HTTPRouteRule, []st
 
 	// Convert backend
 	if path.Backend.Service != nil {
-		backendRef, backendWarnings := convertServiceBackend(path.Backend.Service)
+		backendRef, backendWarnings := convertServiceBackendWithLookup(path.Backend.Service, namespace, services)
 		rule.BackendRefs = []gwapiv1.HTTPBackendRef{backendRef}
 		warnings = append(warnings, backendWarnings...)
 	} else if path.Backend.Resource != nil {
@@ -244,7 +306,8 @@ func convertPathType(pathType *networkingv1.PathType) gwapiv1.PathMatchType {
 	}
 }
 
-func convertServiceBackend(svc *networkingv1.IngressServiceBackend) (gwapiv1.HTTPBackendRef, []string) {
+// convertServiceBackendWithLookup converts a service backend with optional Service lookup for port resolution
+func convertServiceBackendWithLookup(svc *networkingv1.IngressServiceBackend, namespace string, services map[types.NamespacedName]*corev1.Service) (gwapiv1.HTTPBackendRef, []string) {
 	var warnings []string
 
 	backendRef := gwapiv1.HTTPBackendRef{
@@ -255,19 +318,65 @@ func convertServiceBackend(svc *networkingv1.IngressServiceBackend) (gwapiv1.HTT
 		},
 	}
 
-	// Set port
-	if svc.Port.Number != 0 {
+	// Set port with Service lookup fallback
+	switch {
+	case svc.Port.Number != 0:
 		port := svc.Port.Number
 		backendRef.Port = &port
-	} else if svc.Port.Name != "" {
-		// Named port requires Service lookup to resolve - not supported
-		warnings = append(warnings, fmt.Sprintf("service %q uses named port %q which cannot be resolved; specify port number instead", svc.Name, svc.Port.Name))
+
+	case svc.Port.Name != "":
+		// Try to resolve named port via Service lookup
+		if services != nil {
+			key := types.NamespacedName{Name: svc.Name, Namespace: namespace}
+			if service, ok := services[key]; ok {
+				if port, found := findPortByName(service, svc.Port.Name); found {
+					backendRef.Port = &port
+				} else {
+					warnings = append(warnings, fmt.Sprintf("service %q has no port named %q", svc.Name, svc.Port.Name))
+				}
+			} else {
+				warnings = append(warnings, fmt.Sprintf("service %q not found for port resolution", svc.Name))
+			}
+		} else {
+			warnings = append(warnings, fmt.Sprintf("service %q uses named port %q which cannot be resolved; specify port number instead", svc.Name, svc.Port.Name))
+		}
+
+	default:
+		// Neither port number nor name - try to use single-port Service
+		if services != nil {
+			key := types.NamespacedName{Name: svc.Name, Namespace: namespace}
+			if service, ok := services[key]; ok {
+				switch len(service.Spec.Ports) {
+				case 1:
+					port := service.Spec.Ports[0].Port
+					backendRef.Port = &port
+				case 0:
+					warnings = append(warnings, fmt.Sprintf("service %q has no ports defined", svc.Name))
+				default:
+					warnings = append(warnings, fmt.Sprintf("service %q has multiple ports; specify port explicitly", svc.Name))
+				}
+			} else {
+				warnings = append(warnings, fmt.Sprintf("service %q not found for port resolution", svc.Name))
+			}
+		} else {
+			warnings = append(warnings, fmt.Sprintf("service %q has no port specified; Gateway API requires explicit port", svc.Name))
+		}
 	}
 
 	return backendRef, warnings
 }
 
-func convertDefaultBackend(backend *networkingv1.IngressBackend) (*gwapiv1.HTTPRouteRule, []string) {
+// findPortByName finds a port number by name in a Service
+func findPortByName(svc *corev1.Service, portName string) (int32, bool) {
+	for _, p := range svc.Spec.Ports {
+		if p.Name == portName {
+			return p.Port, true
+		}
+	}
+	return 0, false
+}
+
+func convertDefaultBackendWithServices(backend *networkingv1.IngressBackend, namespace string, services map[types.NamespacedName]*corev1.Service) (*gwapiv1.HTTPRouteRule, []string) {
 	var warnings []string
 
 	if backend.Service == nil {
@@ -277,7 +386,7 @@ func convertDefaultBackend(backend *networkingv1.IngressBackend) (*gwapiv1.HTTPR
 		return nil, []string{"default backend has no service reference"}
 	}
 
-	backendRef, backendWarnings := convertServiceBackend(backend.Service)
+	backendRef, backendWarnings := convertServiceBackendWithLookup(backend.Service, namespace, services)
 	warnings = append(warnings, backendWarnings...)
 
 	// Create a catch-all rule for default backend

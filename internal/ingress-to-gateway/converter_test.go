@@ -22,6 +22,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	networkingv1 "k8s.io/api/networking/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/utils/ptr"
 	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
 )
@@ -231,7 +232,7 @@ func TestConvertIngress_DefaultBackend(t *testing.T) {
 	}
 }
 
-func TestConvertIngress_TLSWarning(t *testing.T) {
+func TestConvertIngress_TLSListeners(t *testing.T) {
 	ingress := &networkingv1.Ingress{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "with-tls",
@@ -270,19 +271,83 @@ func TestConvertIngress_TLSWarning(t *testing.T) {
 
 	result := ConvertIngress(ingress, "gw", "")
 
-	if len(result.Warnings) == 0 {
-		t.Fatal("expected TLS warning, got none")
+	// Should generate TLS listener config
+	if len(result.TLSListeners) != 1 {
+		t.Fatalf("expected 1 TLS listener, got %d", len(result.TLSListeners))
 	}
 
-	hasTLSWarning := false
-	for _, w := range result.Warnings {
-		if w == "TLS configuration ignored; configure TLS on the Gateway listener instead" {
-			hasTLSWarning = true
-			break
-		}
+	listener := result.TLSListeners[0]
+	if listener.Hostname != "secure.example.com" {
+		t.Errorf("unexpected hostname: %s", listener.Hostname)
 	}
-	if !hasTLSWarning {
-		t.Errorf("expected TLS warning, got: %v", result.Warnings)
+	if listener.SecretName != "tls-secret" {
+		t.Errorf("unexpected secret name: %s", listener.SecretName)
+	}
+	if listener.SecretNamespace != "default" {
+		t.Errorf("unexpected secret namespace: %s", listener.SecretNamespace)
+	}
+}
+
+func TestConvertIngress_TLSMultipleHosts(t *testing.T) {
+	ingress := &networkingv1.Ingress{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "multi-tls",
+			Namespace: "default",
+		},
+		Spec: networkingv1.IngressSpec{
+			TLS: []networkingv1.IngressTLS{
+				{
+					Hosts:      []string{"foo.example.com", "bar.example.com"},
+					SecretName: "shared-tls",
+				},
+				{
+					Hosts:      []string{"other.example.com"},
+					SecretName: "other-tls",
+				},
+			},
+			Rules: []networkingv1.IngressRule{
+				{
+					Host: "foo.example.com",
+					IngressRuleValue: networkingv1.IngressRuleValue{
+						HTTP: &networkingv1.HTTPIngressRuleValue{
+							Paths: []networkingv1.HTTPIngressPath{{
+								Path:     "/",
+								PathType: ptr.To(networkingv1.PathTypePrefix),
+								Backend: networkingv1.IngressBackend{
+									Service: &networkingv1.IngressServiceBackend{
+										Name: "svc",
+										Port: networkingv1.ServiceBackendPort{Number: 80},
+									},
+								},
+							}},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	result := ConvertIngress(ingress, "gw", "")
+
+	// Should generate 3 TLS listener configs (2 from first TLS, 1 from second)
+	if len(result.TLSListeners) != 3 {
+		t.Fatalf("expected 3 TLS listeners, got %d", len(result.TLSListeners))
+	}
+
+	// Verify hostnames
+	hostnames := make(map[gwapiv1.Hostname]string)
+	for _, l := range result.TLSListeners {
+		hostnames[l.Hostname] = l.SecretName
+	}
+
+	if hostnames["foo.example.com"] != "shared-tls" {
+		t.Errorf("foo.example.com should use shared-tls")
+	}
+	if hostnames["bar.example.com"] != "shared-tls" {
+		t.Errorf("bar.example.com should use shared-tls")
+	}
+	if hostnames["other.example.com"] != "other-tls" {
+		t.Errorf("other.example.com should use other-tls")
 	}
 }
 
@@ -655,5 +720,255 @@ func TestConvertIngress_DeterministicOrdering(t *testing.T) {
 		if route.Spec.Hostnames[0] != expectedOrder[i] {
 			t.Errorf("route %d: expected hostname %s, got %s", i, expectedOrder[i], route.Spec.Hostnames[0])
 		}
+	}
+}
+
+func TestConvertIngress_NamedPortResolution(t *testing.T) {
+	ingress := &networkingv1.Ingress{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "named-port",
+			Namespace: "default",
+		},
+		Spec: networkingv1.IngressSpec{
+			Rules: []networkingv1.IngressRule{
+				{
+					Host: "test.com",
+					IngressRuleValue: networkingv1.IngressRuleValue{
+						HTTP: &networkingv1.HTTPIngressRuleValue{
+							Paths: []networkingv1.HTTPIngressPath{
+								{
+									Path:     "/",
+									PathType: ptr.To(networkingv1.PathTypePrefix),
+									Backend: networkingv1.IngressBackend{
+										Service: &networkingv1.IngressServiceBackend{
+											Name: "my-svc",
+											Port: networkingv1.ServiceBackendPort{Name: "http"},
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	services := map[types.NamespacedName]*corev1.Service{
+		{Name: "my-svc", Namespace: "default"}: {
+			ObjectMeta: metav1.ObjectMeta{Name: "my-svc", Namespace: "default"},
+			Spec: corev1.ServiceSpec{
+				Ports: []corev1.ServicePort{
+					{Name: "http", Port: 8080},
+					{Name: "https", Port: 8443},
+				},
+			},
+		},
+	}
+
+	result := ConvertIngressWithServices(ConversionInput{
+		Ingress:          ingress,
+		GatewayName:      "gw",
+		GatewayNamespace: "",
+		Services:         services,
+	})
+
+	// Should have no warnings about named port
+	for _, w := range result.Warnings {
+		if w == `service "my-svc" uses named port "http" which cannot be resolved; specify port number instead` {
+			t.Error("should not have named port warning when Service is provided")
+		}
+	}
+
+	// Verify port was resolved
+	if len(result.HTTPRoutes) != 1 {
+		t.Fatalf("expected 1 HTTPRoute, got %d", len(result.HTTPRoutes))
+	}
+	backendRef := result.HTTPRoutes[0].Spec.Rules[0].BackendRefs[0]
+	if backendRef.Port == nil || *backendRef.Port != 8080 {
+		t.Errorf("expected port 8080, got %v", backendRef.Port)
+	}
+}
+
+func TestConvertIngress_SinglePortAutoDetect(t *testing.T) {
+	ingress := &networkingv1.Ingress{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "no-port",
+			Namespace: "default",
+		},
+		Spec: networkingv1.IngressSpec{
+			Rules: []networkingv1.IngressRule{
+				{
+					Host: "test.com",
+					IngressRuleValue: networkingv1.IngressRuleValue{
+						HTTP: &networkingv1.HTTPIngressRuleValue{
+							Paths: []networkingv1.HTTPIngressPath{
+								{
+									Path:     "/",
+									PathType: ptr.To(networkingv1.PathTypePrefix),
+									Backend: networkingv1.IngressBackend{
+										Service: &networkingv1.IngressServiceBackend{
+											Name: "single-port-svc",
+											// No port specified
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	services := map[types.NamespacedName]*corev1.Service{
+		{Name: "single-port-svc", Namespace: "default"}: {
+			ObjectMeta: metav1.ObjectMeta{Name: "single-port-svc", Namespace: "default"},
+			Spec: corev1.ServiceSpec{
+				Ports: []corev1.ServicePort{
+					{Name: "http", Port: 80},
+				},
+			},
+		},
+	}
+
+	result := ConvertIngressWithServices(ConversionInput{
+		Ingress:          ingress,
+		GatewayName:      "gw",
+		GatewayNamespace: "",
+		Services:         services,
+	})
+
+	// Should have no warnings about missing port
+	for _, w := range result.Warnings {
+		if w == `service "single-port-svc" has no port specified; Gateway API requires explicit port` {
+			t.Error("should not have missing port warning when Service has single port")
+		}
+	}
+
+	// Verify port was auto-detected
+	if len(result.HTTPRoutes) != 1 {
+		t.Fatalf("expected 1 HTTPRoute, got %d", len(result.HTTPRoutes))
+	}
+	backendRef := result.HTTPRoutes[0].Spec.Rules[0].BackendRefs[0]
+	if backendRef.Port == nil || *backendRef.Port != 80 {
+		t.Errorf("expected port 80, got %v", backendRef.Port)
+	}
+}
+
+func TestConvertIngress_MultiPortServiceWarning(t *testing.T) {
+	ingress := &networkingv1.Ingress{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "no-port-multi",
+			Namespace: "default",
+		},
+		Spec: networkingv1.IngressSpec{
+			Rules: []networkingv1.IngressRule{
+				{
+					Host: "test.com",
+					IngressRuleValue: networkingv1.IngressRuleValue{
+						HTTP: &networkingv1.HTTPIngressRuleValue{
+							Paths: []networkingv1.HTTPIngressPath{
+								{
+									Path:     "/",
+									PathType: ptr.To(networkingv1.PathTypePrefix),
+									Backend: networkingv1.IngressBackend{
+										Service: &networkingv1.IngressServiceBackend{
+											Name: "multi-port-svc",
+											// No port specified
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	services := map[types.NamespacedName]*corev1.Service{
+		{Name: "multi-port-svc", Namespace: "default"}: {
+			ObjectMeta: metav1.ObjectMeta{Name: "multi-port-svc", Namespace: "default"},
+			Spec: corev1.ServiceSpec{
+				Ports: []corev1.ServicePort{
+					{Name: "http", Port: 80},
+					{Name: "https", Port: 443},
+				},
+			},
+		},
+	}
+
+	result := ConvertIngressWithServices(ConversionInput{
+		Ingress:          ingress,
+		GatewayName:      "gw",
+		GatewayNamespace: "",
+		Services:         services,
+	})
+
+	// Should warn about multiple ports
+	hasWarning := false
+	for _, w := range result.Warnings {
+		if w == `service "multi-port-svc" has multiple ports; specify port explicitly` {
+			hasWarning = true
+			break
+		}
+	}
+	if !hasWarning {
+		t.Errorf("expected multi-port warning, got: %v", result.Warnings)
+	}
+}
+
+func TestConvertIngress_ServiceNotFound(t *testing.T) {
+	ingress := &networkingv1.Ingress{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "missing-svc",
+			Namespace: "default",
+		},
+		Spec: networkingv1.IngressSpec{
+			Rules: []networkingv1.IngressRule{
+				{
+					Host: "test.com",
+					IngressRuleValue: networkingv1.IngressRuleValue{
+						HTTP: &networkingv1.HTTPIngressRuleValue{
+							Paths: []networkingv1.HTTPIngressPath{
+								{
+									Path:     "/",
+									PathType: ptr.To(networkingv1.PathTypePrefix),
+									Backend: networkingv1.IngressBackend{
+										Service: &networkingv1.IngressServiceBackend{
+											Name: "missing-svc",
+											Port: networkingv1.ServiceBackendPort{Name: "http"},
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	// Empty services map - Service not found
+	services := map[types.NamespacedName]*corev1.Service{}
+
+	result := ConvertIngressWithServices(ConversionInput{
+		Ingress:          ingress,
+		GatewayName:      "gw",
+		GatewayNamespace: "",
+		Services:         services,
+	})
+
+	// Should warn about service not found
+	hasWarning := false
+	for _, w := range result.Warnings {
+		if w == `service "missing-svc" not found for port resolution` {
+			hasWarning = true
+			break
+		}
+	}
+	if !hasWarning {
+		t.Errorf("expected service not found warning, got: %v", result.Warnings)
 	}
 }
