@@ -31,18 +31,13 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	ctrlclient "sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
-	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
 )
 
 const (
-	// FinalizerName is the finalizer used by this controller
-	FinalizerName = "kubelb.k8c.io/ingress-conversion"
-
-	// LabelSourceIngress marks HTTPRoutes created by this controller
+	// LabelSourceIngress marks HTTPRoutes created from Ingress conversion (informational only)
 	LabelSourceIngress = "kubelb.k8c.io/source-ingress"
 )
 
@@ -71,40 +66,30 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 	ingress := &networkingv1.Ingress{}
 	if err := r.Get(ctx, req.NamespacedName, ingress); err != nil {
 		if kerrors.IsNotFound(err) {
-			return reconcile.Result{}, nil
+			// Ingress deleted - HTTPRoutes intentionally stay (migration complete)
+			return ctrl.Result{}, nil
 		}
-		return reconcile.Result{}, err
+		return ctrl.Result{}, err
 	}
 
-	// Handle deletion
+	// Skip if being deleted - HTTPRoutes stay for migration
 	if ingress.DeletionTimestamp != nil {
-		if controllerutil.ContainsFinalizer(ingress, FinalizerName) {
-			return r.cleanup(ctx, log, ingress)
-		}
-		return reconcile.Result{}, nil
+		return ctrl.Result{}, nil
 	}
 
 	// Check if we should convert this Ingress
 	if !r.shouldConvert(ingress) {
 		log.V(1).Info("Skipping Ingress conversion")
-		return reconcile.Result{}, nil
-	}
-
-	// Add finalizer if not present
-	if !controllerutil.ContainsFinalizer(ingress, FinalizerName) {
-		controllerutil.AddFinalizer(ingress, FinalizerName)
-		if err := r.Update(ctx, ingress); err != nil {
-			return reconcile.Result{}, fmt.Errorf("failed to add finalizer: %w", err)
-		}
+		return ctrl.Result{}, nil
 	}
 
 	// Convert and reconcile
 	if err := r.reconcile(ctx, log, ingress); err != nil {
 		log.Error(err, "reconciliation failed")
-		return reconcile.Result{}, err
+		return ctrl.Result{}, err
 	}
 
-	return reconcile.Result{}, nil
+	return ctrl.Result{}, nil
 }
 
 func (r *Reconciler) reconcile(ctx context.Context, log logr.Logger, ingress *networkingv1.Ingress) error {
@@ -119,16 +104,11 @@ func (r *Reconciler) reconcile(ctx context.Context, log logr.Logger, ingress *ne
 	var routeNames []string
 
 	for _, httpRoute := range result.HTTPRoutes {
-		// Add tracking label
+		// Add tracking label (informational - no owner reference so HTTPRoute survives Ingress deletion)
 		if httpRoute.Labels == nil {
 			httpRoute.Labels = make(map[string]string)
 		}
 		httpRoute.Labels[LabelSourceIngress] = fmt.Sprintf("%s.%s", ingress.Name, ingress.Namespace)
-
-		// Set owner reference for garbage collection
-		if err := controllerutil.SetControllerReference(ingress, httpRoute, r.Scheme); err != nil {
-			return fmt.Errorf("failed to set owner reference: %w", err)
-		}
 
 		// Create or update HTTPRoute
 		existing := &gwapiv1.HTTPRoute{}
@@ -190,36 +170,6 @@ func (r *Reconciler) updateIngressStatus(ctx context.Context, ingress *networkin
 	return r.Update(ctx, current)
 }
 
-func (r *Reconciler) cleanup(ctx context.Context, log logr.Logger, ingress *networkingv1.Ingress) (ctrl.Result, error) {
-	log.Info("Cleaning up HTTPRoutes for deleted Ingress")
-
-	// Delete all HTTPRoutes owned by this Ingress via label selector
-	routeList := &gwapiv1.HTTPRouteList{}
-	labelSelector := ctrlclient.MatchingLabels{
-		LabelSourceIngress: fmt.Sprintf("%s.%s", ingress.Name, ingress.Namespace),
-	}
-	if err := r.List(ctx, routeList, ctrlclient.InNamespace(ingress.Namespace), labelSelector); err != nil {
-		return reconcile.Result{}, fmt.Errorf("failed to list HTTPRoutes: %w", err)
-	}
-
-	for i := range routeList.Items {
-		route := &routeList.Items[i]
-		log.V(1).Info("Deleting HTTPRoute", "name", route.Name)
-		if err := r.Delete(ctx, route); err != nil && !kerrors.IsNotFound(err) {
-			return reconcile.Result{}, fmt.Errorf("failed to delete HTTPRoute %s: %w", route.Name, err)
-		}
-	}
-
-	// Remove finalizer
-	controllerutil.RemoveFinalizer(ingress, FinalizerName)
-	if err := r.Update(ctx, ingress); err != nil {
-		return reconcile.Result{}, fmt.Errorf("failed to remove finalizer: %w", err)
-	}
-
-	log.Info("Cleanup complete", "deleted", len(routeList.Items))
-	return reconcile.Result{}, nil
-}
-
 // shouldConvert determines if an Ingress should be converted to HTTPRoute
 func (r *Reconciler) shouldConvert(ingress *networkingv1.Ingress) bool {
 	annotations := ingress.GetAnnotations()
@@ -272,6 +222,5 @@ func (r *Reconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		Named(ControllerName).
 		For(&networkingv1.Ingress{}, builder.WithPredicates(r.resourceFilter())).
-		Owns(&gwapiv1.HTTPRoute{}).
 		Complete(r)
 }

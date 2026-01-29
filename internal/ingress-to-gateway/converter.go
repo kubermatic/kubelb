@@ -25,6 +25,8 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
+
+	"k8c.io/kubelb/internal/ingress-to-gateway/annotations"
 )
 
 // ConversionInput holds input data for conversion including Services for port resolution
@@ -50,7 +52,10 @@ type ConversionResult struct {
 	HTTPRoutes []*gwapiv1.HTTPRoute
 	// TLSListeners contains HTTPS listener configs to add to Gateway
 	TLSListeners []TLSListener
-	Warnings     []string
+	// Warnings contains messages about unconvertible annotations or configuration
+	Warnings []string
+	// ProcessedAnnotations lists the annotation keys that were processed
+	ProcessedAnnotations []string
 }
 
 // ConvertIngress converts a Kubernetes Ingress to Gateway API HTTPRoutes.
@@ -73,6 +78,12 @@ func ConvertIngressWithServices(input ConversionInput) ConversionResult {
 		Warnings: []string{},
 	}
 
+	// Convert annotations to filters
+	annotationConverter := annotations.NewConverter()
+	annotationResult := annotationConverter.Convert(ingress.Annotations)
+	result.Warnings = append(result.Warnings, annotationResult.Warnings...)
+	result.ProcessedAnnotations = annotationResult.Processed
+
 	// Group rules by host
 	hostRules := make(map[string][]gwapiv1.HTTPRouteRule)
 	const noHostKey = ""
@@ -87,6 +98,12 @@ func ConvertIngressWithServices(input ConversionInput) ConversionResult {
 		for _, path := range rule.HTTP.Paths {
 			httpRouteRule, warnings := convertPathWithServices(path, ingress.Namespace, input.Services)
 			result.Warnings = append(result.Warnings, warnings...)
+
+			// Add annotation filters to the rule
+			if len(annotationResult.Filters) > 0 {
+				httpRouteRule.Filters = append(httpRouteRule.Filters, annotationResult.Filters...)
+			}
+
 			hostRules[host] = append(hostRules[host], httpRouteRule)
 		}
 	}
@@ -95,6 +112,9 @@ func ConvertIngressWithServices(input ConversionInput) ConversionResult {
 	var defaultRule *gwapiv1.HTTPRouteRule
 	if ingress.Spec.DefaultBackend != nil {
 		rule, warnings := convertDefaultBackendWithServices(ingress.Spec.DefaultBackend, ingress.Namespace, input.Services)
+		if rule != nil && len(annotationResult.Filters) > 0 {
+			rule.Filters = append(rule.Filters, annotationResult.Filters...)
+		}
 		defaultRule = rule
 		result.Warnings = append(result.Warnings, warnings...)
 	}

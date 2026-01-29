@@ -972,3 +972,130 @@ func TestConvertIngress_ServiceNotFound(t *testing.T) {
 		t.Errorf("expected service not found warning, got: %v", result.Warnings)
 	}
 }
+
+func TestConvertIngress_WithAnnotations(t *testing.T) {
+	ingress := &networkingv1.Ingress{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "annotated-ingress",
+			Namespace: "default",
+			Annotations: map[string]string{
+				"nginx.ingress.kubernetes.io/ssl-redirect":   "true",
+				"nginx.ingress.kubernetes.io/rewrite-target": "/api",
+			},
+		},
+		Spec: networkingv1.IngressSpec{
+			Rules: []networkingv1.IngressRule{
+				{
+					Host: "example.com",
+					IngressRuleValue: networkingv1.IngressRuleValue{
+						HTTP: &networkingv1.HTTPIngressRuleValue{
+							Paths: []networkingv1.HTTPIngressPath{
+								{
+									Path:     "/v1",
+									PathType: ptr.To(networkingv1.PathTypePrefix),
+									Backend: networkingv1.IngressBackend{
+										Service: &networkingv1.IngressServiceBackend{
+											Name: "backend",
+											Port: networkingv1.ServiceBackendPort{Number: 80},
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	result := ConvertIngress(ingress, "gateway", "default")
+
+	if len(result.HTTPRoutes) != 1 {
+		t.Fatalf("expected 1 HTTPRoute, got %d", len(result.HTTPRoutes))
+	}
+
+	route := result.HTTPRoutes[0]
+	if len(route.Spec.Rules) != 1 {
+		t.Fatalf("expected 1 rule, got %d", len(route.Spec.Rules))
+	}
+
+	rule := route.Spec.Rules[0]
+
+	// Should have 2 filters: RequestRedirect (ssl-redirect) and URLRewrite (rewrite-target)
+	if len(rule.Filters) != 2 {
+		t.Errorf("expected 2 filters, got %d", len(rule.Filters))
+	}
+
+	// Check filter types
+	filterTypes := make(map[gwapiv1.HTTPRouteFilterType]bool)
+	for _, f := range rule.Filters {
+		filterTypes[f.Type] = true
+	}
+
+	if !filterTypes[gwapiv1.HTTPRouteFilterRequestRedirect] {
+		t.Error("missing RequestRedirect filter from ssl-redirect")
+	}
+	if !filterTypes[gwapiv1.HTTPRouteFilterURLRewrite] {
+		t.Error("missing URLRewrite filter from rewrite-target")
+	}
+
+	// Should have processed both annotations
+	if len(result.ProcessedAnnotations) != 2 {
+		t.Errorf("expected 2 processed annotations, got %d: %v", len(result.ProcessedAnnotations), result.ProcessedAnnotations)
+	}
+}
+
+func TestConvertIngress_WithPolicyAnnotations(t *testing.T) {
+	ingress := &networkingv1.Ingress{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "policy-ingress",
+			Namespace: "default",
+			Annotations: map[string]string{
+				"nginx.ingress.kubernetes.io/proxy-connect-timeout": "30",
+				"nginx.ingress.kubernetes.io/enable-cors":           "true",
+				"nginx.ingress.kubernetes.io/cors-allow-origin":     "*",
+			},
+		},
+		Spec: networkingv1.IngressSpec{
+			Rules: []networkingv1.IngressRule{
+				{
+					Host: "api.example.com",
+					IngressRuleValue: networkingv1.IngressRuleValue{
+						HTTP: &networkingv1.HTTPIngressRuleValue{
+							Paths: []networkingv1.HTTPIngressPath{
+								{
+									Path:     "/",
+									PathType: ptr.To(networkingv1.PathTypePrefix),
+									Backend: networkingv1.IngressBackend{
+										Service: &networkingv1.IngressServiceBackend{
+											Name: "api",
+											Port: networkingv1.ServiceBackendPort{Number: 8080},
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	result := ConvertIngress(ingress, "gateway", "default")
+
+	// Policy annotations don't create filters, they create warnings
+	route := result.HTTPRoutes[0]
+	if len(route.Spec.Rules[0].Filters) != 0 {
+		t.Errorf("expected 0 filters for policy annotations, got %d", len(route.Spec.Rules[0].Filters))
+	}
+
+	// Should have warnings for policy suggestions
+	if len(result.Warnings) < 2 {
+		t.Errorf("expected at least 2 policy warnings, got %d: %v", len(result.Warnings), result.Warnings)
+	}
+
+	// Should have processed all 3 annotations
+	if len(result.ProcessedAnnotations) != 3 {
+		t.Errorf("expected 3 processed annotations, got %d", len(result.ProcessedAnnotations))
+	}
+}
