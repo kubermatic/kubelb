@@ -562,3 +562,98 @@ func TestHTTPRouteName(t *testing.T) {
 		}
 	}
 }
+
+func TestConvertIngress_DeterministicOrdering(t *testing.T) {
+	// Create Ingress with multiple hosts to test ordering stability
+	ingress := &networkingv1.Ingress{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "ordering-test",
+			Namespace: "default",
+		},
+		Spec: networkingv1.IngressSpec{
+			Rules: []networkingv1.IngressRule{
+				{
+					Host: "zebra.com",
+					IngressRuleValue: networkingv1.IngressRuleValue{
+						HTTP: &networkingv1.HTTPIngressRuleValue{
+							Paths: []networkingv1.HTTPIngressPath{{
+								Path:     "/z",
+								PathType: ptr.To(networkingv1.PathTypePrefix),
+								Backend: networkingv1.IngressBackend{
+									Service: &networkingv1.IngressServiceBackend{
+										Name: "z-svc",
+										Port: networkingv1.ServiceBackendPort{Number: 80},
+									},
+								},
+							}},
+						},
+					},
+				},
+				{
+					Host: "alpha.com",
+					IngressRuleValue: networkingv1.IngressRuleValue{
+						HTTP: &networkingv1.HTTPIngressRuleValue{
+							Paths: []networkingv1.HTTPIngressPath{{
+								Path:     "/a",
+								PathType: ptr.To(networkingv1.PathTypePrefix),
+								Backend: networkingv1.IngressBackend{
+									Service: &networkingv1.IngressServiceBackend{
+										Name: "a-svc",
+										Port: networkingv1.ServiceBackendPort{Number: 80},
+									},
+								},
+							}},
+						},
+					},
+				},
+				{
+					Host: "beta.com",
+					IngressRuleValue: networkingv1.IngressRuleValue{
+						HTTP: &networkingv1.HTTPIngressRuleValue{
+							Paths: []networkingv1.HTTPIngressPath{{
+								Path:     "/b",
+								PathType: ptr.To(networkingv1.PathTypePrefix),
+								Backend: networkingv1.IngressBackend{
+									Service: &networkingv1.IngressServiceBackend{
+										Name: "b-svc",
+										Port: networkingv1.ServiceBackendPort{Number: 80},
+									},
+								},
+							}},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	// Run conversion multiple times and verify consistent ordering
+	var firstResult ConversionResult
+	for i := 0; i < 10; i++ {
+		result := ConvertIngress(ingress, "gw", "")
+
+		if len(result.HTTPRoutes) != 3 {
+			t.Fatalf("iteration %d: expected 3 HTTPRoutes, got %d", i, len(result.HTTPRoutes))
+		}
+
+		if i == 0 {
+			firstResult = result
+		} else {
+			// Verify ordering is consistent
+			for j, route := range result.HTTPRoutes {
+				if route.Name != firstResult.HTTPRoutes[j].Name {
+					t.Errorf("iteration %d: route %d name mismatch: got %s, expected %s",
+						i, j, route.Name, firstResult.HTTPRoutes[j].Name)
+				}
+			}
+		}
+	}
+
+	// Verify routes are alphabetically sorted by hostname
+	expectedOrder := []gwapiv1.Hostname{"alpha.com", "beta.com", "zebra.com"}
+	for i, route := range firstResult.HTTPRoutes {
+		if route.Spec.Hostnames[0] != expectedOrder[i] {
+			t.Errorf("route %d: expected hostname %s, got %s", i, expectedOrder[i], route.Spec.Hostnames[0])
+		}
+	}
+}

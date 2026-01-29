@@ -18,6 +18,7 @@ package ingressconversion
 
 import (
 	"fmt"
+	"sort"
 
 	networkingv1 "k8s.io/api/networking/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -71,11 +72,18 @@ func ConvertIngress(ingress *networkingv1.Ingress, gatewayName, gatewayNamespace
 	// Generate HTTPRoutes per host
 	parentRef := buildParentRef(gatewayName, gatewayNamespace, ingress.Namespace)
 
-	// Process host-specific rules
-	for host, rules := range hostRules {
-		if host == noHostKey {
-			continue // handled separately
+	// Sort hosts for deterministic output ordering
+	hosts := make([]string, 0, len(hostRules))
+	for host := range hostRules {
+		if host != noHostKey {
+			hosts = append(hosts, host)
 		}
+	}
+	sort.Strings(hosts)
+
+	// Process host-specific rules in sorted order
+	for _, host := range hosts {
+		rules := hostRules[host]
 
 		routeName := httpRouteName(ingress.Name, host)
 		httpRoute := &gwapiv1.HTTPRoute{
