@@ -81,6 +81,17 @@ Configured in `.gimps.yaml`:
 4. Envoy (`github.com/envoyproxy/**`)
 5. Kubernetes (`k8s.io/**`, `*.k8s.io/**`)
 
+## Copyright
+
+New files must use the current year in the copyright header:
+
+```go
+/*
+Copyright <CURRENT_YEAR> The KubeLB Authors.
+...
+*/
+```
+
 ## Patterns
 
 - Controller-runtime reconciler pattern with finalizers (`kubelb.k8c.io/lb-finalizer`)
