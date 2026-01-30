@@ -133,6 +133,19 @@ func handleXForwardedPrefix(_, value string, _ map[string]string) ([]gwapiv1.HTT
 	return []gwapiv1.HTTPRouteFilter{filter}, nil
 }
 
+// handlePreserveHost handles the preserve-host annotation
+// nginx.ingress.kubernetes.io/preserve-host: "true" (default) or "false"
+// When true (default), the original Host header is preserved
+// When false, the Host header should be rewritten to the service name
+func handlePreserveHost(_, value string, _ map[string]string) ([]gwapiv1.HTTPRouteFilter, []string) {
+	if value != "false" {
+		return nil, nil // default is true, no action needed
+	}
+	warning := "preserve-host=false requires URLRewrite filter with Hostname at backend level; " +
+		"add filter to BackendRef: filters: [{type: URLRewrite, urlRewrite: {hostname: <service-name>}}]"
+	return nil, []string{warning}
+}
+
 // parseHeaderList parses "Header1:Value1,Header2:Value2" format
 func parseHeaderList(value string) ([]gwapiv1.HTTPHeader, []string) {
 	var headers []gwapiv1.HTTPHeader

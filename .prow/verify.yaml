@@ -238,7 +238,7 @@ presubmits:
 
   - name: pull-kubelb-e2e-conversion
     always_run: false
-    run_if_changed: "internal/ingress-to-gateway/|test/e2e/tests/conversion/|test/e2e/.*conversion.*|charts/kubelb-ccm/"
+    run_if_changed: "internal/ingress-to-gateway/|test/e2e/tests/conversion/|test/e2e/.*conversion.*|charts/kubelb-ccm/|hack/e2e/.*conversion.*"
     decorate: true
     clone_uri: "ssh://git@github.com/kubermatic/kubelb.git"
     labels:

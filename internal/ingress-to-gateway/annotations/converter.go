@@ -72,6 +72,7 @@ func (c *Converter) registerHandlers() {
 	c.handlers[ProxySetHeaders] = handleProxySetHeaders
 	c.handlers[UpstreamVhost] = handleUpstreamVhost
 	c.handlers[XForwardedPrefix] = handleXForwardedPrefix
+	c.handlers[PreserveHost] = handlePreserveHost
 
 	// Timeouts
 	c.handlers[ProxyConnectTimeout] = handleProxyConnectTimeout

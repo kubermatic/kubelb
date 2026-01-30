@@ -1,5 +1,3 @@
-#!/usr/bin/env bash
-
 # Copyright 2026 The KubeLB Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -14,17 +12,31 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-set -euo pipefail
+# Helm values for kubelb-addons in conversion e2e tests
+# Deploys: envoy-gateway, ingress-nginx, cert-manager, metallb
 
-export ROOT_DIR="$(git rev-parse --show-toplevel)"
-source "${ROOT_DIR}/hack/lib.sh"
+metallb:
+  enabled: true
 
-KUBECONFIGS_DIR="${KUBECONFIGS_DIR:-${ROOT_DIR}/.e2e-kubeconfigs}"
+gatewayClass:
+  create: false
 
-echodate "Deleting Kind clusters"
-kind delete clusters kubelb tenant1 tenant2 conversion || true
+ingress-nginx:
+  enabled: true
+  controller:
+    service:
+      externalTrafficPolicy: Local
 
-echodate "Cleaning up kubeconfigs"
-rm -rf "${KUBECONFIGS_DIR}"
+envoy-gateway:
+  enabled: true
 
-echodate "Cleanup complete"
+cert-manager:
+  enabled: true
+  startupapicheck:
+    enabled: false
+  crds:
+    enabled: true
+  config:
+    apiVersion: controller.config.cert-manager.io/v1alpha1
+    kind: ControllerConfiguration
+    enableGatewayAPI: true

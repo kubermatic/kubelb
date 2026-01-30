@@ -108,6 +108,30 @@ rules:
   - patch
 {{- end }}
 {{- end }}
+{{- if .Values.kubelb.ingressConversion.enabled }}
+# Ingress conversion controller needs to create/delete gateways and routes
+- apiGroups:
+  - gateway.networking.k8s.io
+  resources:
+  - gateways
+  verbs:
+  - create
+  - delete
+- apiGroups:
+  - gateway.networking.k8s.io
+  resources:
+  - httproutes
+  verbs:
+  - create
+  - delete
+- apiGroups:
+  - gateway.networking.k8s.io
+  resources:
+  - grpcroutes
+  verbs:
+  - create
+  - delete
+{{- end }}
 {{- if not .Values.kubelb.disableIngressController }}
 - apiGroups:
   - networking.k8s.io

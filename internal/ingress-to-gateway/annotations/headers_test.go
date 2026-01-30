@@ -17,6 +17,7 @@ limitations under the License.
 package annotations
 
 import (
+	"strings"
 	"testing"
 
 	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
@@ -165,6 +166,48 @@ func TestParseHeaderList(t *testing.T) {
 			}
 			if len(warnings) != tt.expectWarnings {
 				t.Errorf("expected %d warnings, got %d", tt.expectWarnings, len(warnings))
+			}
+		})
+	}
+}
+
+func TestHandlePreserveHost(t *testing.T) {
+	tests := []struct {
+		name           string
+		value          string
+		expectWarnings int
+	}{
+		{
+			name:           "true (default behavior)",
+			value:          "true",
+			expectWarnings: 0,
+		},
+		{
+			name:           "empty (default behavior)",
+			value:          "",
+			expectWarnings: 0,
+		},
+		{
+			name:           "false generates warning",
+			value:          "false",
+			expectWarnings: 1,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			filters, warnings := handlePreserveHost(PreserveHost, tt.value, nil)
+
+			if len(filters) != 0 {
+				t.Errorf("expected 0 filters, got %d", len(filters))
+			}
+			if len(warnings) != tt.expectWarnings {
+				t.Errorf("expected %d warnings, got %d: %v", tt.expectWarnings, len(warnings), warnings)
+			}
+			if tt.expectWarnings > 0 && len(warnings) > 0 {
+				if !strings.Contains(warnings[0], "URLRewrite") {
+					t.Errorf("warning should mention URLRewrite, got: %s", warnings[0])
+				}
 			}
 		})
 	}

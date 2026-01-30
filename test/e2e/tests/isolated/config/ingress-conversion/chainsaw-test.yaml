@@ -1,0 +1,318 @@
+# Copyright 2026 The KubeLB Authors.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# Ingress Conversion (Non-Standalone Mode) Test
+# Verifies:
+# - CCM with ingressConversion enabled (non-standalone) creates both:
+#   - Route CRD in kubelb cluster (standard kubelb behavior)
+#   - HTTPRoute locally (conversion behavior)
+# - This tests the hybrid mode where CCM acts as both proxy and converter
+apiVersion: chainsaw.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: ingress-conversion
+  labels:
+    all:
+    isolated: "true"
+    resource: config
+    feature: ingress-conversion
+spec:
+  concurrent: false
+  description: |
+    Test that CCM with ingressConversion enabled (non-standalone) creates
+    Route CRD in kubelb cluster AND HTTPRoute locally for Ingresses with
+    kubelb ingressClass.
+  bindings:
+    - name: name
+      value: echo-conv
+    - name: kubelb_namespace
+      value: tenant-primary
+  steps:
+    # Step 1: Copy helm charts for test use
+    - name: setup-charts
+      description: Copy helm charts for helm commands
+      cluster: tenant1
+      try:
+        - script:
+            skipCommandOutput: true
+            timeout: 30s
+            content: |
+              set -e
+              mkdir -p /tmp/kubelb-charts
+              # Try multiple paths to find charts
+              CHARTS_PATH=""
+              for path in \
+                "/workspace/charts/kubelb-ccm" \
+                "$(git rev-parse --show-toplevel 2>/dev/null)/charts/kubelb-ccm" \
+                "${PWD}/charts/kubelb-ccm"; do
+                if [ -d "$path" ]; then
+                  CHARTS_PATH="$path"
+                  break
+                fi
+              done
+
+              if [ -z "$CHARTS_PATH" ]; then
+                echo "ERROR: Could not find kubelb-ccm chart"
+                exit 1
+              fi
+
+              cp -r "$CHARTS_PATH" /tmp/kubelb-charts/
+              echo "Charts copied from $CHARTS_PATH"
+            check:
+              ($error == null): true
+
+    # Step 2: Enable ingress conversion on CCM via helm upgrade
+    - name: enable-conversion
+      description: Enable ingress conversion on tenant1 CCM
+      cluster: tenant1
+      try:
+        - script:
+            skipCommandOutput: true
+            timeout: 180s
+            content: |
+              set -e
+
+              # Upgrade CCM with conversion enabled (non-standalone)
+              helm upgrade kubelb-ccm /tmp/kubelb-charts/kubelb-ccm \
+                --namespace kubelb \
+                --reuse-values \
+                --set kubelb.ingressConversion.enabled=true \
+                --set kubelb.ingressConversion.standaloneMode=false \
+                --set kubelb.ingressConversion.gatewayName=kubelb-conv \
+                --set kubelb.ingressConversion.gatewayNamespace=default \
+                --set kubelb.ingressConversion.gatewayClass=eg \
+                --set kubelb.ingressConversion.ingressClass=kubelb \
+                --set kubelb.ingressConversion.domainReplace=test.local \
+                --set kubelb.ingressConversion.domainSuffix=gateway.local \
+                --wait
+
+              # Wait for rollout
+              kubectl -n kubelb rollout restart deployment/kubelb-ccm
+              kubectl -n kubelb rollout status deployment/kubelb-ccm --timeout=120s
+
+              echo "SUCCESS: CCM upgraded with conversion enabled"
+            check:
+              ($error == null): true
+
+    # Step 3: Create ClusterIP service
+    - name: create-service
+      description: Create ClusterIP service pointing to echo-shared
+      cluster: tenant1
+      try:
+        - apply:
+            resource:
+              apiVersion: v1
+              kind: Service
+              metadata:
+                name: echo-conv
+                namespace: default
+              spec:
+                type: ClusterIP
+                selector:
+                  app: echo-shared
+                ports:
+                  - port: 80
+                    targetPort: 5678
+
+    # Step 4: Create Ingress with kubelb class
+    - name: create-ingress
+      description: Create Ingress with kubelb ingressClass
+      cluster: tenant1
+      try:
+        - apply:
+            resource:
+              apiVersion: networking.k8s.io/v1
+              kind: Ingress
+              metadata:
+                name: echo-conv
+                namespace: default
+              spec:
+                ingressClassName: kubelb
+                rules:
+                  - host: echo-conv.test.local
+                    http:
+                      paths:
+                        - path: /
+                          pathType: Prefix
+                          backend:
+                            service:
+                              name: echo-conv
+                              port:
+                                number: 80
+
+    # Step 5: Verify Route CRD in kubelb cluster (standard kubelb behavior)
+    - name: verify-route-crd
+      description: Verify Route CRD created in kubelb cluster
+      cluster: kubelb
+      try:
+        - script:
+            skipCommandOutput: true
+            timeout: 60s
+            content: |
+              set -e
+              NAMESPACE="tenant-primary"
+
+              for i in $(seq 1 30); do
+                ROUTE=$(kubectl get routes.kubelb.k8c.io -n "$NAMESPACE" \
+                  -l kubelb.k8c.io/origin-name=echo-conv -o name 2>/dev/null | head -1)
+
+                if [ -n "$ROUTE" ]; then
+                  echo "SUCCESS: Route CRD found in kubelb cluster: $ROUTE"
+                  exit 0
+                fi
+
+                echo "Attempt $i: waiting for Route CRD..."
+                sleep 2
+              done
+
+              echo "FAILED: Route CRD not found"
+              exit 1
+            check:
+              ($error == null): true
+
+    # Step 6: Verify HTTPRoute created locally (conversion behavior)
+    - name: verify-httproute-local
+      description: Verify HTTPRoute created in tenant cluster
+      cluster: tenant1
+      try:
+        - script:
+            skipCommandOutput: true
+            timeout: 60s
+            content: |
+              set -e
+
+              for i in $(seq 1 30); do
+                # Look for HTTPRoute with source-ingress label
+                HTTPROUTE=$(kubectl get httproutes.gateway.networking.k8s.io -n default \
+                  -l "kubelb.k8c.io/source-ingress=echo-conv.default" -o name 2>/dev/null | head -1)
+
+                if [ -n "$HTTPROUTE" ]; then
+                  # Verify hostname is transformed
+                  HOSTNAME=$(kubectl get $HTTPROUTE -n default \
+                    -o jsonpath='{.spec.hostnames[0]}')
+
+                  if [ "$HOSTNAME" = "echo-conv.gateway.local" ]; then
+                    echo "SUCCESS: HTTPRoute found with transformed hostname"
+                    echo "  HTTPRoute: $HTTPROUTE"
+                    echo "  Hostname: $HOSTNAME"
+                    exit 0
+                  fi
+                  echo "Attempt $i: HTTPRoute found but hostname is '$HOSTNAME'"
+                fi
+
+                echo "Attempt $i: waiting for HTTPRoute..."
+                sleep 2
+              done
+
+              echo "FAILED: HTTPRoute not found in tenant cluster"
+              kubectl get httproutes.gateway.networking.k8s.io -n default -o yaml
+              exit 1
+            check:
+              ($error == null): true
+
+    # Step 7: Verify Gateway created locally
+    - name: verify-gateway-local
+      description: Verify Gateway created in tenant cluster
+      cluster: tenant1
+      try:
+        - script:
+            skipCommandOutput: true
+            timeout: 60s
+            content: |
+              set -e
+
+              for i in $(seq 1 30); do
+                if kubectl get gateway.gateway.networking.k8s.io kubelb-conv -n default &>/dev/null; then
+                  # Verify GatewayClass
+                  CLASS=$(kubectl get gateway.gateway.networking.k8s.io kubelb-conv -n default \
+                    -o jsonpath='{.spec.gatewayClassName}')
+
+                  if [ "$CLASS" = "eg" ]; then
+                    echo "SUCCESS: Gateway kubelb-conv found with GatewayClass eg"
+                    exit 0
+                  fi
+                fi
+
+                echo "Attempt $i: waiting for Gateway..."
+                sleep 2
+              done
+
+              echo "FAILED: Gateway kubelb-conv not found"
+              exit 1
+            check:
+              ($error == null): true
+
+    # Step 8: Verify conversion status annotation
+    - name: verify-conversion-status
+      description: Verify Ingress has conversion-status annotation
+      cluster: tenant1
+      try:
+        - script:
+            skipCommandOutput: true
+            timeout: 60s
+            content: |
+              set -e
+
+              for i in $(seq 1 30); do
+                STATUS=$(kubectl get ingress echo-conv -n default \
+                  -o jsonpath='{.metadata.annotations.kubelb\.k8c\.io/conversion-status}' 2>/dev/null || echo "")
+
+                if [ "$STATUS" = "converted" ] || [ "$STATUS" = "partial" ]; then
+                  echo "SUCCESS: Ingress has conversion-status=$STATUS"
+                  exit 0
+                fi
+
+                echo "Attempt $i: status='$STATUS', waiting..."
+                sleep 2
+              done
+
+              echo "FAILED: conversion-status not set"
+              exit 1
+            check:
+              ($error == null): true
+
+    # Cleanup and restore CCM
+    - name: cleanup
+      description: Cleanup and restore CCM to original state
+      try:
+        - script:
+            cluster: tenant1
+            skipCommandOutput: true
+            timeout: 60s
+            content: |
+              kubectl delete ingress echo-conv -n default --ignore-not-found
+              kubectl delete service echo-conv -n default --ignore-not-found
+              kubectl delete httproutes.gateway.networking.k8s.io -n default \
+                -l "kubelb.k8c.io/source-ingress=echo-conv.default" --ignore-not-found
+              kubectl delete gateway.gateway.networking.k8s.io kubelb-conv -n default --ignore-not-found
+      finally:
+        # Restore CCM to original state (conversion disabled)
+        - script:
+            cluster: tenant1
+            skipCommandOutput: true
+            timeout: 180s
+            content: |
+              # Restore CCM without conversion
+              helm upgrade kubelb-ccm /tmp/kubelb-charts/kubelb-ccm \
+                --namespace kubelb \
+                --reuse-values \
+                --set kubelb.ingressConversion.enabled=false \
+                --set kubelb.ingressConversion.standaloneMode=false \
+                --wait || true
+
+              kubectl -n kubelb rollout restart deployment/kubelb-ccm || true
+              kubectl -n kubelb rollout status deployment/kubelb-ccm --timeout=120s || true
+
+              # Clean up charts
+              rm -rf /tmp/kubelb-charts

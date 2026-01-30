@@ -11,3 +11,25 @@ Avoid code duplication. If a resource is used in multiple tests, it should be mo
 ## Cleanup
 
 Always use `finally` to cleanup resources.
+
+## StepTemplate rules
+
+**IMPORTANT**: StepTemplates MUST use `try`, NOT `finally`. The `finally` keyword is invalid in StepTemplate spec.
+
+```yaml
+# CORRECT - StepTemplate with try
+apiVersion: chainsaw.kyverno.io/v1alpha1
+kind: StepTemplate
+spec:
+  try:
+    - script: ...
+
+# WRONG - StepTemplate with finally (will fail validation)
+apiVersion: chainsaw.kyverno.io/v1alpha1
+kind: StepTemplate
+spec:
+  finally:  # ERROR: spec.try: Required value
+    - script: ...
+```
+
+If you need cleanup behavior, the TEST that uses the template should wrap it in `finally`, not the template itself.

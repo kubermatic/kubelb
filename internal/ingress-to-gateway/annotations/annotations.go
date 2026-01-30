@@ -103,6 +103,7 @@ const (
 	XForwardedPrefix  = "nginx.ingress.kubernetes.io/x-forwarded-prefix"
 	ProxyRedirectFrom = "nginx.ingress.kubernetes.io/proxy-redirect-from"
 	ProxyRedirectTo   = "nginx.ingress.kubernetes.io/proxy-redirect-to"
+	PreserveHost      = "nginx.ingress.kubernetes.io/preserve-host"
 )
 
 // TLS/SSL annotations - now handled with warnings

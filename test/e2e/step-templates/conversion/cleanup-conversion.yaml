@@ -26,7 +26,7 @@ spec:
   bindings:
     - name: service_name
       value: ($ingress_name)
-  finally:
+  try:
     - script:
         timeout: 60s
         env:
