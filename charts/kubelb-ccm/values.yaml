@@ -51,6 +51,29 @@ kubelb:
   # -- disableGRPCRouteController specifies whether to disable the GRPCRoute Controller.
   disableGRPCRouteController: false
 
+  # Ingress-to-Gateway conversion settings
+  ingressConversion:
+    # -- enabled enables automatic Ingress to HTTPRoute conversion
+    enabled: false
+    # -- standaloneMode runs as standalone converter, disabling all other controllers
+    standaloneMode: false
+    # -- gatewayName is the name of the Gateway for converted HTTPRoutes
+    gatewayName: kubelb
+    # -- gatewayNamespace is the namespace for the Gateway (empty = same as HTTPRoute)
+    gatewayNamespace: ""
+    # -- gatewayClass is the GatewayClass name for created Gateway
+    gatewayClass: kubelb
+    # -- ingressClass filters Ingresses to convert (empty = convert all)
+    ingressClass: ""
+    # -- domainReplace is the domain suffix to replace in hostnames
+    domainReplace: ""
+    # -- domainSuffix is the replacement domain suffix for hostnames
+    domainSuffix: ""
+    # -- propagateCertManagerAnnotations propagates cert-manager.io/* annotations to Gateway
+    propagateCertManagerAnnotations: true
+    # -- propagateExternalDnsAnnotations propagates external-dns annotations to Gateway/HTTPRoute
+    propagateExternalDnsAnnotations: true
+
 resources:
   limits:
     cpu: 500m

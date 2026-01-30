@@ -77,7 +77,39 @@ spec:
             {{ if .Values.kubelb.gatewayAPICRDsChannel -}}
             - --gateway-api-crds-channel={{ .Values.kubelb.gatewayAPICRDsChannel }}
             {{ end -}}
+            {{ if .Values.kubelb.ingressConversion.enabled -}}
+            - --enable-ingress-conversion=true
+            {{ end -}}
+            {{ if .Values.kubelb.ingressConversion.standaloneMode -}}
+            - --ingress-conversion-only=true
+            {{ end -}}
+            {{ if .Values.kubelb.ingressConversion.gatewayName -}}
+            - --conversion-gateway-name={{ .Values.kubelb.ingressConversion.gatewayName }}
+            {{ end -}}
+            {{ if .Values.kubelb.ingressConversion.gatewayNamespace -}}
+            - --conversion-gateway-namespace={{ .Values.kubelb.ingressConversion.gatewayNamespace }}
+            {{ end -}}
+            {{ if .Values.kubelb.ingressConversion.gatewayClass -}}
+            - --conversion-gateway-class={{ .Values.kubelb.ingressConversion.gatewayClass }}
+            {{ end -}}
+            {{ if .Values.kubelb.ingressConversion.ingressClass -}}
+            - --conversion-ingress-class={{ .Values.kubelb.ingressConversion.ingressClass }}
+            {{ end -}}
+            {{ if .Values.kubelb.ingressConversion.domainReplace -}}
+            - --conversion-domain-replace={{ .Values.kubelb.ingressConversion.domainReplace }}
+            {{ end -}}
+            {{ if .Values.kubelb.ingressConversion.domainSuffix -}}
+            - --conversion-domain-suffix={{ .Values.kubelb.ingressConversion.domainSuffix }}
+            {{ end -}}
+            {{ if not .Values.kubelb.ingressConversion.propagateCertManagerAnnotations -}}
+            - --propagate-cert-manager-annotations=false
+            {{ end -}}
+            {{ if not .Values.kubelb.ingressConversion.propagateExternalDnsAnnotations -}}
+            - --propagate-external-dns-annotations=false
+            {{ end -}}
+            {{ if not .Values.kubelb.ingressConversion.standaloneMode -}}
             - --cluster-name={{ required "A valid .Values.kubelb.tenantName to specify the tenant name is required!" .Values.kubelb.tenantName }}
+            {{ end -}}
             - --zap-log-level={{ .Values.kubelb.logLevel }}
           env:
           - name: NAMESPACE
@@ -103,8 +135,10 @@ spec:
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
           volumeMounts:
+            {{- if not .Values.kubelb.ingressConversion.standaloneMode }}
             - mountPath: /home/nonroot/.kube
               name: kubelb-cluster
+            {{- end }}
           {{- with .Values.extraVolumeMounts }}
             {{- toYaml . | nindent 8 }}
           {{- end }}
@@ -122,9 +156,11 @@ spec:
           securityContext:
             {{- toYaml .Values.securityContext | nindent 12 }}
       volumes:
+        {{- if not .Values.kubelb.ingressConversion.standaloneMode }}
         - name: kubelb-cluster
           secret:
             secretName: "{{ default "kubelb-cluster" .Values.kubelb.clusterSecretName }}"
+        {{- end }}
       {{- with .Values.extraVolumes }}
         {{- toYaml . | nindent 8 }}
       {{- end }}
