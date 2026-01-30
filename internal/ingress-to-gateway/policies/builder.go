@@ -44,23 +44,15 @@ type PolicyBuilder struct {
 	IngressName      string
 	IngressNamespace string
 	RouteName        string
-	// generatePolicies controls whether to generate actual policies or just warnings
-	generatePolicies bool
 }
 
 // NewPolicyBuilder creates a new policy builder.
-func NewPolicyBuilder(ingressName, ingressNamespace, routeName string, generatePolicies bool) *PolicyBuilder {
+func NewPolicyBuilder(ingressName, ingressNamespace, routeName string) *PolicyBuilder {
 	return &PolicyBuilder{
 		IngressName:      ingressName,
 		IngressNamespace: ingressNamespace,
 		RouteName:        routeName,
-		generatePolicies: generatePolicies,
 	}
-}
-
-// ShouldGeneratePolicies returns whether actual policies should be generated.
-func (b *PolicyBuilder) ShouldGeneratePolicies() bool {
-	return b.generatePolicies
 }
 
 // policyTargetRef creates a target reference to an HTTPRoute.

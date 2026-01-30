@@ -27,6 +27,7 @@ import (
 	egv1alpha1 "github.com/envoyproxy/gateway/api/v1alpha1"
 
 	"k8c.io/kubelb/internal/ingress-to-gateway/annotations"
+	"k8c.io/kubelb/internal/ingress-to-gateway/policies"
 
 	corev1 "k8s.io/api/core/v1"
 	networkingv1 "k8s.io/api/networking/v1"
@@ -43,11 +44,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
-)
-
-const (
-	// LabelSourceIngress marks HTTPRoutes created from Ingress conversion (informational only)
-	LabelSourceIngress = "kubelb.k8c.io/source-ingress"
 )
 
 // Reconciler reconciles Ingress objects and converts them to HTTPRoutes
@@ -168,7 +164,7 @@ func (r *Reconciler) reconcile(ctx context.Context, log logr.Logger, ingress *ne
 		if httpRoute.Labels == nil {
 			httpRoute.Labels = make(map[string]string)
 		}
-		httpRoute.Labels[LabelSourceIngress] = fmt.Sprintf("%s.%s", ingress.Name, ingress.Namespace)
+		httpRoute.Labels[policies.LabelSourceIngress] = fmt.Sprintf("%s.%s", ingress.Name, ingress.Namespace)
 
 		if httpRoute.Annotations == nil {
 			httpRoute.Annotations = make(map[string]string)
@@ -206,7 +202,7 @@ func (r *Reconciler) reconcile(ctx context.Context, log logr.Logger, ingress *ne
 		if grpcRoute.Labels == nil {
 			grpcRoute.Labels = make(map[string]string)
 		}
-		grpcRoute.Labels[LabelSourceIngress] = fmt.Sprintf("%s.%s", ingress.Name, ingress.Namespace)
+		grpcRoute.Labels[policies.LabelSourceIngress] = fmt.Sprintf("%s.%s", ingress.Name, ingress.Namespace)
 
 		if grpcRoute.Annotations == nil {
 			grpcRoute.Annotations = make(map[string]string)
@@ -380,7 +376,7 @@ func (r *Reconciler) cleanupStaleHTTPRoutes(ctx context.Context, log logr.Logger
 	httpRouteList := &gwapiv1.HTTPRouteList{}
 	if err := r.List(ctx, httpRouteList,
 		ctrlclient.InNamespace(ingress.Namespace),
-		ctrlclient.MatchingLabels{LabelSourceIngress: sourceLabel}); err != nil {
+		ctrlclient.MatchingLabels{policies.LabelSourceIngress: sourceLabel}); err != nil {
 		return fmt.Errorf("failed to list HTTPRoutes: %w", err)
 	}
 
@@ -414,7 +410,7 @@ func (r *Reconciler) cleanupStaleGRPCRoutes(ctx context.Context, log logr.Logger
 	grpcRouteList := &gwapiv1.GRPCRouteList{}
 	if err := r.List(ctx, grpcRouteList,
 		ctrlclient.InNamespace(ingress.Namespace),
-		ctrlclient.MatchingLabels{LabelSourceIngress: sourceLabel}); err != nil {
+		ctrlclient.MatchingLabels{policies.LabelSourceIngress: sourceLabel}); err != nil {
 		return fmt.Errorf("failed to list GRPCRoutes: %w", err)
 	}
 
@@ -443,7 +439,7 @@ func (r *Reconciler) cleanupRoutesForDeletedIngress(ctx context.Context, log log
 	httpRouteList := &gwapiv1.HTTPRouteList{}
 	if err := r.List(ctx, httpRouteList,
 		ctrlclient.InNamespace(ingressKey.Namespace),
-		ctrlclient.MatchingLabels{LabelSourceIngress: sourceLabel}); err != nil {
+		ctrlclient.MatchingLabels{policies.LabelSourceIngress: sourceLabel}); err != nil {
 		return fmt.Errorf("failed to list HTTPRoutes for cleanup: %w", err)
 	}
 
@@ -461,7 +457,7 @@ func (r *Reconciler) cleanupRoutesForDeletedIngress(ctx context.Context, log log
 	grpcRouteList := &gwapiv1.GRPCRouteList{}
 	if err := r.List(ctx, grpcRouteList,
 		ctrlclient.InNamespace(ingressKey.Namespace),
-		ctrlclient.MatchingLabels{LabelSourceIngress: sourceLabel}); err != nil {
+		ctrlclient.MatchingLabels{policies.LabelSourceIngress: sourceLabel}); err != nil {
 		return fmt.Errorf("failed to list GRPCRoutes for cleanup: %w", err)
 	}
 
@@ -493,7 +489,7 @@ func (r *Reconciler) cleanupPoliciesForDeletedIngress(ctx context.Context, log l
 	securityPolicies := &egv1alpha1.SecurityPolicyList{}
 	if err := r.List(ctx, securityPolicies,
 		ctrlclient.InNamespace(ingressKey.Namespace),
-		ctrlclient.MatchingLabels{LabelSourceIngress: sourceLabel}); err != nil {
+		ctrlclient.MatchingLabels{policies.LabelSourceIngress: sourceLabel}); err != nil {
 		return fmt.Errorf("failed to list SecurityPolicies for cleanup: %w", err)
 	}
 	for i := range securityPolicies.Items {
@@ -508,7 +504,7 @@ func (r *Reconciler) cleanupPoliciesForDeletedIngress(ctx context.Context, log l
 	backendPolicies := &egv1alpha1.BackendTrafficPolicyList{}
 	if err := r.List(ctx, backendPolicies,
 		ctrlclient.InNamespace(ingressKey.Namespace),
-		ctrlclient.MatchingLabels{LabelSourceIngress: sourceLabel}); err != nil {
+		ctrlclient.MatchingLabels{policies.LabelSourceIngress: sourceLabel}); err != nil {
 		return fmt.Errorf("failed to list BackendTrafficPolicies for cleanup: %w", err)
 	}
 	for i := range backendPolicies.Items {
@@ -523,7 +519,7 @@ func (r *Reconciler) cleanupPoliciesForDeletedIngress(ctx context.Context, log l
 	clientPolicies := &egv1alpha1.ClientTrafficPolicyList{}
 	if err := r.List(ctx, clientPolicies,
 		ctrlclient.InNamespace(ingressKey.Namespace),
-		ctrlclient.MatchingLabels{LabelSourceIngress: sourceLabel}); err != nil {
+		ctrlclient.MatchingLabels{policies.LabelSourceIngress: sourceLabel}); err != nil {
 		return fmt.Errorf("failed to list ClientTrafficPolicies for cleanup: %w", err)
 	}
 	for i := range clientPolicies.Items {
@@ -568,7 +564,7 @@ func (r *Reconciler) reconcilePolicies(ctx context.Context, log logr.Logger, ing
 		if policy.Labels == nil {
 			policy.Labels = make(map[string]string)
 		}
-		policy.Labels[LabelSourceIngress] = fmt.Sprintf("%s.%s", ingress.Name, ingress.Namespace)
+		policy.Labels[policies.LabelSourceIngress] = fmt.Sprintf("%s.%s", ingress.Name, ingress.Namespace)
 
 		// Set owner reference to HTTPRoute for automatic GC cleanup
 		// Route owns policies so they share lifecycle (not tied to Ingress which gets deleted after migration)
@@ -609,7 +605,7 @@ func (r *Reconciler) reconcilePolicies(ctx context.Context, log logr.Logger, ing
 		if policy.Labels == nil {
 			policy.Labels = make(map[string]string)
 		}
-		policy.Labels[LabelSourceIngress] = fmt.Sprintf("%s.%s", ingress.Name, ingress.Namespace)
+		policy.Labels[policies.LabelSourceIngress] = fmt.Sprintf("%s.%s", ingress.Name, ingress.Namespace)
 
 		// Set owner reference to HTTPRoute for automatic GC cleanup
 		if routeErr == nil {
@@ -649,7 +645,7 @@ func (r *Reconciler) reconcilePolicies(ctx context.Context, log logr.Logger, ing
 		if policy.Labels == nil {
 			policy.Labels = make(map[string]string)
 		}
-		policy.Labels[LabelSourceIngress] = fmt.Sprintf("%s.%s", ingress.Name, ingress.Namespace)
+		policy.Labels[policies.LabelSourceIngress] = fmt.Sprintf("%s.%s", ingress.Name, ingress.Namespace)
 
 		// Set owner reference to HTTPRoute for automatic GC cleanup
 		if routeErr == nil {
@@ -704,7 +700,7 @@ func (r *Reconciler) cleanupStalePolicies(ctx context.Context, log logr.Logger, 
 	securityPolicies := &egv1alpha1.SecurityPolicyList{}
 	if err := r.List(ctx, securityPolicies,
 		ctrlclient.InNamespace(ingress.Namespace),
-		ctrlclient.MatchingLabels{LabelSourceIngress: sourceLabel}); err != nil {
+		ctrlclient.MatchingLabels{policies.LabelSourceIngress: sourceLabel}); err != nil {
 		return fmt.Errorf("failed to list SecurityPolicies: %w", err)
 	}
 	for i := range securityPolicies.Items {
@@ -721,7 +717,7 @@ func (r *Reconciler) cleanupStalePolicies(ctx context.Context, log logr.Logger, 
 	backendPolicies := &egv1alpha1.BackendTrafficPolicyList{}
 	if err := r.List(ctx, backendPolicies,
 		ctrlclient.InNamespace(ingress.Namespace),
-		ctrlclient.MatchingLabels{LabelSourceIngress: sourceLabel}); err != nil {
+		ctrlclient.MatchingLabels{policies.LabelSourceIngress: sourceLabel}); err != nil {
 		return fmt.Errorf("failed to list BackendTrafficPolicies: %w", err)
 	}
 	for i := range backendPolicies.Items {
@@ -738,7 +734,7 @@ func (r *Reconciler) cleanupStalePolicies(ctx context.Context, log logr.Logger, 
 	clientPolicies := &egv1alpha1.ClientTrafficPolicyList{}
 	if err := r.List(ctx, clientPolicies,
 		ctrlclient.InNamespace(ingress.Namespace),
-		ctrlclient.MatchingLabels{LabelSourceIngress: sourceLabel}); err != nil {
+		ctrlclient.MatchingLabels{policies.LabelSourceIngress: sourceLabel}); err != nil {
 		return fmt.Errorf("failed to list ClientTrafficPolicies: %w", err)
 	}
 	for i := range clientPolicies.Items {

@@ -82,7 +82,7 @@ func ConvertToPolicies(input PolicyConversionInput) PolicyConversionResult {
 // buildSecurityPolicy creates a SecurityPolicy from CORS, IP access, and auth annotations.
 func buildSecurityPolicy(input PolicyConversionInput) *egv1alpha1.SecurityPolicy {
 	builder := policies.NewSecurityPolicyBuilder(
-		policies.NewPolicyBuilder(input.IngressName, input.IngressNamespace, input.RouteName, true),
+		policies.NewPolicyBuilder(input.IngressName, input.IngressNamespace, input.RouteName),
 	)
 
 	// CORS configuration
@@ -126,7 +126,7 @@ func buildBackendTrafficPolicy(input PolicyConversionInput) (*egv1alpha1.Backend
 	var warnings []string
 
 	builder := policies.NewBackendTrafficPolicyBuilder(
-		policies.NewPolicyBuilder(input.IngressName, input.IngressNamespace, input.RouteName, true),
+		policies.NewPolicyBuilder(input.IngressName, input.IngressNamespace, input.RouteName),
 	)
 
 	// Timeouts

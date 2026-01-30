@@ -26,7 +26,7 @@ import (
 
 func TestSecurityPolicyBuilder_CORS(t *testing.T) {
 	builder := NewSecurityPolicyBuilder(
-		NewPolicyBuilder("test-ingress", "default", "test-route", true),
+		NewPolicyBuilder("test-ingress", "default", "test-route"),
 	)
 
 	maxAge := int64(3600)
@@ -88,7 +88,7 @@ func TestSecurityPolicyBuilder_CORS(t *testing.T) {
 
 func TestSecurityPolicyBuilder_IPAllowlist(t *testing.T) {
 	builder := NewSecurityPolicyBuilder(
-		NewPolicyBuilder("test-ingress", "default", "test-route", true),
+		NewPolicyBuilder("test-ingress", "default", "test-route"),
 	)
 
 	builder.SetIPAllowlist([]string{"10.0.0.0/8", "192.168.1.0/24"})
@@ -128,7 +128,7 @@ func TestSecurityPolicyBuilder_IPAllowlist(t *testing.T) {
 
 func TestSecurityPolicyBuilder_IPDenylist(t *testing.T) {
 	builder := NewSecurityPolicyBuilder(
-		NewPolicyBuilder("test-ingress", "default", "test-route", true),
+		NewPolicyBuilder("test-ingress", "default", "test-route"),
 	)
 
 	builder.SetIPDenylist([]string{"10.0.0.0/8"})
@@ -155,7 +155,7 @@ func TestSecurityPolicyBuilder_IPDenylist(t *testing.T) {
 
 func TestSecurityPolicyBuilder_BasicAuth(t *testing.T) {
 	builder := NewSecurityPolicyBuilder(
-		NewPolicyBuilder("test-ingress", "default", "test-route", true),
+		NewPolicyBuilder("test-ingress", "default", "test-route"),
 	)
 
 	builder.SetBasicAuth("my-auth-secret", "auth-namespace")
@@ -185,7 +185,7 @@ func TestSecurityPolicyBuilder_BasicAuth(t *testing.T) {
 
 func TestSecurityPolicyBuilder_Combined(t *testing.T) {
 	builder := NewSecurityPolicyBuilder(
-		NewPolicyBuilder("test-ingress", "default", "test-route", true),
+		NewPolicyBuilder("test-ingress", "default", "test-route"),
 	)
 
 	// Set multiple features
@@ -211,7 +211,7 @@ func TestSecurityPolicyBuilder_Combined(t *testing.T) {
 
 func TestSecurityPolicyBuilder_Empty(t *testing.T) {
 	builder := NewSecurityPolicyBuilder(
-		NewPolicyBuilder("test-ingress", "default", "test-route", true),
+		NewPolicyBuilder("test-ingress", "default", "test-route"),
 	)
 
 	if !builder.IsEmpty() {
@@ -226,7 +226,7 @@ func TestSecurityPolicyBuilder_Empty(t *testing.T) {
 
 func TestBackendTrafficPolicyBuilder_Timeouts(t *testing.T) {
 	builder := NewBackendTrafficPolicyBuilder(
-		NewPolicyBuilder("test-ingress", "default", "test-route", true),
+		NewPolicyBuilder("test-ingress", "default", "test-route"),
 	)
 
 	builder.SetConnectTimeout("30s")
@@ -264,7 +264,7 @@ func TestBackendTrafficPolicyBuilder_Timeouts(t *testing.T) {
 
 func TestBackendTrafficPolicyBuilder_RateLimitRPS(t *testing.T) {
 	builder := NewBackendTrafficPolicyBuilder(
-		NewPolicyBuilder("test-ingress", "default", "test-route", true),
+		NewPolicyBuilder("test-ingress", "default", "test-route"),
 	)
 
 	builder.SetRateLimitRPS(100)
@@ -295,7 +295,7 @@ func TestBackendTrafficPolicyBuilder_RateLimitRPS(t *testing.T) {
 
 func TestBackendTrafficPolicyBuilder_RateLimitRPM(t *testing.T) {
 	builder := NewBackendTrafficPolicyBuilder(
-		NewPolicyBuilder("test-ingress", "default", "test-route", true),
+		NewPolicyBuilder("test-ingress", "default", "test-route"),
 	)
 
 	builder.SetRateLimitRPM(6000)
@@ -316,7 +316,7 @@ func TestBackendTrafficPolicyBuilder_RateLimitRPM(t *testing.T) {
 
 func TestBackendTrafficPolicyBuilder_MaxConnections(t *testing.T) {
 	builder := NewBackendTrafficPolicyBuilder(
-		NewPolicyBuilder("test-ingress", "default", "test-route", true),
+		NewPolicyBuilder("test-ingress", "default", "test-route"),
 	)
 
 	builder.SetMaxConnections(1000)
@@ -339,7 +339,7 @@ func TestBackendTrafficPolicyBuilder_MaxConnections(t *testing.T) {
 
 func TestBackendTrafficPolicyBuilder_Combined(t *testing.T) {
 	builder := NewBackendTrafficPolicyBuilder(
-		NewPolicyBuilder("test-ingress", "default", "test-route", true),
+		NewPolicyBuilder("test-ingress", "default", "test-route"),
 	)
 
 	builder.SetConnectTimeout("10s")
@@ -365,7 +365,7 @@ func TestBackendTrafficPolicyBuilder_Combined(t *testing.T) {
 
 func TestBackendTrafficPolicyBuilder_Empty(t *testing.T) {
 	builder := NewBackendTrafficPolicyBuilder(
-		NewPolicyBuilder("test-ingress", "default", "test-route", true),
+		NewPolicyBuilder("test-ingress", "default", "test-route"),
 	)
 
 	if !builder.IsEmpty() {
@@ -379,7 +379,7 @@ func TestBackendTrafficPolicyBuilder_Empty(t *testing.T) {
 }
 
 func TestPolicyBuilder_TargetRef(t *testing.T) {
-	base := NewPolicyBuilder("my-ingress", "my-namespace", "my-route", true)
+	base := NewPolicyBuilder("my-ingress", "my-namespace", "my-route")
 	builder := NewSecurityPolicyBuilder(base)
 	builder.SetCORS([]string{"*"}, nil, nil, nil, nil, nil)
 
@@ -405,7 +405,7 @@ func TestPolicyBuilder_TargetRef(t *testing.T) {
 }
 
 func TestPolicyBuilder_Labels(t *testing.T) {
-	base := NewPolicyBuilder("my-ingress", "my-namespace", "my-route", true)
+	base := NewPolicyBuilder("my-ingress", "my-namespace", "my-route")
 	builder := NewSecurityPolicyBuilder(base)
 	builder.SetCORS([]string{"*"}, nil, nil, nil, nil, nil)
 
