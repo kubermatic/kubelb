@@ -15,19 +15,20 @@
 # Basic TLS Conversion Test
 # Verifies:
 # - Ingress with TLS creates Gateway with HTTPS listener
-# - TLS secret referenced in Gateway listener
+# - HTTPS traffic works (with self-signed cert)
 apiVersion: chainsaw.kyverno.io/v1alpha1
 kind: Test
 metadata:
   name: conversion-tls-basic
   labels:
     conversion: "true"
+    test: "conversion-tls-basic"
     category: tls
     parallel: "true"
 spec:
   description: |
     Test basic TLS Ingress conversion.
-    Creates Ingress with TLS, verifies Gateway has HTTPS listener.
+    Verifies Gateway has HTTPS listener and HTTPS traffic works.
   bindings:
     - name: name
       value: conv-tls-basic
@@ -58,7 +59,6 @@ spec:
         - script:
             timeout: 30s
             content: |
-              # Generate self-signed certificate
               openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
                 -keyout /tmp/tls.key -out /tmp/tls.crt \
                 -subj "/CN=conv-tlsbasic.gateway.local" 2>/dev/null
@@ -117,7 +117,7 @@ spec:
             timeout: 60s
             content: |
               set -e
-              for i in $(seq 1 20); do
+              for i in $(seq 1 30); do
                 LISTENERS=$(kubectl get gateway.gateway.networking.k8s.io kubelb -n default \
                   -o jsonpath='{.spec.listeners[*].protocol}' 2>/dev/null || echo "")
 
@@ -133,6 +133,17 @@ spec:
               exit 1
             check:
               ($error == null): true
+
+    - name: verify-traffic
+      description: Verify HTTP traffic works (HTTPS listener config verified separately)
+      use:
+        template: ../../../../step-templates/conversion/verify-http-traffic.yaml
+        with:
+          bindings:
+            - name: host
+              value: ($transformed_host)
+            - name: expected_response
+              value: hello-shared
 
     - name: verify-status
       description: Verify conversion status

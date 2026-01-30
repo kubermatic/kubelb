@@ -34,15 +34,22 @@ func handleRewriteTarget(key, value string, annotations map[string]string) ([]gw
 	var warnings []string
 
 	// Check for capture groups (e.g., /$1, /$2) which aren't directly supported
-	if containsCaptureGroup(value) {
+	hasCaptureGroups := containsCaptureGroup(value)
+	if hasCaptureGroups {
 		warnings = append(warnings, fmt.Sprintf("annotation %q uses capture groups (%s) which require regex path matching; converted to simple prefix replacement", key, value))
 		// Strip capture groups for basic conversion
 		value = stripCaptureGroups(value)
 	}
 
-	// Check if use-regex is enabled
+	// Check if use-regex is enabled - ReplacePrefixMatch requires PathPrefix, not RegularExpression
+	// Gateway API: "When using URLRewrite filter with path.replacePrefixMatch, exactly one PathPrefix match must be specified"
 	if useRegex, ok := annotations[UseRegex]; ok && useRegex == boolTrue {
-		warnings = append(warnings, "annotation use-regex is not fully supported; regex patterns may not work as expected")
+		warnings = append(warnings, fmt.Sprintf(
+			"rewrite-target=%q with use-regex=true cannot be converted; Gateway API ReplacePrefixMatch requires PathPrefix path type, not RegularExpression",
+			value,
+		))
+		// Cannot create URLRewrite filter with regex paths - return only warnings
+		return nil, warnings
 	}
 
 	filter := gwapiv1.HTTPRouteFilter{

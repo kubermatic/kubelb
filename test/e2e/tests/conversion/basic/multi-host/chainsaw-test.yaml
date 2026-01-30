@@ -14,46 +14,156 @@
 
 # Multi-host Ingress-to-Gateway Conversion Test
 # Verifies:
-# - Ingress with multiple hosts sharing same rules creates single HTTPRoute with multiple hostnames
-# - Each hostname is transformed correctly
-# - Traffic works for each transformed host
+# - Ingress with multiple hosts creates HTTPRoute(s) with correct hostnames
+# - Each host routes to correct backend (proven by distinct responses)
 apiVersion: chainsaw.kyverno.io/v1alpha1
 kind: Test
 metadata:
   name: conversion-basic-multi-host
   labels:
     conversion: "true"
+    test: "conversion-basic-multi-host"
     category: basic
     parallel: "true"
 spec:
   description: |
-    Test multi-host Ingress conversion.
-    Creates Ingress with 3 hosts sharing same rules,
-    verifies single consolidated HTTPRoute with multiple hostnames.
+    Test multi-host Ingress conversion with distinct backends per host.
+    Verifies each host routes to correct backend by checking response content.
   bindings:
     - name: name
       value: conv-multihost
   steps:
-    # Step 1: Create ClusterIP service
-    - name: create-service
-      description: Create ClusterIP service
+    # Step 1: Deploy 3 distinct backends
+    - name: deploy-backends
+      description: Deploy backends with distinct responses for each host
+      try:
+        - apply:
+            resource:
+              apiVersion: apps/v1
+              kind: Deployment
+              metadata:
+                name: conv-mh-host1
+                namespace: default
+              spec:
+                replicas: 1
+                selector:
+                  matchLabels:
+                    app: conv-mh-host1
+                template:
+                  metadata:
+                    labels:
+                      app: conv-mh-host1
+                  spec:
+                    containers:
+                      - name: echo
+                        image: hashicorp/http-echo:0.2.3
+                        args: ["-text=response-from-host1-backend"]
+                        ports:
+                          - containerPort: 5678
+        - apply:
+            resource:
+              apiVersion: apps/v1
+              kind: Deployment
+              metadata:
+                name: conv-mh-host2
+                namespace: default
+              spec:
+                replicas: 1
+                selector:
+                  matchLabels:
+                    app: conv-mh-host2
+                template:
+                  metadata:
+                    labels:
+                      app: conv-mh-host2
+                  spec:
+                    containers:
+                      - name: echo
+                        image: hashicorp/http-echo:0.2.3
+                        args: ["-text=response-from-host2-backend"]
+                        ports:
+                          - containerPort: 5678
+        - apply:
+            resource:
+              apiVersion: apps/v1
+              kind: Deployment
+              metadata:
+                name: conv-mh-host3
+                namespace: default
+              spec:
+                replicas: 1
+                selector:
+                  matchLabels:
+                    app: conv-mh-host3
+                template:
+                  metadata:
+                    labels:
+                      app: conv-mh-host3
+                  spec:
+                    containers:
+                      - name: echo
+                        image: hashicorp/http-echo:0.2.3
+                        args: ["-text=response-from-host3-backend"]
+                        ports:
+                          - containerPort: 5678
+
+    # Step 2: Create services for each backend
+    - name: create-services
+      description: Create ClusterIP services for each backend
       try:
         - apply:
             resource:
               apiVersion: v1
               kind: Service
               metadata:
-                name: conv-multihost
+                name: conv-mh-host1
                 namespace: default
               spec:
                 type: ClusterIP
                 selector:
-                  app: echo-shared
+                  app: conv-mh-host1
+                ports:
+                  - port: 80
+                    targetPort: 5678
+        - apply:
+            resource:
+              apiVersion: v1
+              kind: Service
+              metadata:
+                name: conv-mh-host2
+                namespace: default
+              spec:
+                type: ClusterIP
+                selector:
+                  app: conv-mh-host2
+                ports:
+                  - port: 80
+                    targetPort: 5678
+        - apply:
+            resource:
+              apiVersion: v1
+              kind: Service
+              metadata:
+                name: conv-mh-host3
+                namespace: default
+              spec:
+                type: ClusterIP
+                selector:
+                  app: conv-mh-host3
                 ports:
                   - port: 80
                     targetPort: 5678
 
-    # Step 2: Create Ingress with multiple hosts
+    # Step 3: Wait for backends to be ready
+    - name: wait-backends
+      description: Wait for all backends to be ready
+      try:
+        - script:
+            timeout: 120s
+            content: |
+              kubectl wait --for=condition=available deployment/conv-mh-host1 deployment/conv-mh-host2 deployment/conv-mh-host3 -n default --timeout=90s
+
+    # Step 4: Create Ingress with multiple hosts, each pointing to different backend
     - name: create-ingress
       description: Create Ingress with 3 hosts
       try:
@@ -67,40 +177,40 @@ spec:
               spec:
                 ingressClassName: nginx
                 rules:
-                  - host: host1.test.local
+                  - host: mh-host1.test.local
                     http:
                       paths:
                         - path: /
                           pathType: Prefix
                           backend:
                             service:
-                              name: conv-multihost
+                              name: conv-mh-host1
                               port:
                                 number: 80
-                  - host: host2.test.local
+                  - host: mh-host2.test.local
                     http:
                       paths:
                         - path: /
                           pathType: Prefix
                           backend:
                             service:
-                              name: conv-multihost
+                              name: conv-mh-host2
                               port:
                                 number: 80
-                  - host: host3.test.local
+                  - host: mh-host3.test.local
                     http:
                       paths:
                         - path: /
                           pathType: Prefix
                           backend:
                             service:
-                              name: conv-multihost
+                              name: conv-mh-host3
                               port:
                                 number: 80
 
-    # Step 3: Verify single HTTPRoute with multiple hostnames (consolidated)
+    # Step 5: Verify HTTPRoute(s) created with correct hostnames
     - name: verify-httproute
-      description: Verify single HTTPRoute with all hosts consolidated
+      description: Verify HTTPRoute created
       try:
         - script:
             timeout: 60s
@@ -109,32 +219,28 @@ spec:
               SOURCE_LABEL="conv-multihost.default"
 
               for i in $(seq 1 30); do
-                # Check for single HTTPRoute named after Ingress
-                ROUTE=$(kubectl get httproutes.gateway.networking.k8s.io conv-multihost -n default -o name 2>/dev/null || echo "")
+                # Check for HTTPRoutes
+                COUNT=$(kubectl get httproutes.gateway.networking.k8s.io -n default \
+                  -l "kubelb.k8c.io/source-ingress=${SOURCE_LABEL}" -o name 2>/dev/null | wc -l)
 
-                if [ -n "$ROUTE" ]; then
-                  # Verify it has 3 hostnames
-                  HOST_COUNT=$(kubectl get httproutes.gateway.networking.k8s.io conv-multihost -n default \
-                    -o jsonpath='{.spec.hostnames}' | jq '. | length')
-
-                  if [ "$HOST_COUNT" -eq 3 ]; then
-                    echo "SUCCESS: Found HTTPRoute with $HOST_COUNT hostnames"
-                    kubectl get httproutes.gateway.networking.k8s.io conv-multihost -n default \
-                      -o jsonpath='Hostnames: {.spec.hostnames}{"\n"}'
-                    exit 0
-                  fi
+                if [ "$COUNT" -ge 1 ]; then
+                  echo "SUCCESS: Found $COUNT HTTPRoute(s)"
+                  kubectl get httproutes.gateway.networking.k8s.io -n default \
+                    -l "kubelb.k8c.io/source-ingress=${SOURCE_LABEL}" \
+                    -o custom-columns='NAME:.metadata.name,HOSTNAMES:.spec.hostnames'
+                  exit 0
                 fi
 
                 echo "Attempt $i: waiting for HTTPRoute..."
                 sleep 2
               done
 
-              echo "FAILED: Expected single HTTPRoute with 3 hostnames"
+              echo "FAILED: No HTTPRoute found"
               exit 1
             check:
               ($error == null): true
 
-    # Step 4: Verify conversion status
+    # Step 6: Verify conversion status
     - name: verify-status
       description: Verify Ingress has conversion-status=converted
       use:
@@ -146,24 +252,51 @@ spec:
             - name: expected_status
               value: converted
 
-    # Step 5: Verify HTTP traffic for first host
+    # Step 7: Verify host1 routes to host1-backend
     - name: verify-http-host1
-      description: Verify HTTP for host1.gateway.local
+      description: Verify mh-host1.gateway.local routes to host1 backend
       use:
         template: ../../../../step-templates/conversion/verify-http-traffic.yaml
         with:
           bindings:
             - name: host
-              value: host1.gateway.local
+              value: mh-host1.gateway.local
             - name: expected_response
-              value: hello-shared
+              value: response-from-host1-backend
+
+    # Step 8: Verify host2 routes to host2-backend
+    - name: verify-http-host2
+      description: Verify mh-host2.gateway.local routes to host2 backend
+      use:
+        template: ../../../../step-templates/conversion/verify-http-traffic.yaml
+        with:
+          bindings:
+            - name: host
+              value: mh-host2.gateway.local
+            - name: expected_response
+              value: response-from-host2-backend
+
+    # Step 9: Verify host3 routes to host3-backend
+    - name: verify-http-host3
+      description: Verify mh-host3.gateway.local routes to host3 backend
+      use:
+        template: ../../../../step-templates/conversion/verify-http-traffic.yaml
+        with:
+          bindings:
+            - name: host
+              value: mh-host3.gateway.local
+            - name: expected_response
+              value: response-from-host3-backend
 
     # Cleanup
     - name: cleanup
       description: Cleanup resources
-      use:
-        template: ../../../../step-templates/conversion/cleanup-conversion.yaml
-        with:
-          bindings:
-            - name: ingress_name
-              value: ($name)
+      try:
+        - script:
+            timeout: 30s
+            content: |
+              kubectl delete ingress conv-multihost -n default --ignore-not-found
+              kubectl delete service conv-mh-host1 conv-mh-host2 conv-mh-host3 -n default --ignore-not-found
+              kubectl delete deployment conv-mh-host1 conv-mh-host2 conv-mh-host3 -n default --ignore-not-found
+              kubectl delete httproutes.gateway.networking.k8s.io -n default \
+                -l "kubelb.k8c.io/source-ingress=conv-multihost.default" --ignore-not-found

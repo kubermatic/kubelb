@@ -1,0 +1,104 @@
+# Copyright 2026 The KubeLB Authors.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# Step Template: Verify HTTP redirect behavior
+# Required bindings:
+#   - host: Host header to use
+#   - expected_status: Expected HTTP status code (301, 302, 307, 308)
+# Optional bindings:
+#   - expected_location: Expected Location header pattern (substring match)
+#   - request_path: Request path (default: /)
+#   - gateway_name: Gateway name (default: kubelb)
+apiVersion: chainsaw.kyverno.io/v1alpha1
+kind: StepTemplate
+metadata:
+  name: verify-redirect
+spec:
+  bindings:
+    - name: gateway_name
+      value: kubelb
+    - name: request_path
+      value: /
+  try:
+    - script:
+        cluster: conversion
+        timeout: 120s
+        env:
+          - name: HOST
+            value: ($host)
+          - name: EXPECTED_STATUS
+            value: ($expected_status)
+          - name: EXPECTED_LOCATION
+            value: ($expected_location)
+          - name: REQUEST_PATH
+            value: ($request_path)
+          - name: GATEWAY_NAME
+            value: ($gateway_name)
+        content: |
+          set -e
+          GATEWAY_NS=default
+
+          # Wait for Gateway IP
+          IP=""
+          i=1; while [ "$i" -le 30 ]; do
+            IP=$(kubectl get gateway.gateway.networking.k8s.io "$GATEWAY_NAME" -n "$GATEWAY_NS" \
+              -o jsonpath='{.status.addresses[0].value}' 2>/dev/null || echo "")
+            if [ -n "$IP" ]; then
+              break
+            fi
+            sleep 2
+            i=$((i + 1))
+          done
+
+          if [ -z "$IP" ]; then
+            echo "FAILED: Gateway has no IP"
+            exit 1
+          fi
+
+          echo "Gateway IP: $IP"
+
+          # Test redirect - use -I for headers only, don't follow redirects
+          i=1; while [ "$i" -le 20 ]; do
+            HEADERS=$(curl -s -I --max-time 5 -H "Host: ${HOST}" "http://${IP}${REQUEST_PATH}" 2>/dev/null || true)
+
+            # Extract status code
+            STATUS=$(echo "$HEADERS" | head -1 | awk '{print $2}')
+
+            if [ "$STATUS" = "$EXPECTED_STATUS" ]; then
+              echo "SUCCESS: Got expected status $STATUS"
+
+              # If expected_location provided, verify it
+              if [ -n "$EXPECTED_LOCATION" ]; then
+                LOCATION=$(echo "$HEADERS" | grep -i "^location:" | awk '{print $2}' | tr -d '\r')
+                if echo "$LOCATION" | grep -q "$EXPECTED_LOCATION"; then
+                  echo "  Location: $LOCATION"
+                  exit 0
+                else
+                  echo "FAILED: Location '$LOCATION' doesn't match expected '$EXPECTED_LOCATION'"
+                  exit 1
+                fi
+              fi
+              exit 0
+            fi
+
+            echo "Attempt $i: got status $STATUS, waiting..."
+            sleep 3
+            i=$((i + 1))
+          done
+
+          echo "FAILED: Expected status $EXPECTED_STATUS, got $STATUS"
+          echo "Headers: $HEADERS"
+          exit 1
+        check:
+          ($error == null): true

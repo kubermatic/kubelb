@@ -101,21 +101,14 @@ func (r *Reconciler) reconcileGateway(ctx context.Context, log logr.Logger, ingr
 // extractGatewayAnnotations extracts annotations to propagate to Gateway
 func (r *Reconciler) extractGatewayAnnotations(ingress *networkingv1.Ingress) map[string]string {
 	result := make(map[string]string)
-	if ingress.Annotations == nil {
-		return result
-	}
 
-	// cert-manager annotations
-	if r.PropagateCertManager {
-		for k, v := range ingress.Annotations {
-			if strings.HasPrefix(k, CertManagerAnnotationPrefix) || k == LegacyTLSAcme {
-				result[k] = v
-			}
-		}
+	// Add user-specified gateway annotations
+	for k, v := range r.GatewayAnnotations {
+		result[k] = v
 	}
 
 	// external-dns target annotation (only target goes to Gateway)
-	if r.PropagateExternalDNS {
+	if r.PropagateExternalDNS && ingress.Annotations != nil {
 		if target, ok := ingress.Annotations[ExternalDNSTarget]; ok {
 			result[ExternalDNSTarget] = target
 		}

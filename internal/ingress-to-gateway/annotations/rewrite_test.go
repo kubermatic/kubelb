@@ -67,9 +67,9 @@ func TestHandleRewriteTarget(t *testing.T) {
 			annotations: map[string]string{
 				UseRegex: "true",
 			},
-			expectFilters:  1,
-			expectWarnings: 1, // warning about use-regex
-			expectPath:     "/newpath",
+			expectFilters:  0, // no filter - ReplacePrefixMatch incompatible with regex paths
+			expectWarnings: 1, // warning about incompatibility
+			expectPath:     "",
 		},
 		{
 			name:           "empty value",

@@ -15,19 +15,20 @@
 # Snippets Annotation Conversion Test
 # Verifies:
 # - server-snippet, configuration-snippet annotations generate warnings
-# - HTTPRoute still created
-# - Warning annotation indicates snippets not supported
+# - HTTPRoute still created (partial conversion)
+# - Basic traffic still works despite warnings
 apiVersion: chainsaw.kyverno.io/v1alpha1
 kind: Test
 metadata:
   name: conversion-unsupported-snippets
   labels:
     conversion: "true"
+    test: "conversion-unsupported-snippets"
     category: unsupported
     parallel: "true"
 spec:
   description: |
-    Test snippet annotations generate warnings.
+    Test snippet annotations generate warnings but traffic works.
     NGINX snippets cannot be converted to Gateway API.
   bindings:
     - name: name
@@ -114,6 +115,17 @@ spec:
               value: ($name)
             - name: expected_status
               value: partial
+
+    - name: verify-basic-traffic
+      description: Verify basic traffic works despite partial conversion
+      use:
+        template: ../../../../step-templates/conversion/verify-http-traffic.yaml
+        with:
+          bindings:
+            - name: host
+              value: ($transformed_host)
+            - name: expected_response
+              value: hello-shared
 
     - name: cleanup
       description: Cleanup resources

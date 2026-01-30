@@ -16,19 +16,20 @@
 # Verifies:
 # - external-dns.alpha.kubernetes.io/target propagated to Gateway
 # - external-dns.alpha.kubernetes.io/hostname propagated to HTTPRoute
-# - external-dns.alpha.kubernetes.io/ttl propagated to HTTPRoute
+# - Traffic still works
 apiVersion: chainsaw.kyverno.io/v1alpha1
 kind: Test
 metadata:
   name: conversion-integration-external-dns
   labels:
     conversion: "true"
+    test: "conversion-integration-external-dns"
     category: integration
     parallel: "true"
 spec:
   description: |
     Test external-dns annotation propagation.
-    Target goes to Gateway, other annotations go to HTTPRoute.
+    Verifies annotations propagated and traffic works.
   bindings:
     - name: name
       value: conv-extdns
@@ -99,7 +100,7 @@ spec:
             timeout: 60s
             content: |
               set -e
-              for i in $(seq 1 20); do
+              for i in $(seq 1 30); do
                 TARGET=$(kubectl get gateway.gateway.networking.k8s.io kubelb -n default \
                   -o jsonpath='{.metadata.annotations.external-dns\.alpha\.kubernetes\.io/target}' 2>/dev/null || echo "")
 
@@ -116,7 +117,7 @@ spec:
               ($error == null): true
 
     - name: verify-httproute-annotations
-      description: Verify HTTPRoute has external-dns annotations (excluding target)
+      description: Verify HTTPRoute has external-dns annotations
       try:
         - script:
             timeout: 60s
@@ -147,6 +148,17 @@ spec:
               exit 1
             check:
               ($error == null): true
+
+    - name: verify-traffic
+      description: Verify traffic works
+      use:
+        template: ../../../../step-templates/conversion/verify-http-traffic.yaml
+        with:
+          bindings:
+            - name: host
+              value: ($transformed_host)
+            - name: expected_response
+              value: hello-shared
 
     - name: cleanup
       description: Cleanup resources

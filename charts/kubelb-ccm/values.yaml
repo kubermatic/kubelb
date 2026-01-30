@@ -69,10 +69,15 @@ kubelb:
     domainReplace: ""
     # -- domainSuffix is the replacement domain suffix for hostnames
     domainSuffix: ""
-    # -- propagateCertManagerAnnotations propagates cert-manager.io/* annotations to Gateway
-    propagateCertManagerAnnotations: true
+    # -- gatewayAnnotations are annotations to add to created Gateway (comma-separated key=value pairs)
+    # Example: "cert-manager.io/cluster-issuer=letsencrypt,external-dns.alpha.kubernetes.io/target=lb.example.com"
+    gatewayAnnotations: ""
     # -- propagateExternalDnsAnnotations propagates external-dns annotations to Gateway/HTTPRoute
     propagateExternalDnsAnnotations: true
+    # -- cleanupStale enables cleanup of stale HTTPRoutes/GRPCRoutes when hosts are removed from Ingress
+    cleanupStale: true
+    # -- disableEnvoyGatewayFeatures disables creation of Envoy Gateway policies (SecurityPolicy, BackendTrafficPolicy)
+    disableEnvoyGatewayFeatures: false
 
 resources:
   limits:

@@ -23,6 +23,7 @@ metadata:
   name: conversion-unsupported-canary
   labels:
     conversion: "true"
+    test: "conversion-unsupported-canary"
     category: unsupported
     parallel: "true"
 spec:
@@ -103,25 +104,16 @@ spec:
             check:
               ($error == null): true
 
-    - name: verify-no-conversion-status
-      description: Verify Ingress has no conversion status
-      try:
-        - script:
-            timeout: 10s
-            content: |
-              set -e
-              STATUS=$(kubectl get ingress conv-canary -n default \
-                -o jsonpath='{.metadata.annotations.kubelb\.k8c\.io/conversion-status}' 2>/dev/null || echo "")
-
-              if [ -z "$STATUS" ]; then
-                echo "SUCCESS: No conversion status (canary skipped)"
-                exit 0
-              fi
-
-              echo "FAILED: Found conversion status '$STATUS'"
-              exit 1
-            check:
-              ($error == null): true
+    - name: verify-skip-annotations
+      description: Verify Ingress has skip annotations
+      use:
+        template: ../../../../step-templates/conversion/verify-skip-annotations.yaml
+        with:
+          bindings:
+            - name: ingress_name
+              value: conv-canary
+            - name: expected_reason
+              value: canary
 
     - name: cleanup
       description: Cleanup resources

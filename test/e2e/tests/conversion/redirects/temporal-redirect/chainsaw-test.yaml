@@ -15,18 +15,20 @@
 # Temporal Redirect Conversion Test
 # Verifies:
 # - nginx.ingress.kubernetes.io/temporal-redirect annotation
-# - HTTPRoute has redirect filter with 302 status
+# - Actual HTTP 302 redirect with correct Location header
 apiVersion: chainsaw.kyverno.io/v1alpha1
 kind: Test
 metadata:
   name: conversion-redirects-temporal
   labels:
     conversion: "true"
+    test: "conversion-redirects-temporal"
     category: redirects
     parallel: "true"
 spec:
   description: |
-    Test temporal-redirect annotation conversion (302 redirect).
+    Test temporal-redirect annotation conversion.
+    Verifies actual 302 redirect with correct Location header.
   bindings:
     - name: name
       value: conv-temp-redir
@@ -78,18 +80,7 @@ spec:
                                 number: 80
 
     - name: verify-httproute
-      description: Verify HTTPRoute exists
-      use:
-        template: ../../../../step-templates/conversion/verify-httproute.yaml
-        with:
-          bindings:
-            - name: ingress_name
-              value: ($name)
-            - name: expected_host
-              value: ($transformed_host)
-
-    - name: verify-redirect-302
-      description: Verify HTTPRoute has redirect filter
+      description: Verify HTTPRoute exists with redirect filter
       try:
         - script:
             timeout: 60s
@@ -97,7 +88,7 @@ spec:
               set -e
               SOURCE_LABEL="conv-temp-redir.default"
 
-              for i in $(seq 1 20); do
+              for i in $(seq 1 30); do
                 HTTPROUTE=$(kubectl get httproutes.gateway.networking.k8s.io -n default \
                   -l "kubelb.k8c.io/source-ingress=${SOURCE_LABEL}" -o name 2>/dev/null | head -1)
 
@@ -114,6 +105,19 @@ spec:
               exit 1
             check:
               ($error == null): true
+
+    - name: verify-redirect-traffic
+      description: Verify actual 302 redirect behavior
+      use:
+        template: ../../../../step-templates/conversion/verify-redirect.yaml
+        with:
+          bindings:
+            - name: host
+              value: ($transformed_host)
+            - name: expected_status
+              value: "302"
+            - name: expected_location
+              value: "example.com/temp"
 
     - name: cleanup
       description: Cleanup resources

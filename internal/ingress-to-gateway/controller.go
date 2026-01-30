@@ -24,6 +24,10 @@ import (
 
 	"github.com/go-logr/logr"
 
+	egv1alpha1 "github.com/envoyproxy/gateway/api/v1alpha1"
+
+	"k8c.io/kubelb/internal/ingress-to-gateway/annotations"
+
 	corev1 "k8s.io/api/core/v1"
 	networkingv1 "k8s.io/api/networking/v1"
 	kerrors "k8s.io/apimachinery/pkg/api/errors"
@@ -35,6 +39,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	ctrlclient "sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
@@ -53,21 +58,25 @@ type Reconciler struct {
 	Scheme   *runtime.Scheme
 	Recorder record.EventRecorder
 
-	GatewayName          string
-	GatewayNamespace     string
-	GatewayClassName     string
-	IngressClass         string
-	DomainReplace        string
-	DomainSuffix         string
-	PropagateCertManager bool
-	PropagateExternalDNS bool
-	CleanupStale         bool
+	GatewayName                 string
+	GatewayNamespace            string
+	GatewayClassName            string
+	IngressClass                string
+	DomainReplace               string
+	DomainSuffix                string
+	PropagateExternalDNS        bool
+	CleanupStale                bool
+	GatewayAnnotations          map[string]string
+	DisableEnvoyGatewayFeatures bool
 }
 
 // +kubebuilder:rbac:groups=networking.k8s.io,resources=ingresses,verbs=get;list;watch;update;patch
 // +kubebuilder:rbac:groups=gateway.networking.k8s.io,resources=gateways,verbs=get;list;watch;create;update;patch
 // +kubebuilder:rbac:groups=gateway.networking.k8s.io,resources=httproutes,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=gateway.networking.k8s.io,resources=grpcroutes,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=gateway.envoyproxy.io,resources=securitypolicies,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=gateway.envoyproxy.io,resources=backendtrafficpolicies,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=gateway.envoyproxy.io,resources=clienttrafficpolicies,verbs=get;list;watch;create;update;patch;delete
 
 func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	log := r.Log.WithValues("name", req.NamespacedName)
@@ -99,8 +108,14 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 	}
 
 	// Check if we should convert this Ingress
-	if !r.shouldConvert(ingress) {
-		log.V(1).Info("Skipping Ingress conversion")
+	decision := r.shouldConvert(ingress)
+	if !decision.shouldConvert {
+		log.V(1).Info("Skipping Ingress conversion", "reason", decision.skipReason)
+		if decision.annotate {
+			if err := r.annotateSkipped(ctx, ingress, decision.skipReason); err != nil {
+				return ctrl.Result{}, err
+			}
+		}
 		return ctrl.Result{}, nil
 	}
 
@@ -234,8 +249,21 @@ func (r *Reconciler) reconcile(ctx context.Context, log logr.Logger, ingress *ne
 		}
 	}
 
+	// Reconcile Envoy Gateway policies (if enabled)
+	var policyWarnings []string
+	if !r.DisableEnvoyGatewayFeatures && len(result.HTTPRoutes) > 0 {
+		var err error
+		policyWarnings, err = r.reconcilePolicies(ctx, log, ingress, result.HTTPRoutes[0].Name)
+		if err != nil {
+			log.Error(err, "Failed to reconcile Envoy Gateway policies")
+			// Don't fail the reconciliation, just add warning
+			policyWarnings = append(policyWarnings, fmt.Sprintf("failed to reconcile policies: %v", err))
+		}
+	}
+
 	// Verify route acceptance (staged validation)
 	allWarnings := append([]string{}, result.Warnings...)
+	allWarnings = append(allWarnings, policyWarnings...)
 	routeAcceptance := make(map[string]bool)
 	hasTimeout := false
 
@@ -407,7 +435,7 @@ func (r *Reconciler) cleanupStaleGRPCRoutes(ctx context.Context, log logr.Logger
 	return nil
 }
 
-// cleanupRoutesForDeletedIngress removes all routes created from a deleted Ingress
+// cleanupRoutesForDeletedIngress removes all routes and policies created from a deleted Ingress
 func (r *Reconciler) cleanupRoutesForDeletedIngress(ctx context.Context, log logr.Logger, ingressKey types.NamespacedName) error {
 	sourceLabel := fmt.Sprintf("%s.%s", ingressKey.Name, ingressKey.Namespace)
 
@@ -447,6 +475,282 @@ func (r *Reconciler) cleanupRoutesForDeletedIngress(ctx context.Context, log log
 		}
 	}
 
+	// Delete all Envoy Gateway policies with this source label (if enabled)
+	if !r.DisableEnvoyGatewayFeatures {
+		if err := r.cleanupPoliciesForDeletedIngress(ctx, log, ingressKey); err != nil {
+			return fmt.Errorf("failed to cleanup policies for deleted Ingress: %w", err)
+		}
+	}
+
+	return nil
+}
+
+// cleanupPoliciesForDeletedIngress removes all policies created from a deleted Ingress
+func (r *Reconciler) cleanupPoliciesForDeletedIngress(ctx context.Context, log logr.Logger, ingressKey types.NamespacedName) error {
+	sourceLabel := fmt.Sprintf("%s.%s", ingressKey.Name, ingressKey.Namespace)
+
+	// Delete all SecurityPolicies
+	securityPolicies := &egv1alpha1.SecurityPolicyList{}
+	if err := r.List(ctx, securityPolicies,
+		ctrlclient.InNamespace(ingressKey.Namespace),
+		ctrlclient.MatchingLabels{LabelSourceIngress: sourceLabel}); err != nil {
+		return fmt.Errorf("failed to list SecurityPolicies for cleanup: %w", err)
+	}
+	for i := range securityPolicies.Items {
+		policy := &securityPolicies.Items[i]
+		log.Info("Deleting SecurityPolicy for deleted Ingress", "name", policy.Name)
+		if err := r.Delete(ctx, policy); err != nil && !kerrors.IsNotFound(err) {
+			return fmt.Errorf("failed to delete SecurityPolicy %s: %w", policy.Name, err)
+		}
+	}
+
+	// Delete all BackendTrafficPolicies
+	backendPolicies := &egv1alpha1.BackendTrafficPolicyList{}
+	if err := r.List(ctx, backendPolicies,
+		ctrlclient.InNamespace(ingressKey.Namespace),
+		ctrlclient.MatchingLabels{LabelSourceIngress: sourceLabel}); err != nil {
+		return fmt.Errorf("failed to list BackendTrafficPolicies for cleanup: %w", err)
+	}
+	for i := range backendPolicies.Items {
+		policy := &backendPolicies.Items[i]
+		log.Info("Deleting BackendTrafficPolicy for deleted Ingress", "name", policy.Name)
+		if err := r.Delete(ctx, policy); err != nil && !kerrors.IsNotFound(err) {
+			return fmt.Errorf("failed to delete BackendTrafficPolicy %s: %w", policy.Name, err)
+		}
+	}
+
+	// Delete all ClientTrafficPolicies
+	clientPolicies := &egv1alpha1.ClientTrafficPolicyList{}
+	if err := r.List(ctx, clientPolicies,
+		ctrlclient.InNamespace(ingressKey.Namespace),
+		ctrlclient.MatchingLabels{LabelSourceIngress: sourceLabel}); err != nil {
+		return fmt.Errorf("failed to list ClientTrafficPolicies for cleanup: %w", err)
+	}
+	for i := range clientPolicies.Items {
+		policy := &clientPolicies.Items[i]
+		log.Info("Deleting ClientTrafficPolicy for deleted Ingress", "name", policy.Name)
+		if err := r.Delete(ctx, policy); err != nil && !kerrors.IsNotFound(err) {
+			return fmt.Errorf("failed to delete ClientTrafficPolicy %s: %w", policy.Name, err)
+		}
+	}
+
+	return nil
+}
+
+// reconcilePolicies creates or updates Envoy Gateway policies for the Ingress.
+//
+//nolint:gocyclo // complexity is due to handling 3 policy types with similar patterns
+func (r *Reconciler) reconcilePolicies(ctx context.Context, log logr.Logger, ingress *networkingv1.Ingress, routeName string) ([]string, error) {
+	// Convert annotations to policies
+	policyResult := annotations.ConvertToPolicies(annotations.PolicyConversionInput{
+		IngressName:      ingress.Name,
+		IngressNamespace: ingress.Namespace,
+		RouteName:        routeName,
+		GatewayName:      r.GatewayName,
+		Annotations:      ingress.Annotations,
+	})
+
+	var policyNames []string
+
+	// Fetch the HTTPRoute to use as owner reference
+	// Policies should be owned by the route (not Ingress) so they persist after migration
+	httpRoute := &gwapiv1.HTTPRoute{}
+	routeErr := r.Get(ctx, types.NamespacedName{Name: routeName, Namespace: ingress.Namespace}, httpRoute)
+	if routeErr != nil && !kerrors.IsNotFound(routeErr) {
+		log.Error(routeErr, "Failed to get HTTPRoute for owner reference", "route", routeName)
+	}
+
+	// Reconcile SecurityPolicies
+	for _, policy := range policyResult.SecurityPolicies {
+		if policy == nil {
+			continue
+		}
+		if policy.Labels == nil {
+			policy.Labels = make(map[string]string)
+		}
+		policy.Labels[LabelSourceIngress] = fmt.Sprintf("%s.%s", ingress.Name, ingress.Namespace)
+
+		// Set owner reference to HTTPRoute for automatic GC cleanup
+		// Route owns policies so they share lifecycle (not tied to Ingress which gets deleted after migration)
+		if routeErr == nil {
+			if err := controllerutil.SetControllerReference(httpRoute, policy, r.Scheme); err != nil {
+				log.Error(err, "Failed to set owner reference on SecurityPolicy", "name", policy.Name)
+			}
+		}
+
+		existing := &egv1alpha1.SecurityPolicy{}
+		err := r.Get(ctx, types.NamespacedName{Name: policy.Name, Namespace: policy.Namespace}, existing)
+		if err != nil {
+			if kerrors.IsNotFound(err) {
+				log.Info("Creating SecurityPolicy", "name", policy.Name)
+				if err := r.Create(ctx, policy); err != nil {
+					return policyResult.Warnings, fmt.Errorf("failed to create SecurityPolicy: %w", err)
+				}
+			} else {
+				return policyResult.Warnings, fmt.Errorf("failed to get SecurityPolicy: %w", err)
+			}
+		} else {
+			existing.Spec = policy.Spec
+			existing.Labels = policy.Labels
+			existing.OwnerReferences = policy.OwnerReferences
+			log.Info("Updating SecurityPolicy", "name", policy.Name)
+			if err := r.Update(ctx, existing); err != nil {
+				return policyResult.Warnings, fmt.Errorf("failed to update SecurityPolicy: %w", err)
+			}
+		}
+		policyNames = append(policyNames, policy.Name)
+	}
+
+	// Reconcile BackendTrafficPolicies
+	for _, policy := range policyResult.BackendTrafficPolicies {
+		if policy == nil {
+			continue
+		}
+		if policy.Labels == nil {
+			policy.Labels = make(map[string]string)
+		}
+		policy.Labels[LabelSourceIngress] = fmt.Sprintf("%s.%s", ingress.Name, ingress.Namespace)
+
+		// Set owner reference to HTTPRoute for automatic GC cleanup
+		if routeErr == nil {
+			if err := controllerutil.SetControllerReference(httpRoute, policy, r.Scheme); err != nil {
+				log.Error(err, "Failed to set owner reference on BackendTrafficPolicy", "name", policy.Name)
+			}
+		}
+
+		existing := &egv1alpha1.BackendTrafficPolicy{}
+		err := r.Get(ctx, types.NamespacedName{Name: policy.Name, Namespace: policy.Namespace}, existing)
+		if err != nil {
+			if kerrors.IsNotFound(err) {
+				log.Info("Creating BackendTrafficPolicy", "name", policy.Name)
+				if err := r.Create(ctx, policy); err != nil {
+					return policyResult.Warnings, fmt.Errorf("failed to create BackendTrafficPolicy: %w", err)
+				}
+			} else {
+				return policyResult.Warnings, fmt.Errorf("failed to get BackendTrafficPolicy: %w", err)
+			}
+		} else {
+			existing.Spec = policy.Spec
+			existing.Labels = policy.Labels
+			existing.OwnerReferences = policy.OwnerReferences
+			log.Info("Updating BackendTrafficPolicy", "name", policy.Name)
+			if err := r.Update(ctx, existing); err != nil {
+				return policyResult.Warnings, fmt.Errorf("failed to update BackendTrafficPolicy: %w", err)
+			}
+		}
+		policyNames = append(policyNames, policy.Name)
+	}
+
+	// Reconcile ClientTrafficPolicies
+	for _, policy := range policyResult.ClientTrafficPolicies {
+		if policy == nil {
+			continue
+		}
+		if policy.Labels == nil {
+			policy.Labels = make(map[string]string)
+		}
+		policy.Labels[LabelSourceIngress] = fmt.Sprintf("%s.%s", ingress.Name, ingress.Namespace)
+
+		// Set owner reference to HTTPRoute for automatic GC cleanup
+		if routeErr == nil {
+			if err := controllerutil.SetControllerReference(httpRoute, policy, r.Scheme); err != nil {
+				log.Error(err, "Failed to set owner reference on ClientTrafficPolicy", "name", policy.Name)
+			}
+		}
+
+		existing := &egv1alpha1.ClientTrafficPolicy{}
+		err := r.Get(ctx, types.NamespacedName{Name: policy.Name, Namespace: policy.Namespace}, existing)
+		if err != nil {
+			if kerrors.IsNotFound(err) {
+				log.Info("Creating ClientTrafficPolicy", "name", policy.Name)
+				if err := r.Create(ctx, policy); err != nil {
+					return policyResult.Warnings, fmt.Errorf("failed to create ClientTrafficPolicy: %w", err)
+				}
+			} else {
+				return policyResult.Warnings, fmt.Errorf("failed to get ClientTrafficPolicy: %w", err)
+			}
+		} else {
+			existing.Spec = policy.Spec
+			existing.Labels = policy.Labels
+			existing.OwnerReferences = policy.OwnerReferences
+			log.Info("Updating ClientTrafficPolicy", "name", policy.Name)
+			if err := r.Update(ctx, existing); err != nil {
+				return policyResult.Warnings, fmt.Errorf("failed to update ClientTrafficPolicy: %w", err)
+			}
+		}
+		policyNames = append(policyNames, policy.Name)
+	}
+
+	// Cleanup stale policies
+	if r.CleanupStale {
+		if err := r.cleanupStalePolicies(ctx, log, ingress, policyNames); err != nil {
+			log.Error(err, "Failed to cleanup stale policies")
+		}
+	}
+
+	return policyResult.Warnings, nil
+}
+
+// cleanupStalePolicies removes policies that were created from this Ingress but are no longer needed.
+func (r *Reconciler) cleanupStalePolicies(ctx context.Context, log logr.Logger, ingress *networkingv1.Ingress, desiredPolicyNames []string) error {
+	desired := make(map[string]bool, len(desiredPolicyNames))
+	for _, name := range desiredPolicyNames {
+		desired[name] = true
+	}
+
+	sourceLabel := fmt.Sprintf("%s.%s", ingress.Name, ingress.Namespace)
+
+	// Cleanup stale SecurityPolicies
+	securityPolicies := &egv1alpha1.SecurityPolicyList{}
+	if err := r.List(ctx, securityPolicies,
+		ctrlclient.InNamespace(ingress.Namespace),
+		ctrlclient.MatchingLabels{LabelSourceIngress: sourceLabel}); err != nil {
+		return fmt.Errorf("failed to list SecurityPolicies: %w", err)
+	}
+	for i := range securityPolicies.Items {
+		policy := &securityPolicies.Items[i]
+		if !desired[policy.Name] {
+			log.Info("Deleting stale SecurityPolicy", "name", policy.Name)
+			if err := r.Delete(ctx, policy); err != nil && !kerrors.IsNotFound(err) {
+				return fmt.Errorf("failed to delete SecurityPolicy %s: %w", policy.Name, err)
+			}
+		}
+	}
+
+	// Cleanup stale BackendTrafficPolicies
+	backendPolicies := &egv1alpha1.BackendTrafficPolicyList{}
+	if err := r.List(ctx, backendPolicies,
+		ctrlclient.InNamespace(ingress.Namespace),
+		ctrlclient.MatchingLabels{LabelSourceIngress: sourceLabel}); err != nil {
+		return fmt.Errorf("failed to list BackendTrafficPolicies: %w", err)
+	}
+	for i := range backendPolicies.Items {
+		policy := &backendPolicies.Items[i]
+		if !desired[policy.Name] {
+			log.Info("Deleting stale BackendTrafficPolicy", "name", policy.Name)
+			if err := r.Delete(ctx, policy); err != nil && !kerrors.IsNotFound(err) {
+				return fmt.Errorf("failed to delete BackendTrafficPolicy %s: %w", policy.Name, err)
+			}
+		}
+	}
+
+	// Cleanup stale ClientTrafficPolicies
+	clientPolicies := &egv1alpha1.ClientTrafficPolicyList{}
+	if err := r.List(ctx, clientPolicies,
+		ctrlclient.InNamespace(ingress.Namespace),
+		ctrlclient.MatchingLabels{LabelSourceIngress: sourceLabel}); err != nil {
+		return fmt.Errorf("failed to list ClientTrafficPolicies: %w", err)
+	}
+	for i := range clientPolicies.Items {
+		policy := &clientPolicies.Items[i]
+		if !desired[policy.Name] {
+			log.Info("Deleting stale ClientTrafficPolicy", "name", policy.Name)
+			if err := r.Delete(ctx, policy); err != nil && !kerrors.IsNotFound(err) {
+				return fmt.Errorf("failed to delete ClientTrafficPolicy %s: %w", policy.Name, err)
+			}
+		}
+	}
+
 	return nil
 }
 
@@ -468,21 +772,40 @@ func (r *Reconciler) emitWarningEvents(ingress *networkingv1.Ingress, warnings [
 	}
 }
 
+// conversionDecision holds the result of determining whether to convert an Ingress
+type conversionDecision struct {
+	shouldConvert bool
+	skipReason    string
+	annotate      bool
+}
+
 // shouldConvert determines if an Ingress should be converted to HTTPRoute
-func (r *Reconciler) shouldConvert(ingress *networkingv1.Ingress) bool {
+func (r *Reconciler) shouldConvert(ingress *networkingv1.Ingress) conversionDecision {
 	annotations := ingress.GetAnnotations()
 
-	// Skip if explicitly marked to skip conversion
+	// Explicit skip - don't annotate
 	if annotations != nil && annotations[AnnotationSkipConversion] == boolTrue {
-		return false
+		return conversionDecision{shouldConvert: false, annotate: false}
 	}
 
-	// Skip canary Ingresses (NGINX-specific feature not supported in Gateway API)
+	// Already converted (full or partial) - skip unless user removes annotation
+	if annotations != nil {
+		status := annotations[AnnotationConversionStatus]
+		if status == ConversionStatusConverted || status == ConversionStatusPartial {
+			return conversionDecision{shouldConvert: false, annotate: false}
+		}
+	}
+
+	// Canary - skip WITH annotation
 	if annotations != nil && annotations[NginxCanary] == boolTrue {
-		return false
+		return conversionDecision{
+			shouldConvert: false,
+			skipReason:    SkipReasonCanary,
+			annotate:      true,
+		}
 	}
 
-	// IngressClass filtering
+	// IngressClass filtering - don't annotate (different controller)
 	if r.IngressClass != "" {
 		ingressClass := ""
 		switch {
@@ -492,11 +815,34 @@ func (r *Reconciler) shouldConvert(ingress *networkingv1.Ingress) bool {
 			ingressClass = annotations[AnnotationIngressClass]
 		}
 		if ingressClass != r.IngressClass {
-			return false
+			return conversionDecision{shouldConvert: false, annotate: false}
 		}
 	}
 
-	return true
+	return conversionDecision{shouldConvert: true}
+}
+
+// annotateSkipped adds skip annotations to an Ingress
+func (r *Reconciler) annotateSkipped(ctx context.Context, ingress *networkingv1.Ingress, reason string) error {
+	current := &networkingv1.Ingress{}
+	if err := r.Get(ctx, types.NamespacedName{Name: ingress.Name, Namespace: ingress.Namespace}, current); err != nil {
+		return err
+	}
+
+	// Idempotency check
+	if current.Annotations != nil &&
+		current.Annotations[AnnotationConversionStatus] == ConversionStatusSkipped &&
+		current.Annotations[AnnotationConversionSkipReason] == reason {
+		return nil
+	}
+
+	if current.Annotations == nil {
+		current.Annotations = make(map[string]string)
+	}
+	current.Annotations[AnnotationConversionStatus] = ConversionStatusSkipped
+	current.Annotations[AnnotationConversionSkipReason] = reason
+
+	return r.Update(ctx, current)
 }
 
 // fetchServicesForIngress fetches all Services referenced by the Ingress for port resolution
@@ -546,19 +892,41 @@ func (r *Reconciler) fetchService(ctx context.Context, log logr.Logger, key type
 	services[key] = svc
 }
 
+// isAlreadyConverted checks if an Ingress has been successfully converted
+func isAlreadyConverted(obj *networkingv1.Ingress) bool {
+	ann := obj.GetAnnotations()
+	if ann == nil {
+		return false
+	}
+	status := ann[AnnotationConversionStatus]
+	return status == ConversionStatusConverted || status == ConversionStatusPartial
+}
+
 func (r *Reconciler) resourceFilter() predicate.Predicate {
 	return predicate.Funcs{
 		CreateFunc: func(e event.CreateEvent) bool {
-			if obj, ok := e.Object.(*networkingv1.Ingress); ok {
-				return r.shouldConvert(obj)
+			obj, ok := e.Object.(*networkingv1.Ingress)
+			if !ok {
+				return false
 			}
-			return false
+			if isAlreadyConverted(obj) {
+				return false
+			}
+			decision := r.shouldConvert(obj)
+			// Process if we should convert OR if we need to annotate
+			return decision.shouldConvert || decision.annotate
 		},
 		UpdateFunc: func(e event.UpdateEvent) bool {
-			if obj, ok := e.ObjectNew.(*networkingv1.Ingress); ok {
-				return r.shouldConvert(obj)
+			obj, ok := e.ObjectNew.(*networkingv1.Ingress)
+			if !ok {
+				return false
 			}
-			return false
+			if isAlreadyConverted(obj) {
+				return false
+			}
+			decision := r.shouldConvert(obj)
+			// Process if we should convert OR if we need to annotate
+			return decision.shouldConvert || decision.annotate
 		},
 		DeleteFunc: func(e event.DeleteEvent) bool {
 			// Always process deletes to clean up HTTPRoutes
@@ -566,10 +934,16 @@ func (r *Reconciler) resourceFilter() predicate.Predicate {
 			return ok
 		},
 		GenericFunc: func(e event.GenericEvent) bool {
-			if obj, ok := e.Object.(*networkingv1.Ingress); ok {
-				return r.shouldConvert(obj)
+			obj, ok := e.Object.(*networkingv1.Ingress)
+			if !ok {
+				return false
 			}
-			return false
+			if isAlreadyConverted(obj) {
+				return false
+			}
+			decision := r.shouldConvert(obj)
+			// Process if we should convert OR if we need to annotate
+			return decision.shouldConvert || decision.annotate
 		},
 	}
 }
@@ -578,7 +952,7 @@ func (r *Reconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		Named(ControllerName).
 		For(&networkingv1.Ingress{}, builder.WithPredicates(r.resourceFilter())).
-		WithOptions(controller.Options{MaxConcurrentReconciles: 1}).
+		WithOptions(controller.Options{MaxConcurrentReconciles: 10}).
 		Complete(r)
 }
 

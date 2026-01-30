@@ -15,20 +15,22 @@
 # Rewrite with Capture Groups Conversion Test
 # Verifies:
 # - Rewrite target with capture groups (/$2) generates warning
-# - HTTPRoute still created with best-effort rewrite
-# - Conversion status is 'partial'
+# - HTTPRoute still created (partial conversion)
+# - Basic traffic still works despite warning
 apiVersion: chainsaw.kyverno.io/v1alpha1
 kind: Test
 metadata:
   name: conversion-rewrites-capture-groups
   labels:
     conversion: "true"
+    test: "conversion-rewrites-capture-groups"
     category: rewrites
     parallel: "true"
 spec:
   description: |
     Test rewrite-target with capture groups.
-    Gateway API doesn't support capture groups, so warning is generated.
+    Gateway API doesn't fully support capture groups - warning generated.
+    Verifies partial conversion and basic traffic still works.
   bindings:
     - name: name
       value: conv-rewrite-capture
@@ -112,6 +114,19 @@ spec:
               value: ($name)
             - name: expected_status
               value: partial
+
+    - name: verify-basic-traffic
+      description: Verify basic traffic still works despite partial conversion
+      use:
+        template: ../../../../step-templates/conversion/verify-http-traffic.yaml
+        with:
+          bindings:
+            - name: host
+              value: ($transformed_host)
+            - name: slug_path
+              value: /api/test
+            - name: expected_response
+              value: hello-shared
 
     - name: cleanup
       description: Cleanup resources

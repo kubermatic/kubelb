@@ -53,3 +53,50 @@ spec:
 ```
 
 If you need cleanup behavior, the TEST that uses the template should wrap it in `finally`, not the template itself.
+
+## StepTemplate Bindings
+
+**CRITICAL**: In StepTemplate `spec.bindings`, you can only use hardcoded default values. You CANNOT reference other bindings because they're not in scope when `spec.bindings` is evaluated.
+
+```yaml
+# WRONG - $ingress_name not in scope, causes "variable not defined" error
+spec:
+  bindings:
+    - name: service_name
+      value: ($ingress_name)  # ERROR!
+
+# CORRECT - hardcoded defaults only
+spec:
+  bindings:
+    - name: gateway_name
+      value: kubelb
+    - name: min_listeners
+      value: "1"
+```
+
+For optional parameters that should default to another binding's value, handle it in bash:
+```yaml
+spec:
+  try:
+    - script:
+        env:
+          - name: INGRESS_NAME
+            value: ($ingress_name)
+        content: |
+          # Default SERVICE_NAME to INGRESS_NAME if not set
+          SERVICE_NAME="${SERVICE_NAME:-$INGRESS_NAME}"
+```
+
+## JMESPath Limitations
+
+Chainsaw's JMESPath does NOT support:
+- Null coalescing operator `??` (causes "Unknown char: '?'" error)
+- Many common operators from other JMESPath implementations
+
+Use bash defaults instead of JMESPath for optional values.
+
+## Conversion Tests: Single Cluster Setup
+
+Conversion tests run against a single cluster. The Makefile sets `--kube-config` to make the conversion cluster the default, so tests don't need to specify `cluster: conversion` on every step.
+
+The step templates still use `cluster: conversion` explicitly for clarity, but inline test steps can omit it since conversion is the default kubeconfig.

@@ -15,20 +15,21 @@
 # ConfigMap Reference Headers Conversion Test
 # Verifies:
 # - proxy-set-headers with ConfigMap reference generates warning
-# - HTTPRoute still created
-# - Warning annotation contains reference to ConfigMap
+# - HTTPRoute still created (partial conversion)
+# - Basic traffic still works
 apiVersion: chainsaw.kyverno.io/v1alpha1
 kind: Test
 metadata:
   name: conversion-headers-configmap-ref
   labels:
     conversion: "true"
-    category: headers
+    test: "conversion-headers-configmap-ref"
     parallel: "true"
 spec:
   description: |
     Test proxy-set-headers ConfigMap reference generates warning.
-    Gateway API doesn't support ConfigMap references for headers.
+    Gateway API doesn't natively support ConfigMap references for headers.
+    Verifies partial conversion and traffic still works.
   bindings:
     - name: name
       value: conv-cm-headers
@@ -113,6 +114,17 @@ spec:
               value: ($name)
             - name: warning_pattern
               value: ConfigMap
+
+    - name: verify-basic-traffic
+      description: Verify basic traffic still works despite warning
+      use:
+        template: ../../../../step-templates/conversion/verify-http-traffic.yaml
+        with:
+          bindings:
+            - name: host
+              value: ($transformed_host)
+            - name: expected_response
+              value: hello-shared
 
     - name: cleanup
       description: Cleanup resources

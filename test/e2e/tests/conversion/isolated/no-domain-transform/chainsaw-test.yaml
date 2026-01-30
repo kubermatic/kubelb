@@ -12,28 +12,29 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# No Domain Transform Test
-# Note: This test documents expected behavior but cannot actually test without
-# reconfiguring CCM (which requires restart). In the current e2e setup,
-# domain transformation is always enabled.
-#
-# This test verifies the default behavior WITH domain transformation enabled.
+# Domain Transform Test
+# Verifies:
+# - Domain transformation: test.local -> gateway.local
+# - Traffic works with transformed hostname
 apiVersion: chainsaw.kyverno.io/v1alpha1
 kind: Test
 metadata:
   name: conversion-isolated-domain-transform
   labels:
     conversion: "true"
+    test: "conversion-isolated-domain-transform"
     category: isolated
     parallel: "false"
 spec:
   concurrent: false
   description: |
     Test domain transformation behavior.
-    With default config, test.local -> gateway.local transformation.
+    Verifies test.local -> gateway.local transformation and traffic works.
   bindings:
     - name: name
       value: conv-domain
+    - name: transformed_host
+      value: myapp.gateway.local
   steps:
     - name: create-service
       description: Create ClusterIP service
@@ -93,7 +94,6 @@ spec:
                 if [ -n "$HTTPROUTE" ]; then
                   HOSTNAME=$(kubectl get $HTTPROUTE -n default -o jsonpath='{.spec.hostnames[0]}')
 
-                  # Should be transformed from test.local to gateway.local
                   if echo "$HOSTNAME" | grep -q "gateway.local"; then
                     echo "SUCCESS: Hostname transformed"
                     echo "  Original: myapp.test.local"
@@ -107,6 +107,17 @@ spec:
               exit 1
             check:
               ($error == null): true
+
+    - name: verify-traffic
+      description: Verify traffic works with transformed hostname
+      use:
+        template: ../../../../step-templates/conversion/verify-http-traffic.yaml
+        with:
+          bindings:
+            - name: host
+              value: ($transformed_host)
+            - name: expected_response
+              value: hello-shared
 
     - name: cleanup
       description: Cleanup resources

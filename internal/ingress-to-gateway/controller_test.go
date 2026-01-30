@@ -24,6 +24,135 @@ import (
 	"k8s.io/utils/ptr"
 )
 
+func TestIsAlreadyConverted(t *testing.T) {
+	tests := []struct {
+		name    string
+		ingress *networkingv1.Ingress
+		want    bool
+	}{
+		{
+			name:    "nil annotations",
+			ingress: &networkingv1.Ingress{ObjectMeta: metav1.ObjectMeta{Name: "test"}},
+			want:    false,
+		},
+		{
+			name: "no conversion status",
+			ingress: &networkingv1.Ingress{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:        "test",
+					Annotations: map[string]string{"other": "annotation"},
+				},
+			},
+			want: false,
+		},
+		{
+			name: "status converted",
+			ingress: &networkingv1.Ingress{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:        "test",
+					Annotations: map[string]string{AnnotationConversionStatus: ConversionStatusConverted},
+				},
+			},
+			want: true,
+		},
+		{
+			name: "status partial",
+			ingress: &networkingv1.Ingress{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:        "test",
+					Annotations: map[string]string{AnnotationConversionStatus: ConversionStatusPartial},
+				},
+			},
+			want: true,
+		},
+		{
+			name: "status pending",
+			ingress: &networkingv1.Ingress{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:        "test",
+					Annotations: map[string]string{AnnotationConversionStatus: ConversionStatusPending},
+				},
+			},
+			want: false,
+		},
+		{
+			name: "status skipped",
+			ingress: &networkingv1.Ingress{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:        "test",
+					Annotations: map[string]string{AnnotationConversionStatus: ConversionStatusSkipped},
+				},
+			},
+			want: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := isAlreadyConverted(tt.ingress)
+			if got != tt.want {
+				t.Errorf("isAlreadyConverted() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestReconcilerDisableEnvoyGatewayFeatures(t *testing.T) {
+	tests := []struct {
+		name     string
+		disabled bool
+	}{
+		{
+			name:     "features enabled",
+			disabled: false,
+		},
+		{
+			name:     "features disabled",
+			disabled: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			r := &Reconciler{
+				DisableEnvoyGatewayFeatures: tt.disabled,
+			}
+
+			if r.DisableEnvoyGatewayFeatures != tt.disabled {
+				t.Errorf("DisableEnvoyGatewayFeatures = %v, want %v", r.DisableEnvoyGatewayFeatures, tt.disabled)
+			}
+		})
+	}
+}
+
+func TestReconcilerCleanupStale(t *testing.T) {
+	tests := []struct {
+		name    string
+		cleanup bool
+	}{
+		{
+			name:    "cleanup enabled",
+			cleanup: true,
+		},
+		{
+			name:    "cleanup disabled",
+			cleanup: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			r := &Reconciler{
+				CleanupStale: tt.cleanup,
+			}
+
+			if r.CleanupStale != tt.cleanup {
+				t.Errorf("CleanupStale = %v, want %v", r.CleanupStale, tt.cleanup)
+			}
+		})
+	}
+}
+
 func TestShouldConvert(t *testing.T) {
 	tests := []struct {
 		name         string
@@ -137,6 +266,45 @@ func TestShouldConvert(t *testing.T) {
 			ingressClass: "nginx",
 			want:         true,
 		},
+		{
+			name: "already converted - status converted",
+			ingress: &networkingv1.Ingress{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "test",
+					Annotations: map[string]string{
+						AnnotationConversionStatus: ConversionStatusConverted,
+					},
+				},
+			},
+			ingressClass: "",
+			want:         false,
+		},
+		{
+			name: "already converted - status partial",
+			ingress: &networkingv1.Ingress{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "test",
+					Annotations: map[string]string{
+						AnnotationConversionStatus: ConversionStatusPartial,
+					},
+				},
+			},
+			ingressClass: "",
+			want:         false,
+		},
+		{
+			name: "pending status should reconvert",
+			ingress: &networkingv1.Ingress{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "test",
+					Annotations: map[string]string{
+						AnnotationConversionStatus: ConversionStatusPending,
+					},
+				},
+			},
+			ingressClass: "",
+			want:         true,
+		},
 	}
 
 	for _, tt := range tests {
@@ -145,8 +313,8 @@ func TestShouldConvert(t *testing.T) {
 				IngressClass: tt.ingressClass,
 			}
 			got := r.shouldConvert(tt.ingress)
-			if got != tt.want {
-				t.Errorf("shouldConvert() = %v, want %v", got, tt.want)
+			if got.shouldConvert != tt.want {
+				t.Errorf("shouldConvert().shouldConvert = %v, want %v", got.shouldConvert, tt.want)
 			}
 		})
 	}

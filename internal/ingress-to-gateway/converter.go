@@ -68,6 +68,17 @@ type ConversionResult struct {
 	ProcessedAnnotations []string
 }
 
+// hasRedirectFilter returns true if any filter is a RequestRedirect type.
+// Gateway API does not allow RequestRedirect filters with backendRefs.
+func hasRedirectFilter(filters []gwapiv1.HTTPRouteFilter) bool {
+	for _, f := range filters {
+		if f.Type == gwapiv1.HTTPRouteFilterRequestRedirect {
+			return true
+		}
+	}
+	return false
+}
+
 // ConvertIngress converts a Kubernetes Ingress to Gateway API HTTPRoutes.
 //
 // Deprecated: Use ConvertIngressWithServices for better port resolution.
@@ -153,6 +164,10 @@ func convertToHTTPRoutes(input ConversionInput, parentRef gwapiv1.ParentReferenc
 	hostRules := make(map[string][]gwapiv1.HTTPRouteRule)
 	const noHostKey = ""
 
+	// Check if redirect filters are present - Gateway API does not allow
+	// RequestRedirect filters with backendRefs in the same rule
+	hasRedirect := hasRedirectFilter(filters)
+
 	for _, rule := range ingress.Spec.Rules {
 		host := transformHostname(rule.Host, input.DomainReplace, input.DomainSuffix)
 		if rule.HTTP == nil {
@@ -174,6 +189,11 @@ func convertToHTTPRoutes(input ConversionInput, parentRef gwapiv1.ParentReferenc
 				httpRouteRule.Filters = append(httpRouteRule.Filters, filters...)
 			}
 
+			// Gateway API: RequestRedirect filter must NOT be used with backendRefs
+			if hasRedirect {
+				httpRouteRule.BackendRefs = nil
+			}
+
 			hostRules[host] = append(hostRules[host], httpRouteRule)
 		}
 	}
@@ -184,6 +204,10 @@ func convertToHTTPRoutes(input ConversionInput, parentRef gwapiv1.ParentReferenc
 		rule, defaultWarnings := convertDefaultBackendWithServices(ingress.Spec.DefaultBackend, ingress.Namespace, input.Services)
 		if rule != nil && len(filters) > 0 {
 			rule.Filters = append(rule.Filters, filters...)
+			// Gateway API: RequestRedirect filter must NOT be used with backendRefs
+			if hasRedirect {
+				rule.BackendRefs = nil
+			}
 		}
 		defaultRule = rule
 		warnings = append(warnings, defaultWarnings...)

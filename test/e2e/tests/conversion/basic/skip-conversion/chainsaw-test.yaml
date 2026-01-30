@@ -22,6 +22,7 @@ metadata:
   name: conversion-basic-skip-conversion
   labels:
     conversion: "true"
+    test: "conversion-basic-skip-conversion"
     category: basic
     parallel: "true"
 spec:

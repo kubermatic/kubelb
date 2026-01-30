@@ -14,18 +14,21 @@
 
 # Force SSL Redirect Conversion Test
 # Verifies:
-# - nginx.ingress.kubernetes.io/force-ssl-redirect annotation generates redirect filter
+# - nginx.ingress.kubernetes.io/force-ssl-redirect annotation
+# - HTTP request receives redirect to HTTPS
 apiVersion: chainsaw.kyverno.io/v1alpha1
 kind: Test
 metadata:
   name: conversion-redirects-force-ssl
   labels:
     conversion: "true"
+    test: "conversion-redirects-force-ssl"
     category: redirects
     parallel: "true"
 spec:
   description: |
     Test force-ssl-redirect annotation conversion.
+    Verifies HTTP requests get redirect to HTTPS.
   bindings:
     - name: name
       value: conv-force-ssl
@@ -77,33 +80,44 @@ spec:
                                 number: 80
 
     - name: verify-httproute
-      description: Verify HTTPRoute exists
-      use:
-        template: ../../../../step-templates/conversion/verify-httproute.yaml
-        with:
-          bindings:
-            - name: ingress_name
-              value: ($name)
-            - name: expected_host
-              value: ($transformed_host)
-
-    - name: verify-status
-      description: Verify conversion status
+      description: Verify HTTPRoute exists with redirect filter
       try:
         - script:
-            timeout: 30s
+            timeout: 60s
             content: |
               set -e
-              STATUS=$(kubectl get ingress conv-force-ssl -n default \
-                -o jsonpath='{.metadata.annotations.kubelb\.k8c\.io/conversion-status}' 2>/dev/null || echo "")
-              if [ "$STATUS" = "converted" ] || [ "$STATUS" = "partial" ]; then
-                echo "SUCCESS: Status is '$STATUS'"
-                exit 0
-              fi
-              echo "FAILED: Expected status 'converted' or 'partial', got '$STATUS'"
+              SOURCE_LABEL="conv-force-ssl.default"
+
+              for i in $(seq 1 30); do
+                HTTPROUTE=$(kubectl get httproutes.gateway.networking.k8s.io -n default \
+                  -l "kubelb.k8c.io/source-ingress=${SOURCE_LABEL}" -o name 2>/dev/null | head -1)
+
+                if [ -n "$HTTPROUTE" ]; then
+                  FILTERS=$(kubectl get $HTTPROUTE -n default -o jsonpath='{.spec.rules[*].filters}')
+                  if echo "$FILTERS" | grep -q "RequestRedirect"; then
+                    echo "SUCCESS: HTTPRoute has RequestRedirect filter"
+                    exit 0
+                  fi
+                fi
+                sleep 2
+              done
+              echo "FAILED: No redirect filter found"
               exit 1
             check:
               ($error == null): true
+
+    - name: verify-redirect-traffic
+      description: Verify actual HTTP→HTTPS redirect
+      use:
+        template: ../../../../step-templates/conversion/verify-redirect.yaml
+        with:
+          bindings:
+            - name: host
+              value: ($transformed_host)
+            - name: expected_status
+              value: "301"
+            - name: expected_location
+              value: "https://"
 
     - name: cleanup
       description: Cleanup resources

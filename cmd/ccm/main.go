@@ -29,6 +29,8 @@ import (
 	"github.com/go-logr/logr"
 	"go.uber.org/zap/zapcore"
 
+	egv1alpha1 "github.com/envoyproxy/gateway/api/v1alpha1"
+
 	kubelbv1alpha1 "k8c.io/kubelb/api/ce/kubelb.k8c.io/v1alpha1"
 	"k8c.io/kubelb/internal/controllers/ccm"
 	ingressconversion "k8c.io/kubelb/internal/ingress-to-gateway"
@@ -62,6 +64,7 @@ func init() {
 	utilruntime.Must(clientgoscheme.AddToScheme(scheme))
 	utilruntime.Must(kubelbv1alpha1.AddToScheme(scheme))
 	utilruntime.Must(apiextensionsv1.AddToScheme(scheme))
+	utilruntime.Must(egv1alpha1.AddToScheme(scheme))
 
 	// Register CCM metrics
 	ccmmetrics.Register()

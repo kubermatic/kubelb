@@ -35,8 +35,9 @@ kubelb:
     ingressClass: nginx
     domainReplace: test.local
     domainSuffix: gateway.local
-    propagateCertManagerAnnotations: true
     propagateExternalDnsAnnotations: true
+    # Static annotations to add to Gateway for e2e testing
+    gatewayAnnotations: "kubelb.k8c.io/e2e-test=gateway-annotations,custom.io/test-annotation=test-value"
 
 serviceMonitor:
   enabled: false

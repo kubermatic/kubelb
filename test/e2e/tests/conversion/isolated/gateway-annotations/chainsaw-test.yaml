@@ -1,0 +1,174 @@
+# Copyright 2026 The KubeLB Authors.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# Gateway Annotations Test
+# Verifies:
+# - Gateway has static annotations from gatewayAnnotations config
+# - Annotations are preserved when Gateway is updated
+apiVersion: chainsaw.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: conversion-isolated-gateway-annotations
+  labels:
+    conversion: "true"
+    test: "conversion-isolated-gateway-annotations"
+    category: isolated
+    parallel: "false"
+spec:
+  concurrent: false
+  description: |
+    Test that Gateway annotations from gatewayAnnotations config are applied.
+    Verifies static annotations configured via --conversion-gateway-annotations flag
+    are present on the created Gateway.
+  bindings:
+    - name: name
+      value: conv-gw-annotations
+    - name: transformed_host
+      value: conv-gwannotations.gateway.local
+  steps:
+    - name: cleanup-existing
+      description: Remove existing Gateway for clean test
+      try:
+        - script:
+            timeout: 30s
+            content: |
+              kubectl delete gateway.gateway.networking.k8s.io kubelb -n default --ignore-not-found
+              for i in $(seq 1 10); do
+                if ! kubectl get gateway.gateway.networking.k8s.io kubelb -n default &>/dev/null; then
+                  echo "Gateway cleaned up"
+                  exit 0
+                fi
+                sleep 1
+              done
+            check:
+              ($error == null): true
+
+    - name: create-service
+      description: Create ClusterIP service
+      try:
+        - apply:
+            resource:
+              apiVersion: v1
+              kind: Service
+              metadata:
+                name: conv-gw-annotations
+                namespace: default
+              spec:
+                type: ClusterIP
+                selector:
+                  app: echo-shared
+                ports:
+                  - port: 80
+                    targetPort: 5678
+
+    - name: create-ingress
+      description: Create Ingress to trigger Gateway creation
+      try:
+        - apply:
+            resource:
+              apiVersion: networking.k8s.io/v1
+              kind: Ingress
+              metadata:
+                name: conv-gw-annotations
+                namespace: default
+              spec:
+                ingressClassName: nginx
+                rules:
+                  - host: conv-gwannotations.test.local
+                    http:
+                      paths:
+                        - path: /
+                          pathType: Prefix
+                          backend:
+                            service:
+                              name: conv-gw-annotations
+                              port:
+                                number: 80
+
+    - name: verify-gateway-created
+      description: Verify Gateway created
+      use:
+        template: ../../../../step-templates/conversion/verify-gateway.yaml
+        with:
+          bindings:
+            - name: gateway_name
+              value: kubelb
+
+    - name: verify-gateway-annotations
+      description: Verify Gateway has static annotations from gatewayAnnotations config
+      try:
+        - script:
+            timeout: 30s
+            content: |
+              set -e
+              GATEWAY_NAME=kubelb
+              NAMESPACE=default
+
+              # Get Gateway annotations
+              E2E_TEST=$(kubectl get gateway.gateway.networking.k8s.io "$GATEWAY_NAME" -n "$NAMESPACE" \
+                -o jsonpath='{.metadata.annotations.kubelb\.k8c\.io/e2e-test}')
+              CUSTOM_ANNOTATION=$(kubectl get gateway.gateway.networking.k8s.io "$GATEWAY_NAME" -n "$NAMESPACE" \
+                -o jsonpath='{.metadata.annotations.custom\.io/test-annotation}')
+
+              # Verify e2e-test annotation
+              if [ "$E2E_TEST" != "gateway-annotations" ]; then
+                echo "FAILED: Expected kubelb.k8c.io/e2e-test='gateway-annotations', got '$E2E_TEST'"
+                echo "All annotations:"
+                kubectl get gateway.gateway.networking.k8s.io "$GATEWAY_NAME" -n "$NAMESPACE" \
+                  -o jsonpath='{.metadata.annotations}' | jq .
+                exit 1
+              fi
+
+              # Verify custom annotation
+              if [ "$CUSTOM_ANNOTATION" != "test-value" ]; then
+                echo "FAILED: Expected custom.io/test-annotation='test-value', got '$CUSTOM_ANNOTATION'"
+                exit 1
+              fi
+
+              echo "SUCCESS: Gateway has expected annotations"
+              echo "  kubelb.k8c.io/e2e-test: $E2E_TEST"
+              echo "  custom.io/test-annotation: $CUSTOM_ANNOTATION"
+            check:
+              ($error == null): true
+
+    - name: verify-httproute
+      description: Verify HTTPRoute created
+      use:
+        template: ../../../../step-templates/conversion/verify-httproute.yaml
+        with:
+          bindings:
+            - name: ingress_name
+              value: ($name)
+            - name: expected_host
+              value: ($transformed_host)
+
+    - name: verify-traffic
+      description: Verify traffic works
+      use:
+        template: ../../../../step-templates/conversion/verify-http-traffic.yaml
+        with:
+          bindings:
+            - name: host
+              value: ($transformed_host)
+            - name: expected_response
+              value: hello-shared
+
+    - name: cleanup
+      description: Cleanup resources
+      use:
+        template: ../../../../step-templates/conversion/cleanup-conversion.yaml
+        with:
+          bindings:
+            - name: ingress_name
+              value: ($name)

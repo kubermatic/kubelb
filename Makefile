@@ -316,6 +316,7 @@ e2e-select: chainsaw ## Run e2e tests matching label selector (e.g., make e2e-se
 CONVERSION_E2E_DIR ?= $(E2E_DIR)/tests/conversion
 CONVERSION_CONFIG ?= $(E2E_DIR)/config-conversion.yaml
 CONVERSION_VALUES ?= $(E2E_DIR)/values-conversion.yaml
+# Register conversion as named cluster for explicit references in step templates
 CONVERSION_CLUSTER ?= --cluster conversion=$(KUBECONFIGS_DIR)/conversion.kubeconfig
 
 .PHONY: e2e-conversion-setup-kind
@@ -341,12 +342,12 @@ e2e-conversion-reload: ## Reload CCM in conversion cluster if binary changed
 
 .PHONY: e2e-conversion
 e2e-conversion: chainsaw e2e-conversion-reload ## Run conversion e2e tests (reloads CCM if changed)
-	$(CHAINSAW) test $(CONVERSION_E2E_DIR) \
+	KUBECONFIG=$(KUBECONFIGS_DIR)/conversion.kubeconfig $(CHAINSAW) test $(CONVERSION_E2E_DIR) \
 		--config $(CONVERSION_CONFIG) --values $(CONVERSION_VALUES) $(CONVERSION_CLUSTER)
 
 .PHONY: e2e-conversion-select
 e2e-conversion-select: chainsaw  ## Run conversion e2e tests matching label selector (reloads CCM if changed)
-	$(CHAINSAW) test $(CONVERSION_E2E_DIR) \
+	KUBECONFIG=$(KUBECONFIGS_DIR)/conversion.kubeconfig $(CHAINSAW) test $(CONVERSION_E2E_DIR) \
 		--config $(CONVERSION_CONFIG) --values $(CONVERSION_VALUES) $(CONVERSION_CLUSTER) --selector $(select)
 
 .PHONY: shfmt

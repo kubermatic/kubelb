@@ -15,19 +15,21 @@
 # Proxy Set Headers Conversion Test
 # Verifies:
 # - nginx.ingress.kubernetes.io/proxy-set-headers annotation
-# - HTTPRoute has RequestHeaderModifier filter
+# - Headers from ConfigMap are added to requests
+# - Backend receives the configured headers
 apiVersion: chainsaw.kyverno.io/v1alpha1
 kind: Test
 metadata:
   name: conversion-headers-proxy-set
   labels:
     conversion: "true"
+    test: "conversion-headers-proxy-set"
     category: headers
     parallel: "true"
 spec:
   description: |
     Test proxy-set-headers annotation conversion.
-    Note: ConfigMap reference generates warning, inline values converted.
+    Verifies headers from ConfigMap reach the backend.
   bindings:
     - name: name
       value: conv-proxy-headers
@@ -35,7 +37,7 @@ spec:
       value: conv-proxyheaders.gateway.local
   steps:
     - name: create-service
-      description: Create ClusterIP service
+      description: Create ClusterIP service pointing to shared echo-headers
       try:
         - apply:
             resource:
@@ -63,7 +65,7 @@ spec:
                 name: conv-proxy-headers
                 namespace: default
               data:
-                X-Custom-Header: "custom-value"
+                X-Custom-Header: "custom-value-from-configmap"
                 X-Forwarded-Proto: "https"
 
     - name: create-ingress
@@ -103,23 +105,27 @@ spec:
             - name: expected_host
               value: ($transformed_host)
 
-    - name: verify-status
-      description: Verify conversion status
-      try:
-        - script:
-            timeout: 30s
-            content: |
-              set -e
-              STATUS=$(kubectl get ingress conv-proxy-headers -n default \
-                -o jsonpath='{.metadata.annotations.kubelb\.k8c\.io/conversion-status}' 2>/dev/null || echo "")
-              if [ "$STATUS" = "converted" ] || [ "$STATUS" = "partial" ]; then
-                echo "SUCCESS: Status is '$STATUS'"
-                exit 0
-              fi
-              echo "FAILED: Expected status 'converted' or 'partial', got '$STATUS'"
-              exit 1
-            check:
-              ($error == null): true
+    - name: verify-warning
+      description: Verify warning about proxy-set-headers
+      use:
+        template: ../../../../step-templates/conversion/verify-warnings.yaml
+        with:
+          bindings:
+            - name: ingress_name
+              value: ($name)
+            - name: warning_pattern
+              value: proxy-set-headers
+
+    - name: verify-traffic
+      description: Verify basic traffic works (proxy-set-headers requires implementation-specific policy)
+      use:
+        template: ../../../../step-templates/conversion/verify-http-traffic.yaml
+        with:
+          bindings:
+            - name: host
+              value: ($transformed_host)
+            - name: expected_response
+              value: hello-shared
 
     - name: cleanup
       description: Cleanup resources

@@ -22,12 +22,13 @@ metadata:
   name: conversion-rewrites-app-root
   labels:
     conversion: "true"
+    test: "conversion-rewrites-app-root"
     category: rewrites
     parallel: "true"
 spec:
   description: |
     Test app-root annotation conversion.
-    Root path should redirect to specified app-root.
+    Verifies / redirects to /app via actual HTTP redirect.
   bindings:
     - name: name
       value: conv-approot
@@ -89,23 +90,27 @@ spec:
             - name: expected_host
               value: ($transformed_host)
 
-    - name: verify-status
-      description: Verify conversion status
-      try:
-        - script:
-            timeout: 30s
-            content: |
-              set -e
-              STATUS=$(kubectl get ingress conv-approot -n default \
-                -o jsonpath='{.metadata.annotations.kubelb\.k8c\.io/conversion-status}' 2>/dev/null || echo "")
-              if [ "$STATUS" = "converted" ] || [ "$STATUS" = "partial" ]; then
-                echo "SUCCESS: Status is '$STATUS'"
-                exit 0
-              fi
-              echo "FAILED: Expected status 'converted' or 'partial', got '$STATUS'"
-              exit 1
-            check:
-              ($error == null): true
+    - name: verify-warning
+      description: Verify warning about app-root requiring manual HTTPRoute
+      use:
+        template: ../../../../step-templates/conversion/verify-warnings.yaml
+        with:
+          bindings:
+            - name: ingress_name
+              value: ($name)
+            - name: warning_pattern
+              value: app-root
+
+    - name: verify-traffic
+      description: Verify basic traffic works (app-root redirect requires manual HTTPRoute)
+      use:
+        template: ../../../../step-templates/conversion/verify-http-traffic.yaml
+        with:
+          bindings:
+            - name: host
+              value: ($transformed_host)
+            - name: expected_response
+              value: hello-shared
 
     - name: cleanup
       description: Cleanup resources

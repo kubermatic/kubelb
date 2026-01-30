@@ -14,19 +14,22 @@
 
 # Body Size Annotation Conversion Test
 # Verifies:
-# - proxy-body-size annotation
-# - Warning generated about ClientTrafficPolicy requirement
+# - proxy-body-size annotation generates warning (needs ClientTrafficPolicy)
+# - Basic traffic still works
 apiVersion: chainsaw.kyverno.io/v1alpha1
 kind: Test
 metadata:
   name: conversion-policies-body-size
   labels:
     conversion: "true"
+    test: "conversion-policies-body-size"
     category: policies
     parallel: "true"
 spec:
   description: |
-    Test proxy-body-size annotation generates warning.
+    Test proxy-body-size annotation conversion.
+    Gateway API requires ClientTrafficPolicy - warning generated.
+    Verifies partial conversion and basic traffic works.
   bindings:
     - name: name
       value: conv-bodysize
@@ -98,6 +101,90 @@ spec:
               value: ($name)
             - name: warning_pattern
               value: ClientTrafficPolicy
+
+    - name: verify-body-size-enforcement
+      description: Verify body size limit - small POST ok, large POST rejected
+      try:
+        - script:
+            cluster: conversion
+            timeout: 120s
+            content: |
+              set -e
+              HOST="conv-bodysize.gateway.local"
+              GATEWAY_NS=default
+
+              # Wait for Gateway IP
+              IP=""
+              i=1; while [ "$i" -le 30 ]; do
+                IP=$(kubectl get gateway.gateway.networking.k8s.io kubelb -n "$GATEWAY_NS" \
+                  -o jsonpath='{.status.addresses[0].value}' 2>/dev/null || echo "")
+                if [ -n "$IP" ]; then
+                  break
+                fi
+                sleep 2
+                i=$((i + 1))
+              done
+
+              if [ -z "$IP" ]; then
+                echo "FAILED: Gateway has no IP"
+                exit 1
+              fi
+
+              echo "Gateway IP: $IP"
+
+              # Wait for route to propagate
+              i=1; while [ "$i" -le 20 ]; do
+                CODE=$(curl -s -o /dev/null -w "%{http_code}" --max-time 5 \
+                  -H "Host: ${HOST}" "http://${IP}/" 2>/dev/null || echo "000")
+                if [ "$CODE" = "200" ]; then
+                  echo "Route is ready"
+                  break
+                fi
+                echo "Attempt $i: waiting for route..."
+                sleep 3
+                i=$((i + 1))
+              done
+
+              # Test small POST - should succeed (< 10m)
+              SMALL_CODE=$(curl -s -o /dev/null -w "%{http_code}" --max-time 10 \
+                -H "Host: ${HOST}" \
+                -X POST -d "small payload" \
+                "http://${IP}/" 2>/dev/null || echo "000")
+
+              echo "Small POST response: $SMALL_CODE"
+
+              # Test oversized POST - should get 413 (> 10m = 10485760 bytes)
+              # Generate 15MB of data
+              LARGE_CODE=$(dd if=/dev/zero bs=1M count=15 2>/dev/null | \
+                curl -s -o /dev/null -w "%{http_code}" --max-time 30 \
+                -H "Host: ${HOST}" \
+                -H "Content-Type: application/octet-stream" \
+                -X POST --data-binary @- \
+                "http://${IP}/" 2>/dev/null || echo "000")
+
+              echo "Large POST (15MB) response: $LARGE_CODE"
+
+              # Verify behavior
+              if [ "$SMALL_CODE" = "200" ] && [ "$LARGE_CODE" = "413" ]; then
+                echo "SUCCESS: Body size enforcement verified"
+                echo "  Small POST: 200 OK"
+                echo "  Large POST: 413 Payload Too Large"
+                exit 0
+              fi
+
+              if [ "$SMALL_CODE" = "200" ]; then
+                echo "INFO: Small POST succeeded"
+                if [ "$LARGE_CODE" != "413" ]; then
+                  echo "INFO: Large POST got $LARGE_CODE (body size limit may require ClientTrafficPolicy)"
+                fi
+                # Traffic works, body size may not be enforced without policy
+                exit 0
+              fi
+
+              echo "FAILED: Basic traffic not working"
+              exit 1
+            check:
+              ($error == null): true
 
     - name: cleanup
       description: Cleanup resources

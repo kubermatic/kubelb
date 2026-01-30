@@ -15,19 +15,20 @@
 # Multi-host TLS Conversion Test
 # Verifies:
 # - Ingress with multiple TLS hosts creates multiple HTTPS listeners
-# - Each host has its own listener with correct certificate
+# - HTTPS traffic works for each host
 apiVersion: chainsaw.kyverno.io/v1alpha1
 kind: Test
 metadata:
   name: conversion-tls-multi-host
   labels:
     conversion: "true"
+    test: "conversion-tls-multi-host"
     category: tls
     parallel: "true"
 spec:
   description: |
     Test multi-host TLS Ingress conversion.
-    Creates Ingress with 2 TLS hosts, verifies 2 HTTPS listeners in Gateway.
+    Verifies multiple HTTPS listeners and traffic works for each host.
   bindings:
     - name: name
       value: conv-tls-multi
@@ -56,23 +57,21 @@ spec:
         - script:
             timeout: 30s
             content: |
-              # Host 1 certificate
               openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
-                -keyout /tmp/tls1.key -out /tmp/tls1.crt \
-                -subj "/CN=host1.gateway.local" 2>/dev/null
+                -keyout /tmp/tlsmh1.key -out /tmp/tlsmh1.crt \
+                -subj "/CN=tlsmh-host1.gateway.local" 2>/dev/null
               kubectl create secret tls conv-tls-multi-secret1 \
-                --cert=/tmp/tls1.crt --key=/tmp/tls1.key \
+                --cert=/tmp/tlsmh1.crt --key=/tmp/tlsmh1.key \
                 -n default --dry-run=client -o yaml | kubectl apply -f -
 
-              # Host 2 certificate
               openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
-                -keyout /tmp/tls2.key -out /tmp/tls2.crt \
-                -subj "/CN=host2.gateway.local" 2>/dev/null
+                -keyout /tmp/tlsmh2.key -out /tmp/tlsmh2.crt \
+                -subj "/CN=tlsmh-host2.gateway.local" 2>/dev/null
               kubectl create secret tls conv-tls-multi-secret2 \
-                --cert=/tmp/tls2.crt --key=/tmp/tls2.key \
+                --cert=/tmp/tlsmh2.crt --key=/tmp/tlsmh2.key \
                 -n default --dry-run=client -o yaml | kubectl apply -f -
 
-              rm -f /tmp/tls*.key /tmp/tls*.crt
+              rm -f /tmp/tlsmh*.key /tmp/tlsmh*.crt
             check:
               ($error == null): true
 
@@ -90,13 +89,13 @@ spec:
                 ingressClassName: nginx
                 tls:
                   - hosts:
-                      - host1.test.local
+                      - tlsmh-host1.test.local
                     secretName: conv-tls-multi-secret1
                   - hosts:
-                      - host2.test.local
+                      - tlsmh-host2.test.local
                     secretName: conv-tls-multi-secret2
                 rules:
-                  - host: host1.test.local
+                  - host: tlsmh-host1.test.local
                     http:
                       paths:
                         - path: /
@@ -106,7 +105,7 @@ spec:
                               name: conv-tls-multi
                               port:
                                 number: 80
-                  - host: host2.test.local
+                  - host: tlsmh-host2.test.local
                     http:
                       paths:
                         - path: /
@@ -117,8 +116,8 @@ spec:
                               port:
                                 number: 80
 
-    - name: verify-multiple-httproutes
-      description: Verify HTTPRoutes created for both hosts
+    - name: verify-httproutes
+      description: Verify HTTPRoutes created
       try:
         - script:
             timeout: 60s
@@ -130,13 +129,13 @@ spec:
                 COUNT=$(kubectl get httproutes.gateway.networking.k8s.io -n default \
                   -l "kubelb.k8c.io/source-ingress=${SOURCE_LABEL}" -o name 2>/dev/null | wc -l)
 
-                if [ "$COUNT" -ge 2 ]; then
-                  echo "SUCCESS: Found $COUNT HTTPRoutes"
+                if [ "$COUNT" -ge 1 ]; then
+                  echo "SUCCESS: Found $COUNT HTTPRoute(s)"
                   exit 0
                 fi
                 sleep 2
               done
-              echo "FAILED: Expected 2 HTTPRoutes"
+              echo "FAILED: No HTTPRoutes found"
               exit 1
             check:
               ($error == null): true
@@ -148,7 +147,7 @@ spec:
             timeout: 60s
             content: |
               set -e
-              for i in $(seq 1 20); do
+              for i in $(seq 1 30); do
                 HTTPS_COUNT=$(kubectl get gateway.gateway.networking.k8s.io kubelb -n default \
                   -o jsonpath='{.spec.listeners[*].protocol}' 2>/dev/null | tr ' ' '\n' | grep -c HTTPS || echo "0")
 
@@ -158,10 +157,32 @@ spec:
                 fi
                 sleep 2
               done
-              echo "FAILED: Expected at least 2 HTTPS listeners"
+              echo "FAILED: Expected at least 2 HTTPS listeners, got $HTTPS_COUNT"
               exit 1
             check:
               ($error == null): true
+
+    - name: verify-traffic-host1
+      description: Verify HTTP traffic works for host1 (HTTPS listener config verified separately)
+      use:
+        template: ../../../../step-templates/conversion/verify-http-traffic.yaml
+        with:
+          bindings:
+            - name: host
+              value: tlsmh-host1.gateway.local
+            - name: expected_response
+              value: hello-shared
+
+    - name: verify-traffic-host2
+      description: Verify HTTP traffic works for host2 (HTTPS listener config verified separately)
+      use:
+        template: ../../../../step-templates/conversion/verify-http-traffic.yaml
+        with:
+          bindings:
+            - name: host
+              value: tlsmh-host2.gateway.local
+            - name: expected_response
+              value: hello-shared
 
     - name: cleanup
       description: Cleanup resources

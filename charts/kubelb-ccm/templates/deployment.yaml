@@ -101,11 +101,17 @@ spec:
             {{ if .Values.kubelb.ingressConversion.domainSuffix -}}
             - --conversion-domain-suffix={{ .Values.kubelb.ingressConversion.domainSuffix }}
             {{ end -}}
-            {{ if not .Values.kubelb.ingressConversion.propagateCertManagerAnnotations -}}
-            - --propagate-cert-manager-annotations=false
+            {{ if .Values.kubelb.ingressConversion.gatewayAnnotations -}}
+            - --conversion-gateway-annotations={{ .Values.kubelb.ingressConversion.gatewayAnnotations }}
             {{ end -}}
             {{ if not .Values.kubelb.ingressConversion.propagateExternalDnsAnnotations -}}
-            - --propagate-external-dns-annotations=false
+            - --conversion-propagate-external-dns-annotations=false
+            {{ end -}}
+            {{ if .Values.kubelb.ingressConversion.cleanupStale -}}
+            - --conversion-cleanup-stale=true
+            {{ end -}}
+            {{ if .Values.kubelb.ingressConversion.disableEnvoyGatewayFeatures -}}
+            - --conversion-disable-envoy-gateway-features=true
             {{ end -}}
             {{ if not .Values.kubelb.ingressConversion.standaloneMode -}}
             - --cluster-name={{ required "A valid .Values.kubelb.tenantName to specify the tenant name is required!" .Values.kubelb.tenantName }}

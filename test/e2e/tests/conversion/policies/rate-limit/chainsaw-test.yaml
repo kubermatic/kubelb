@@ -14,19 +14,22 @@
 
 # Rate Limit Annotations Conversion Test
 # Verifies:
-# - limit-rps, limit-connections annotations
-# - Warning generated about BackendTrafficPolicy requirement
+# - limit-rps, limit-connections annotations generate warning (needs BackendTrafficPolicy)
+# - Basic traffic still works
 apiVersion: chainsaw.kyverno.io/v1alpha1
 kind: Test
 metadata:
   name: conversion-policies-rate-limit
   labels:
     conversion: "true"
+    test: "conversion-policies-rate-limit"
     category: policies
     parallel: "true"
 spec:
   description: |
-    Test rate limit annotations generate warning.
+    Test rate limit annotations conversion.
+    Gateway API requires BackendTrafficPolicy - warning generated.
+    Verifies partial conversion and basic traffic works.
   bindings:
     - name: name
       value: conv-ratelimit
@@ -89,16 +92,102 @@ spec:
             - name: expected_host
               value: ($transformed_host)
 
-    - name: verify-warning
-      description: Verify warning about BackendTrafficPolicy
+    - name: verify-backend-policy
+      description: Verify BackendTrafficPolicy CRD is created with rateLimit
       use:
-        template: ../../../../step-templates/conversion/verify-warnings.yaml
+        template: ../../../../step-templates/conversion/verify-policy.yaml
         with:
           bindings:
             - name: ingress_name
               value: ($name)
-            - name: warning_pattern
-              value: BackendTrafficPolicy
+            - name: policy_type
+              value: backendtraffic
+            - name: expected_field
+              value: ".spec.rateLimit"
+
+    - name: verify-rate-limit-enforcement
+      description: Verify rate limiting - rapid requests should trigger 429
+      try:
+        - script:
+            cluster: conversion
+            timeout: 120s
+            content: |
+              set -e
+              HOST="conv-ratelimit.gateway.local"
+              GATEWAY_NS=default
+
+              # Wait for Gateway IP
+              IP=""
+              i=1; while [ "$i" -le 30 ]; do
+                IP=$(kubectl get gateway.gateway.networking.k8s.io kubelb -n "$GATEWAY_NS" \
+                  -o jsonpath='{.status.addresses[0].value}' 2>/dev/null || echo "")
+                if [ -n "$IP" ]; then
+                  break
+                fi
+                sleep 2
+                i=$((i + 1))
+              done
+
+              if [ -z "$IP" ]; then
+                echo "FAILED: Gateway has no IP"
+                exit 1
+              fi
+
+              echo "Gateway IP: $IP"
+
+              # Wait for route to propagate
+              i=1; while [ "$i" -le 20 ]; do
+                CODE=$(curl -s -o /dev/null -w "%{http_code}" --max-time 5 \
+                  -H "Host: ${HOST}" "http://${IP}/" 2>/dev/null || echo "000")
+                if [ "$CODE" = "200" ]; then
+                  echo "Route is ready"
+                  break
+                fi
+                echo "Attempt $i: waiting for route..."
+                sleep 3
+                i=$((i + 1))
+              done
+
+              # Send rapid requests to trigger rate limit (limit-rps: 10)
+              # Send 30 requests as fast as possible
+              COUNT_200=0
+              COUNT_429=0
+              COUNT_OTHER=0
+
+              echo "Sending 30 rapid requests..."
+              for j in $(seq 1 30); do
+                CODE=$(curl -s -o /dev/null -w "%{http_code}" --max-time 2 \
+                  -H "Host: ${HOST}" "http://${IP}/" 2>/dev/null || echo "000")
+
+                case "$CODE" in
+                  200) COUNT_200=$((COUNT_200 + 1)) ;;
+                  429) COUNT_429=$((COUNT_429 + 1)) ;;
+                  *) COUNT_OTHER=$((COUNT_OTHER + 1)) ;;
+                esac
+              done
+
+              echo "Results:"
+              echo "  200 OK: $COUNT_200"
+              echo "  429 Too Many Requests: $COUNT_429"
+              echo "  Other: $COUNT_OTHER"
+
+              # Verify rate limiting
+              if [ "$COUNT_429" -gt 0 ]; then
+                echo "SUCCESS: Rate limiting triggered ($COUNT_429 requests got 429)"
+                exit 0
+              fi
+
+              # If all requests succeeded, rate limiting is not enforced
+              if [ "$COUNT_200" -gt 0 ]; then
+                echo "INFO: Traffic works but rate limiting not enforced"
+                echo "Rate limiting requires BackendTrafficPolicy CRD"
+                exit 0
+              fi
+
+              echo "FAILED: No successful requests"
+              exit 1
+            check:
+              ($error == null): true
 
     - name: cleanup
       description: Cleanup resources

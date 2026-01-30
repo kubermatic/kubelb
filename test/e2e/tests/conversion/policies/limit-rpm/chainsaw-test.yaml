@@ -1,0 +1,122 @@
+# Copyright 2026 The KubeLB Authors.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# Limit RPM (Requests Per Minute) Conversion Test
+# Verifies:
+# - limit-rpm annotation generates warning (needs BackendTrafficPolicy)
+# - Basic traffic still works
+apiVersion: chainsaw.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: conversion-policies-limit-rpm
+  labels:
+    conversion: "true"
+    test: "conversion-policies-limit-rpm"
+    category: policies
+    parallel: "true"
+spec:
+  description: |
+    Test limit-rpm annotation conversion.
+    Gateway API requires BackendTrafficPolicy - warning generated.
+  bindings:
+    - name: name
+      value: conv-limitrpm
+    - name: transformed_host
+      value: conv-limitrpm.gateway.local
+  steps:
+    - name: create-service
+      description: Create ClusterIP service
+      try:
+        - apply:
+            resource:
+              apiVersion: v1
+              kind: Service
+              metadata:
+                name: conv-limitrpm
+                namespace: default
+              spec:
+                type: ClusterIP
+                selector:
+                  app: echo-shared
+                ports:
+                  - port: 80
+                    targetPort: 5678
+
+    - name: create-ingress
+      description: Create Ingress with limit-rpm annotation
+      try:
+        - apply:
+            resource:
+              apiVersion: networking.k8s.io/v1
+              kind: Ingress
+              metadata:
+                name: conv-limitrpm
+                namespace: default
+                annotations:
+                  nginx.ingress.kubernetes.io/limit-rpm: "60"
+              spec:
+                ingressClassName: nginx
+                rules:
+                  - host: conv-limitrpm.test.local
+                    http:
+                      paths:
+                        - path: /
+                          pathType: Prefix
+                          backend:
+                            service:
+                              name: conv-limitrpm
+                              port:
+                                number: 80
+
+    - name: verify-httproute
+      description: Verify HTTPRoute exists
+      use:
+        template: ../../../../step-templates/conversion/verify-httproute.yaml
+        with:
+          bindings:
+            - name: ingress_name
+              value: ($name)
+            - name: expected_host
+              value: ($transformed_host)
+
+    - name: verify-warning
+      description: Verify warning about BackendTrafficPolicy
+      use:
+        template: ../../../../step-templates/conversion/verify-warnings.yaml
+        with:
+          bindings:
+            - name: ingress_name
+              value: ($name)
+            - name: warning_pattern
+              value: BackendTrafficPolicy
+
+    - name: verify-basic-traffic
+      description: Verify basic traffic works
+      use:
+        template: ../../../../step-templates/conversion/verify-http-traffic.yaml
+        with:
+          bindings:
+            - name: host
+              value: ($transformed_host)
+            - name: expected_response
+              value: hello-shared
+
+    - name: cleanup
+      description: Cleanup resources
+      use:
+        template: ../../../../step-templates/conversion/cleanup-conversion.yaml
+        with:
+          bindings:
+            - name: ingress_name
+              value: ($name)

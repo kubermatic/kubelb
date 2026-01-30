@@ -76,18 +76,19 @@ func RunStandalone(ctx context.Context, cfg StandaloneConfig, opts Options) int 
 // SetupReconciler creates and registers the Reconciler with the manager
 func SetupReconciler(mgr ctrl.Manager, opts Options) error {
 	return (&Reconciler{
-		Client:               mgr.GetClient(),
-		Log:                  ctrl.Log.WithName("controllers").WithName(ControllerName),
-		Scheme:               mgr.GetScheme(),
-		Recorder:             mgr.GetEventRecorderFor(ControllerName),
-		GatewayName:          opts.GatewayName,
-		GatewayNamespace:     opts.GatewayNamespace,
-		GatewayClassName:     opts.GatewayClassName,
-		IngressClass:         opts.IngressClass,
-		DomainReplace:        opts.DomainReplace,
-		DomainSuffix:         opts.DomainSuffix,
-		PropagateCertManager: opts.PropagateCertManager,
-		PropagateExternalDNS: opts.PropagateExternalDNS,
-		CleanupStale:         opts.CleanupStale,
+		Client:                      mgr.GetClient(),
+		Log:                         ctrl.Log.WithName("controllers").WithName(ControllerName),
+		Scheme:                      mgr.GetScheme(),
+		Recorder:                    mgr.GetEventRecorderFor(ControllerName),
+		GatewayName:                 opts.GatewayName,
+		GatewayNamespace:            opts.GatewayNamespace,
+		GatewayClassName:            opts.GatewayClassName,
+		IngressClass:                opts.IngressClass,
+		DomainReplace:               opts.DomainReplace,
+		DomainSuffix:                opts.DomainSuffix,
+		PropagateExternalDNS:        opts.PropagateExternalDNS,
+		CleanupStale:                opts.CleanupStale,
+		GatewayAnnotations:          opts.GatewayAnnotations,
+		DisableEnvoyGatewayFeatures: opts.DisableEnvoyGatewayFeatures,
 	}).SetupWithManager(mgr)
 }

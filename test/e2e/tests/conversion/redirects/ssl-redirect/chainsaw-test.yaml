@@ -14,27 +14,27 @@
 
 # SSL Redirect Conversion Test
 # Verifies:
-# - nginx.ingress.kubernetes.io/ssl-redirect annotation generates redirect filter
-# - HTTP requests receive 301 redirect to HTTPS
+# - nginx.ingress.kubernetes.io/ssl-redirect annotation
+# - HTTP request receives 301 redirect to HTTPS
 apiVersion: chainsaw.kyverno.io/v1alpha1
 kind: Test
 metadata:
   name: conversion-redirects-ssl-redirect
   labels:
     conversion: "true"
+    test: "conversion-redirects-ssl-redirect"
     category: redirects
     parallel: "true"
 spec:
   description: |
     Test ssl-redirect annotation conversion.
-    Creates Ingress with ssl-redirect=true, verifies HTTPRoute has redirect filter.
+    Verifies HTTP requests get 301 redirect to HTTPS.
   bindings:
     - name: name
       value: conv-ssl-redirect
     - name: transformed_host
       value: conv-ssl.gateway.local
   steps:
-    # Step 1: Create ClusterIP service
     - name: create-service
       description: Create ClusterIP service
       try:
@@ -53,7 +53,6 @@ spec:
                   - port: 80
                     targetPort: 5678
 
-    # Step 2: Create Ingress with ssl-redirect
     - name: create-ingress
       description: Create Ingress with ssl-redirect=true
       try:
@@ -80,21 +79,8 @@ spec:
                               port:
                                 number: 80
 
-    # Step 3: Verify HTTPRoute created
     - name: verify-httproute
-      description: Verify HTTPRoute exists
-      use:
-        template: ../../../../step-templates/conversion/verify-httproute.yaml
-        with:
-          bindings:
-            - name: ingress_name
-              value: ($name)
-            - name: expected_host
-              value: ($transformed_host)
-
-    # Step 4: Verify redirect in HTTPRoute
-    - name: verify-redirect
-      description: Verify HTTPRoute has redirect filter
+      description: Verify HTTPRoute exists with redirect filter
       try:
         - script:
             timeout: 60s
@@ -102,51 +88,37 @@ spec:
               set -e
               SOURCE_LABEL="conv-ssl-redirect.default"
 
-              for i in $(seq 1 20); do
+              for i in $(seq 1 30); do
                 HTTPROUTE=$(kubectl get httproutes.gateway.networking.k8s.io -n default \
                   -l "kubelb.k8c.io/source-ingress=${SOURCE_LABEL}" -o name 2>/dev/null | head -1)
 
                 if [ -n "$HTTPROUTE" ]; then
-                  # Check for redirect filter
                   FILTERS=$(kubectl get $HTTPROUTE -n default -o jsonpath='{.spec.rules[*].filters}')
                   if echo "$FILTERS" | grep -q "RequestRedirect"; then
                     echo "SUCCESS: HTTPRoute has RequestRedirect filter"
-                    echo "Filters: $FILTERS"
                     exit 0
                   fi
                 fi
-
-                echo "Attempt $i: waiting for HTTPRoute with redirect filter..."
                 sleep 2
               done
-
-              echo "FAILED: HTTPRoute does not have RequestRedirect filter"
+              echo "FAILED: No redirect filter found"
               exit 1
             check:
               ($error == null): true
 
-    # Step 5: Verify conversion status (may be partial due to redirect warning)
-    - name: verify-status
-      description: Verify Ingress conversion status
-      try:
-        - script:
-            timeout: 30s
-            content: |
-              set -e
-              STATUS=$(kubectl get ingress conv-ssl-redirect -n default \
-                -o jsonpath='{.metadata.annotations.kubelb\.k8c\.io/conversion-status}' 2>/dev/null || echo "")
+    - name: verify-redirect-traffic
+      description: Verify actual HTTP→HTTPS redirect (301 with https:// location)
+      use:
+        template: ../../../../step-templates/conversion/verify-redirect.yaml
+        with:
+          bindings:
+            - name: host
+              value: ($transformed_host)
+            - name: expected_status
+              value: "301"
+            - name: expected_location
+              value: "https://"
 
-              if [ "$STATUS" = "converted" ] || [ "$STATUS" = "partial" ]; then
-                echo "SUCCESS: Conversion status is '$STATUS'"
-                exit 0
-              fi
-
-              echo "FAILED: Expected conversion status 'converted' or 'partial', got '$STATUS'"
-              exit 1
-            check:
-              ($error == null): true
-
-    # Cleanup
     - name: cleanup
       description: Cleanup resources
       use:

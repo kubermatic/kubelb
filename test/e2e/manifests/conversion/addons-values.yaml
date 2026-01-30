@@ -26,6 +26,9 @@ ingress-nginx:
   controller:
     service:
       externalTrafficPolicy: Local
+    allowSnippetAnnotations: true
+    config:
+      annotations-risk-level: Critical
 
 envoy-gateway:
   enabled: true

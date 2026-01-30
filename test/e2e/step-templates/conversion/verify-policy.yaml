@@ -1,0 +1,116 @@
+# Copyright 2026 The KubeLB Authors.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# Step Template: Verify Envoy Gateway policy exists with correct spec
+# Required bindings:
+#   - ingress_name: source Ingress name
+#   - policy_type: security or backendtraffic
+# Optional bindings:
+#   - expected_field: optional spec field to verify (e.g., ".spec.cors")
+# Note: Namespace is hardcoded to 'default' - see test/e2e/CLAUDE.md for why
+apiVersion: chainsaw.kyverno.io/v1alpha1
+kind: StepTemplate
+metadata:
+  name: verify-policy
+spec:
+  try:
+    - script:
+        cluster: conversion
+        timeout: 60s
+        env:
+          - name: INGRESS_NAME
+            value: ($ingress_name)
+          - name: POLICY_TYPE
+            value: ($policy_type)
+          - name: EXPECTED_FIELD
+            value: ($expected_field)
+        content: |
+          set -e
+          NAMESPACE=default
+          SOURCE_LABEL="${INGRESS_NAME}.${NAMESPACE}"
+
+          # Determine CRD based on policy type
+          case "$POLICY_TYPE" in
+            security)
+              CRD="securitypolicies.gateway.envoyproxy.io"
+              POLICY_NAME="${INGRESS_NAME}-security"
+              ;;
+            backendtraffic)
+              CRD="backendtrafficpolicies.gateway.envoyproxy.io"
+              POLICY_NAME="${INGRESS_NAME}-backend"
+              ;;
+            clienttraffic)
+              CRD="clienttrafficpolicies.gateway.envoyproxy.io"
+              POLICY_NAME="${INGRESS_NAME}-client"
+              ;;
+            *)
+              echo "FAILED: Unknown policy type: $POLICY_TYPE"
+              echo "Valid types: security, backendtraffic, clienttraffic"
+              exit 1
+              ;;
+          esac
+
+          i=1; while [ "$i" -le 30 ]; do
+            # Check if policy exists by name
+            POLICY=$(kubectl get "$CRD" "$POLICY_NAME" -n "$NAMESPACE" -o name 2>/dev/null || echo "")
+
+            if [ -n "$POLICY" ]; then
+              echo "Found policy: $POLICY"
+
+              # Verify source label
+              LABEL=$(kubectl get "$POLICY" -n "$NAMESPACE" \
+                -o jsonpath='{.metadata.labels.kubelb\.k8c\.io/source-ingress}' 2>/dev/null || echo "")
+
+              if [ "$LABEL" != "$SOURCE_LABEL" ]; then
+                echo "WARNING: Expected label '$SOURCE_LABEL', got '$LABEL'"
+              fi
+
+              # Verify target ref points to HTTPRoute
+              TARGET_KIND=$(kubectl get "$POLICY" -n "$NAMESPACE" \
+                -o jsonpath='{.spec.targetRef.kind}' 2>/dev/null || echo "")
+
+              if [ "$TARGET_KIND" != "HTTPRoute" ]; then
+                echo "FAILED: Expected targetRef kind 'HTTPRoute', got '$TARGET_KIND'"
+                exit 1
+              fi
+
+              # Verify optional spec field if provided
+              if [ -n "$EXPECTED_FIELD" ]; then
+                FIELD_VALUE=$(kubectl get "$POLICY" -n "$NAMESPACE" \
+                  -o jsonpath="{$EXPECTED_FIELD}" 2>/dev/null || echo "")
+
+                if [ -z "$FIELD_VALUE" ]; then
+                  echo "FAILED: Expected field '$EXPECTED_FIELD' is empty or missing"
+                  kubectl get "$POLICY" -n "$NAMESPACE" -o yaml
+                  exit 1
+                fi
+                echo "Verified field $EXPECTED_FIELD: $FIELD_VALUE"
+              fi
+
+              echo "SUCCESS: Policy verified"
+              echo "  Policy: $POLICY"
+              echo "  TargetRef: HTTPRoute"
+              exit 0
+            fi
+
+            echo "Attempt $i: waiting for policy..."
+            sleep 2
+            i=$((i + 1))
+          done
+
+          echo "FAILED: Policy $POLICY_NAME not found"
+          kubectl get "$CRD" -n "$NAMESPACE" -o name 2>/dev/null || true
+          exit 1
+        check:
+          ($error == null): true

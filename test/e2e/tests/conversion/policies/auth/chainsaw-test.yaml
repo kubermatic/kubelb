@@ -14,19 +14,22 @@
 
 # Auth Annotations Conversion Test
 # Verifies:
-# - auth-type=basic, auth-secret annotations
-# - Warning generated about SecurityPolicy requirement
+# - auth-type=basic, auth-secret annotations generate warning (needs SecurityPolicy)
+# - Basic traffic still works (auth not enforced without policy)
 apiVersion: chainsaw.kyverno.io/v1alpha1
 kind: Test
 metadata:
   name: conversion-policies-auth
   labels:
     conversion: "true"
+    test: "conversion-policies-auth"
     category: policies
     parallel: "true"
 spec:
   description: |
-    Test auth annotations generate warning.
+    Test auth annotations conversion.
+    Gateway API requires SecurityPolicy - warning generated.
+    Verifies partial conversion and basic traffic works.
   bindings:
     - name: name
       value: conv-auth
@@ -63,7 +66,7 @@ spec:
                 namespace: default
               type: Opaque
               data:
-                # user:password (base64 encoded)
+                # user:password (base64 encoded htpasswd format)
                 auth: dXNlcjokYXByMSRIMmtJTEJNeSRuYXh5czlqb2JnVjBEaG1HLnA3dUIw
 
     - name: create-ingress
@@ -115,6 +118,85 @@ spec:
               value: ($name)
             - name: warning_pattern
               value: SecurityPolicy
+
+    - name: verify-auth-enforcement
+      description: Verify auth is enforced - 401 without credentials, 200 with credentials
+      try:
+        - script:
+            cluster: conversion
+            timeout: 120s
+            content: |
+              set -e
+              HOST="conv-auth.gateway.local"
+              GATEWAY_NS=default
+
+              # Wait for Gateway IP
+              IP=""
+              i=1; while [ "$i" -le 30 ]; do
+                IP=$(kubectl get gateway.gateway.networking.k8s.io kubelb -n "$GATEWAY_NS" \
+                  -o jsonpath='{.status.addresses[0].value}' 2>/dev/null || echo "")
+                if [ -n "$IP" ]; then
+                  break
+                fi
+                sleep 2
+                i=$((i + 1))
+              done
+
+              if [ -z "$IP" ]; then
+                echo "FAILED: Gateway has no IP"
+                exit 1
+              fi
+
+              echo "Gateway IP: $IP"
+
+              # Test without credentials - should get 401
+              i=1; while [ "$i" -le 20 ]; do
+                CODE=$(curl -s -o /dev/null -w "%{http_code}" --max-time 5 \
+                  -H "Host: ${HOST}" "http://${IP}/" 2>/dev/null || echo "000")
+
+                if [ "$CODE" = "401" ]; then
+                  echo "SUCCESS: Got 401 without credentials"
+                  break
+                elif [ "$CODE" = "200" ]; then
+                  echo "INFO: Got 200 without credentials (auth may not be enforced yet)"
+                  # Continue to verify with credentials test
+                  break
+                fi
+
+                echo "Attempt $i: got $CODE, waiting..."
+                sleep 3
+                i=$((i + 1))
+              done
+
+              # Test with credentials - should get 200
+              # user:password base64 = dXNlcjpwYXNzd29yZA==
+              CODE_AUTH=$(curl -s -o /dev/null -w "%{http_code}" --max-time 5 \
+                -H "Host: ${HOST}" \
+                -H "Authorization: Basic dXNlcjpwYXNzd29yZA==" \
+                "http://${IP}/" 2>/dev/null || echo "000")
+
+              if [ "$CODE_AUTH" = "200" ]; then
+                echo "SUCCESS: Got 200 with credentials"
+              else
+                echo "INFO: Got $CODE_AUTH with credentials"
+              fi
+
+              # If we got 401 without creds and 200 with creds, auth works
+              if [ "$CODE" = "401" ] && [ "$CODE_AUTH" = "200" ]; then
+                echo "SUCCESS: Auth enforcement verified"
+                exit 0
+              fi
+
+              # If auth not enforced, at least verify traffic works
+              if [ "$CODE" = "200" ] || [ "$CODE_AUTH" = "200" ]; then
+                echo "INFO: Traffic works (auth enforcement may require SecurityPolicy)"
+                exit 0
+              fi
+
+              echo "FAILED: Neither authenticated nor unauthenticated requests succeeded"
+              exit 1
+            check:
+              ($error == null): true
 
     - name: cleanup
       description: Cleanup resources

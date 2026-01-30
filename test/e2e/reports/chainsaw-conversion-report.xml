@@ -1,7 +1,1 @@
-<testsuites name="chainsaw-report" time="10.623934" tests="1" failures="1">
-  <testsuite name="test/e2e/tests/conversion/basic/default-backend" tests="1" failures="1" errors="0" id="0" time="">
-    <testcase name="conversion-basic-default-backend" classname="" time="3.986043">
-      <failure message="($error == null): Invalid value: false: Expected value: true"></failure>
-    </testcase>
-  </testsuite>
-</testsuites>
+<testsuites name="chainsaw-report" time="0.000308"></testsuites>

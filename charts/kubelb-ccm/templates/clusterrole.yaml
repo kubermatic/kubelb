@@ -131,6 +131,23 @@ rules:
   verbs:
   - create
   - delete
+{{- if not .Values.kubelb.ingressConversion.disableEnvoyGatewayFeatures }}
+# Envoy Gateway policy resources for ingress conversion
+- apiGroups:
+  - gateway.envoyproxy.io
+  resources:
+  - securitypolicies
+  - backendtrafficpolicies
+  - clienttrafficpolicies
+  verbs:
+  - get
+  - list
+  - watch
+  - create
+  - update
+  - patch
+  - delete
+{{- end }}
 {{- end }}
 {{- if not .Values.kubelb.disableIngressController }}
 - apiGroups:

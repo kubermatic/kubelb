@@ -1,0 +1,188 @@
+# Copyright 2026 The KubeLB Authors.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# Combined Backend Traffic Policy Test
+# Verifies:
+# - Timeouts + rate-limit + connections combined
+# - Single BackendTrafficPolicy with all features
+apiVersion: chainsaw.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: conversion-policies-combined-backend
+  labels:
+    conversion: "true"
+    test: "conversion-policies-combined-backend"
+    category: policies
+    parallel: "true"
+spec:
+  description: |
+    Test combined backend traffic annotations create a single BackendTrafficPolicy
+    with timeouts, rate limiting, and circuit breaker settings.
+  bindings:
+    - name: name
+      value: conv-combined-btp
+    - name: transformed_host
+      value: conv-combined-btp.gateway.local
+  steps:
+    - name: create-service
+      description: Create ClusterIP service
+      try:
+        - apply:
+            resource:
+              apiVersion: v1
+              kind: Service
+              metadata:
+                name: conv-combined-btp
+                namespace: default
+              spec:
+                type: ClusterIP
+                selector:
+                  app: echo-shared
+                ports:
+                  - port: 80
+                    targetPort: 5678
+
+    - name: create-ingress
+      description: Create Ingress with combined backend annotations
+      try:
+        - apply:
+            resource:
+              apiVersion: networking.k8s.io/v1
+              kind: Ingress
+              metadata:
+                name: conv-combined-btp
+                namespace: default
+                annotations:
+                  # Timeouts
+                  nginx.ingress.kubernetes.io/proxy-connect-timeout: "30"
+                  nginx.ingress.kubernetes.io/proxy-read-timeout: "60"
+                  # Rate limit
+                  nginx.ingress.kubernetes.io/limit-rps: "100"
+                  # Circuit breaker
+                  nginx.ingress.kubernetes.io/limit-connections: "500"
+              spec:
+                ingressClassName: nginx
+                rules:
+                  - host: conv-combined-btp.test.local
+                    http:
+                      paths:
+                        - path: /
+                          pathType: Prefix
+                          backend:
+                            service:
+                              name: conv-combined-btp
+                              port:
+                                number: 80
+
+    - name: verify-httproute
+      description: Verify HTTPRoute exists
+      use:
+        template: ../../../../step-templates/conversion/verify-httproute.yaml
+        with:
+          bindings:
+            - name: ingress_name
+              value: ($name)
+            - name: expected_host
+              value: ($transformed_host)
+
+    - name: verify-backend-policy
+      description: Verify BackendTrafficPolicy has all features
+      try:
+        - script:
+            cluster: conversion
+            timeout: 60s
+            content: |
+              set -e
+              NAMESPACE=default
+              POLICY_NAME="conv-combined-btp-backend"
+
+              # Wait for policy
+              i=1; while [ "$i" -le 30 ]; do
+                POLICY=$(kubectl get backendtrafficpolicies.gateway.envoyproxy.io "$POLICY_NAME" \
+                  -n "$NAMESPACE" -o name 2>/dev/null || echo "")
+                if [ -n "$POLICY" ]; then
+                  break
+                fi
+                echo "Attempt $i: waiting for policy..."
+                sleep 2
+                i=$((i + 1))
+              done
+
+              if [ -z "$POLICY" ]; then
+                echo "FAILED: BackendTrafficPolicy not found"
+                exit 1
+              fi
+
+              # Verify Timeout
+              TIMEOUT=$(kubectl get backendtrafficpolicies.gateway.envoyproxy.io "$POLICY_NAME" \
+                -n "$NAMESPACE" -o jsonpath='{.spec.timeout}' 2>/dev/null || echo "")
+              if [ -z "$TIMEOUT" ] || [ "$TIMEOUT" = "{}" ]; then
+                echo "FAILED: Timeout not configured"
+                exit 1
+              fi
+              echo "Found Timeout: $TIMEOUT"
+
+              # Verify RateLimit
+              RATE_LIMIT=$(kubectl get backendtrafficpolicies.gateway.envoyproxy.io "$POLICY_NAME" \
+                -n "$NAMESPACE" -o jsonpath='{.spec.rateLimit}' 2>/dev/null || echo "")
+              if [ -z "$RATE_LIMIT" ] || [ "$RATE_LIMIT" = "{}" ]; then
+                echo "FAILED: RateLimit not configured"
+                exit 1
+              fi
+              echo "Found RateLimit: $RATE_LIMIT"
+
+              # Verify CircuitBreaker
+              CB=$(kubectl get backendtrafficpolicies.gateway.envoyproxy.io "$POLICY_NAME" \
+                -n "$NAMESPACE" -o jsonpath='{.spec.circuitBreaker}' 2>/dev/null || echo "")
+              if [ -z "$CB" ] || [ "$CB" = "{}" ]; then
+                echo "FAILED: CircuitBreaker not configured"
+                exit 1
+              fi
+              echo "Found CircuitBreaker: $CB"
+
+              echo "SUCCESS: Single BackendTrafficPolicy has all features"
+            check:
+              ($error == null): true
+
+    - name: verify-single-policy
+      description: Verify only one BackendTrafficPolicy was created
+      try:
+        - script:
+            cluster: conversion
+            timeout: 30s
+            content: |
+              set -e
+              NAMESPACE=default
+              SOURCE_LABEL="conv-combined-btp.default"
+
+              COUNT=$(kubectl get backendtrafficpolicies.gateway.envoyproxy.io -n "$NAMESPACE" \
+                -l "kubelb.k8c.io/source-ingress=${SOURCE_LABEL}" -o name 2>/dev/null | wc -l)
+
+              if [ "$COUNT" -ne 1 ]; then
+                echo "FAILED: Expected 1 BackendTrafficPolicy, found $COUNT"
+                exit 1
+              fi
+
+              echo "SUCCESS: Exactly 1 BackendTrafficPolicy created"
+            check:
+              ($error == null): true
+
+    - name: cleanup
+      description: Cleanup resources
+      use:
+        template: ../../../../step-templates/conversion/cleanup-conversion.yaml
+        with:
+          bindings:
+            - name: ingress_name
+              value: ($name)

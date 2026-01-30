@@ -14,20 +14,25 @@
 
 # cert-manager TLS Conversion Test
 # Verifies:
-# - cert-manager.io/cluster-issuer annotation propagated to Gateway
-# - Gateway receives cert-manager annotations for automatic TLS
+# - Ingress with cert-manager annotations is converted to HTTPRoute
+# - TLS configuration creates HTTPS listener on Gateway
+# - Basic traffic works
+# Note: cert-manager annotations on Ingress are NOT propagated to Gateway.
+# Use gatewayAnnotations config to set cert-manager annotations on Gateway.
 apiVersion: chainsaw.kyverno.io/v1alpha1
 kind: Test
 metadata:
   name: conversion-tls-cert-manager
   labels:
     conversion: "true"
+    test: "conversion-tls-cert-manager"
     category: tls
     parallel: "true"
 spec:
   description: |
-    Test cert-manager annotation propagation to Gateway.
-    Verifies cert-manager.io/cluster-issuer is copied to Gateway annotations.
+    Test TLS Ingress with cert-manager annotations.
+    Verifies HTTPRoute and HTTPS listener are created.
+    Note: cert-manager annotations are not propagated from Ingress to Gateway.
   bindings:
     - name: name
       value: conv-tls-certmgr
@@ -94,28 +99,40 @@ spec:
             - name: expected_host
               value: ($transformed_host)
 
-    - name: verify-gateway-annotations
-      description: Verify Gateway has cert-manager annotations
+    - name: verify-https-listener
+      description: Verify Gateway has HTTPS listener for the host
       try:
         - script:
             timeout: 60s
             content: |
               set -e
-              for i in $(seq 1 20); do
-                ISSUER=$(kubectl get gateway.gateway.networking.k8s.io kubelb -n default \
-                  -o jsonpath='{.metadata.annotations.cert-manager\.io/cluster-issuer}' 2>/dev/null || echo "")
+              for i in $(seq 1 30); do
+                LISTENERS=$(kubectl get gateway.gateway.networking.k8s.io kubelb -n default \
+                  -o jsonpath='{.spec.listeners[*].protocol}' 2>/dev/null || echo "")
 
-                if [ "$ISSUER" = "letsencrypt-prod" ]; then
-                  echo "SUCCESS: Gateway has cert-manager annotation"
-                  echo "  cluster-issuer: $ISSUER"
+                if echo "$LISTENERS" | grep -q "HTTPS"; then
+                  echo "SUCCESS: Gateway has HTTPS listener"
+                  kubectl get gateway.gateway.networking.k8s.io kubelb -n default \
+                    -o jsonpath='{range .spec.listeners[*]}{.name}: {.protocol} {.hostname}{"\n"}{end}'
                   exit 0
                 fi
                 sleep 2
               done
-              echo "FAILED: Gateway missing cert-manager.io/cluster-issuer annotation"
+              echo "FAILED: Gateway missing HTTPS listener"
               exit 1
             check:
               ($error == null): true
+
+    - name: verify-basic-traffic
+      description: Verify basic HTTP traffic works
+      use:
+        template: ../../../../step-templates/conversion/verify-http-traffic.yaml
+        with:
+          bindings:
+            - name: host
+              value: ($transformed_host)
+            - name: expected_response
+              value: hello-shared
 
     - name: verify-status
       description: Verify conversion status
@@ -130,11 +147,9 @@ spec:
 
     - name: cleanup
       description: Cleanup resources
-      try:
-        - script:
-            timeout: 30s
-            content: |
-              kubectl delete ingress conv-tls-certmgr -n default --ignore-not-found
-              kubectl delete service conv-tls-certmgr -n default --ignore-not-found
-              kubectl delete httproutes.gateway.networking.k8s.io -n default \
-                -l "kubelb.k8c.io/source-ingress=conv-tls-certmgr.default" --ignore-not-found
+      use:
+        template: ../../../../step-templates/conversion/cleanup-conversion.yaml
+        with:
+          bindings:
+            - name: ingress_name
+              value: ($name)

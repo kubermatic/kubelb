@@ -37,16 +37,17 @@ const (
 	ConversionStatusPartial   = "partial"
 	ConversionStatusPending   = "pending" // Routes created but not yet accepted
 	ConversionStatusFailed    = "failed"
+	ConversionStatusSkipped   = "skipped"
+
+	// Skip reason annotation
+	AnnotationConversionSkipReason = "kubelb.k8c.io/conversion-skip-reason"
+
+	// Skip reasons
+	SkipReasonCanary = "canary annotations are not supported"
 
 	// NGINX annotations (for skip logic and protocol detection)
 	NginxCanary          = "nginx.ingress.kubernetes.io/canary"
 	NginxBackendProtocol = "nginx.ingress.kubernetes.io/backend-protocol"
-
-	// cert-manager annotations (propagated to Gateway)
-	CertManagerAnnotationPrefix = "cert-manager.io/"
-	CertManagerIssuer           = "cert-manager.io/issuer"
-	CertManagerClusterIssuer    = "cert-manager.io/cluster-issuer"
-	LegacyTLSAcme               = "kubernetes.io/tls-acme"
 
 	// external-dns annotations
 	ExternalDNSAnnotationPrefix = "external-dns.alpha.kubernetes.io/"

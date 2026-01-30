@@ -24,6 +24,8 @@ import (
 	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
 )
 
+const testIssuerLetsencrypt = "letsencrypt"
+
 func TestBuildGateway(t *testing.T) {
 	config := GatewayConfig{
 		Name:      "test-gateway",
@@ -33,7 +35,7 @@ func TestBuildGateway(t *testing.T) {
 			{Hostname: "app.example.com", SecretName: "app-tls"},
 		},
 		Annotations: map[string]string{
-			"cert-manager.io/cluster-issuer": "letsencrypt",
+			"cert-manager.io/cluster-issuer": testIssuerLetsencrypt,
 		},
 	}
 
@@ -51,7 +53,7 @@ func TestBuildGateway(t *testing.T) {
 	if gateway.Labels[LabelManagedBy] != ControllerName {
 		t.Errorf("expected managed-by label, got %v", gateway.Labels)
 	}
-	if gateway.Annotations["cert-manager.io/cluster-issuer"] != "letsencrypt" {
+	if gateway.Annotations["cert-manager.io/cluster-issuer"] != testIssuerLetsencrypt {
 		t.Errorf("expected annotation, got %v", gateway.Annotations)
 	}
 
@@ -181,14 +183,9 @@ func TestListenerNameFromHostname(t *testing.T) {
 }
 
 func TestExtractGatewayAnnotations(t *testing.T) {
-	const tlsAcmeValue = "enabled" // Use distinct value to avoid goconst warning
-
 	ingress := &networkingv1.Ingress{
 		ObjectMeta: metav1.ObjectMeta{
 			Annotations: map[string]string{
-				"cert-manager.io/cluster-issuer":             "letsencrypt",
-				"cert-manager.io/duration":                   "8760h",
-				"kubernetes.io/tls-acme":                     tlsAcmeValue,
 				"external-dns.alpha.kubernetes.io/target":    "lb.example.com",
 				"external-dns.alpha.kubernetes.io/ttl":       "300",
 				"nginx.ingress.kubernetes.io/rewrite-target": "/",
@@ -196,26 +193,26 @@ func TestExtractGatewayAnnotations(t *testing.T) {
 		},
 	}
 
-	// Test with both flags enabled
+	// Test with external-dns enabled and user-specified gateway annotations
 	r := &Reconciler{
-		PropagateCertManager: true,
 		PropagateExternalDNS: true,
+		GatewayAnnotations: map[string]string{
+			"cert-manager.io/cluster-issuer": testIssuerLetsencrypt,
+			"custom.io/my-annotation":        "my-value",
+		},
 	}
 
 	annotations := r.extractGatewayAnnotations(ingress)
 
-	// Should have cert-manager annotations
-	if annotations["cert-manager.io/cluster-issuer"] != "letsencrypt" {
-		t.Error("expected cert-manager.io/cluster-issuer")
+	// Should have user-specified gateway annotations
+	if annotations["cert-manager.io/cluster-issuer"] != testIssuerLetsencrypt {
+		t.Error("expected cert-manager.io/cluster-issuer from GatewayAnnotations")
 	}
-	if annotations["cert-manager.io/duration"] != "8760h" {
-		t.Error("expected cert-manager.io/duration")
-	}
-	if annotations["kubernetes.io/tls-acme"] != tlsAcmeValue {
-		t.Error("expected kubernetes.io/tls-acme")
+	if annotations["custom.io/my-annotation"] != "my-value" {
+		t.Error("expected custom.io/my-annotation from GatewayAnnotations")
 	}
 
-	// Should have external-dns target annotation
+	// Should have external-dns target annotation from Ingress
 	if annotations["external-dns.alpha.kubernetes.io/target"] != "lb.example.com" {
 		t.Error("expected external-dns target")
 	}
@@ -238,7 +235,6 @@ func TestExtractHTTPRouteAnnotations(t *testing.T) {
 				"external-dns.alpha.kubernetes.io/target":   "lb.example.com",
 				"external-dns.alpha.kubernetes.io/ttl":      "300",
 				"external-dns.alpha.kubernetes.io/hostname": "app.example.com",
-				"cert-manager.io/cluster-issuer":            "letsencrypt",
 			},
 		},
 	}
@@ -261,18 +257,12 @@ func TestExtractHTTPRouteAnnotations(t *testing.T) {
 	if _, ok := annotations["external-dns.alpha.kubernetes.io/target"]; ok {
 		t.Error("target should not be on HTTPRoute")
 	}
-
-	// Should NOT have cert-manager annotations
-	if _, ok := annotations["cert-manager.io/cluster-issuer"]; ok {
-		t.Error("cert-manager annotations should not be on HTTPRoute")
-	}
 }
 
 func TestExtractAnnotations_FlagsDisabled(t *testing.T) {
 	ingress := &networkingv1.Ingress{
 		ObjectMeta: metav1.ObjectMeta{
 			Annotations: map[string]string{
-				"cert-manager.io/cluster-issuer":          "letsencrypt",
 				"external-dns.alpha.kubernetes.io/target": "lb.example.com",
 				"external-dns.alpha.kubernetes.io/ttl":    "300",
 			},
@@ -280,8 +270,8 @@ func TestExtractAnnotations_FlagsDisabled(t *testing.T) {
 	}
 
 	r := &Reconciler{
-		PropagateCertManager: false,
 		PropagateExternalDNS: false,
+		GatewayAnnotations:   nil,
 	}
 
 	gatewayAnnotations := r.extractGatewayAnnotations(ingress)
@@ -292,6 +282,28 @@ func TestExtractAnnotations_FlagsDisabled(t *testing.T) {
 	}
 	if len(httpRouteAnnotations) != 0 {
 		t.Errorf("expected no httproute annotations, got %v", httpRouteAnnotations)
+	}
+}
+
+func TestExtractGatewayAnnotations_WithGatewayAnnotationsOnly(t *testing.T) {
+	// Test that gateway annotations work without any Ingress annotations
+	ingress := &networkingv1.Ingress{
+		ObjectMeta: metav1.ObjectMeta{
+			Annotations: nil,
+		},
+	}
+
+	r := &Reconciler{
+		PropagateExternalDNS: true,
+		GatewayAnnotations: map[string]string{
+			"cert-manager.io/cluster-issuer": testIssuerLetsencrypt,
+		},
+	}
+
+	annotations := r.extractGatewayAnnotations(ingress)
+
+	if annotations["cert-manager.io/cluster-issuer"] != testIssuerLetsencrypt {
+		t.Error("expected gateway annotations to be set even without Ingress annotations")
 	}
 }
 

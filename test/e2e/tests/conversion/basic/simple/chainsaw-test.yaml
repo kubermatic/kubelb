@@ -25,6 +25,7 @@ metadata:
   name: conversion-basic-simple
   labels:
     conversion: "true"
+    test: "conversion-basic-simple"
     category: basic
     parallel: "true"
 spec:
