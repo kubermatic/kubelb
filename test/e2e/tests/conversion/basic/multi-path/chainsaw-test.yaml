@@ -1,0 +1,170 @@
+# Copyright 2026 The KubeLB Authors.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# Multi-path Ingress-to-Gateway Conversion Test
+# Verifies:
+# - Ingress with multiple paths creates HTTPRoute with multiple rules
+# - Each path routes correctly
+apiVersion: chainsaw.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: conversion-basic-multi-path
+  labels:
+    conversion: "true"
+    category: basic
+    parallel: "true"
+spec:
+  description: |
+    Test multi-path Ingress conversion.
+    Creates Ingress with multiple paths, verifies all paths in HTTPRoute rules.
+  bindings:
+    - name: name
+      value: conv-multipath
+    - name: namespace
+      value: default
+    - name: transformed_host
+      value: conv-multipath.gateway.local
+  steps:
+    # Step 1: Create ClusterIP service
+    - name: create-service
+      description: Create ClusterIP service
+      try:
+        - apply:
+            resource:
+              apiVersion: v1
+              kind: Service
+              metadata:
+                name: conv-multipath
+                namespace: default
+              spec:
+                type: ClusterIP
+                selector:
+                  app: echo-shared
+                ports:
+                  - port: 80
+                    targetPort: 5678
+
+    # Step 2: Create Ingress with multiple paths
+    - name: create-ingress
+      description: Create Ingress with multiple paths
+      try:
+        - apply:
+            resource:
+              apiVersion: networking.k8s.io/v1
+              kind: Ingress
+              metadata:
+                name: conv-multipath
+                namespace: default
+              spec:
+                ingressClassName: nginx
+                rules:
+                  - host: conv-multipath.test.local
+                    http:
+                      paths:
+                        - path: /api
+                          pathType: Prefix
+                          backend:
+                            service:
+                              name: conv-multipath
+                              port:
+                                number: 80
+                        - path: /web
+                          pathType: Prefix
+                          backend:
+                            service:
+                              name: conv-multipath
+                              port:
+                                number: 80
+                        - path: /
+                          pathType: Prefix
+                          backend:
+                            service:
+                              name: conv-multipath
+                              port:
+                                number: 80
+
+    # Step 3: Verify HTTPRoute has multiple rules
+    - name: verify-httproute-rules
+      description: Verify HTTPRoute has rules for all paths
+      try:
+        - script:
+            timeout: 60s
+            content: |
+              set -e
+              SOURCE_LABEL="conv-multipath.default"
+
+              for i in $(seq 1 30); do
+                HTTPROUTE=$(kubectl get httproutes.gateway.networking.k8s.io -n default \
+                  -l "kubelb.k8c.io/source-ingress=${SOURCE_LABEL}" -o name 2>/dev/null | head -1)
+
+                if [ -n "$HTTPROUTE" ]; then
+                  RULE_COUNT=$(kubectl get $HTTPROUTE -n default \
+                    -o jsonpath='{.spec.rules}' | jq 'length')
+
+                  if [ "$RULE_COUNT" -ge 3 ]; then
+                    echo "SUCCESS: HTTPRoute has $RULE_COUNT rules"
+                    kubectl get $HTTPROUTE -n default \
+                      -o jsonpath='{range .spec.rules[*]}{.matches[0].path.value}{"\n"}{end}'
+                    exit 0
+                  fi
+                fi
+
+                echo "Attempt $i: waiting for HTTPRoute with 3 rules..."
+                sleep 2
+              done
+
+              echo "FAILED: Expected HTTPRoute with 3 rules"
+              exit 1
+            check:
+              ($error == null): true
+
+    # Step 4: Verify conversion status
+    - name: verify-status
+      description: Verify Ingress has conversion-status=converted
+      use:
+        template: ../../../../step-templates/conversion/verify-status-annotation.yaml
+        with:
+          bindings:
+            - name: ingress_name
+              value: ($name)
+            - name: namespace
+              value: ($namespace)
+            - name: expected_status
+              value: converted
+
+    # Step 5: Verify HTTP traffic on /api path
+    - name: verify-http
+      description: Verify HTTP for /api path
+      use:
+        template: ../../../../step-templates/conversion/verify-http-traffic.yaml
+        with:
+          bindings:
+            - name: host
+              value: ($transformed_host)
+            - name: path
+              value: /api
+            - name: expected_response
+              value: hello-shared
+
+    # Cleanup
+    - name: cleanup
+      description: Cleanup resources
+      use:
+        template: ../../../../step-templates/conversion/cleanup-conversion.yaml
+        with:
+          bindings:
+            - name: ingress_name
+              value: ($name)
+            - name: namespace
+              value: ($namespace)

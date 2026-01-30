@@ -1,0 +1,122 @@
+# Copyright 2026 The KubeLB Authors.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# No Domain Transform Test
+# Note: This test documents expected behavior but cannot actually test without
+# reconfiguring CCM (which requires restart). In the current e2e setup,
+# domain transformation is always enabled.
+#
+# This test verifies the default behavior WITH domain transformation enabled.
+apiVersion: chainsaw.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: conversion-isolated-domain-transform
+  labels:
+    conversion: "true"
+    category: isolated
+    parallel: "false"
+spec:
+  concurrent: false
+  description: |
+    Test domain transformation behavior.
+    With default config, test.local -> gateway.local transformation.
+  bindings:
+    - name: name
+      value: conv-domain
+    - name: namespace
+      value: default
+  steps:
+    - name: create-service
+      description: Create ClusterIP service
+      try:
+        - apply:
+            resource:
+              apiVersion: v1
+              kind: Service
+              metadata:
+                name: conv-domain
+                namespace: default
+              spec:
+                type: ClusterIP
+                selector:
+                  app: echo-shared
+                ports:
+                  - port: 80
+                    targetPort: 5678
+
+    - name: create-ingress
+      description: Create Ingress with test.local domain
+      try:
+        - apply:
+            resource:
+              apiVersion: networking.k8s.io/v1
+              kind: Ingress
+              metadata:
+                name: conv-domain
+                namespace: default
+              spec:
+                ingressClassName: nginx
+                rules:
+                  - host: myapp.test.local
+                    http:
+                      paths:
+                        - path: /
+                          pathType: Prefix
+                          backend:
+                            service:
+                              name: conv-domain
+                              port:
+                                number: 80
+
+    - name: verify-domain-transformed
+      description: Verify hostname is transformed
+      try:
+        - script:
+            timeout: 60s
+            content: |
+              set -e
+              SOURCE_LABEL="conv-domain.default"
+
+              for i in $(seq 1 30); do
+                HTTPROUTE=$(kubectl get httproutes.gateway.networking.k8s.io -n default \
+                  -l "kubelb.k8c.io/source-ingress=${SOURCE_LABEL}" -o name 2>/dev/null | head -1)
+
+                if [ -n "$HTTPROUTE" ]; then
+                  HOSTNAME=$(kubectl get $HTTPROUTE -n default -o jsonpath='{.spec.hostnames[0]}')
+
+                  # Should be transformed from test.local to gateway.local
+                  if echo "$HOSTNAME" | grep -q "gateway.local"; then
+                    echo "SUCCESS: Hostname transformed"
+                    echo "  Original: myapp.test.local"
+                    echo "  Transformed: $HOSTNAME"
+                    exit 0
+                  fi
+                fi
+                sleep 2
+              done
+              echo "FAILED: Hostname not transformed"
+              exit 1
+            check:
+              ($error == null): true
+
+    - name: cleanup
+      description: Cleanup resources
+      use:
+        template: ../../../../step-templates/conversion/cleanup-conversion.yaml
+        with:
+          bindings:
+            - name: ingress_name
+              value: ($name)
+            - name: namespace
+              value: ($namespace)

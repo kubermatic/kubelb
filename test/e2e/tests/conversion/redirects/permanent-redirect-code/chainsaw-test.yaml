@@ -1,0 +1,119 @@
+# Copyright 2026 The KubeLB Authors.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# Permanent Redirect Code Conversion Test
+# Verifies:
+# - nginx.ingress.kubernetes.io/permanent-redirect-code annotation
+# - Note: Gateway API maps 308 to 301 (limited status code support)
+apiVersion: chainsaw.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: conversion-redirects-permanent-code
+  labels:
+    conversion: "true"
+    category: redirects
+    parallel: "true"
+spec:
+  description: |
+    Test permanent-redirect-code annotation conversion.
+    Gateway API has limited redirect codes, so 308 maps to 301.
+  bindings:
+    - name: name
+      value: conv-redir-code
+    - name: namespace
+      value: default
+    - name: transformed_host
+      value: conv-redircode.gateway.local
+  steps:
+    - name: create-service
+      description: Create ClusterIP service
+      try:
+        - apply:
+            resource:
+              apiVersion: v1
+              kind: Service
+              metadata:
+                name: conv-redir-code
+                namespace: default
+              spec:
+                type: ClusterIP
+                selector:
+                  app: echo-shared
+                ports:
+                  - port: 80
+                    targetPort: 5678
+
+    - name: create-ingress
+      description: Create Ingress with redirect code
+      try:
+        - apply:
+            resource:
+              apiVersion: networking.k8s.io/v1
+              kind: Ingress
+              metadata:
+                name: conv-redir-code
+                namespace: default
+                annotations:
+                  nginx.ingress.kubernetes.io/permanent-redirect: "https://example.com"
+                  nginx.ingress.kubernetes.io/permanent-redirect-code: "308"
+              spec:
+                ingressClassName: nginx
+                rules:
+                  - host: conv-redircode.test.local
+                    http:
+                      paths:
+                        - path: /
+                          pathType: Prefix
+                          backend:
+                            service:
+                              name: conv-redir-code
+                              port:
+                                number: 80
+
+    - name: verify-httproute
+      description: Verify HTTPRoute exists
+      use:
+        template: ../../../../step-templates/conversion/verify-httproute.yaml
+        with:
+          bindings:
+            - name: ingress_name
+              value: ($name)
+            - name: namespace
+              value: ($namespace)
+            - name: expected_host
+              value: ($transformed_host)
+
+    - name: verify-status
+      description: Verify conversion completed
+      use:
+        template: ../../../../step-templates/conversion/verify-status-annotation.yaml
+        with:
+          bindings:
+            - name: ingress_name
+              value: ($name)
+            - name: namespace
+              value: ($namespace)
+            - name: expected_status
+              value: converted
+
+    - name: cleanup
+      description: Cleanup resources
+      use:
+        template: ../../../../step-templates/conversion/cleanup-conversion.yaml
+        with:
+          bindings:
+            - name: ingress_name
+              value: ($name)
+            - name: namespace
+              value: ($namespace)

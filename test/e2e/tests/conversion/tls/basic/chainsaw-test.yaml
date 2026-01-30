@@ -1,0 +1,164 @@
+# Copyright 2026 The KubeLB Authors.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# Basic TLS Conversion Test
+# Verifies:
+# - Ingress with TLS creates Gateway with HTTPS listener
+# - TLS secret referenced in Gateway listener
+apiVersion: chainsaw.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: conversion-tls-basic
+  labels:
+    conversion: "true"
+    category: tls
+    parallel: "true"
+spec:
+  description: |
+    Test basic TLS Ingress conversion.
+    Creates Ingress with TLS, verifies Gateway has HTTPS listener.
+  bindings:
+    - name: name
+      value: conv-tls-basic
+    - name: namespace
+      value: default
+    - name: transformed_host
+      value: conv-tlsbasic.gateway.local
+  steps:
+    - name: create-service
+      description: Create ClusterIP service
+      try:
+        - apply:
+            resource:
+              apiVersion: v1
+              kind: Service
+              metadata:
+                name: conv-tls-basic
+                namespace: default
+              spec:
+                type: ClusterIP
+                selector:
+                  app: echo-shared
+                ports:
+                  - port: 80
+                    targetPort: 5678
+
+    - name: create-tls-secret
+      description: Create TLS secret
+      try:
+        - script:
+            timeout: 30s
+            content: |
+              # Generate self-signed certificate
+              openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
+                -keyout /tmp/tls.key -out /tmp/tls.crt \
+                -subj "/CN=conv-tlsbasic.gateway.local" 2>/dev/null
+
+              kubectl create secret tls conv-tls-basic-secret \
+                --cert=/tmp/tls.crt --key=/tmp/tls.key \
+                -n default --dry-run=client -o yaml | kubectl apply -f -
+
+              rm -f /tmp/tls.key /tmp/tls.crt
+            check:
+              ($error == null): true
+
+    - name: create-ingress
+      description: Create Ingress with TLS
+      try:
+        - apply:
+            resource:
+              apiVersion: networking.k8s.io/v1
+              kind: Ingress
+              metadata:
+                name: conv-tls-basic
+                namespace: default
+              spec:
+                ingressClassName: nginx
+                tls:
+                  - hosts:
+                      - conv-tlsbasic.test.local
+                    secretName: conv-tls-basic-secret
+                rules:
+                  - host: conv-tlsbasic.test.local
+                    http:
+                      paths:
+                        - path: /
+                          pathType: Prefix
+                          backend:
+                            service:
+                              name: conv-tls-basic
+                              port:
+                                number: 80
+
+    - name: verify-httproute
+      description: Verify HTTPRoute exists
+      use:
+        template: ../../../../step-templates/conversion/verify-httproute.yaml
+        with:
+          bindings:
+            - name: ingress_name
+              value: ($name)
+            - name: namespace
+              value: ($namespace)
+            - name: expected_host
+              value: ($transformed_host)
+
+    - name: verify-gateway-https
+      description: Verify Gateway has HTTPS listener
+      try:
+        - script:
+            timeout: 60s
+            content: |
+              set -e
+              for i in $(seq 1 20); do
+                LISTENERS=$(kubectl get gateway.gateway.networking.k8s.io kubelb -n default \
+                  -o jsonpath='{.spec.listeners[*].protocol}' 2>/dev/null || echo "")
+
+                if echo "$LISTENERS" | grep -q "HTTPS"; then
+                  echo "SUCCESS: Gateway has HTTPS listener"
+                  kubectl get gateway.gateway.networking.k8s.io kubelb -n default \
+                    -o jsonpath='{range .spec.listeners[*]}{.name}: {.protocol}{"\n"}{end}'
+                  exit 0
+                fi
+                sleep 2
+              done
+              echo "FAILED: Gateway missing HTTPS listener"
+              exit 1
+            check:
+              ($error == null): true
+
+    - name: verify-status
+      description: Verify conversion status
+      use:
+        template: ../../../../step-templates/conversion/verify-status-annotation.yaml
+        with:
+          bindings:
+            - name: ingress_name
+              value: ($name)
+            - name: namespace
+              value: ($namespace)
+            - name: expected_status
+              value: converted
+
+    - name: cleanup
+      description: Cleanup resources
+      try:
+        - script:
+            timeout: 30s
+            content: |
+              kubectl delete ingress conv-tls-basic -n default --ignore-not-found
+              kubectl delete service conv-tls-basic -n default --ignore-not-found
+              kubectl delete secret conv-tls-basic-secret -n default --ignore-not-found
+              kubectl delete httproutes.gateway.networking.k8s.io -n default \
+                -l "kubelb.k8c.io/source-ingress=conv-tls-basic.default" --ignore-not-found

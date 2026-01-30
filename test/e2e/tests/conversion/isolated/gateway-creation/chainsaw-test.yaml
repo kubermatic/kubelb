@@ -1,0 +1,144 @@
+# Copyright 2026 The KubeLB Authors.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# Gateway Creation Test
+# Verifies:
+# - First Ingress creates Gateway if it doesn't exist
+# - Gateway has managed-by label
+# - Subsequent Ingresses don't recreate Gateway
+apiVersion: chainsaw.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: conversion-isolated-gateway-creation
+  labels:
+    conversion: "true"
+    category: isolated
+    parallel: "false"
+spec:
+  concurrent: false
+  description: |
+    Test Gateway creation from first Ingress.
+    Verifies converter creates Gateway with correct labels.
+    Runs in isolation to ensure clean state.
+  bindings:
+    - name: name
+      value: conv-gw-create
+    - name: namespace
+      value: default
+    - name: transformed_host
+      value: conv-gwcreate.gateway.local
+  steps:
+    # Step 0: Clean up any existing Gateway (ensure clean state)
+    - name: cleanup-existing
+      description: Remove existing Gateway for clean test
+      try:
+        - script:
+            timeout: 30s
+            content: |
+              # Delete Gateway if it exists (from other tests)
+              kubectl delete gateway.gateway.networking.k8s.io kubelb -n default --ignore-not-found
+              # Wait for deletion
+              for i in $(seq 1 10); do
+                if ! kubectl get gateway.gateway.networking.k8s.io kubelb -n default &>/dev/null; then
+                  echo "Gateway cleaned up"
+                  exit 0
+                fi
+                sleep 1
+              done
+            check:
+              ($error == null): true
+
+    - name: create-service
+      description: Create ClusterIP service
+      try:
+        - apply:
+            resource:
+              apiVersion: v1
+              kind: Service
+              metadata:
+                name: conv-gw-create
+                namespace: default
+              spec:
+                type: ClusterIP
+                selector:
+                  app: echo-shared
+                ports:
+                  - port: 80
+                    targetPort: 5678
+
+    - name: create-first-ingress
+      description: Create first Ingress (should create Gateway)
+      try:
+        - apply:
+            resource:
+              apiVersion: networking.k8s.io/v1
+              kind: Ingress
+              metadata:
+                name: conv-gw-create
+                namespace: default
+              spec:
+                ingressClassName: nginx
+                rules:
+                  - host: conv-gwcreate.test.local
+                    http:
+                      paths:
+                        - path: /
+                          pathType: Prefix
+                          backend:
+                            service:
+                              name: conv-gw-create
+                              port:
+                                number: 80
+
+    - name: verify-gateway-created
+      description: Verify Gateway created with correct labels
+      use:
+        template: ../../../../step-templates/conversion/verify-gateway.yaml
+        with:
+          bindings:
+            - name: gateway_name
+              value: kubelb
+            - name: namespace
+              value: default
+
+    - name: verify-managed-by-label
+      description: Verify Gateway has managed-by label
+      try:
+        - script:
+            timeout: 30s
+            content: |
+              set -e
+              MANAGED_BY=$(kubectl get gateway.gateway.networking.k8s.io kubelb -n default \
+                -o jsonpath='{.metadata.labels.kubelb\.k8c\.io/managed-by}')
+
+              if [ "$MANAGED_BY" = "ingress-conversion-controller" ]; then
+                echo "SUCCESS: Gateway has managed-by label"
+                exit 0
+              fi
+
+              echo "FAILED: Expected managed-by='ingress-conversion-controller', got '$MANAGED_BY'"
+              exit 1
+            check:
+              ($error == null): true
+
+    - name: cleanup
+      description: Cleanup resources
+      use:
+        template: ../../../../step-templates/conversion/cleanup-conversion.yaml
+        with:
+          bindings:
+            - name: ingress_name
+              value: ($name)
+            - name: namespace
+              value: ($namespace)

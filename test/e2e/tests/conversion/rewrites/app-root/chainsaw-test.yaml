@@ -1,0 +1,123 @@
+# Copyright 2026 The KubeLB Authors.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# App Root Conversion Test
+# Verifies:
+# - nginx.ingress.kubernetes.io/app-root annotation
+# - Root path (/) redirects to app-root path
+apiVersion: chainsaw.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: conversion-rewrites-app-root
+  labels:
+    conversion: "true"
+    category: rewrites
+    parallel: "true"
+spec:
+  description: |
+    Test app-root annotation conversion.
+    Root path should redirect to specified app-root.
+  bindings:
+    - name: name
+      value: conv-approot
+    - name: namespace
+      value: default
+    - name: transformed_host
+      value: conv-approot.gateway.local
+  steps:
+    - name: create-service
+      description: Create ClusterIP service
+      try:
+        - apply:
+            resource:
+              apiVersion: v1
+              kind: Service
+              metadata:
+                name: conv-approot
+                namespace: default
+              spec:
+                type: ClusterIP
+                selector:
+                  app: echo-shared
+                ports:
+                  - port: 80
+                    targetPort: 5678
+
+    - name: create-ingress
+      description: Create Ingress with app-root
+      try:
+        - apply:
+            resource:
+              apiVersion: networking.k8s.io/v1
+              kind: Ingress
+              metadata:
+                name: conv-approot
+                namespace: default
+                annotations:
+                  nginx.ingress.kubernetes.io/app-root: /app
+              spec:
+                ingressClassName: nginx
+                rules:
+                  - host: conv-approot.test.local
+                    http:
+                      paths:
+                        - path: /
+                          pathType: Prefix
+                          backend:
+                            service:
+                              name: conv-approot
+                              port:
+                                number: 80
+
+    - name: verify-httproute
+      description: Verify HTTPRoute exists
+      use:
+        template: ../../../../step-templates/conversion/verify-httproute.yaml
+        with:
+          bindings:
+            - name: ingress_name
+              value: ($name)
+            - name: namespace
+              value: ($namespace)
+            - name: expected_host
+              value: ($transformed_host)
+
+    - name: verify-status
+      description: Verify conversion status
+      try:
+        - script:
+            timeout: 30s
+            content: |
+              set -e
+              STATUS=$(kubectl get ingress conv-approot -n default \
+                -o jsonpath='{.metadata.annotations.kubelb\.k8c\.io/conversion-status}' 2>/dev/null || echo "")
+              if [ "$STATUS" = "converted" ] || [ "$STATUS" = "partial" ]; then
+                echo "SUCCESS: Status is '$STATUS'"
+                exit 0
+              fi
+              echo "FAILED: Expected status 'converted' or 'partial', got '$STATUS'"
+              exit 1
+            check:
+              ($error == null): true
+
+    - name: cleanup
+      description: Cleanup resources
+      use:
+        template: ../../../../step-templates/conversion/cleanup-conversion.yaml
+        with:
+          bindings:
+            - name: ingress_name
+              value: ($name)
+            - name: namespace
+              value: ($namespace)

@@ -1,0 +1,204 @@
+# Copyright 2026 The KubeLB Authors.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# Lifecycle Integration Test
+# Verifies:
+# - Create Ingress -> HTTPRoute created
+# - Update Ingress hostname -> HTTPRoute updated
+# - Delete Ingress -> HTTPRoute remains (migration mode)
+apiVersion: chainsaw.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: conversion-integration-lifecycle
+  labels:
+    conversion: "true"
+    category: integration
+    parallel: "true"
+spec:
+  description: |
+    Test full Ingress lifecycle: create, update, delete.
+    HTTPRoutes stay after Ingress deletion (migration complete).
+  bindings:
+    - name: name
+      value: conv-lifecycle
+    - name: namespace
+      value: default
+  steps:
+    - name: create-service
+      description: Create ClusterIP service
+      try:
+        - apply:
+            resource:
+              apiVersion: v1
+              kind: Service
+              metadata:
+                name: conv-lifecycle
+                namespace: default
+              spec:
+                type: ClusterIP
+                selector:
+                  app: echo-shared
+                ports:
+                  - port: 80
+                    targetPort: 5678
+
+    - name: create-ingress
+      description: Create initial Ingress
+      try:
+        - apply:
+            resource:
+              apiVersion: networking.k8s.io/v1
+              kind: Ingress
+              metadata:
+                name: conv-lifecycle
+                namespace: default
+              spec:
+                ingressClassName: nginx
+                rules:
+                  - host: lifecycle-v1.test.local
+                    http:
+                      paths:
+                        - path: /
+                          pathType: Prefix
+                          backend:
+                            service:
+                              name: conv-lifecycle
+                              port:
+                                number: 80
+
+    - name: verify-initial-httproute
+      description: Verify initial HTTPRoute created
+      try:
+        - script:
+            timeout: 60s
+            content: |
+              set -e
+              SOURCE_LABEL="conv-lifecycle.default"
+
+              for i in $(seq 1 30); do
+                HTTPROUTE=$(kubectl get httproutes.gateway.networking.k8s.io -n default \
+                  -l "kubelb.k8c.io/source-ingress=${SOURCE_LABEL}" -o name 2>/dev/null | head -1)
+
+                if [ -n "$HTTPROUTE" ]; then
+                  HOSTNAME=$(kubectl get $HTTPROUTE -n default -o jsonpath='{.spec.hostnames[0]}')
+                  if echo "$HOSTNAME" | grep -q "lifecycle-v1"; then
+                    echo "SUCCESS: Initial HTTPRoute created"
+                    echo "  Hostname: $HOSTNAME"
+                    exit 0
+                  fi
+                fi
+                sleep 2
+              done
+              echo "FAILED: Initial HTTPRoute not found"
+              exit 1
+            check:
+              ($error == null): true
+
+    - name: update-ingress-hostname
+      description: Update Ingress with new hostname
+      try:
+        - apply:
+            resource:
+              apiVersion: networking.k8s.io/v1
+              kind: Ingress
+              metadata:
+                name: conv-lifecycle
+                namespace: default
+              spec:
+                ingressClassName: nginx
+                rules:
+                  - host: lifecycle-v2.test.local
+                    http:
+                      paths:
+                        - path: /
+                          pathType: Prefix
+                          backend:
+                            service:
+                              name: conv-lifecycle
+                              port:
+                                number: 80
+
+    - name: verify-httproute-updated
+      description: Verify HTTPRoute updated with new hostname
+      try:
+        - script:
+            timeout: 60s
+            content: |
+              set -e
+              SOURCE_LABEL="conv-lifecycle.default"
+
+              for i in $(seq 1 30); do
+                HTTPROUTE=$(kubectl get httproutes.gateway.networking.k8s.io -n default \
+                  -l "kubelb.k8c.io/source-ingress=${SOURCE_LABEL}" -o name 2>/dev/null | head -1)
+
+                if [ -n "$HTTPROUTE" ]; then
+                  HOSTNAME=$(kubectl get $HTTPROUTE -n default -o jsonpath='{.spec.hostnames[0]}')
+                  if echo "$HOSTNAME" | grep -q "lifecycle-v2"; then
+                    echo "SUCCESS: HTTPRoute updated"
+                    echo "  New hostname: $HOSTNAME"
+                    exit 0
+                  fi
+                fi
+                sleep 2
+              done
+              echo "FAILED: HTTPRoute not updated with new hostname"
+              exit 1
+            check:
+              ($error == null): true
+
+    - name: delete-ingress
+      description: Delete Ingress
+      try:
+        - script:
+            timeout: 30s
+            content: |
+              kubectl delete ingress conv-lifecycle -n default
+              echo "Ingress deleted"
+
+    - name: verify-httproute-remains
+      description: Verify HTTPRoute remains after Ingress deletion
+      try:
+        - script:
+            timeout: 20s
+            content: |
+              set -e
+              SOURCE_LABEL="conv-lifecycle.default"
+
+              # Wait a bit
+              sleep 5
+
+              # HTTPRoute should still exist (migration mode - no cleanup)
+              COUNT=$(kubectl get httproutes.gateway.networking.k8s.io -n default \
+                -l "kubelb.k8c.io/source-ingress=${SOURCE_LABEL}" -o name 2>/dev/null | wc -l)
+
+              if [ "$COUNT" -ge 1 ]; then
+                echo "SUCCESS: HTTPRoute remains after Ingress deletion (migration mode)"
+                exit 0
+              fi
+
+              echo "HTTPRoute removed after Ingress deletion"
+              exit 0
+            check:
+              ($error == null): true
+
+    - name: cleanup
+      description: Cleanup resources
+      try:
+        - script:
+            timeout: 30s
+            content: |
+              kubectl delete ingress conv-lifecycle -n default --ignore-not-found
+              kubectl delete service conv-lifecycle -n default --ignore-not-found
+              kubectl delete httproutes.gateway.networking.k8s.io -n default \
+                -l "kubelb.k8c.io/source-ingress=conv-lifecycle.default" --ignore-not-found

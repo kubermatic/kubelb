@@ -40,6 +40,7 @@ USE_KIND="${USE_KIND:-auto}"                # auto, true, false
 SKIP_BUILD="${SKIP_BUILD:-false}"           # Skip image building (use pre-built images)
 SKIP_IMAGE_LOAD="${SKIP_IMAGE_LOAD:-false}" # Skip image loading
 METALLB_IP_RANGE="${METALLB_IP_RANGE:-}"    # Override MetalLB IP range for cloud
+CONVERSION_MODE="${CONVERSION_MODE:-false}" # Deploy CCM in standalone conversion mode
 
 mkdir -p "${LOGS_DIR}"
 
@@ -322,6 +323,14 @@ deploy_ccms() {
     ["secondary"]="tenant2"
   )
 
+  # In conversion mode, only deploy to tenant1 with standalone settings
+  if [[ "${CONVERSION_MODE}" == "true" ]]; then
+    unset TENANT_MAP
+    declare -A TENANT_MAP=(
+      ["primary"]="tenant1"
+    )
+  fi
+
   local ccm_pids=()
   for tenant in "${!TENANT_MAP[@]}"; do
     local cluster="${TENANT_MAP[$tenant]}"
@@ -333,23 +342,36 @@ deploy_ccms() {
       # Create kubelb namespace in tenant cluster
       kubectl create ns kubelb 2> /dev/null || true
 
-      # Create secret with kubeconfig to kubelb management cluster
-      kubectl -n kubelb create secret generic kubelb-cluster \
-        --from-file=kubelb="${kubelb_kubeconfig}" \
-        --dry-run=client -o yaml | kubectl apply -f -
+      # Skip kubelb-cluster secret in conversion standalone mode
+      if [[ "${CONVERSION_MODE}" != "true" ]]; then
+        # Create secret with kubeconfig to kubelb management cluster
+        kubectl -n kubelb create secret generic kubelb-cluster \
+          --from-file=kubelb="${kubelb_kubeconfig}" \
+          --dry-run=client -o yaml | kubectl apply -f -
+      fi
 
       # Deploy CCM via helm in tenant cluster
       local helm_cmd
       helm_cmd=$(get_helm_command "kubelb-ccm" "kubelb")
       echodate "Running helm ${helm_cmd} for kubelb-ccm on ${cluster}..."
+
+      local values_file="${E2E_MANIFESTS_DIR}/kubelb-ccm/values.yaml"
+      local extra_args=""
+
+      if [[ "${CONVERSION_MODE}" == "true" ]]; then
+        values_file="${E2E_MANIFESTS_DIR}/kubelb-ccm/values-conversion.yaml"
+      else
+        extra_args="--set kubelb.tenantName=${tenant}"
+      fi
+
       helm ${helm_cmd} kubelb-ccm "${CHARTS_DIR}/kubelb-ccm" \
         --namespace kubelb \
-        --values "${E2E_MANIFESTS_DIR}/kubelb-ccm/values.yaml" \
+        --values "${values_file}" \
         --set image.repository="${CCM_IMAGE%:*}" \
         --set image.tag="${CCM_IMAGE#*:}" \
         --set image.pullPolicy="${pull_policy}" \
         --set imagePullSecrets= \
-        --set kubelb.tenantName="${tenant}"
+        ${extra_args}
 
       # Restart deployment to pick up new image (tag is fixed :e2e)
       if [[ "${helm_cmd}" == "upgrade" ]]; then
@@ -385,6 +407,14 @@ wait_for_ready() {
     ["primary"]="tenant1"
     ["secondary"]="tenant2"
   )
+
+  # In conversion mode, only wait for tenant1
+  if [[ "${CONVERSION_MODE}" == "true" ]]; then
+    unset TENANT_MAP
+    declare -A TENANT_MAP=(
+      ["primary"]="tenant1"
+    )
+  fi
 
   # Launch all wait operations in parallel (manager already waited in deploy_kubelb_manager)
   # CCMs in tenant clusters

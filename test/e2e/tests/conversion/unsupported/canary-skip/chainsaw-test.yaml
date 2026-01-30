@@ -1,0 +1,135 @@
+# Copyright 2026 The KubeLB Authors.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# Canary Ingress Skip Conversion Test
+# Verifies:
+# - nginx.ingress.kubernetes.io/canary=true Ingresses are skipped
+# - No HTTPRoute created for canary Ingresses
+# - Ingress left unchanged
+apiVersion: chainsaw.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: conversion-unsupported-canary
+  labels:
+    conversion: "true"
+    category: unsupported
+    parallel: "true"
+spec:
+  description: |
+    Test canary Ingresses are skipped.
+    NGINX canary feature is not supported in Gateway API conversion.
+  bindings:
+    - name: name
+      value: conv-canary
+    - name: namespace
+      value: default
+  steps:
+    - name: create-service
+      description: Create ClusterIP service
+      try:
+        - apply:
+            resource:
+              apiVersion: v1
+              kind: Service
+              metadata:
+                name: conv-canary
+                namespace: default
+              spec:
+                type: ClusterIP
+                selector:
+                  app: echo-shared
+                ports:
+                  - port: 80
+                    targetPort: 5678
+
+    - name: create-canary-ingress
+      description: Create canary Ingress (should be skipped)
+      try:
+        - apply:
+            resource:
+              apiVersion: networking.k8s.io/v1
+              kind: Ingress
+              metadata:
+                name: conv-canary
+                namespace: default
+                annotations:
+                  nginx.ingress.kubernetes.io/canary: "true"
+                  nginx.ingress.kubernetes.io/canary-weight: "20"
+              spec:
+                ingressClassName: nginx
+                rules:
+                  - host: conv-canary.test.local
+                    http:
+                      paths:
+                        - path: /
+                          pathType: Prefix
+                          backend:
+                            service:
+                              name: conv-canary
+                              port:
+                                number: 80
+
+    - name: verify-no-httproute
+      description: Verify no HTTPRoute created for canary
+      try:
+        - script:
+            timeout: 20s
+            content: |
+              set -e
+              SOURCE_LABEL="conv-canary.default"
+
+              # Wait a bit for any potential processing
+              sleep 10
+
+              COUNT=$(kubectl get httproutes.gateway.networking.k8s.io -n default \
+                -l "kubelb.k8c.io/source-ingress=${SOURCE_LABEL}" -o name 2>/dev/null | wc -l)
+
+              if [ "$COUNT" -eq 0 ]; then
+                echo "SUCCESS: No HTTPRoute created (canary Ingress skipped)"
+                exit 0
+              fi
+
+              echo "FAILED: HTTPRoute was created for canary Ingress"
+              exit 1
+            check:
+              ($error == null): true
+
+    - name: verify-no-conversion-status
+      description: Verify Ingress has no conversion status
+      try:
+        - script:
+            timeout: 10s
+            content: |
+              set -e
+              STATUS=$(kubectl get ingress conv-canary -n default \
+                -o jsonpath='{.metadata.annotations.kubelb\.k8c\.io/conversion-status}' 2>/dev/null || echo "")
+
+              if [ -z "$STATUS" ]; then
+                echo "SUCCESS: No conversion status (canary skipped)"
+                exit 0
+              fi
+
+              echo "FAILED: Found conversion status '$STATUS'"
+              exit 1
+            check:
+              ($error == null): true
+
+    - name: cleanup
+      description: Cleanup resources
+      try:
+        - script:
+            timeout: 30s
+            content: |
+              kubectl delete ingress conv-canary -n default --ignore-not-found
+              kubectl delete service conv-canary -n default --ignore-not-found

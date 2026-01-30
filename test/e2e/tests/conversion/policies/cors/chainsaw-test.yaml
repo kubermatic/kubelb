@@ -1,0 +1,120 @@
+# Copyright 2026 The KubeLB Authors.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# CORS Annotations Conversion Test
+# Verifies:
+# - enable-cors, cors-allow-* annotations
+# - Warning generated about SecurityPolicy requirement
+apiVersion: chainsaw.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: conversion-policies-cors
+  labels:
+    conversion: "true"
+    category: policies
+    parallel: "true"
+spec:
+  description: |
+    Test CORS annotations generate warning.
+    Gateway API requires SecurityPolicy for CORS.
+  bindings:
+    - name: name
+      value: conv-cors
+    - name: namespace
+      value: default
+    - name: transformed_host
+      value: conv-cors.gateway.local
+  steps:
+    - name: create-service
+      description: Create ClusterIP service
+      try:
+        - apply:
+            resource:
+              apiVersion: v1
+              kind: Service
+              metadata:
+                name: conv-cors
+                namespace: default
+              spec:
+                type: ClusterIP
+                selector:
+                  app: echo-shared
+                ports:
+                  - port: 80
+                    targetPort: 5678
+
+    - name: create-ingress
+      description: Create Ingress with CORS annotations
+      try:
+        - apply:
+            resource:
+              apiVersion: networking.k8s.io/v1
+              kind: Ingress
+              metadata:
+                name: conv-cors
+                namespace: default
+                annotations:
+                  nginx.ingress.kubernetes.io/enable-cors: "true"
+                  nginx.ingress.kubernetes.io/cors-allow-origin: "*"
+                  nginx.ingress.kubernetes.io/cors-allow-methods: "GET, POST, PUT"
+              spec:
+                ingressClassName: nginx
+                rules:
+                  - host: conv-cors.test.local
+                    http:
+                      paths:
+                        - path: /
+                          pathType: Prefix
+                          backend:
+                            service:
+                              name: conv-cors
+                              port:
+                                number: 80
+
+    - name: verify-httproute
+      description: Verify HTTPRoute exists
+      use:
+        template: ../../../../step-templates/conversion/verify-httproute.yaml
+        with:
+          bindings:
+            - name: ingress_name
+              value: ($name)
+            - name: namespace
+              value: ($namespace)
+            - name: expected_host
+              value: ($transformed_host)
+
+    - name: verify-warning
+      description: Verify warning about SecurityPolicy
+      use:
+        template: ../../../../step-templates/conversion/verify-warnings.yaml
+        with:
+          bindings:
+            - name: ingress_name
+              value: ($name)
+            - name: namespace
+              value: ($namespace)
+            - name: warning_pattern
+              value: SecurityPolicy
+
+    - name: cleanup
+      description: Cleanup resources
+      use:
+        template: ../../../../step-templates/conversion/cleanup-conversion.yaml
+        with:
+          bindings:
+            - name: ingress_name
+              value: ($name)
+            - name: namespace
+              value: ($namespace)

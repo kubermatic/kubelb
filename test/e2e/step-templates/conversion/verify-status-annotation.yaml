@@ -1,0 +1,60 @@
+# Copyright 2026 The KubeLB Authors.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# Step Template: Verify Ingress has conversion status annotation
+# Required bindings:
+#   - ingress_name: Ingress name
+#   - namespace: Ingress namespace
+#   - expected_status: expected status value (converted or partial)
+apiVersion: chainsaw.kyverno.io/v1alpha1
+kind: StepTemplate
+metadata:
+  name: verify-status-annotation
+spec:
+  try:
+    - script:
+        timeout: 60s
+        env:
+          - name: INGRESS_NAME
+            value: ($ingress_name)
+          - name: NAMESPACE
+            value: ($namespace)
+          - name: EXPECTED_STATUS
+            value: ($expected_status)
+        content: |
+          set -e
+
+          for i in $(seq 1 30); do
+            STATUS=$(kubectl get ingress "$INGRESS_NAME" -n "$NAMESPACE" \
+              -o jsonpath='{.metadata.annotations.kubelb\.k8c\.io/conversion-status}' 2>/dev/null || echo "")
+
+            if [ "$STATUS" = "$EXPECTED_STATUS" ]; then
+              # Also get the converted-httproute annotation
+              HTTPROUTE=$(kubectl get ingress "$INGRESS_NAME" -n "$NAMESPACE" \
+                -o jsonpath='{.metadata.annotations.kubelb\.k8c\.io/converted-httproute}' 2>/dev/null || echo "")
+
+              echo "SUCCESS: Conversion status verified"
+              echo "  Status: $STATUS"
+              echo "  HTTPRoute: $HTTPROUTE"
+              exit 0
+            fi
+
+            echo "Attempt $i: status='$STATUS', waiting for '$EXPECTED_STATUS'..."
+            sleep 2
+          done
+
+          echo "FAILED: Expected conversion-status '$EXPECTED_STATUS', got '$STATUS'"
+          exit 1
+        check:
+          ($error == null): true

@@ -311,6 +311,29 @@ e2e: chainsaw ## Run e2e tests (requires KUBECONFIGS_DIR or existing clusters)
 e2e-select: chainsaw ## Run e2e tests matching label selector (e.g., make e2e-select select=layer=layer4)
 	KUBECONFIG=$(KUBECONFIGS_DIR)/tenant1.kubeconfig $(CHAINSAW) test $(E2E_DIR)/tests $(CHAINSAW_FLAGS) --selector $(select)
 
+##@ Conversion E2E Testing
+
+CONVERSION_E2E_DIR ?= $(E2E_DIR)/tests/conversion
+CONVERSION_CONFIG ?= $(E2E_DIR)/config-conversion.yaml
+CONVERSION_VALUES ?= $(E2E_DIR)/values-conversion.yaml
+
+.PHONY: e2e-conversion-deploy
+e2e-conversion-deploy: ## Deploy KubeLB CCM in conversion mode to Kind clusters
+	KUBECONFIGS_DIR=$(KUBECONFIGS_DIR) CONVERSION_MODE=true ./hack/e2e/deploy.sh
+
+.PHONY: e2e-conversion-kind
+e2e-conversion-kind: e2e-setup-kind e2e-conversion-deploy e2e-conversion ## Full conversion e2e with Kind setup
+
+.PHONY: e2e-conversion
+e2e-conversion: chainsaw ## Run conversion e2e tests
+	KUBECONFIG=$(KUBECONFIGS_DIR)/tenant1.kubeconfig $(CHAINSAW) test $(CONVERSION_E2E_DIR) \
+		--config $(CONVERSION_CONFIG) --values $(CONVERSION_VALUES)
+
+.PHONY: e2e-conversion-select
+e2e-conversion-select: chainsaw ## Run conversion e2e tests matching label selector
+	KUBECONFIG=$(KUBECONFIGS_DIR)/tenant1.kubeconfig $(CHAINSAW) test $(CONVERSION_E2E_DIR) \
+		--config $(CONVERSION_CONFIG) --values $(CONVERSION_VALUES) --selector $(select)
+
 .PHONY: shfmt
 shfmt:
 	shfmt -w -sr -i 2 hack

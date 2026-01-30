@@ -1,0 +1,146 @@
+# Copyright 2026 The KubeLB Authors.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# Rewrite Target Conversion Test
+# Verifies:
+# - nginx.ingress.kubernetes.io/rewrite-target annotation
+# - HTTPRoute has URLRewrite filter
+apiVersion: chainsaw.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: conversion-rewrites-rewrite-target
+  labels:
+    conversion: "true"
+    category: rewrites
+    parallel: "true"
+spec:
+  description: |
+    Test rewrite-target annotation conversion.
+    Creates Ingress with rewrite-target=/, verifies URLRewrite filter in HTTPRoute.
+  bindings:
+    - name: name
+      value: conv-rewrite
+    - name: namespace
+      value: default
+    - name: transformed_host
+      value: conv-rewrite.gateway.local
+  steps:
+    - name: create-service
+      description: Create ClusterIP service
+      try:
+        - apply:
+            resource:
+              apiVersion: v1
+              kind: Service
+              metadata:
+                name: conv-rewrite
+                namespace: default
+              spec:
+                type: ClusterIP
+                selector:
+                  app: echo-shared
+                ports:
+                  - port: 80
+                    targetPort: 5678
+
+    - name: create-ingress
+      description: Create Ingress with rewrite-target
+      try:
+        - apply:
+            resource:
+              apiVersion: networking.k8s.io/v1
+              kind: Ingress
+              metadata:
+                name: conv-rewrite
+                namespace: default
+                annotations:
+                  nginx.ingress.kubernetes.io/rewrite-target: /
+              spec:
+                ingressClassName: nginx
+                rules:
+                  - host: conv-rewrite.test.local
+                    http:
+                      paths:
+                        - path: /app
+                          pathType: Prefix
+                          backend:
+                            service:
+                              name: conv-rewrite
+                              port:
+                                number: 80
+
+    - name: verify-httproute
+      description: Verify HTTPRoute exists
+      use:
+        template: ../../../../step-templates/conversion/verify-httproute.yaml
+        with:
+          bindings:
+            - name: ingress_name
+              value: ($name)
+            - name: namespace
+              value: ($namespace)
+            - name: expected_host
+              value: ($transformed_host)
+
+    - name: verify-rewrite-filter
+      description: Verify HTTPRoute has URLRewrite filter
+      try:
+        - script:
+            timeout: 60s
+            content: |
+              set -e
+              SOURCE_LABEL="conv-rewrite.default"
+
+              for i in $(seq 1 20); do
+                HTTPROUTE=$(kubectl get httproutes.gateway.networking.k8s.io -n default \
+                  -l "kubelb.k8c.io/source-ingress=${SOURCE_LABEL}" -o name 2>/dev/null | head -1)
+
+                if [ -n "$HTTPROUTE" ]; then
+                  FILTERS=$(kubectl get $HTTPROUTE -n default -o json | jq '.spec.rules[].filters[]?' 2>/dev/null)
+                  if echo "$FILTERS" | grep -q "URLRewrite"; then
+                    echo "SUCCESS: HTTPRoute has URLRewrite filter"
+                    kubectl get $HTTPROUTE -n default -o jsonpath='{.spec.rules[*].filters}'
+                    exit 0
+                  fi
+                fi
+                sleep 2
+              done
+              echo "FAILED: No URLRewrite filter found"
+              exit 1
+            check:
+              ($error == null): true
+
+    - name: verify-status
+      description: Verify conversion status
+      use:
+        template: ../../../../step-templates/conversion/verify-status-annotation.yaml
+        with:
+          bindings:
+            - name: ingress_name
+              value: ($name)
+            - name: namespace
+              value: ($namespace)
+            - name: expected_status
+              value: converted
+
+    - name: cleanup
+      description: Cleanup resources
+      use:
+        template: ../../../../step-templates/conversion/cleanup-conversion.yaml
+        with:
+          bindings:
+            - name: ingress_name
+              value: ($name)
+            - name: namespace
+              value: ($namespace)

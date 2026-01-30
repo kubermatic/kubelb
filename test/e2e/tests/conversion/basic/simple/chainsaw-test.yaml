@@ -1,0 +1,151 @@
+# Copyright 2026 The KubeLB Authors.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# Basic Ingress-to-Gateway Conversion Test
+# Verifies:
+# - Ingress with nginx class creates HTTPRoute
+# - HTTPRoute has correct parentRef to Gateway
+# - Domain transformation (test.local -> gateway.local)
+# - Conversion status annotation set to 'converted'
+# - HTTP traffic works via transformed hostname
+apiVersion: chainsaw.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: conversion-basic-simple
+  labels:
+    conversion: "true"
+    category: basic
+    parallel: "true"
+spec:
+  description: |
+    Test basic Ingress-to-HTTPRoute conversion.
+    Creates Ingress with nginx class, verifies HTTPRoute creation with domain transformation,
+    tests HTTP connectivity via Envoy Gateway.
+  bindings:
+    - name: name
+      value: conv-simple
+    - name: namespace
+      value: default
+    - name: original_host
+      value: conv-simple.test.local
+    - name: transformed_host
+      value: conv-simple.gateway.local
+  steps:
+    # Step 1: Create ClusterIP service pointing to echo-shared
+    - name: create-service
+      description: Create ClusterIP service
+      try:
+        - apply:
+            resource:
+              apiVersion: v1
+              kind: Service
+              metadata:
+                name: conv-simple
+                namespace: default
+              spec:
+                type: ClusterIP
+                selector:
+                  app: echo-shared
+                ports:
+                  - port: 80
+                    targetPort: 5678
+
+    # Step 2: Create Ingress with nginx class
+    - name: create-ingress
+      description: Create Ingress with nginx ingressClass
+      try:
+        - apply:
+            resource:
+              apiVersion: networking.k8s.io/v1
+              kind: Ingress
+              metadata:
+                name: conv-simple
+                namespace: default
+              spec:
+                ingressClassName: nginx
+                rules:
+                  - host: conv-simple.test.local
+                    http:
+                      paths:
+                        - path: /
+                          pathType: Prefix
+                          backend:
+                            service:
+                              name: conv-simple
+                              port:
+                                number: 80
+
+    # Step 3: Verify HTTPRoute created with correct hostname
+    - name: verify-httproute
+      description: Verify HTTPRoute exists with transformed hostname
+      use:
+        template: ../../../../step-templates/conversion/verify-httproute.yaml
+        with:
+          bindings:
+            - name: ingress_name
+              value: ($name)
+            - name: namespace
+              value: ($namespace)
+            - name: expected_host
+              value: ($transformed_host)
+
+    # Step 4: Verify Gateway created
+    - name: verify-gateway
+      description: Verify Gateway exists with correct settings
+      use:
+        template: ../../../../step-templates/conversion/verify-gateway.yaml
+        with:
+          bindings:
+            - name: gateway_name
+              value: kubelb
+            - name: namespace
+              value: default
+
+    # Step 5: Verify conversion status annotation
+    - name: verify-status
+      description: Verify Ingress has conversion-status=converted
+      use:
+        template: ../../../../step-templates/conversion/verify-status-annotation.yaml
+        with:
+          bindings:
+            - name: ingress_name
+              value: ($name)
+            - name: namespace
+              value: ($namespace)
+            - name: expected_status
+              value: converted
+
+    # Step 6: Verify HTTP traffic via transformed hostname
+    - name: verify-http
+      description: Verify HTTP response via Envoy Gateway
+      use:
+        template: ../../../../step-templates/conversion/verify-http-traffic.yaml
+        with:
+          bindings:
+            - name: host
+              value: ($transformed_host)
+            - name: expected_response
+              value: hello-shared
+
+    # Cleanup
+    - name: cleanup
+      description: Cleanup resources
+      use:
+        template: ../../../../step-templates/conversion/cleanup-conversion.yaml
+        with:
+          bindings:
+            - name: ingress_name
+              value: ($name)
+            - name: namespace
+              value: ($namespace)

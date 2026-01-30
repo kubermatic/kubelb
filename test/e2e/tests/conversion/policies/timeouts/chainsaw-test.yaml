@@ -1,0 +1,120 @@
+# Copyright 2026 The KubeLB Authors.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# Timeout Annotations Conversion Test
+# Verifies:
+# - proxy-connect-timeout, proxy-read-timeout, proxy-send-timeout annotations
+# - Warning generated about BackendTrafficPolicy requirement
+apiVersion: chainsaw.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: conversion-policies-timeouts
+  labels:
+    conversion: "true"
+    category: policies
+    parallel: "true"
+spec:
+  description: |
+    Test timeout annotations generate warning.
+    Gateway API requires BackendTrafficPolicy for timeouts.
+  bindings:
+    - name: name
+      value: conv-timeouts
+    - name: namespace
+      value: default
+    - name: transformed_host
+      value: conv-timeouts.gateway.local
+  steps:
+    - name: create-service
+      description: Create ClusterIP service
+      try:
+        - apply:
+            resource:
+              apiVersion: v1
+              kind: Service
+              metadata:
+                name: conv-timeouts
+                namespace: default
+              spec:
+                type: ClusterIP
+                selector:
+                  app: echo-shared
+                ports:
+                  - port: 80
+                    targetPort: 5678
+
+    - name: create-ingress
+      description: Create Ingress with timeout annotations
+      try:
+        - apply:
+            resource:
+              apiVersion: networking.k8s.io/v1
+              kind: Ingress
+              metadata:
+                name: conv-timeouts
+                namespace: default
+                annotations:
+                  nginx.ingress.kubernetes.io/proxy-connect-timeout: "30"
+                  nginx.ingress.kubernetes.io/proxy-read-timeout: "60"
+                  nginx.ingress.kubernetes.io/proxy-send-timeout: "60"
+              spec:
+                ingressClassName: nginx
+                rules:
+                  - host: conv-timeouts.test.local
+                    http:
+                      paths:
+                        - path: /
+                          pathType: Prefix
+                          backend:
+                            service:
+                              name: conv-timeouts
+                              port:
+                                number: 80
+
+    - name: verify-httproute
+      description: Verify HTTPRoute exists
+      use:
+        template: ../../../../step-templates/conversion/verify-httproute.yaml
+        with:
+          bindings:
+            - name: ingress_name
+              value: ($name)
+            - name: namespace
+              value: ($namespace)
+            - name: expected_host
+              value: ($transformed_host)
+
+    - name: verify-warning
+      description: Verify warning about BackendTrafficPolicy
+      use:
+        template: ../../../../step-templates/conversion/verify-warnings.yaml
+        with:
+          bindings:
+            - name: ingress_name
+              value: ($name)
+            - name: namespace
+              value: ($namespace)
+            - name: warning_pattern
+              value: BackendTrafficPolicy
+
+    - name: cleanup
+      description: Cleanup resources
+      use:
+        template: ../../../../step-templates/conversion/cleanup-conversion.yaml
+        with:
+          bindings:
+            - name: ingress_name
+              value: ($name)
+            - name: namespace
+              value: ($namespace)

@@ -1,0 +1,225 @@
+# Copyright 2026 The KubeLB Authors.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# Gateway Listener Merge Test
+# Verifies:
+# - Multiple Ingresses with TLS merge listeners into single Gateway
+# - No duplicate listeners created
+# - Each hostname has unique listener
+apiVersion: chainsaw.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: conversion-isolated-listener-merge
+  labels:
+    conversion: "true"
+    category: isolated
+    parallel: "false"
+spec:
+  concurrent: false
+  description: |
+    Test Gateway listener merging from multiple Ingresses.
+    Verifies listeners are merged without duplicates.
+  bindings:
+    - name: namespace
+      value: default
+  steps:
+    # Clean up any existing Gateway
+    - name: cleanup-existing
+      description: Remove existing Gateway for clean test
+      try:
+        - script:
+            timeout: 30s
+            content: |
+              kubectl delete gateway.gateway.networking.k8s.io kubelb -n default --ignore-not-found
+              for i in $(seq 1 10); do
+                if ! kubectl get gateway.gateway.networking.k8s.io kubelb -n default &>/dev/null; then
+                  echo "Gateway cleaned up"
+                  exit 0
+                fi
+                sleep 1
+              done
+
+    - name: create-services
+      description: Create services for both Ingresses
+      try:
+        - apply:
+            resource:
+              apiVersion: v1
+              kind: Service
+              metadata:
+                name: conv-merge1
+                namespace: default
+              spec:
+                type: ClusterIP
+                selector:
+                  app: echo-shared
+                ports:
+                  - port: 80
+                    targetPort: 5678
+        - apply:
+            resource:
+              apiVersion: v1
+              kind: Service
+              metadata:
+                name: conv-merge2
+                namespace: default
+              spec:
+                type: ClusterIP
+                selector:
+                  app: echo-shared
+                ports:
+                  - port: 80
+                    targetPort: 5678
+
+    - name: create-tls-secrets
+      description: Create TLS secrets
+      try:
+        - script:
+            timeout: 30s
+            content: |
+              openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
+                -keyout /tmp/m1.key -out /tmp/m1.crt \
+                -subj "/CN=merge1.gateway.local" 2>/dev/null
+              kubectl create secret tls conv-merge1-tls \
+                --cert=/tmp/m1.crt --key=/tmp/m1.key \
+                -n default --dry-run=client -o yaml | kubectl apply -f -
+
+              openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
+                -keyout /tmp/m2.key -out /tmp/m2.crt \
+                -subj "/CN=merge2.gateway.local" 2>/dev/null
+              kubectl create secret tls conv-merge2-tls \
+                --cert=/tmp/m2.crt --key=/tmp/m2.key \
+                -n default --dry-run=client -o yaml | kubectl apply -f -
+
+              rm -f /tmp/m*.key /tmp/m*.crt
+
+    - name: create-first-ingress
+      description: Create first TLS Ingress
+      try:
+        - apply:
+            resource:
+              apiVersion: networking.k8s.io/v1
+              kind: Ingress
+              metadata:
+                name: conv-merge1
+                namespace: default
+              spec:
+                ingressClassName: nginx
+                tls:
+                  - hosts:
+                      - merge1.test.local
+                    secretName: conv-merge1-tls
+                rules:
+                  - host: merge1.test.local
+                    http:
+                      paths:
+                        - path: /
+                          pathType: Prefix
+                          backend:
+                            service:
+                              name: conv-merge1
+                              port:
+                                number: 80
+
+    - name: wait-first-httproute
+      description: Wait for first HTTPRoute
+      try:
+        - script:
+            timeout: 60s
+            content: |
+              for i in $(seq 1 30); do
+                COUNT=$(kubectl get httproutes.gateway.networking.k8s.io -n default \
+                  -l "kubelb.k8c.io/source-ingress=conv-merge1.default" -o name 2>/dev/null | wc -l)
+                if [ "$COUNT" -ge 1 ]; then
+                  echo "First HTTPRoute created"
+                  exit 0
+                fi
+                sleep 2
+              done
+              exit 1
+
+    - name: create-second-ingress
+      description: Create second TLS Ingress
+      try:
+        - apply:
+            resource:
+              apiVersion: networking.k8s.io/v1
+              kind: Ingress
+              metadata:
+                name: conv-merge2
+                namespace: default
+              spec:
+                ingressClassName: nginx
+                tls:
+                  - hosts:
+                      - merge2.test.local
+                    secretName: conv-merge2-tls
+                rules:
+                  - host: merge2.test.local
+                    http:
+                      paths:
+                        - path: /
+                          pathType: Prefix
+                          backend:
+                            service:
+                              name: conv-merge2
+                              port:
+                                number: 80
+
+    - name: verify-merged-listeners
+      description: Verify Gateway has merged HTTPS listeners without duplicates
+      try:
+        - script:
+            timeout: 60s
+            content: |
+              set -e
+              for i in $(seq 1 20); do
+                # Count HTTPS listeners
+                HTTPS_COUNT=$(kubectl get gateway.gateway.networking.k8s.io kubelb -n default \
+                  -o jsonpath='{.spec.listeners[*].protocol}' 2>/dev/null | tr ' ' '\n' | grep -c HTTPS || echo "0")
+
+                # Should have 2 unique HTTPS listeners (one per host)
+                if [ "$HTTPS_COUNT" -ge 2 ]; then
+                  # Check for duplicates by listing listener names
+                  LISTENER_NAMES=$(kubectl get gateway.gateway.networking.k8s.io kubelb -n default \
+                    -o jsonpath='{range .spec.listeners[*]}{.name}{"\n"}{end}' | sort)
+                  UNIQUE_NAMES=$(echo "$LISTENER_NAMES" | sort -u)
+
+                  if [ "$LISTENER_NAMES" = "$UNIQUE_NAMES" ]; then
+                    echo "SUCCESS: Gateway has $HTTPS_COUNT HTTPS listeners with no duplicates"
+                    kubectl get gateway.gateway.networking.k8s.io kubelb -n default \
+                      -o jsonpath='{range .spec.listeners[*]}{.name}: {.protocol}{"\n"}{end}'
+                    exit 0
+                  fi
+                fi
+                sleep 2
+              done
+              echo "FAILED: Expected 2+ unique HTTPS listeners"
+              exit 1
+            check:
+              ($error == null): true
+
+    - name: cleanup
+      description: Cleanup resources
+      try:
+        - script:
+            timeout: 30s
+            content: |
+              kubectl delete ingress conv-merge1 conv-merge2 -n default --ignore-not-found
+              kubectl delete service conv-merge1 conv-merge2 -n default --ignore-not-found
+              kubectl delete secret conv-merge1-tls conv-merge2-tls -n default --ignore-not-found
+              kubectl delete httproutes.gateway.networking.k8s.io -n default \
+                -l "kubelb.k8c.io/source-ingress=conv-merge1.default" --ignore-not-found
+              kubectl delete httproutes.gateway.networking.k8s.io -n default \
+                -l "kubelb.k8c.io/source-ingress=conv-merge2.default" --ignore-not-found
