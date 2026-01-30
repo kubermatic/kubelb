@@ -134,6 +134,24 @@ func handleLimitRPS(_, value string, _ map[string]string) ([]gwapiv1.HTTPRouteFi
 	return nil, []string{warning}
 }
 
+// handleLimitRPM suggests BackendTrafficPolicy for rate limiting per minute
+func handleLimitRPM(_, value string, _ map[string]string) ([]gwapiv1.HTTPRouteFilter, []string) {
+	if value == "" {
+		return nil, nil
+	}
+
+	rpm, err := strconv.Atoi(value)
+	if err != nil {
+		return nil, []string{fmt.Sprintf("limit-rpm=%q is not a valid number", value)}
+	}
+
+	warning := fmt.Sprintf(
+		"limit-rpm=%d requires BackendTrafficPolicy: spec.rateLimit.local.requests=%d, unit=Minute",
+		rpm, rpm,
+	)
+	return nil, []string{warning}
+}
+
 // handleLimitConnections suggests BackendTrafficPolicy for connection limiting
 func handleLimitConnections(_, value string, _ map[string]string) ([]gwapiv1.HTTPRouteFilter, []string) {
 	if value == "" {
@@ -208,6 +226,58 @@ func normalizeTimeout(value string) string {
 	}
 
 	return value
+}
+
+// handleProxySSLSecret suggests BackendTLSPolicy for proxy SSL configuration
+func handleProxySSLSecret(_, value string, _ map[string]string) ([]gwapiv1.HTTPRouteFilter, []string) {
+	if value == "" {
+		return nil, nil
+	}
+
+	warning := fmt.Sprintf(
+		"proxy-ssl-secret=%q requires BackendTLSPolicy: spec.tls.clientCertificateRef.name=%s",
+		value, value,
+	)
+	return nil, []string{warning}
+}
+
+// handleProxySSLVerify suggests BackendTLSPolicy for proxy SSL verification
+func handleProxySSLVerify(_, value string, _ map[string]string) ([]gwapiv1.HTTPRouteFilter, []string) {
+	if value == "" {
+		return nil, nil
+	}
+
+	warning := fmt.Sprintf(
+		"proxy-ssl-verify=%q requires BackendTLSPolicy: configure spec.validation for server certificate verification",
+		value,
+	)
+	return nil, []string{warning}
+}
+
+// handleProxySSLName suggests BackendTLSPolicy for proxy SSL server name
+func handleProxySSLName(_, value string, _ map[string]string) ([]gwapiv1.HTTPRouteFilter, []string) {
+	if value == "" {
+		return nil, nil
+	}
+
+	warning := fmt.Sprintf(
+		"proxy-ssl-name=%q requires BackendTLSPolicy: spec.validation.hostname=%s",
+		value, value,
+	)
+	return nil, []string{warning}
+}
+
+// handleProxySSLServerName suggests BackendTLSPolicy for proxy SSL server name indication
+func handleProxySSLServerName(_, value string, _ map[string]string) ([]gwapiv1.HTTPRouteFilter, []string) {
+	if value == "" || value == "off" {
+		return nil, nil
+	}
+
+	warning := fmt.Sprintf(
+		"proxy-ssl-server-name=%q requires BackendTLSPolicy: configure SNI through spec.validation.hostname",
+		value,
+	)
+	return nil, []string{warning}
 }
 
 // formatStringList converts comma-separated string to quoted list

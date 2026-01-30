@@ -1228,3 +1228,241 @@ func TestConvertIngress_WithPolicyAnnotations(t *testing.T) {
 		t.Errorf("expected 3 processed annotations, got %d", len(result.ProcessedAnnotations))
 	}
 }
+
+func TestIsGRPCIngress(t *testing.T) {
+	tests := []struct {
+		name        string
+		annotations map[string]string
+		want        bool
+	}{
+		{
+			name:        "no annotations",
+			annotations: nil,
+			want:        false,
+		},
+		{
+			name:        "no backend-protocol",
+			annotations: map[string]string{"other": "value"},
+			want:        false,
+		},
+		{
+			name:        "HTTP protocol",
+			annotations: map[string]string{NginxBackendProtocol: "HTTP"},
+			want:        false,
+		},
+		{
+			name:        "HTTPS protocol",
+			annotations: map[string]string{NginxBackendProtocol: "HTTPS"},
+			want:        false,
+		},
+		{
+			name:        "GRPC protocol",
+			annotations: map[string]string{NginxBackendProtocol: "GRPC"},
+			want:        true,
+		},
+		{
+			name:        "grpc lowercase",
+			annotations: map[string]string{NginxBackendProtocol: "grpc"},
+			want:        true,
+		},
+		{
+			name:        "GRPCS protocol",
+			annotations: map[string]string{NginxBackendProtocol: "GRPCS"},
+			want:        true,
+		},
+		{
+			name:        "grpcs lowercase",
+			annotations: map[string]string{NginxBackendProtocol: "grpcs"},
+			want:        true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ingress := &networkingv1.Ingress{
+				ObjectMeta: metav1.ObjectMeta{
+					Annotations: tt.annotations,
+				},
+			}
+			got := isGRPCIngress(ingress)
+			if got != tt.want {
+				t.Errorf("isGRPCIngress() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestConvertIngress_GRPCRoute(t *testing.T) {
+	ingress := &networkingv1.Ingress{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "grpc-ingress",
+			Namespace: "default",
+			Annotations: map[string]string{
+				NginxBackendProtocol: "GRPC",
+			},
+		},
+		Spec: networkingv1.IngressSpec{
+			Rules: []networkingv1.IngressRule{
+				{
+					Host: "grpc.example.com",
+					IngressRuleValue: networkingv1.IngressRuleValue{
+						HTTP: &networkingv1.HTTPIngressRuleValue{
+							Paths: []networkingv1.HTTPIngressPath{
+								{
+									Path:     "/",
+									PathType: ptr.To(networkingv1.PathTypePrefix),
+									Backend: networkingv1.IngressBackend{
+										Service: &networkingv1.IngressServiceBackend{
+											Name: "grpc-service",
+											Port: networkingv1.ServiceBackendPort{Number: 50051},
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	result := ConvertIngressWithServices(ConversionInput{
+		Ingress:          ingress,
+		GatewayName:      "gateway",
+		GatewayNamespace: "default",
+	})
+
+	// Should generate GRPCRoute, not HTTPRoute
+	if len(result.HTTPRoutes) != 0 {
+		t.Errorf("expected 0 HTTPRoutes for gRPC Ingress, got %d", len(result.HTTPRoutes))
+	}
+	if len(result.GRPCRoutes) != 1 {
+		t.Fatalf("expected 1 GRPCRoute, got %d", len(result.GRPCRoutes))
+	}
+
+	grpcRoute := result.GRPCRoutes[0]
+	if grpcRoute.Name != "grpc-ingress-grpc-grpc-example-com" {
+		t.Errorf("unexpected GRPCRoute name: %s", grpcRoute.Name)
+	}
+	if len(grpcRoute.Spec.Hostnames) != 1 || grpcRoute.Spec.Hostnames[0] != "grpc.example.com" {
+		t.Errorf("unexpected hostnames: %v", grpcRoute.Spec.Hostnames)
+	}
+	if len(grpcRoute.Spec.Rules) != 1 {
+		t.Fatalf("expected 1 rule, got %d", len(grpcRoute.Spec.Rules))
+	}
+	if len(grpcRoute.Spec.Rules[0].BackendRefs) != 1 {
+		t.Fatalf("expected 1 backend ref, got %d", len(grpcRoute.Spec.Rules[0].BackendRefs))
+	}
+	backendRef := grpcRoute.Spec.Rules[0].BackendRefs[0]
+	if backendRef.Name != "grpc-service" {
+		t.Errorf("unexpected backend name: %s", backendRef.Name)
+	}
+	if backendRef.Port == nil || *backendRef.Port != 50051 {
+		t.Errorf("unexpected backend port: %v", backendRef.Port)
+	}
+
+	// Should have warning about gRPC detection
+	hasGRPCWarning := false
+	for _, w := range result.Warnings {
+		if w == "backend-protocol=GRPC detected, generating GRPCRoute (annotation filters not applicable to GRPCRoute)" {
+			hasGRPCWarning = true
+			break
+		}
+	}
+	if !hasGRPCWarning {
+		t.Errorf("expected gRPC detection warning, got: %v", result.Warnings)
+	}
+}
+
+func TestConvertIngress_GRPCRoute_MultipleHosts(t *testing.T) {
+	ingress := &networkingv1.Ingress{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "multi-grpc",
+			Namespace: "default",
+			Annotations: map[string]string{
+				NginxBackendProtocol: "GRPCS",
+			},
+		},
+		Spec: networkingv1.IngressSpec{
+			Rules: []networkingv1.IngressRule{
+				{
+					Host: "api.grpc.io",
+					IngressRuleValue: networkingv1.IngressRuleValue{
+						HTTP: &networkingv1.HTTPIngressRuleValue{
+							Paths: []networkingv1.HTTPIngressPath{{
+								Path:     "/",
+								PathType: ptr.To(networkingv1.PathTypePrefix),
+								Backend: networkingv1.IngressBackend{
+									Service: &networkingv1.IngressServiceBackend{
+										Name: "api-svc",
+										Port: networkingv1.ServiceBackendPort{Number: 443},
+									},
+								},
+							}},
+						},
+					},
+				},
+				{
+					Host: "data.grpc.io",
+					IngressRuleValue: networkingv1.IngressRuleValue{
+						HTTP: &networkingv1.HTTPIngressRuleValue{
+							Paths: []networkingv1.HTTPIngressPath{{
+								Path:     "/",
+								PathType: ptr.To(networkingv1.PathTypePrefix),
+								Backend: networkingv1.IngressBackend{
+									Service: &networkingv1.IngressServiceBackend{
+										Name: "data-svc",
+										Port: networkingv1.ServiceBackendPort{Number: 443},
+									},
+								},
+							}},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	result := ConvertIngressWithServices(ConversionInput{
+		Ingress:          ingress,
+		GatewayName:      "gw",
+		GatewayNamespace: "",
+	})
+
+	if len(result.HTTPRoutes) != 0 {
+		t.Errorf("expected 0 HTTPRoutes, got %d", len(result.HTTPRoutes))
+	}
+	if len(result.GRPCRoutes) != 2 {
+		t.Fatalf("expected 2 GRPCRoutes, got %d", len(result.GRPCRoutes))
+	}
+
+	// Verify each route has exactly one host (alphabetically sorted)
+	expectedHosts := []gwapiv1.Hostname{"api.grpc.io", "data.grpc.io"}
+	for i, route := range result.GRPCRoutes {
+		if len(route.Spec.Hostnames) != 1 {
+			t.Errorf("route %d has %d hostnames, expected 1", i, len(route.Spec.Hostnames))
+		}
+		if route.Spec.Hostnames[0] != expectedHosts[i] {
+			t.Errorf("route %d: expected hostname %s, got %s", i, expectedHosts[i], route.Spec.Hostnames[0])
+		}
+	}
+}
+
+func TestGRPCRouteName(t *testing.T) {
+	tests := []struct {
+		ingressName string
+		host        string
+		expected    string
+	}{
+		{"my-ingress", "foo.com", "my-ingress-grpc-foo-com"},
+		{"ing", "a.b.c", "ing-grpc-a-b-c"},
+		{"test", "", "test-grpc"},
+	}
+
+	for _, tt := range tests {
+		got := grpcRouteName(tt.ingressName, tt.host)
+		if got != tt.expected {
+			t.Errorf("grpcRouteName(%q, %q) = %q, want %q", tt.ingressName, tt.host, got, tt.expected)
+		}
+	}
+}

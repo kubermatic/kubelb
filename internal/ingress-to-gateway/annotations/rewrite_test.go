@@ -117,37 +117,32 @@ func TestHandleRewriteTarget(t *testing.T) {
 }
 
 func TestHandleAppRoot(t *testing.T) {
+	// app-root now generates warning only, not filters
+	// because NGINX app-root only redirects "/" but Gateway API filters
+	// would apply to ALL routes
 	tests := []struct {
 		name           string
 		value          string
 		expectFilters  int
 		expectWarnings int
-		expectPath     string
-		expectCode     int
 	}{
 		{
 			name:           "app-root with leading slash",
 			value:          "/app",
-			expectFilters:  1,
-			expectWarnings: 1, // always warns about root path
-			expectPath:     "/app",
-			expectCode:     302,
+			expectFilters:  0, // warning only, no filter
+			expectWarnings: 1,
 		},
 		{
 			name:           "app-root without leading slash",
 			value:          "dashboard",
-			expectFilters:  1,
+			expectFilters:  0,
 			expectWarnings: 1,
-			expectPath:     "/dashboard",
-			expectCode:     302,
 		},
 		{
 			name:           "app-root with nested path",
 			value:          "/admin/dashboard",
-			expectFilters:  1,
+			expectFilters:  0,
 			expectWarnings: 1,
-			expectPath:     "/admin/dashboard",
-			expectCode:     302,
 		},
 		{
 			name:           "empty value",
@@ -168,29 +163,28 @@ func TestHandleAppRoot(t *testing.T) {
 				t.Errorf("expected %d warnings, got %d: %v", tt.expectWarnings, len(warnings), warnings)
 			}
 
-			if tt.expectFilters > 0 {
-				f := filters[0]
-				if f.Type != gwapiv1.HTTPRouteFilterRequestRedirect {
-					t.Errorf("expected RequestRedirect filter, got %s", f.Type)
-				}
-				if f.RequestRedirect == nil {
-					t.Fatal("RequestRedirect is nil")
-				}
-				if f.RequestRedirect.Path == nil {
-					t.Fatal("RequestRedirect.Path is nil")
-				}
-				if f.RequestRedirect.Path.ReplaceFullPath == nil {
-					t.Fatal("ReplaceFullPath is nil")
-				}
-				if *f.RequestRedirect.Path.ReplaceFullPath != tt.expectPath {
-					t.Errorf("expected path %q, got %q", tt.expectPath, *f.RequestRedirect.Path.ReplaceFullPath)
-				}
-				if f.RequestRedirect.StatusCode == nil || *f.RequestRedirect.StatusCode != tt.expectCode {
-					t.Errorf("expected status code %d, got %v", tt.expectCode, f.RequestRedirect.StatusCode)
+			// Verify warning contains manual HTTPRoute instructions
+			if tt.value != "" && len(warnings) > 0 {
+				if !contains(warnings[0], "manual HTTPRoute") {
+					t.Errorf("expected warning to contain 'manual HTTPRoute', got: %s", warnings[0])
 				}
 			}
 		})
 	}
+}
+
+// contains checks if s contains substr
+func contains(s, substr string) bool {
+	return len(s) >= len(substr) && (s == substr || len(s) > 0 && containsSubstr(s, substr))
+}
+
+func containsSubstr(s, substr string) bool {
+	for i := 0; i <= len(s)-len(substr); i++ {
+		if s[i:i+len(substr)] == substr {
+			return true
+		}
+	}
+	return false
 }
 
 func TestContainsCaptureGroup(t *testing.T) {
@@ -270,13 +264,13 @@ func TestIntegration_RewriteWithConverter(t *testing.T) {
 			AppRoot: "/dashboard",
 		})
 
-		if len(result.Filters) != 1 {
-			t.Fatalf("expected 1 filter, got %d", len(result.Filters))
+		// app-root now generates warning only, not filters
+		if len(result.Filters) != 0 {
+			t.Errorf("expected 0 filters (warning only), got %d", len(result.Filters))
 		}
 
-		f := result.Filters[0]
-		if f.Type != gwapiv1.HTTPRouteFilterRequestRedirect {
-			t.Errorf("expected RequestRedirect filter, got %s", f.Type)
+		if len(result.Warnings) != 1 {
+			t.Errorf("expected 1 warning, got %d", len(result.Warnings))
 		}
 	})
 }

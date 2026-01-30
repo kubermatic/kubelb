@@ -211,3 +211,16 @@ func handleCanaryAnnotation(_, _ string, _ map[string]string) ([]gwapiv1.HTTPRou
 	// Supporting canary annotations are processed by handleCanaryEnabled
 	return nil, nil
 }
+
+// handleSSLPassthrough generates warning for ssl-passthrough annotation
+// nginx.ingress.kubernetes.io/ssl-passthrough: "true"
+// SSL passthrough requires TLSRoute instead of HTTPRoute
+func handleSSLPassthrough(_, value string, _ map[string]string) ([]gwapiv1.HTTPRouteFilter, []string) {
+	if value != boolTrue {
+		return nil, nil
+	}
+
+	warning := "ssl-passthrough=true requires TLSRoute instead of HTTPRoute; " +
+		"create a TLSRoute with passthrough mode to forward encrypted traffic directly to backend"
+	return nil, []string{warning}
+}

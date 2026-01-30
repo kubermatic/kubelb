@@ -97,11 +97,36 @@ const (
 	UpstreamHashBy       = "nginx.ingress.kubernetes.io/upstream-hash-by"
 )
 
+// Headers - additional header annotations
+const (
+	UpstreamVhost     = "nginx.ingress.kubernetes.io/upstream-vhost"
+	XForwardedPrefix  = "nginx.ingress.kubernetes.io/x-forwarded-prefix"
+	ProxyRedirectFrom = "nginx.ingress.kubernetes.io/proxy-redirect-from"
+	ProxyRedirectTo   = "nginx.ingress.kubernetes.io/proxy-redirect-to"
+)
+
+// TLS/SSL annotations - now handled with warnings
+const (
+	SSLPassthrough     = "nginx.ingress.kubernetes.io/ssl-passthrough"
+	ProxySSLSecret     = "nginx.ingress.kubernetes.io/proxy-ssl-secret"
+	ProxySSLVerify     = "nginx.ingress.kubernetes.io/proxy-ssl-verify"
+	ProxySSLName       = "nginx.ingress.kubernetes.io/proxy-ssl-name"
+	ProxySSLServerName = "nginx.ingress.kubernetes.io/proxy-ssl-server-name"
+)
+
+// Rate limiting - now handled
+const (
+	LimitRPM = "nginx.ingress.kubernetes.io/limit-rpm"
+)
+
+// Regex annotation - now handled with standalone warning
+const (
+	UseRegex = "nginx.ingress.kubernetes.io/use-regex"
+)
+
 // Unhandled annotations - defined for reference but not processed by the converter.
 // These are either rarely used or have no Gateway API equivalent.
 const (
-	UseRegex             = "nginx.ingress.kubernetes.io/use-regex"
-	LimitRPM             = "nginx.ingress.kubernetes.io/limit-rpm"
 	LimitBurstMultiplier = "nginx.ingress.kubernetes.io/limit-burst-multiplier"
 	LimitWhitelist       = "nginx.ingress.kubernetes.io/limit-whitelist"
 	ClientBodyBufferSize = "nginx.ingress.kubernetes.io/client-body-buffer-size"
@@ -112,6 +137,5 @@ const (
 	ProxyNextUpstream    = "nginx.ingress.kubernetes.io/proxy-next-upstream"
 	ServiceUpstream      = "nginx.ingress.kubernetes.io/service-upstream"
 	LoadBalance          = "nginx.ingress.kubernetes.io/load-balance"
-	SSLPassthrough       = "nginx.ingress.kubernetes.io/ssl-passthrough"
 	SSLCiphers           = "nginx.ingress.kubernetes.io/ssl-ciphers"
 )

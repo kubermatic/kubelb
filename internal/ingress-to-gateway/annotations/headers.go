@@ -87,6 +87,52 @@ func handleCustomHeaders(_, value string, _ map[string]string) ([]gwapiv1.HTTPRo
 	return []gwapiv1.HTTPRouteFilter{filter}, warnings
 }
 
+// handleUpstreamVhost converts upstream-vhost annotation to RequestHeaderModifier
+// nginx.ingress.kubernetes.io/upstream-vhost: "internal.example.com"
+// Sets the Host header sent to the upstream server
+func handleUpstreamVhost(_, value string, _ map[string]string) ([]gwapiv1.HTTPRouteFilter, []string) {
+	if value == "" {
+		return nil, nil
+	}
+
+	filter := gwapiv1.HTTPRouteFilter{
+		Type: gwapiv1.HTTPRouteFilterRequestHeaderModifier,
+		RequestHeaderModifier: &gwapiv1.HTTPHeaderFilter{
+			Set: []gwapiv1.HTTPHeader{
+				{
+					Name:  "Host",
+					Value: value,
+				},
+			},
+		},
+	}
+
+	return []gwapiv1.HTTPRouteFilter{filter}, nil
+}
+
+// handleXForwardedPrefix converts x-forwarded-prefix annotation to RequestHeaderModifier
+// nginx.ingress.kubernetes.io/x-forwarded-prefix: "/api"
+// Sets the X-Forwarded-Prefix header
+func handleXForwardedPrefix(_, value string, _ map[string]string) ([]gwapiv1.HTTPRouteFilter, []string) {
+	if value == "" {
+		return nil, nil
+	}
+
+	filter := gwapiv1.HTTPRouteFilter{
+		Type: gwapiv1.HTTPRouteFilterRequestHeaderModifier,
+		RequestHeaderModifier: &gwapiv1.HTTPHeaderFilter{
+			Set: []gwapiv1.HTTPHeader{
+				{
+					Name:  "X-Forwarded-Prefix",
+					Value: value,
+				},
+			},
+		},
+	}
+
+	return []gwapiv1.HTTPRouteFilter{filter}, nil
+}
+
 // parseHeaderList parses "Header1:Value1,Header2:Value2" format
 func parseHeaderList(value string) ([]gwapiv1.HTTPHeader, []string) {
 	var headers []gwapiv1.HTTPHeader

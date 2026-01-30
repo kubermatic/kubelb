@@ -58,9 +58,10 @@ func handleRewriteTarget(key, value string, annotations map[string]string) ([]gw
 	return []gwapiv1.HTTPRouteFilter{filter}, warnings
 }
 
-// handleAppRoot converts app-root annotation
+// handleAppRoot generates warning for app-root annotation
 // nginx.ingress.kubernetes.io/app-root: /app
-// Redirects requests to "/" to the specified path
+// NGINX only redirects "/" path to the specified path, but Gateway API filters
+// apply to ALL matched routes. Creating a separate HTTPRoute rule for "/" is required.
 func handleAppRoot(key, value string, _ map[string]string) ([]gwapiv1.HTTPRouteFilter, []string) {
 	if value == "" {
 		return nil, []string{fmt.Sprintf("annotation %q has empty value", key)}
@@ -71,27 +72,36 @@ func handleAppRoot(key, value string, _ map[string]string) ([]gwapiv1.HTTPRouteF
 		value = "/" + value
 	}
 
-	// app-root creates a redirect from / to the specified path
-	// This is typically applied only to the root path match
-	code := 302 // Temporal redirect
-	pathType := gwapiv1.FullPathHTTPPathModifier
+	// app-root in NGINX only redirects "/" to the specified path.
+	// Gateway API filters apply to ALL routes, not just "/".
+	// Creating a redirect filter would incorrectly redirect all paths.
+	// User must manually create a separate HTTPRoute rule for path "/" with redirect.
+	warning := fmt.Sprintf(
+		"app-root=%q requires manual HTTPRoute: create separate rule with path=\"/\" (Exact) "+
+			"and RequestRedirect filter to %q; cannot auto-convert as filter would apply to all paths",
+		value, value,
+	)
 
-	filter := gwapiv1.HTTPRouteFilter{
-		Type: gwapiv1.HTTPRouteFilterRequestRedirect,
-		RequestRedirect: &gwapiv1.HTTPRequestRedirectFilter{
-			Path: &gwapiv1.HTTPPathModifier{
-				Type:            pathType,
-				ReplaceFullPath: &value,
-			},
-			StatusCode: &code,
-		},
+	return nil, []string{warning}
+}
+
+// handleUseRegex generates warning for use-regex annotation when used standalone
+// nginx.ingress.kubernetes.io/use-regex: "true"
+// Regex path matching is not directly supported in Gateway API
+func handleUseRegex(_, value string, annotations map[string]string) ([]gwapiv1.HTTPRouteFilter, []string) {
+	if value != boolTrue {
+		return nil, nil
 	}
 
-	warnings := []string{
-		fmt.Sprintf("annotation %q converted to redirect filter; should only be applied to root path (\"/\") matches", key),
+	// If used with rewrite-target, the warning is already generated there
+	if _, hasRewrite := annotations[RewriteTarget]; hasRewrite {
+		return nil, nil
 	}
 
-	return []gwapiv1.HTTPRouteFilter{filter}, warnings
+	warning := "use-regex=true enables regex path matching which is not directly supported in Gateway API; " +
+		"standard Gateway API uses Exact, PathPrefix, or RegularExpression (implementation-specific) path types; " +
+		"review paths and convert regex patterns to supported match types"
+	return nil, []string{warning}
 }
 
 // containsCaptureGroup checks if the value contains regex capture group references

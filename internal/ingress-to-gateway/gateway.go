@@ -214,20 +214,34 @@ func listenerNameFromHostname(hostname string) string {
 	return "https-" + name
 }
 
-// mergeListeners merges desired listeners into existing, avoiding duplicates
+// mergeListeners merges desired listeners into existing.
+// - Adds new listeners from desired set
+// - Updates existing listeners if their config differs (e.g., TLS secret changed)
+// - Note: Stale listener removal requires separate cleanup logic since Gateway is shared
 func mergeListeners(existing, desired []gwapiv1.Listener) []gwapiv1.Listener {
-	result := make([]gwapiv1.Listener, 0, len(existing)+len(desired))
-	existingNames := make(map[gwapiv1.SectionName]bool)
-
-	// Keep all existing listeners
-	for _, l := range existing {
-		result = append(result, l)
-		existingNames[l.Name] = true
+	// Build map of desired listeners by name
+	desiredByName := make(map[gwapiv1.SectionName]gwapiv1.Listener)
+	for _, l := range desired {
+		desiredByName[l.Name] = l
 	}
 
-	// Add desired listeners if not already present
+	result := make([]gwapiv1.Listener, 0, len(existing)+len(desired))
+
+	// Process existing listeners - update if in desired set, keep otherwise
+	for _, existing := range existing {
+		if desiredListener, found := desiredByName[existing.Name]; found {
+			// Update existing listener with desired config
+			result = append(result, desiredListener)
+			delete(desiredByName, existing.Name)
+		} else {
+			// Keep existing listener (may belong to another Ingress)
+			result = append(result, existing)
+		}
+	}
+
+	// Add any remaining desired listeners (new ones)
 	for _, l := range desired {
-		if !existingNames[l.Name] {
+		if _, stillNeeded := desiredByName[l.Name]; stillNeeded {
 			result = append(result, l)
 		}
 	}
@@ -235,7 +249,8 @@ func mergeListeners(existing, desired []gwapiv1.Listener) []gwapiv1.Listener {
 	return result
 }
 
-// listenersEqual checks if two listener slices are equivalent
+// listenersEqual checks if two listener slices are equivalent.
+// Compares all relevant fields, not just names.
 func listenersEqual(a, b []gwapiv1.Listener) bool {
 	if len(a) != len(b) {
 		return false
@@ -246,9 +261,64 @@ func listenersEqual(a, b []gwapiv1.Listener) bool {
 		aMap[l.Name] = l
 	}
 
-	for _, l := range b {
-		if _, ok := aMap[l.Name]; !ok {
+	for _, lb := range b {
+		la, ok := aMap[lb.Name]
+		if !ok {
 			return false
+		}
+		if !listenerConfigEqual(la, lb) {
+			return false
+		}
+	}
+
+	return true
+}
+
+// listenerConfigEqual compares relevant listener config fields
+func listenerConfigEqual(a, b gwapiv1.Listener) bool {
+	// Compare basic fields
+	if a.Port != b.Port || a.Protocol != b.Protocol {
+		return false
+	}
+
+	// Compare hostname (both nil, or both equal)
+	if (a.Hostname == nil) != (b.Hostname == nil) {
+		return false
+	}
+	if a.Hostname != nil && *a.Hostname != *b.Hostname {
+		return false
+	}
+
+	// Compare TLS config
+	if (a.TLS == nil) != (b.TLS == nil) {
+		return false
+	}
+	if a.TLS != nil {
+		// Compare TLS mode
+		if (a.TLS.Mode == nil) != (b.TLS.Mode == nil) {
+			return false
+		}
+		if a.TLS.Mode != nil && *a.TLS.Mode != *b.TLS.Mode {
+			return false
+		}
+
+		// Compare certificate refs
+		if len(a.TLS.CertificateRefs) != len(b.TLS.CertificateRefs) {
+			return false
+		}
+		for i := range a.TLS.CertificateRefs {
+			if a.TLS.CertificateRefs[i].Name != b.TLS.CertificateRefs[i].Name {
+				return false
+			}
+			// Compare namespace if set
+			aNs := a.TLS.CertificateRefs[i].Namespace
+			bNs := b.TLS.CertificateRefs[i].Namespace
+			if (aNs == nil) != (bNs == nil) {
+				return false
+			}
+			if aNs != nil && *aNs != *bNs {
+				return false
+			}
 		}
 	}
 

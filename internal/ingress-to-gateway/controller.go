@@ -28,7 +28,7 @@ import (
 	kerrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/client-go/tools/events"
+	"k8s.io/client-go/tools/record"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	ctrlclient "sigs.k8s.io/controller-runtime/pkg/client"
@@ -48,7 +48,7 @@ type Reconciler struct {
 
 	Log      logr.Logger
 	Scheme   *runtime.Scheme
-	Recorder events.EventRecorder
+	Recorder record.EventRecorder
 
 	GatewayName          string
 	GatewayNamespace     string
@@ -64,6 +64,7 @@ type Reconciler struct {
 // +kubebuilder:rbac:groups=networking.k8s.io,resources=ingresses,verbs=get;list;watch;update;patch
 // +kubebuilder:rbac:groups=gateway.networking.k8s.io,resources=gateways,verbs=get;list;watch;create;update;patch
 // +kubebuilder:rbac:groups=gateway.networking.k8s.io,resources=httproutes,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=gateway.networking.k8s.io,resources=grpcroutes,verbs=get;list;watch;create;update;patch;delete
 
 func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	log := r.Log.WithValues("name", req.NamespacedName)
@@ -73,14 +74,24 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 	ingress := &networkingv1.Ingress{}
 	if err := r.Get(ctx, req.NamespacedName, ingress); err != nil {
 		if kerrors.IsNotFound(err) {
-			// Ingress deleted - HTTPRoutes intentionally stay (migration complete)
+			// Ingress deleted - cleanup routes if CleanupStale enabled
+			if r.CleanupStale {
+				if err := r.cleanupRoutesForDeletedIngress(ctx, log, req.NamespacedName); err != nil {
+					return ctrl.Result{}, err
+				}
+			}
 			return ctrl.Result{}, nil
 		}
 		return ctrl.Result{}, err
 	}
 
-	// Skip if being deleted - HTTPRoutes stay for migration
+	// If being deleted and cleanup enabled, clean up routes
 	if ingress.DeletionTimestamp != nil {
+		if r.CleanupStale {
+			if err := r.cleanupRoutesForDeletedIngress(ctx, log, req.NamespacedName); err != nil {
+				return ctrl.Result{}, err
+			}
+		}
 		return ctrl.Result{}, nil
 	}
 
@@ -103,7 +114,7 @@ func (r *Reconciler) reconcile(ctx context.Context, log logr.Logger, ingress *ne
 	// Fetch Services for port resolution
 	services := r.fetchServicesForIngress(ctx, log, ingress)
 
-	// Convert Ingress to HTTPRoutes (one per host)
+	// Convert Ingress to HTTPRoutes or GRPCRoutes (one per host)
 	result := ConvertIngressWithServices(ConversionInput{
 		Ingress:          ingress,
 		GatewayName:      r.GatewayName,
@@ -113,8 +124,8 @@ func (r *Reconciler) reconcile(ctx context.Context, log logr.Logger, ingress *ne
 		DomainSuffix:     r.DomainSuffix,
 	})
 
-	if len(result.HTTPRoutes) == 0 {
-		return fmt.Errorf("conversion produced no HTTPRoutes")
+	if len(result.HTTPRoutes) == 0 && len(result.GRPCRoutes) == 0 {
+		return fmt.Errorf("conversion produced no routes")
 	}
 
 	// Reconcile Gateway first (create/update with listeners and annotations)
@@ -122,20 +133,20 @@ func (r *Reconciler) reconcile(ctx context.Context, log logr.Logger, ingress *ne
 		return fmt.Errorf("failed to reconcile Gateway: %w", err)
 	}
 
-	// Extract external-dns annotations for HTTPRoutes
+	// Extract external-dns annotations for routes
 	externalDNSAnnotations := r.extractHTTPRouteAnnotations(ingress)
 
 	// Track created route names for status annotation
-	var routeNames []string
+	var httpRouteNames []string
+	var grpcRouteNames []string
 
+	// Reconcile HTTPRoutes
 	for _, httpRoute := range result.HTTPRoutes {
-		// Add tracking label (informational - no owner reference so HTTPRoute survives Ingress deletion)
 		if httpRoute.Labels == nil {
 			httpRoute.Labels = make(map[string]string)
 		}
 		httpRoute.Labels[LabelSourceIngress] = fmt.Sprintf("%s.%s", ingress.Name, ingress.Namespace)
 
-		// Add external-dns annotations to HTTPRoute
 		if httpRoute.Annotations == nil {
 			httpRoute.Annotations = make(map[string]string)
 		}
@@ -143,7 +154,6 @@ func (r *Reconciler) reconcile(ctx context.Context, log logr.Logger, ingress *ne
 			httpRoute.Annotations[k] = v
 		}
 
-		// Create or update HTTPRoute
 		existing := &gwapiv1.HTTPRoute{}
 		err := r.Get(ctx, types.NamespacedName{Name: httpRoute.Name, Namespace: httpRoute.Namespace}, existing)
 		if err != nil {
@@ -156,7 +166,6 @@ func (r *Reconciler) reconcile(ctx context.Context, log logr.Logger, ingress *ne
 				return fmt.Errorf("failed to get HTTPRoute: %w", err)
 			}
 		} else {
-			// Update existing HTTPRoute
 			existing.Spec = httpRoute.Spec
 			existing.Labels = httpRoute.Labels
 			existing.Annotations = httpRoute.Annotations
@@ -166,33 +175,74 @@ func (r *Reconciler) reconcile(ctx context.Context, log logr.Logger, ingress *ne
 			}
 		}
 
-		routeNames = append(routeNames, fmt.Sprintf("%s/%s", httpRoute.Namespace, httpRoute.Name))
+		httpRouteNames = append(httpRouteNames, fmt.Sprintf("%s/%s", httpRoute.Namespace, httpRoute.Name))
 	}
 
-	// Clean up stale HTTPRoutes (hosts removed from Ingress)
+	// Reconcile GRPCRoutes
+	for _, grpcRoute := range result.GRPCRoutes {
+		if grpcRoute.Labels == nil {
+			grpcRoute.Labels = make(map[string]string)
+		}
+		grpcRoute.Labels[LabelSourceIngress] = fmt.Sprintf("%s.%s", ingress.Name, ingress.Namespace)
+
+		if grpcRoute.Annotations == nil {
+			grpcRoute.Annotations = make(map[string]string)
+		}
+		for k, v := range externalDNSAnnotations {
+			grpcRoute.Annotations[k] = v
+		}
+
+		existing := &gwapiv1.GRPCRoute{}
+		err := r.Get(ctx, types.NamespacedName{Name: grpcRoute.Name, Namespace: grpcRoute.Namespace}, existing)
+		if err != nil {
+			if kerrors.IsNotFound(err) {
+				log.Info("Creating GRPCRoute", "name", grpcRoute.Name)
+				if err := r.Create(ctx, grpcRoute); err != nil {
+					return fmt.Errorf("failed to create GRPCRoute: %w", err)
+				}
+			} else {
+				return fmt.Errorf("failed to get GRPCRoute: %w", err)
+			}
+		} else {
+			existing.Spec = grpcRoute.Spec
+			existing.Labels = grpcRoute.Labels
+			existing.Annotations = grpcRoute.Annotations
+			log.Info("Updating GRPCRoute", "name", grpcRoute.Name)
+			if err := r.Update(ctx, existing); err != nil {
+				return fmt.Errorf("failed to update GRPCRoute: %w", err)
+			}
+		}
+
+		grpcRouteNames = append(grpcRouteNames, fmt.Sprintf("%s/%s", grpcRoute.Namespace, grpcRoute.Name))
+	}
+
+	// Clean up stale routes (hosts removed from Ingress)
 	if r.CleanupStale {
-		if err := r.cleanupStaleHTTPRoutes(ctx, log, ingress, routeNames); err != nil {
-			log.Error(err, "failed to cleanup stale HTTPRoutes")
-			// Continue, non-fatal
+		if err := r.cleanupStaleHTTPRoutes(ctx, log, ingress, httpRouteNames); err != nil {
+			return fmt.Errorf("failed to cleanup stale HTTPRoutes: %w", err)
+		}
+		if err := r.cleanupStaleGRPCRoutes(ctx, log, ingress, grpcRouteNames); err != nil {
+			return fmt.Errorf("failed to cleanup stale GRPCRoutes: %w", err)
 		}
 	}
 
 	// Update Ingress annotations with conversion status
-	if err := r.updateIngressStatus(ctx, ingress, result.Warnings, routeNames); err != nil {
+	if err := r.updateIngressStatus(ctx, ingress, result.Warnings, httpRouteNames, grpcRouteNames); err != nil {
 		return fmt.Errorf("failed to update Ingress status: %w", err)
 	}
 
 	// Emit events for warnings
 	r.emitWarningEvents(ingress, result.Warnings)
 
-	log.Info("Successfully converted Ingress to HTTPRoutes",
+	log.Info("Successfully converted Ingress",
 		"httproutes", len(result.HTTPRoutes),
+		"grpcroutes", len(result.GRPCRoutes),
 		"warnings", len(result.Warnings))
 
 	return nil
 }
 
-func (r *Reconciler) updateIngressStatus(ctx context.Context, ingress *networkingv1.Ingress, warnings, routeNames []string) error {
+func (r *Reconciler) updateIngressStatus(ctx context.Context, ingress *networkingv1.Ingress, warnings, httpRouteNames, grpcRouteNames []string) error {
 	// Re-fetch to avoid conflicts
 	current := &networkingv1.Ingress{}
 	if err := r.Get(ctx, types.NamespacedName{Name: ingress.Name, Namespace: ingress.Namespace}, current); err != nil {
@@ -210,7 +260,18 @@ func (r *Reconciler) updateIngressStatus(ctx context.Context, ingress *networkin
 	}
 
 	current.Annotations[AnnotationConversionStatus] = status
-	current.Annotations[AnnotationConvertedHTTPRoute] = strings.Join(routeNames, ",")
+
+	if len(httpRouteNames) > 0 {
+		current.Annotations[AnnotationConvertedHTTPRoute] = strings.Join(httpRouteNames, ",")
+	} else {
+		delete(current.Annotations, AnnotationConvertedHTTPRoute)
+	}
+
+	if len(grpcRouteNames) > 0 {
+		current.Annotations[AnnotationConvertedGRPCRoute] = strings.Join(grpcRouteNames, ",")
+	} else {
+		delete(current.Annotations, AnnotationConvertedGRPCRoute)
+	}
 
 	return r.Update(ctx, current)
 }
@@ -249,6 +310,83 @@ func (r *Reconciler) cleanupStaleHTTPRoutes(ctx context.Context, log logr.Logger
 	return nil
 }
 
+// cleanupStaleGRPCRoutes removes GRPCRoutes that were created from this Ingress but are no longer desired
+func (r *Reconciler) cleanupStaleGRPCRoutes(ctx context.Context, log logr.Logger, ingress *networkingv1.Ingress, desiredRouteNames []string) error {
+	// Build set of desired route names for quick lookup
+	desired := make(map[string]bool, len(desiredRouteNames))
+	for _, name := range desiredRouteNames {
+		desired[name] = true
+	}
+
+	// List all GRPCRoutes with source label pointing to this Ingress
+	sourceLabel := fmt.Sprintf("%s.%s", ingress.Name, ingress.Namespace)
+	grpcRouteList := &gwapiv1.GRPCRouteList{}
+	if err := r.List(ctx, grpcRouteList,
+		ctrlclient.InNamespace(ingress.Namespace),
+		ctrlclient.MatchingLabels{LabelSourceIngress: sourceLabel}); err != nil {
+		return fmt.Errorf("failed to list GRPCRoutes: %w", err)
+	}
+
+	// Delete any GRPCRoutes not in desired set
+	for i := range grpcRouteList.Items {
+		route := &grpcRouteList.Items[i]
+		routeKey := fmt.Sprintf("%s/%s", route.Namespace, route.Name)
+		if !desired[routeKey] {
+			log.Info("Deleting stale GRPCRoute", "name", route.Name, "namespace", route.Namespace)
+			if err := r.Delete(ctx, route); err != nil {
+				if !kerrors.IsNotFound(err) {
+					return fmt.Errorf("failed to delete stale GRPCRoute %s: %w", routeKey, err)
+				}
+			}
+		}
+	}
+
+	return nil
+}
+
+// cleanupRoutesForDeletedIngress removes all routes created from a deleted Ingress
+func (r *Reconciler) cleanupRoutesForDeletedIngress(ctx context.Context, log logr.Logger, ingressKey types.NamespacedName) error {
+	sourceLabel := fmt.Sprintf("%s.%s", ingressKey.Name, ingressKey.Namespace)
+
+	// Delete all HTTPRoutes with this source label
+	httpRouteList := &gwapiv1.HTTPRouteList{}
+	if err := r.List(ctx, httpRouteList,
+		ctrlclient.InNamespace(ingressKey.Namespace),
+		ctrlclient.MatchingLabels{LabelSourceIngress: sourceLabel}); err != nil {
+		return fmt.Errorf("failed to list HTTPRoutes for cleanup: %w", err)
+	}
+
+	for i := range httpRouteList.Items {
+		route := &httpRouteList.Items[i]
+		log.Info("Deleting HTTPRoute for deleted Ingress", "name", route.Name, "namespace", route.Namespace)
+		if err := r.Delete(ctx, route); err != nil {
+			if !kerrors.IsNotFound(err) {
+				return fmt.Errorf("failed to delete HTTPRoute %s/%s: %w", route.Namespace, route.Name, err)
+			}
+		}
+	}
+
+	// Delete all GRPCRoutes with this source label
+	grpcRouteList := &gwapiv1.GRPCRouteList{}
+	if err := r.List(ctx, grpcRouteList,
+		ctrlclient.InNamespace(ingressKey.Namespace),
+		ctrlclient.MatchingLabels{LabelSourceIngress: sourceLabel}); err != nil {
+		return fmt.Errorf("failed to list GRPCRoutes for cleanup: %w", err)
+	}
+
+	for i := range grpcRouteList.Items {
+		route := &grpcRouteList.Items[i]
+		log.Info("Deleting GRPCRoute for deleted Ingress", "name", route.Name, "namespace", route.Namespace)
+		if err := r.Delete(ctx, route); err != nil {
+			if !kerrors.IsNotFound(err) {
+				return fmt.Errorf("failed to delete GRPCRoute %s/%s: %w", route.Namespace, route.Name, err)
+			}
+		}
+	}
+
+	return nil
+}
+
 // emitWarningEvents emits Kubernetes events for conversion warnings
 func (r *Reconciler) emitWarningEvents(ingress *networkingv1.Ingress, warnings []string) {
 	if r.Recorder == nil || len(warnings) == 0 {
@@ -258,12 +396,12 @@ func (r *Reconciler) emitWarningEvents(ingress *networkingv1.Ingress, warnings [
 	// Emit a single event summarizing warnings
 	if len(warnings) <= 3 {
 		for _, warning := range warnings {
-			r.Recorder.Eventf(ingress, nil, corev1.EventTypeWarning, "ConversionWarning", "Convert", warning)
+			r.Recorder.Eventf(ingress, corev1.EventTypeWarning, "ConversionWarning", "%s", warning)
 		}
 	} else {
 		// Too many warnings, summarize
-		summary := fmt.Sprintf("Conversion completed with %d warnings. First: %s", len(warnings), warnings[0])
-		r.Recorder.Eventf(ingress, nil, corev1.EventTypeWarning, "ConversionWarning", "Convert", summary)
+		r.Recorder.Eventf(ingress, corev1.EventTypeWarning, "ConversionWarning",
+			"Conversion completed with %d warnings. First: %s", len(warnings), warnings[0])
 	}
 }
 

@@ -18,6 +18,7 @@ package annotations
 
 import (
 	"fmt"
+	"sort"
 
 	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
 )
@@ -64,10 +65,13 @@ func (c *Converter) registerHandlers() {
 	// URL rewriting
 	c.handlers[RewriteTarget] = handleRewriteTarget
 	c.handlers[AppRoot] = handleAppRoot
+	c.handlers[UseRegex] = handleUseRegex
 
 	// Headers
 	c.handlers[CustomHeaders] = handleCustomHeaders
 	c.handlers[ProxySetHeaders] = handleProxySetHeaders
+	c.handlers[UpstreamVhost] = handleUpstreamVhost
+	c.handlers[XForwardedPrefix] = handleXForwardedPrefix
 
 	// Timeouts
 	c.handlers[ProxyConnectTimeout] = handleProxyConnectTimeout
@@ -85,6 +89,7 @@ func (c *Converter) registerHandlers() {
 
 	// Rate limiting
 	c.handlers[LimitRPS] = handleLimitRPS
+	c.handlers[LimitRPM] = handleLimitRPM
 	c.handlers[LimitConnections] = handleLimitConnections
 
 	// IP access control
@@ -118,6 +123,13 @@ func (c *Converter) registerHandlers() {
 	c.handlers[CanaryByHeaderValue] = handleCanaryAnnotation
 	c.handlers[CanaryByCookie] = handleCanaryAnnotation
 
+	// SSL/TLS
+	c.handlers[SSLPassthrough] = handleSSLPassthrough
+	c.handlers[ProxySSLSecret] = handleProxySSLSecret
+	c.handlers[ProxySSLVerify] = handleProxySSLVerify
+	c.handlers[ProxySSLName] = handleProxySSLName
+	c.handlers[ProxySSLServerName] = handleProxySSLServerName
+
 	// Not supported
 	c.handlers[ServerSnippet] = handleNotSupported
 	c.handlers[ConfigurationSnippet] = handleNotSupported
@@ -139,13 +151,19 @@ func (c *Converter) Convert(annotations map[string]string) AnnotationConversionR
 		return result
 	}
 
-	// Process each annotation
-	for key, value := range annotations {
-		handler, ok := c.handlers[key]
-		if !ok {
-			// Unknown annotation - skip silently (may be for other controllers)
-			continue
+	// Sort annotation keys for deterministic processing order
+	keys := make([]string, 0, len(annotations))
+	for key := range annotations {
+		if _, ok := c.handlers[key]; ok {
+			keys = append(keys, key)
 		}
+	}
+	sort.Strings(keys)
+
+	// Process each annotation in sorted order
+	for _, key := range keys {
+		value := annotations[key]
+		handler := c.handlers[key]
 
 		filters, warnings := handler(key, value, annotations)
 		result.Filters = append(result.Filters, filters...)

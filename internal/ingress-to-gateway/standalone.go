@@ -79,7 +79,7 @@ func SetupReconciler(mgr ctrl.Manager, opts Options) error {
 		Client:               mgr.GetClient(),
 		Log:                  ctrl.Log.WithName("controllers").WithName(ControllerName),
 		Scheme:               mgr.GetScheme(),
-		Recorder:             mgr.GetEventRecorder(ControllerName),
+		Recorder:             mgr.GetEventRecorderFor(ControllerName),
 		GatewayName:          opts.GatewayName,
 		GatewayNamespace:     opts.GatewayNamespace,
 		GatewayClassName:     opts.GatewayClassName,
