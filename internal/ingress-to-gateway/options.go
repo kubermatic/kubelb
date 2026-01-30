@@ -20,13 +20,15 @@ import "flag"
 
 // Options holds configuration for the Ingress-to-Gateway conversion controller
 type Options struct {
-	StandaloneMode   bool
-	Enabled          bool
-	GatewayName      string
-	GatewayNamespace string
-	GatewayClassName string
-	DomainReplace    string
-	DomainSuffix     string
+	StandaloneMode       bool
+	Enabled              bool
+	GatewayName          string
+	GatewayNamespace     string
+	GatewayClassName     string
+	DomainReplace        string
+	DomainSuffix         string
+	PropagateCertManager bool
+	PropagateExternalDNS bool
 }
 
 // BindFlags registers the conversion-related flags
@@ -45,4 +47,8 @@ func (o *Options) BindFlags(fs *flag.FlagSet) {
 		"Domain suffix to replace in hostnames (e.g., example.com)")
 	fs.StringVar(&o.DomainSuffix, "conversion-domain-suffix", "",
 		"Replacement domain suffix for hostnames (e.g., new.io)")
+	fs.BoolVar(&o.PropagateCertManager, "propagate-cert-manager-annotations", true,
+		"Propagate cert-manager.io/* annotations to Gateway for automatic TLS")
+	fs.BoolVar(&o.PropagateExternalDNS, "propagate-external-dns-annotations", true,
+		"Propagate external-dns annotations to Gateway (target) and HTTPRoute (others)")
 }

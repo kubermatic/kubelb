@@ -50,14 +50,17 @@ type Reconciler struct {
 	Scheme   *runtime.Scheme
 	Recorder events.EventRecorder
 
-	GatewayName      string
-	GatewayNamespace string
-	GatewayClassName string
-	DomainReplace    string
-	DomainSuffix     string
+	GatewayName          string
+	GatewayNamespace     string
+	GatewayClassName     string
+	DomainReplace        string
+	DomainSuffix         string
+	PropagateCertManager bool
+	PropagateExternalDNS bool
 }
 
 // +kubebuilder:rbac:groups=networking.k8s.io,resources=ingresses,verbs=get;list;watch;update;patch
+// +kubebuilder:rbac:groups=gateway.networking.k8s.io,resources=gateways,verbs=get;list;watch;create;update;patch
 // +kubebuilder:rbac:groups=gateway.networking.k8s.io,resources=httproutes,verbs=get;list;watch;create;update;patch;delete
 
 func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
@@ -112,6 +115,14 @@ func (r *Reconciler) reconcile(ctx context.Context, log logr.Logger, ingress *ne
 		return fmt.Errorf("conversion produced no HTTPRoutes")
 	}
 
+	// Reconcile Gateway first (create/update with listeners and annotations)
+	if err := r.reconcileGateway(ctx, log, ingress, result.TLSListeners); err != nil {
+		return fmt.Errorf("failed to reconcile Gateway: %w", err)
+	}
+
+	// Extract external-dns annotations for HTTPRoutes
+	externalDNSAnnotations := r.extractHTTPRouteAnnotations(ingress)
+
 	// Track created route names for status annotation
 	var routeNames []string
 
@@ -121,6 +132,14 @@ func (r *Reconciler) reconcile(ctx context.Context, log logr.Logger, ingress *ne
 			httpRoute.Labels = make(map[string]string)
 		}
 		httpRoute.Labels[LabelSourceIngress] = fmt.Sprintf("%s.%s", ingress.Name, ingress.Namespace)
+
+		// Add external-dns annotations to HTTPRoute
+		if httpRoute.Annotations == nil {
+			httpRoute.Annotations = make(map[string]string)
+		}
+		for k, v := range externalDNSAnnotations {
+			httpRoute.Annotations[k] = v
+		}
 
 		// Create or update HTTPRoute
 		existing := &gwapiv1.HTTPRoute{}
@@ -138,6 +157,7 @@ func (r *Reconciler) reconcile(ctx context.Context, log logr.Logger, ingress *ne
 			// Update existing HTTPRoute
 			existing.Spec = httpRoute.Spec
 			existing.Labels = httpRoute.Labels
+			existing.Annotations = httpRoute.Annotations
 			log.Info("Updating HTTPRoute", "name", httpRoute.Name)
 			if err := r.Update(ctx, existing); err != nil {
 				return fmt.Errorf("failed to update HTTPRoute: %w", err)

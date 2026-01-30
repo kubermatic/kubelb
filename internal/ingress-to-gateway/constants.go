@@ -35,4 +35,19 @@ const (
 
 	// NGINX annotations (for skip logic)
 	NginxCanary = "nginx.ingress.kubernetes.io/canary"
+
+	// cert-manager annotations (propagated to Gateway)
+	CertManagerAnnotationPrefix = "cert-manager.io/"
+	CertManagerIssuer           = "cert-manager.io/issuer"
+	CertManagerClusterIssuer    = "cert-manager.io/cluster-issuer"
+	LegacyTLSAcme               = "kubernetes.io/tls-acme"
+
+	// external-dns annotations
+	ExternalDNSAnnotationPrefix = "external-dns.alpha.kubernetes.io/"
+	ExternalDNSTarget           = "external-dns.alpha.kubernetes.io/target"
+	ExternalDNSHostname         = "external-dns.alpha.kubernetes.io/hostname"
+	ExternalDNSTTL              = "external-dns.alpha.kubernetes.io/ttl"
+
+	// Gateway labels
+	LabelManagedBy = "kubelb.k8c.io/managed-by"
 )
