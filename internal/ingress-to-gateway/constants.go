@@ -23,6 +23,7 @@ const (
 	AnnotationSkipConversion     = "kubelb.k8c.io/skip-conversion"
 	AnnotationConversionStatus   = "kubelb.k8c.io/conversion-status"
 	AnnotationConvertedHTTPRoute = "kubelb.k8c.io/converted-httproute"
+	AnnotationConvertedGRPCRoute = "kubelb.k8c.io/converted-grpcroute"
 	AnnotationConversionWarnings = "kubelb.k8c.io/conversion-warnings"
 
 	// Legacy ingress class annotation (deprecated but still widely used)
@@ -33,8 +34,9 @@ const (
 	ConversionStatusPartial   = "partial"
 	ConversionStatusFailed    = "failed"
 
-	// NGINX annotations (for skip logic)
-	NginxCanary = "nginx.ingress.kubernetes.io/canary"
+	// NGINX annotations (for skip logic and protocol detection)
+	NginxCanary          = "nginx.ingress.kubernetes.io/canary"
+	NginxBackendProtocol = "nginx.ingress.kubernetes.io/backend-protocol"
 
 	// cert-manager annotations (propagated to Gateway)
 	CertManagerAnnotationPrefix = "cert-manager.io/"

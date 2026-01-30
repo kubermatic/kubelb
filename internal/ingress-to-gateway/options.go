@@ -25,10 +25,12 @@ type Options struct {
 	GatewayName          string
 	GatewayNamespace     string
 	GatewayClassName     string
+	IngressClass         string
 	DomainReplace        string
 	DomainSuffix         string
 	PropagateCertManager bool
 	PropagateExternalDNS bool
+	CleanupStale         bool
 }
 
 // BindFlags registers the conversion-related flags
@@ -43,6 +45,8 @@ func (o *Options) BindFlags(fs *flag.FlagSet) {
 		"Gateway namespace (empty = same namespace as HTTPRoute)")
 	fs.StringVar(&o.GatewayClassName, "conversion-gateway-class", "kubelb",
 		"GatewayClass name for created Gateway")
+	fs.StringVar(&o.IngressClass, "conversion-ingress-class", "",
+		"Only convert Ingresses with this class (empty = convert all)")
 	fs.StringVar(&o.DomainReplace, "conversion-domain-replace", "",
 		"Domain suffix to replace in hostnames (e.g., example.com)")
 	fs.StringVar(&o.DomainSuffix, "conversion-domain-suffix", "",
@@ -51,4 +55,6 @@ func (o *Options) BindFlags(fs *flag.FlagSet) {
 		"Propagate cert-manager.io/* annotations to Gateway for automatic TLS")
 	fs.BoolVar(&o.PropagateExternalDNS, "propagate-external-dns-annotations", true,
 		"Propagate external-dns annotations to Gateway (target) and HTTPRoute (others)")
+	fs.BoolVar(&o.CleanupStale, "conversion-cleanup-stale", true,
+		"Delete orphaned HTTPRoutes when hosts are removed from Ingress")
 }

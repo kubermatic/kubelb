@@ -53,10 +53,12 @@ type Reconciler struct {
 	GatewayName          string
 	GatewayNamespace     string
 	GatewayClassName     string
+	IngressClass         string
 	DomainReplace        string
 	DomainSuffix         string
 	PropagateCertManager bool
 	PropagateExternalDNS bool
+	CleanupStale         bool
 }
 
 // +kubebuilder:rbac:groups=networking.k8s.io,resources=ingresses,verbs=get;list;watch;update;patch
@@ -167,10 +169,21 @@ func (r *Reconciler) reconcile(ctx context.Context, log logr.Logger, ingress *ne
 		routeNames = append(routeNames, fmt.Sprintf("%s/%s", httpRoute.Namespace, httpRoute.Name))
 	}
 
+	// Clean up stale HTTPRoutes (hosts removed from Ingress)
+	if r.CleanupStale {
+		if err := r.cleanupStaleHTTPRoutes(ctx, log, ingress, routeNames); err != nil {
+			log.Error(err, "failed to cleanup stale HTTPRoutes")
+			// Continue, non-fatal
+		}
+	}
+
 	// Update Ingress annotations with conversion status
 	if err := r.updateIngressStatus(ctx, ingress, result.Warnings, routeNames); err != nil {
 		return fmt.Errorf("failed to update Ingress status: %w", err)
 	}
+
+	// Emit events for warnings
+	r.emitWarningEvents(ingress, result.Warnings)
 
 	log.Info("Successfully converted Ingress to HTTPRoutes",
 		"httproutes", len(result.HTTPRoutes),
@@ -202,21 +215,84 @@ func (r *Reconciler) updateIngressStatus(ctx context.Context, ingress *networkin
 	return r.Update(ctx, current)
 }
 
+// cleanupStaleHTTPRoutes removes HTTPRoutes that were created from this Ingress but are no longer desired
+func (r *Reconciler) cleanupStaleHTTPRoutes(ctx context.Context, log logr.Logger, ingress *networkingv1.Ingress, desiredRouteNames []string) error {
+	// Build set of desired route names for quick lookup
+	desired := make(map[string]bool, len(desiredRouteNames))
+	for _, name := range desiredRouteNames {
+		desired[name] = true
+	}
+
+	// List all HTTPRoutes with source label pointing to this Ingress
+	sourceLabel := fmt.Sprintf("%s.%s", ingress.Name, ingress.Namespace)
+	httpRouteList := &gwapiv1.HTTPRouteList{}
+	if err := r.List(ctx, httpRouteList,
+		ctrlclient.InNamespace(ingress.Namespace),
+		ctrlclient.MatchingLabels{LabelSourceIngress: sourceLabel}); err != nil {
+		return fmt.Errorf("failed to list HTTPRoutes: %w", err)
+	}
+
+	// Delete any HTTPRoutes not in desired set
+	for i := range httpRouteList.Items {
+		route := &httpRouteList.Items[i]
+		routeKey := fmt.Sprintf("%s/%s", route.Namespace, route.Name)
+		if !desired[routeKey] {
+			log.Info("Deleting stale HTTPRoute", "name", route.Name, "namespace", route.Namespace)
+			if err := r.Delete(ctx, route); err != nil {
+				if !kerrors.IsNotFound(err) {
+					return fmt.Errorf("failed to delete stale HTTPRoute %s: %w", routeKey, err)
+				}
+			}
+		}
+	}
+
+	return nil
+}
+
+// emitWarningEvents emits Kubernetes events for conversion warnings
+func (r *Reconciler) emitWarningEvents(ingress *networkingv1.Ingress, warnings []string) {
+	if r.Recorder == nil || len(warnings) == 0 {
+		return
+	}
+
+	// Emit a single event summarizing warnings
+	if len(warnings) <= 3 {
+		for _, warning := range warnings {
+			r.Recorder.Eventf(ingress, nil, corev1.EventTypeWarning, "ConversionWarning", "Convert", warning)
+		}
+	} else {
+		// Too many warnings, summarize
+		summary := fmt.Sprintf("Conversion completed with %d warnings. First: %s", len(warnings), warnings[0])
+		r.Recorder.Eventf(ingress, nil, corev1.EventTypeWarning, "ConversionWarning", "Convert", summary)
+	}
+}
+
 // shouldConvert determines if an Ingress should be converted to HTTPRoute
 func (r *Reconciler) shouldConvert(ingress *networkingv1.Ingress) bool {
 	annotations := ingress.GetAnnotations()
-	if annotations == nil {
-		return true
-	}
 
 	// Skip if explicitly marked to skip conversion
-	if annotations[AnnotationSkipConversion] == "true" {
+	if annotations != nil && annotations[AnnotationSkipConversion] == "true" {
 		return false
 	}
 
 	// Skip canary Ingresses (NGINX-specific feature not supported in Gateway API)
-	if annotations[NginxCanary] == "true" {
+	if annotations != nil && annotations[NginxCanary] == "true" {
 		return false
+	}
+
+	// IngressClass filtering
+	if r.IngressClass != "" {
+		ingressClass := ""
+		switch {
+		case ingress.Spec.IngressClassName != nil:
+			ingressClass = *ingress.Spec.IngressClassName
+		case annotations != nil:
+			ingressClass = annotations[AnnotationIngressClass]
+		}
+		if ingressClass != r.IngressClass {
+			return false
+		}
 	}
 
 	return true

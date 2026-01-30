@@ -83,9 +83,11 @@ func SetupReconciler(mgr ctrl.Manager, opts Options) error {
 		GatewayName:          opts.GatewayName,
 		GatewayNamespace:     opts.GatewayNamespace,
 		GatewayClassName:     opts.GatewayClassName,
+		IngressClass:         opts.IngressClass,
 		DomainReplace:        opts.DomainReplace,
 		DomainSuffix:         opts.DomainSuffix,
 		PropagateCertManager: opts.PropagateCertManager,
 		PropagateExternalDNS: opts.PropagateExternalDNS,
+		CleanupStale:         opts.CleanupStale,
 	}).SetupWithManager(mgr)
 }

@@ -55,6 +55,8 @@ type TLSListener struct {
 type ConversionResult struct {
 	// HTTPRoutes contains one HTTPRoute per unique host (or one for no-host rules)
 	HTTPRoutes []*gwapiv1.HTTPRoute
+	// GRPCRoutes contains GRPCRoutes for backends with backend-protocol: GRPC/GRPCS
+	GRPCRoutes []*gwapiv1.GRPCRoute
 	// TLSListeners contains HTTPS listener configs to add to Gateway
 	TLSListeners []TLSListener
 	// Warnings contains messages about unconvertible annotations or configuration
