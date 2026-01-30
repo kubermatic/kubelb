@@ -83,6 +83,7 @@ func SetupReconciler(mgr ctrl.Manager, opts Options) error {
 		GatewayName:      opts.GatewayName,
 		GatewayNamespace: opts.GatewayNamespace,
 		GatewayClassName: opts.GatewayClassName,
+		DomainReplace:    opts.DomainReplace,
 		DomainSuffix:     opts.DomainSuffix,
 	}).SetupWithManager(mgr)
 }

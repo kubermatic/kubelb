@@ -23,6 +23,7 @@ import (
 
 	"github.com/go-logr/logr"
 
+	corev1 "k8s.io/api/core/v1"
 	networkingv1 "k8s.io/api/networking/v1"
 	kerrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -52,6 +53,7 @@ type Reconciler struct {
 	GatewayName      string
 	GatewayNamespace string
 	GatewayClassName string
+	DomainReplace    string
 	DomainSuffix     string
 }
 
@@ -93,8 +95,18 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 }
 
 func (r *Reconciler) reconcile(ctx context.Context, log logr.Logger, ingress *networkingv1.Ingress) error {
+	// Fetch Services for port resolution
+	services := r.fetchServicesForIngress(ctx, log, ingress)
+
 	// Convert Ingress to HTTPRoutes (one per host)
-	result := ConvertIngress(ingress, r.GatewayName, r.GatewayNamespace)
+	result := ConvertIngressWithServices(ConversionInput{
+		Ingress:          ingress,
+		GatewayName:      r.GatewayName,
+		GatewayNamespace: r.GatewayNamespace,
+		Services:         services,
+		DomainReplace:    r.DomainReplace,
+		DomainSuffix:     r.DomainSuffix,
+	})
 
 	if len(result.HTTPRoutes) == 0 {
 		return fmt.Errorf("conversion produced no HTTPRoutes")
@@ -188,6 +200,53 @@ func (r *Reconciler) shouldConvert(ingress *networkingv1.Ingress) bool {
 	}
 
 	return true
+}
+
+// fetchServicesForIngress fetches all Services referenced by the Ingress for port resolution
+func (r *Reconciler) fetchServicesForIngress(ctx context.Context, log logr.Logger, ingress *networkingv1.Ingress) map[types.NamespacedName]*corev1.Service {
+	services := make(map[types.NamespacedName]*corev1.Service)
+
+	// Collect service names from default backend
+	if ingress.Spec.DefaultBackend != nil && ingress.Spec.DefaultBackend.Service != nil {
+		key := types.NamespacedName{
+			Name:      ingress.Spec.DefaultBackend.Service.Name,
+			Namespace: ingress.Namespace,
+		}
+		r.fetchService(ctx, log, key, services)
+	}
+
+	// Collect service names from rules
+	for _, rule := range ingress.Spec.Rules {
+		if rule.HTTP == nil {
+			continue
+		}
+		for _, path := range rule.HTTP.Paths {
+			if path.Backend.Service != nil {
+				key := types.NamespacedName{
+					Name:      path.Backend.Service.Name,
+					Namespace: ingress.Namespace,
+				}
+				r.fetchService(ctx, log, key, services)
+			}
+		}
+	}
+
+	return services
+}
+
+func (r *Reconciler) fetchService(ctx context.Context, log logr.Logger, key types.NamespacedName, services map[types.NamespacedName]*corev1.Service) {
+	if _, exists := services[key]; exists {
+		return
+	}
+
+	svc := &corev1.Service{}
+	if err := r.Get(ctx, key, svc); err != nil {
+		if !kerrors.IsNotFound(err) {
+			log.V(1).Info("Failed to fetch Service for port resolution", "service", key, "error", err)
+		}
+		return
+	}
+	services[key] = svc
 }
 
 func (r *Reconciler) resourceFilter() predicate.Predicate {

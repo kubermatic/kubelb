@@ -19,6 +19,7 @@ package ingressconversion
 import (
 	"fmt"
 	"sort"
+	"strings"
 
 	corev1 "k8s.io/api/core/v1"
 	networkingv1 "k8s.io/api/networking/v1"
@@ -36,6 +37,10 @@ type ConversionInput struct {
 	GatewayNamespace string
 	// Services maps namespace/name to Service for port resolution (optional)
 	Services map[types.NamespacedName]*corev1.Service
+	// DomainReplace is the domain suffix to strip from hostnames (e.g., "example.com")
+	DomainReplace string
+	// DomainSuffix is the replacement domain suffix (e.g., "new.io")
+	DomainSuffix string
 }
 
 // TLSListener represents a TLS listener configuration for the Gateway
@@ -89,7 +94,7 @@ func ConvertIngressWithServices(input ConversionInput) ConversionResult {
 	const noHostKey = ""
 
 	for i, rule := range ingress.Spec.Rules {
-		host := rule.Host
+		host := transformHostname(rule.Host, input.DomainReplace, input.DomainSuffix)
 		if rule.HTTP == nil {
 			result.Warnings = append(result.Warnings, fmt.Sprintf("rule[%d] has no HTTP configuration, skipped", i))
 			continue
@@ -120,7 +125,7 @@ func ConvertIngressWithServices(input ConversionInput) ConversionResult {
 	}
 
 	// Convert TLS configuration to Gateway listeners
-	result.TLSListeners = convertTLSConfig(ingress.Spec.TLS, ingress.Namespace)
+	result.TLSListeners = convertTLSConfig(ingress.Spec.TLS, ingress.Namespace, input.DomainReplace, input.DomainSuffix)
 
 	// Generate HTTPRoutes per host
 	parentRef := buildParentRef(input.GatewayName, input.GatewayNamespace, ingress.Namespace)
@@ -208,14 +213,14 @@ func ConvertIngressWithServices(input ConversionInput) ConversionResult {
 }
 
 // convertTLSConfig converts Ingress TLS config to Gateway listener configurations
-func convertTLSConfig(tlsConfigs []networkingv1.IngressTLS, namespace string) []TLSListener {
+func convertTLSConfig(tlsConfigs []networkingv1.IngressTLS, namespace, domainReplace, domainSuffix string) []TLSListener {
 	var listeners []TLSListener
 
 	for _, tls := range tlsConfigs {
 		// Each TLS config can have multiple hosts sharing the same secret
 		for _, host := range tls.Hosts {
 			listener := TLSListener{
-				Hostname:        gwapiv1.Hostname(host),
+				Hostname:        gwapiv1.Hostname(transformHostname(host, domainReplace, domainSuffix)),
 				SecretName:      tls.SecretName,
 				SecretNamespace: namespace,
 			}
@@ -438,4 +443,42 @@ func copyLabels(labels map[string]string) map[string]string {
 		copied[k] = v
 	}
 	return copied
+}
+
+// transformHostname applies domain suffix replacement to a hostname.
+// If replace is empty or suffix is empty, returns host unchanged.
+// Handles wildcards: *.example.com → *.new.io
+// Examples with replace="example.com", suffix="new.io":
+//   - app.example.com → app.new.io
+//   - foo.bar.example.com → foo.bar.new.io
+//   - example.com → new.io
+//   - *.example.com → *.new.io
+//   - app.other.com → app.other.com (no match)
+func transformHostname(host, replace, suffix string) string {
+	if replace == "" || suffix == "" {
+		return host
+	}
+
+	// Handle wildcard prefix
+	wildcardPrefix := ""
+	checkHost := host
+	if strings.HasPrefix(host, "*.") {
+		wildcardPrefix = "*."
+		checkHost = host[2:]
+	}
+
+	// Check if host ends with replace domain
+	if checkHost == replace {
+		// Exact match (minus wildcard): example.com → new.io
+		return wildcardPrefix + suffix
+	}
+
+	if strings.HasSuffix(checkHost, "."+replace) {
+		// Subdomain match: app.example.com → app.new.io
+		prefix := strings.TrimSuffix(checkHost, "."+replace)
+		return wildcardPrefix + prefix + "." + suffix
+	}
+
+	// No match, return unchanged
+	return host
 }

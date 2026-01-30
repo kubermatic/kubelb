@@ -25,6 +25,7 @@ type Options struct {
 	GatewayName      string
 	GatewayNamespace string
 	GatewayClassName string
+	DomainReplace    string
 	DomainSuffix     string
 }
 
@@ -40,6 +41,8 @@ func (o *Options) BindFlags(fs *flag.FlagSet) {
 		"Gateway namespace (empty = same namespace as HTTPRoute)")
 	fs.StringVar(&o.GatewayClassName, "conversion-gateway-class", "kubelb",
 		"GatewayClass name for created Gateway")
+	fs.StringVar(&o.DomainReplace, "conversion-domain-replace", "",
+		"Domain suffix to replace in hostnames (e.g., example.com)")
 	fs.StringVar(&o.DomainSuffix, "conversion-domain-suffix", "",
-		"Domain suffix for converted hostnames")
+		"Replacement domain suffix for hostnames (e.g., new.io)")
 }

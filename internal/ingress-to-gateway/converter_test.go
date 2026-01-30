@@ -1045,6 +1045,135 @@ func TestConvertIngress_WithAnnotations(t *testing.T) {
 	}
 }
 
+func TestTransformHostname(t *testing.T) {
+	tests := []struct {
+		name     string
+		host     string
+		replace  string
+		suffix   string
+		expected string
+	}{
+		{"no replacement configured", "app.example.com", "", "", "app.example.com"},
+		{"no suffix configured", "app.example.com", "example.com", "", "app.example.com"},
+		{"no replace configured", "app.example.com", "", "new.io", "app.example.com"},
+		{"simple subdomain", "app.example.com", "example.com", "new.io", "app.new.io"},
+		{"multi-level subdomain", "foo.bar.example.com", "example.com", "new.io", "foo.bar.new.io"},
+		{"exact domain match", "example.com", "example.com", "new.io", "new.io"},
+		{"wildcard subdomain", "*.example.com", "example.com", "new.io", "*.new.io"},
+		{"no match unchanged", "app.other.com", "example.com", "new.io", "app.other.com"},
+		{"partial match unchanged", "notexample.com", "example.com", "new.io", "notexample.com"},
+		{"wildcard no match", "*.other.com", "example.com", "new.io", "*.other.com"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := transformHostname(tt.host, tt.replace, tt.suffix)
+			if got != tt.expected {
+				t.Errorf("transformHostname(%q, %q, %q) = %q, want %q",
+					tt.host, tt.replace, tt.suffix, got, tt.expected)
+			}
+		})
+	}
+}
+
+func TestConvertIngress_DomainTransformation(t *testing.T) {
+	ingress := &networkingv1.Ingress{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "domain-transform",
+			Namespace: "default",
+		},
+		Spec: networkingv1.IngressSpec{
+			TLS: []networkingv1.IngressTLS{
+				{
+					Hosts:      []string{"api.example.com", "web.example.com"},
+					SecretName: "tls-secret",
+				},
+			},
+			Rules: []networkingv1.IngressRule{
+				{
+					Host: "api.example.com",
+					IngressRuleValue: networkingv1.IngressRuleValue{
+						HTTP: &networkingv1.HTTPIngressRuleValue{
+							Paths: []networkingv1.HTTPIngressPath{{
+								Path:     "/",
+								PathType: ptr.To(networkingv1.PathTypePrefix),
+								Backend: networkingv1.IngressBackend{
+									Service: &networkingv1.IngressServiceBackend{
+										Name: "api-svc",
+										Port: networkingv1.ServiceBackendPort{Number: 80},
+									},
+								},
+							}},
+						},
+					},
+				},
+				{
+					Host: "web.example.com",
+					IngressRuleValue: networkingv1.IngressRuleValue{
+						HTTP: &networkingv1.HTTPIngressRuleValue{
+							Paths: []networkingv1.HTTPIngressPath{{
+								Path:     "/",
+								PathType: ptr.To(networkingv1.PathTypePrefix),
+								Backend: networkingv1.IngressBackend{
+									Service: &networkingv1.IngressServiceBackend{
+										Name: "web-svc",
+										Port: networkingv1.ServiceBackendPort{Number: 80},
+									},
+								},
+							}},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	result := ConvertIngressWithServices(ConversionInput{
+		Ingress:          ingress,
+		GatewayName:      "gw",
+		GatewayNamespace: "",
+		DomainReplace:    "example.com",
+		DomainSuffix:     "new.io",
+	})
+
+	// Verify HTTPRoutes have transformed hostnames
+	if len(result.HTTPRoutes) != 2 {
+		t.Fatalf("expected 2 HTTPRoutes, got %d", len(result.HTTPRoutes))
+	}
+
+	hostsSeen := make(map[gwapiv1.Hostname]bool)
+	for _, route := range result.HTTPRoutes {
+		if len(route.Spec.Hostnames) != 1 {
+			t.Errorf("route %s has %d hostnames, expected 1", route.Name, len(route.Spec.Hostnames))
+		}
+		hostsSeen[route.Spec.Hostnames[0]] = true
+	}
+
+	if !hostsSeen["api.new.io"] {
+		t.Error("expected api.new.io hostname")
+	}
+	if !hostsSeen["web.new.io"] {
+		t.Error("expected web.new.io hostname")
+	}
+
+	// Verify TLS listeners have transformed hostnames
+	if len(result.TLSListeners) != 2 {
+		t.Fatalf("expected 2 TLS listeners, got %d", len(result.TLSListeners))
+	}
+
+	tlsHosts := make(map[gwapiv1.Hostname]bool)
+	for _, l := range result.TLSListeners {
+		tlsHosts[l.Hostname] = true
+	}
+
+	if !tlsHosts["api.new.io"] {
+		t.Error("expected api.new.io TLS listener")
+	}
+	if !tlsHosts["web.new.io"] {
+		t.Error("expected web.new.io TLS listener")
+	}
+}
+
 func TestConvertIngress_WithPolicyAnnotations(t *testing.T) {
 	ingress := &networkingv1.Ingress{
 		ObjectMeta: metav1.ObjectMeta{
