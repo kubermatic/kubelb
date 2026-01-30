@@ -23,13 +23,13 @@ import (
 	"sort"
 	"strings"
 
+	"k8c.io/kubelb/internal/ingress-to-gateway/annotations"
+
 	corev1 "k8s.io/api/core/v1"
 	networkingv1 "k8s.io/api/networking/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
-
-	"k8c.io/kubelb/internal/ingress-to-gateway/annotations"
 )
 
 // ConversionInput holds input data for conversion including Services for port resolution

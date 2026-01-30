@@ -85,6 +85,16 @@ cosign verify quay.io/kubermatic/kubelb-ccm:v1.3.0 \
 | kubelb.enableLeaderElection | bool | `true` | Enable the leader election. |
 | kubelb.enableSecretSynchronizer | bool | `false` | Enable to automatically convert Secrets labelled with `kubelb.k8c.io/managed-by: kubelb` to Sync Secrets. This is used to sync secrets from tenants to the LB cluster in a controlled and secure way. |
 | kubelb.gatewayAPICRDsChannel | string | `"standard"` | gatewayAPICRDsChannel specifies the channel for the Gateway API CRDs. Options are `standard` and `experimental`. |
+| kubelb.ingressConversion.domainReplace | string | `""` | domainReplace is the domain suffix to replace in hostnames |
+| kubelb.ingressConversion.domainSuffix | string | `""` | domainSuffix is the replacement domain suffix for hostnames |
+| kubelb.ingressConversion.enabled | bool | `false` | enabled enables automatic Ingress to HTTPRoute conversion |
+| kubelb.ingressConversion.gatewayClass | string | `"kubelb"` | gatewayClass is the GatewayClass name for created Gateway |
+| kubelb.ingressConversion.gatewayName | string | `"kubelb"` | gatewayName is the name of the Gateway for converted HTTPRoutes |
+| kubelb.ingressConversion.gatewayNamespace | string | `""` | gatewayNamespace is the namespace for the Gateway (empty = same as HTTPRoute) |
+| kubelb.ingressConversion.ingressClass | string | `""` | ingressClass filters Ingresses to convert (empty = convert all) |
+| kubelb.ingressConversion.propagateCertManagerAnnotations | bool | `true` | propagateCertManagerAnnotations propagates cert-manager.io/* annotations to Gateway |
+| kubelb.ingressConversion.propagateExternalDnsAnnotations | bool | `true` | propagateExternalDnsAnnotations propagates external-dns annotations to Gateway/HTTPRoute |
+| kubelb.ingressConversion.standaloneMode | bool | `false` | standaloneMode runs as standalone converter, disabling all other controllers |
 | kubelb.installGatewayAPICRDs | bool | `false` | installGatewayAPICRDs Installs and manages the Gateway API CRDs using gateway crd controller. |
 | kubelb.logLevel | string | `"info"` | To configure the verbosity of logging. Can be one of 'debug', 'info', 'error', 'panic' or any integer value > 0 which corresponds to custom debug levels of increasing verbosity. |
 | kubelb.nodeAddressType | string | `"ExternalIP"` | Address type to use for routing traffic to node ports. Values are ExternalIP, InternalIP. |
