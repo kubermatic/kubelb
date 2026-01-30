@@ -35,8 +35,6 @@ spec:
   bindings:
     - name: name
       value: conv-simple
-    - name: namespace
-      value: default
     - name: original_host
       value: conv-simple.test.local
     - name: transformed_host
@@ -95,8 +93,6 @@ spec:
           bindings:
             - name: ingress_name
               value: ($name)
-            - name: namespace
-              value: ($namespace)
             - name: expected_host
               value: ($transformed_host)
 
@@ -109,8 +105,6 @@ spec:
           bindings:
             - name: gateway_name
               value: kubelb
-            - name: namespace
-              value: default
 
     # Step 5: Verify conversion status annotation
     - name: verify-status
@@ -121,8 +115,6 @@ spec:
           bindings:
             - name: ingress_name
               value: ($name)
-            - name: namespace
-              value: ($namespace)
             - name: expected_status
               value: converted
 
@@ -147,5 +139,3 @@ spec:
           bindings:
             - name: ingress_name
               value: ($name)
-            - name: namespace
-              value: ($namespace)

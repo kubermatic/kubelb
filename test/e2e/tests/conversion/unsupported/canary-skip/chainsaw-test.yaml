@@ -32,8 +32,6 @@ spec:
   bindings:
     - name: name
       value: conv-canary
-    - name: namespace
-      value: default
   steps:
     - name: create-service
       description: Create ClusterIP service

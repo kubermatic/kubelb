@@ -31,8 +31,6 @@ spec:
     Test Gateway listener merging from multiple Ingresses.
     Verifies listeners are merged without duplicates.
   bindings:
-    - name: namespace
-      value: default
   steps:
     # Clean up any existing Gateway
     - name: cleanup-existing

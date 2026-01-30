@@ -31,8 +31,6 @@ spec:
   bindings:
     - name: name
       value: conv-skip
-    - name: namespace
-      value: default
   steps:
     # Step 1: Create ClusterIP service
     - name: create-service

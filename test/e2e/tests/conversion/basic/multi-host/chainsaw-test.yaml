@@ -14,7 +14,7 @@
 
 # Multi-host Ingress-to-Gateway Conversion Test
 # Verifies:
-# - Ingress with multiple hosts creates one HTTPRoute per host
+# - Ingress with multiple hosts sharing same rules creates single HTTPRoute with multiple hostnames
 # - Each hostname is transformed correctly
 # - Traffic works for each transformed host
 apiVersion: chainsaw.kyverno.io/v1alpha1
@@ -28,13 +28,11 @@ metadata:
 spec:
   description: |
     Test multi-host Ingress conversion.
-    Creates Ingress with 3 hosts, verifies separate HTTPRoutes created,
-    tests HTTP connectivity for each host.
+    Creates Ingress with 3 hosts sharing same rules,
+    verifies single consolidated HTTPRoute with multiple hostnames.
   bindings:
     - name: name
       value: conv-multihost
-    - name: namespace
-      value: default
   steps:
     # Step 1: Create ClusterIP service
     - name: create-service
@@ -100,9 +98,9 @@ spec:
                               port:
                                 number: 80
 
-    # Step 3: Verify multiple HTTPRoutes created
-    - name: verify-httproutes
-      description: Verify HTTPRoutes exist for all hosts
+    # Step 3: Verify single HTTPRoute with multiple hostnames (consolidated)
+    - name: verify-httproute
+      description: Verify single HTTPRoute with all hosts consolidated
       try:
         - script:
             timeout: 60s
@@ -111,22 +109,27 @@ spec:
               SOURCE_LABEL="conv-multihost.default"
 
               for i in $(seq 1 30); do
-                COUNT=$(kubectl get httproutes.gateway.networking.k8s.io -n default \
-                  -l "kubelb.k8c.io/source-ingress=${SOURCE_LABEL}" -o name 2>/dev/null | wc -l)
+                # Check for single HTTPRoute named after Ingress
+                ROUTE=$(kubectl get httproutes.gateway.networking.k8s.io conv-multihost -n default -o name 2>/dev/null || echo "")
 
-                if [ "$COUNT" -ge 3 ]; then
-                  echo "SUCCESS: Found $COUNT HTTPRoutes"
-                  kubectl get httproutes.gateway.networking.k8s.io -n default \
-                    -l "kubelb.k8c.io/source-ingress=${SOURCE_LABEL}" \
-                    -o custom-columns='NAME:.metadata.name,HOSTNAME:.spec.hostnames[0]'
-                  exit 0
+                if [ -n "$ROUTE" ]; then
+                  # Verify it has 3 hostnames
+                  HOST_COUNT=$(kubectl get httproutes.gateway.networking.k8s.io conv-multihost -n default \
+                    -o jsonpath='{.spec.hostnames}' | jq '. | length')
+
+                  if [ "$HOST_COUNT" -eq 3 ]; then
+                    echo "SUCCESS: Found HTTPRoute with $HOST_COUNT hostnames"
+                    kubectl get httproutes.gateway.networking.k8s.io conv-multihost -n default \
+                      -o jsonpath='Hostnames: {.spec.hostnames}{"\n"}'
+                    exit 0
+                  fi
                 fi
 
-                echo "Attempt $i: found $COUNT HTTPRoutes, waiting for 3..."
+                echo "Attempt $i: waiting for HTTPRoute..."
                 sleep 2
               done
 
-              echo "FAILED: Expected 3 HTTPRoutes"
+              echo "FAILED: Expected single HTTPRoute with 3 hostnames"
               exit 1
             check:
               ($error == null): true
@@ -140,8 +143,6 @@ spec:
           bindings:
             - name: ingress_name
               value: ($name)
-            - name: namespace
-              value: ($namespace)
             - name: expected_status
               value: converted
 
@@ -166,5 +167,3 @@ spec:
           bindings:
             - name: ingress_name
               value: ($name)
-            - name: namespace
-              value: ($namespace)

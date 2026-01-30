@@ -31,8 +31,6 @@ spec:
   bindings:
     - name: name
       value: conv-approot
-    - name: namespace
-      value: default
     - name: transformed_host
       value: conv-approot.gateway.local
   steps:
@@ -88,8 +86,6 @@ spec:
           bindings:
             - name: ingress_name
               value: ($name)
-            - name: namespace
-              value: ($namespace)
             - name: expected_host
               value: ($transformed_host)
 
@@ -119,5 +115,3 @@ spec:
           bindings:
             - name: ingress_name
               value: ($name)
-            - name: namespace
-              value: ($namespace)

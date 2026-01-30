@@ -20,18 +20,21 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/go-logr/logr"
 
 	corev1 "k8s.io/api/core/v1"
 	networkingv1 "k8s.io/api/networking/v1"
 	kerrors "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/record"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	ctrlclient "sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
@@ -102,15 +105,20 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 	}
 
 	// Convert and reconcile
-	if err := r.reconcile(ctx, log, ingress); err != nil {
+	requeue, err := r.reconcile(ctx, log, ingress)
+	if err != nil {
 		log.Error(err, "reconciliation failed")
 		return ctrl.Result{}, err
+	}
+
+	if requeue {
+		return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
 	}
 
 	return ctrl.Result{}, nil
 }
 
-func (r *Reconciler) reconcile(ctx context.Context, log logr.Logger, ingress *networkingv1.Ingress) error {
+func (r *Reconciler) reconcile(ctx context.Context, log logr.Logger, ingress *networkingv1.Ingress) (requeue bool, err error) {
 	// Fetch Services for port resolution
 	services := r.fetchServicesForIngress(ctx, log, ingress)
 
@@ -125,12 +133,12 @@ func (r *Reconciler) reconcile(ctx context.Context, log logr.Logger, ingress *ne
 	})
 
 	if len(result.HTTPRoutes) == 0 && len(result.GRPCRoutes) == 0 {
-		return fmt.Errorf("conversion produced no routes")
+		return false, fmt.Errorf("conversion produced no routes")
 	}
 
 	// Reconcile Gateway first (create/update with listeners and annotations)
 	if err := r.reconcileGateway(ctx, log, ingress, result.TLSListeners); err != nil {
-		return fmt.Errorf("failed to reconcile Gateway: %w", err)
+		return false, fmt.Errorf("failed to reconcile Gateway: %w", err)
 	}
 
 	// Extract external-dns annotations for routes
@@ -160,10 +168,10 @@ func (r *Reconciler) reconcile(ctx context.Context, log logr.Logger, ingress *ne
 			if kerrors.IsNotFound(err) {
 				log.Info("Creating HTTPRoute", "name", httpRoute.Name)
 				if err := r.Create(ctx, httpRoute); err != nil {
-					return fmt.Errorf("failed to create HTTPRoute: %w", err)
+					return false, fmt.Errorf("failed to create HTTPRoute: %w", err)
 				}
 			} else {
-				return fmt.Errorf("failed to get HTTPRoute: %w", err)
+				return false, fmt.Errorf("failed to get HTTPRoute: %w", err)
 			}
 		} else {
 			existing.Spec = httpRoute.Spec
@@ -171,7 +179,7 @@ func (r *Reconciler) reconcile(ctx context.Context, log logr.Logger, ingress *ne
 			existing.Annotations = httpRoute.Annotations
 			log.Info("Updating HTTPRoute", "name", httpRoute.Name)
 			if err := r.Update(ctx, existing); err != nil {
-				return fmt.Errorf("failed to update HTTPRoute: %w", err)
+				return false, fmt.Errorf("failed to update HTTPRoute: %w", err)
 			}
 		}
 
@@ -198,10 +206,10 @@ func (r *Reconciler) reconcile(ctx context.Context, log logr.Logger, ingress *ne
 			if kerrors.IsNotFound(err) {
 				log.Info("Creating GRPCRoute", "name", grpcRoute.Name)
 				if err := r.Create(ctx, grpcRoute); err != nil {
-					return fmt.Errorf("failed to create GRPCRoute: %w", err)
+					return false, fmt.Errorf("failed to create GRPCRoute: %w", err)
 				}
 			} else {
-				return fmt.Errorf("failed to get GRPCRoute: %w", err)
+				return false, fmt.Errorf("failed to get GRPCRoute: %w", err)
 			}
 		} else {
 			existing.Spec = grpcRoute.Spec
@@ -209,7 +217,7 @@ func (r *Reconciler) reconcile(ctx context.Context, log logr.Logger, ingress *ne
 			existing.Annotations = grpcRoute.Annotations
 			log.Info("Updating GRPCRoute", "name", grpcRoute.Name)
 			if err := r.Update(ctx, existing); err != nil {
-				return fmt.Errorf("failed to update GRPCRoute: %w", err)
+				return false, fmt.Errorf("failed to update GRPCRoute: %w", err)
 			}
 		}
 
@@ -219,30 +227,66 @@ func (r *Reconciler) reconcile(ctx context.Context, log logr.Logger, ingress *ne
 	// Clean up stale routes (hosts removed from Ingress)
 	if r.CleanupStale {
 		if err := r.cleanupStaleHTTPRoutes(ctx, log, ingress, httpRouteNames); err != nil {
-			return fmt.Errorf("failed to cleanup stale HTTPRoutes: %w", err)
+			return false, fmt.Errorf("failed to cleanup stale HTTPRoutes: %w", err)
 		}
 		if err := r.cleanupStaleGRPCRoutes(ctx, log, ingress, grpcRouteNames); err != nil {
-			return fmt.Errorf("failed to cleanup stale GRPCRoutes: %w", err)
+			return false, fmt.Errorf("failed to cleanup stale GRPCRoutes: %w", err)
+		}
+	}
+
+	// Verify route acceptance (staged validation)
+	allWarnings := append([]string{}, result.Warnings...)
+	routeAcceptance := make(map[string]bool)
+	hasTimeout := false
+
+	for _, httpRoute := range result.HTTPRoutes {
+		acceptance := r.waitForRouteAcceptance(ctx, httpRoute.Name, httpRoute.Namespace)
+		routeAcceptance[httpRoute.Name] = acceptance.accepted
+		if !acceptance.accepted {
+			if acceptance.reason == "Timeout" {
+				hasTimeout = true
+				log.V(1).Info("HTTPRoute acceptance timed out", "name", httpRoute.Name)
+			} else {
+				allWarnings = append(allWarnings, fmt.Sprintf("HTTPRoute %s not accepted: %s", httpRoute.Name, acceptance.reason))
+				r.Recorder.Eventf(ingress, corev1.EventTypeWarning, "RouteNotAccepted",
+					"HTTPRoute %s not accepted by Gateway: %s", httpRoute.Name, acceptance.reason)
+			}
+		}
+	}
+
+	for _, grpcRoute := range result.GRPCRoutes {
+		acceptance := r.waitForGRPCRouteAcceptance(ctx, grpcRoute.Name, grpcRoute.Namespace)
+		routeAcceptance[grpcRoute.Name] = acceptance.accepted
+		if !acceptance.accepted {
+			if acceptance.reason == "Timeout" {
+				hasTimeout = true
+				log.V(1).Info("GRPCRoute acceptance timed out", "name", grpcRoute.Name)
+			} else {
+				allWarnings = append(allWarnings, fmt.Sprintf("GRPCRoute %s not accepted: %s", grpcRoute.Name, acceptance.reason))
+				r.Recorder.Eventf(ingress, corev1.EventTypeWarning, "RouteNotAccepted",
+					"GRPCRoute %s not accepted by Gateway: %s", grpcRoute.Name, acceptance.reason)
+			}
 		}
 	}
 
 	// Update Ingress annotations with conversion status
-	if err := r.updateIngressStatus(ctx, ingress, result.Warnings, httpRouteNames, grpcRouteNames); err != nil {
-		return fmt.Errorf("failed to update Ingress status: %w", err)
+	if err := r.updateIngressStatusStaged(ctx, ingress, allWarnings, httpRouteNames, grpcRouteNames, routeAcceptance, hasTimeout); err != nil {
+		return false, fmt.Errorf("failed to update Ingress status: %w", err)
 	}
 
 	// Emit events for warnings
-	r.emitWarningEvents(ingress, result.Warnings)
+	r.emitWarningEvents(ingress, allWarnings)
 
 	log.Info("Successfully converted Ingress",
 		"httproutes", len(result.HTTPRoutes),
 		"grpcroutes", len(result.GRPCRoutes),
-		"warnings", len(result.Warnings))
+		"warnings", len(allWarnings))
 
-	return nil
+	// Requeue if routes timed out waiting for acceptance
+	return hasTimeout, nil
 }
 
-func (r *Reconciler) updateIngressStatus(ctx context.Context, ingress *networkingv1.Ingress, warnings, httpRouteNames, grpcRouteNames []string) error {
+func (r *Reconciler) updateIngressStatusStaged(ctx context.Context, ingress *networkingv1.Ingress, warnings, httpRouteNames, grpcRouteNames []string, routeAcceptance map[string]bool, hasTimeout bool) error {
 	// Re-fetch to avoid conflicts
 	current := &networkingv1.Ingress{}
 	if err := r.Get(ctx, types.NamespacedName{Name: ingress.Name, Namespace: ingress.Namespace}, current); err != nil {
@@ -253,10 +297,29 @@ func (r *Reconciler) updateIngressStatus(ctx context.Context, ingress *networkin
 		current.Annotations = make(map[string]string)
 	}
 
-	status := ConversionStatusConverted
-	if len(warnings) > 0 {
+	// Determine status based on acceptance results
+	allAccepted := true
+	for _, accepted := range routeAcceptance {
+		if !accepted {
+			allAccepted = false
+			break
+		}
+	}
+
+	var status string
+	switch {
+	case hasTimeout:
+		status = ConversionStatusPending
+	case allAccepted && len(warnings) == 0:
+		status = ConversionStatusConverted
+	default:
 		status = ConversionStatusPartial
+	}
+
+	if len(warnings) > 0 {
 		current.Annotations[AnnotationConversionWarnings] = strings.Join(warnings, "; ")
+	} else {
+		delete(current.Annotations, AnnotationConversionWarnings)
 	}
 
 	current.Annotations[AnnotationConversionStatus] = status
@@ -410,12 +473,12 @@ func (r *Reconciler) shouldConvert(ingress *networkingv1.Ingress) bool {
 	annotations := ingress.GetAnnotations()
 
 	// Skip if explicitly marked to skip conversion
-	if annotations != nil && annotations[AnnotationSkipConversion] == "true" {
+	if annotations != nil && annotations[AnnotationSkipConversion] == boolTrue {
 		return false
 	}
 
 	// Skip canary Ingresses (NGINX-specific feature not supported in Gateway API)
-	if annotations != nil && annotations[NginxCanary] == "true" {
+	if annotations != nil && annotations[NginxCanary] == boolTrue {
 		return false
 	}
 
@@ -515,5 +578,80 @@ func (r *Reconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		Named(ControllerName).
 		For(&networkingv1.Ingress{}, builder.WithPredicates(r.resourceFilter())).
+		WithOptions(controller.Options{MaxConcurrentReconciles: 1}).
 		Complete(r)
+}
+
+// routeAcceptanceResult holds result of checking route acceptance
+type routeAcceptanceResult struct {
+	accepted bool
+	reason   string
+}
+
+// waitForRouteAcceptance polls HTTPRoute status until Accepted or timeout
+func (r *Reconciler) waitForRouteAcceptance(ctx context.Context, routeName, routeNS string) routeAcceptanceResult {
+	timeout := 30 * time.Second
+	interval := 2 * time.Second
+	deadline := time.Now().Add(timeout)
+
+	for time.Now().Before(deadline) {
+		route := &gwapiv1.HTTPRoute{}
+		if err := r.Get(ctx, types.NamespacedName{Name: routeName, Namespace: routeNS}, route); err != nil {
+			time.Sleep(interval)
+			continue
+		}
+
+		// Check status.parents for our Gateway
+		for _, parent := range route.Status.Parents {
+			if string(parent.ParentRef.Name) != r.GatewayName {
+				continue
+			}
+			for _, cond := range parent.Conditions {
+				if cond.Type == string(gwapiv1.RouteConditionAccepted) {
+					if cond.Status == metav1.ConditionTrue {
+						return routeAcceptanceResult{accepted: true, reason: ""}
+					}
+					if cond.Status == metav1.ConditionFalse {
+						return routeAcceptanceResult{accepted: false, reason: cond.Reason}
+					}
+				}
+			}
+		}
+		time.Sleep(interval)
+	}
+	return routeAcceptanceResult{accepted: false, reason: "Timeout"}
+}
+
+// waitForGRPCRouteAcceptance polls GRPCRoute status until Accepted or timeout
+func (r *Reconciler) waitForGRPCRouteAcceptance(ctx context.Context, routeName, routeNS string) routeAcceptanceResult {
+	timeout := 30 * time.Second
+	interval := 2 * time.Second
+	deadline := time.Now().Add(timeout)
+
+	for time.Now().Before(deadline) {
+		route := &gwapiv1.GRPCRoute{}
+		if err := r.Get(ctx, types.NamespacedName{Name: routeName, Namespace: routeNS}, route); err != nil {
+			time.Sleep(interval)
+			continue
+		}
+
+		// Check status.parents for our Gateway
+		for _, parent := range route.Status.Parents {
+			if string(parent.ParentRef.Name) != r.GatewayName {
+				continue
+			}
+			for _, cond := range parent.Conditions {
+				if cond.Type == string(gwapiv1.RouteConditionAccepted) {
+					if cond.Status == metav1.ConditionTrue {
+						return routeAcceptanceResult{accepted: true, reason: ""}
+					}
+					if cond.Status == metav1.ConditionFalse {
+						return routeAcceptanceResult{accepted: false, reason: cond.Reason}
+					}
+				}
+			}
+		}
+		time.Sleep(interval)
+	}
+	return routeAcceptanceResult{accepted: false, reason: "Timeout"}
 }

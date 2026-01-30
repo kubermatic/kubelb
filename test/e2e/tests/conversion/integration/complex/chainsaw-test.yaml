@@ -31,8 +31,6 @@ spec:
   bindings:
     - name: name
       value: conv-complex
-    - name: namespace
-      value: default
   steps:
     - name: create-service
       description: Create ClusterIP service

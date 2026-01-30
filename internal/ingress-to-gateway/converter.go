@@ -19,6 +19,7 @@ package ingressconversion
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"sort"
 	"strings"
@@ -55,7 +56,7 @@ type TLSListener struct {
 
 // ConversionResult holds the converted HTTPRoutes, Gateway configs, and any warnings
 type ConversionResult struct {
-	// HTTPRoutes contains one HTTPRoute per unique host (or one for no-host rules)
+	// HTTPRoutes contains converted routes (consolidated by rule signature when possible)
 	HTTPRoutes []*gwapiv1.HTTPRoute
 	// GRPCRoutes contains GRPCRoutes for backends with backend-protocol: GRPC/GRPCS
 	GRPCRoutes []*gwapiv1.GRPCRoute
@@ -68,7 +69,6 @@ type ConversionResult struct {
 }
 
 // ConvertIngress converts a Kubernetes Ingress to Gateway API HTTPRoutes.
-// Returns one HTTPRoute per unique host to avoid cross-host path matching issues.
 //
 // Deprecated: Use ConvertIngressWithServices for better port resolution.
 func ConvertIngress(ingress *networkingv1.Ingress, gatewayName, gatewayNamespace string) ConversionResult {
@@ -134,24 +134,39 @@ func isGRPCIngress(ingress *networkingv1.Ingress) bool {
 	return protocol == "GRPC" || protocol == "GRPCS"
 }
 
-// convertToHTTPRoutes generates HTTPRoutes from Ingress rules
+// hostRuleGroup holds hosts that share the same rules
+type hostRuleGroup struct {
+	hosts []string
+	rules []gwapiv1.HTTPRouteRule
+}
+
+// convertToHTTPRoutes generates HTTPRoutes from Ingress rules.
+// Hosts with identical rules are consolidated into a single HTTPRoute.
 func convertToHTTPRoutes(input ConversionInput, parentRef gwapiv1.ParentReference, filters []gwapiv1.HTTPRouteFilter, warnings []string) ([]*gwapiv1.HTTPRoute, []string) {
 	ingress := input.Ingress
 	var httpRoutes []*gwapiv1.HTTPRoute
 
-	// Group rules by host
+	// Check for use-regex annotation
+	useRegex := ingress.Annotations != nil && ingress.Annotations[annotations.UseRegex] == "true"
+
+	// Collect rules per host
 	hostRules := make(map[string][]gwapiv1.HTTPRouteRule)
 	const noHostKey = ""
 
-	for i, rule := range ingress.Spec.Rules {
+	for _, rule := range ingress.Spec.Rules {
 		host := transformHostname(rule.Host, input.DomainReplace, input.DomainSuffix)
 		if rule.HTTP == nil {
-			warnings = append(warnings, fmt.Sprintf("rule[%d] has no HTTP configuration, skipped", i))
+			// Rule has host but no HTTP paths - track host for default backend routing
+			if host != "" {
+				if _, exists := hostRules[host]; !exists {
+					hostRules[host] = []gwapiv1.HTTPRouteRule{}
+				}
+			}
 			continue
 		}
 
 		for _, path := range rule.HTTP.Paths {
-			httpRouteRule, ruleWarnings := convertPathWithServices(path, ingress.Namespace, input.Services)
+			httpRouteRule, ruleWarnings := convertPathWithServices(path, ingress.Namespace, input.Services, useRegex)
 			warnings = append(warnings, ruleWarnings...)
 
 			// Add annotation filters to the rule
@@ -174,20 +189,13 @@ func convertToHTTPRoutes(input ConversionInput, parentRef gwapiv1.ParentReferenc
 		warnings = append(warnings, defaultWarnings...)
 	}
 
-	// Sort hosts for deterministic output ordering
-	hosts := make([]string, 0, len(hostRules))
-	for host := range hostRules {
-		if host != noHostKey {
-			hosts = append(hosts, host)
-		}
-	}
-	sort.Strings(hosts)
+	// Group hosts by rule signature (hosts with identical rules go together)
+	ruleGroups := groupHostsByRules(hostRules, defaultRule)
 
-	// Process host-specific rules in sorted order
-	for _, host := range hosts {
-		rules := hostRules[host]
+	// Generate HTTPRoutes from groups
+	for i, group := range ruleGroups {
+		routeName := generateRouteName(ingress.Name, group.hosts, i, len(ruleGroups))
 
-		routeName := httpRouteName(ingress.Name, host)
 		httpRoute := &gwapiv1.HTTPRoute{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      routeName,
@@ -198,39 +206,24 @@ func convertToHTTPRoutes(input ConversionInput, parentRef gwapiv1.ParentReferenc
 				CommonRouteSpec: gwapiv1.CommonRouteSpec{
 					ParentRefs: []gwapiv1.ParentReference{parentRef},
 				},
-				Hostnames: []gwapiv1.Hostname{gwapiv1.Hostname(host)},
-				Rules:     rules,
+				Rules: group.rules,
 			},
 		}
 
-		if defaultRule != nil {
-			httpRoute.Spec.Rules = append(httpRoute.Spec.Rules, *defaultRule)
+		// Add hostnames if any (empty means catch-all)
+		if len(group.hosts) > 0 && group.hosts[0] != noHostKey {
+			hostnames := make([]gwapiv1.Hostname, len(group.hosts))
+			for j, h := range group.hosts {
+				hostnames[j] = gwapiv1.Hostname(h)
+			}
+			httpRoute.Spec.Hostnames = hostnames
 		}
 
 		httpRoutes = append(httpRoutes, httpRoute)
 	}
 
-	// Process no-host rules (catch-all)
-	if noHostRules, ok := hostRules[noHostKey]; ok {
-		if defaultRule != nil {
-			noHostRules = append(noHostRules, *defaultRule)
-		}
-
-		httpRoute := &gwapiv1.HTTPRoute{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      ingress.Name,
-				Namespace: ingress.Namespace,
-				Labels:    copyLabels(ingress.Labels),
-			},
-			Spec: gwapiv1.HTTPRouteSpec{
-				CommonRouteSpec: gwapiv1.CommonRouteSpec{
-					ParentRefs: []gwapiv1.ParentReference{parentRef},
-				},
-				Rules: noHostRules,
-			},
-		}
-		httpRoutes = append(httpRoutes, httpRoute)
-	} else if defaultRule != nil && len(hostRules) == 0 {
+	// Handle case where only default backend exists (no rules)
+	if len(ruleGroups) == 0 && defaultRule != nil {
 		httpRoute := &gwapiv1.HTTPRoute{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      ingress.Name,
@@ -250,19 +243,125 @@ func convertToHTTPRoutes(input ConversionInput, parentRef gwapiv1.ParentReferenc
 	return httpRoutes, warnings
 }
 
+// groupHostsByRules consolidates hosts that share identical rules into groups.
+// Each group will become a single HTTPRoute with multiple hostnames.
+func groupHostsByRules(hostRules map[string][]gwapiv1.HTTPRouteRule, defaultRule *gwapiv1.HTTPRouteRule) []hostRuleGroup {
+	const noHostKey = ""
+
+	// Create signature for each host's rules
+	signatureToHosts := make(map[string][]string)
+	signatureToRules := make(map[string][]gwapiv1.HTTPRouteRule)
+
+	for host, rules := range hostRules {
+		// Append default rule if present
+		finalRules := rules
+		if defaultRule != nil {
+			finalRules = append(finalRules, *defaultRule)
+		}
+
+		sig := rulesSignature(finalRules)
+		signatureToHosts[sig] = append(signatureToHosts[sig], host)
+		signatureToRules[sig] = finalRules
+	}
+
+	// Sort signatures for deterministic output
+	signatures := make([]string, 0, len(signatureToHosts))
+	for sig := range signatureToHosts {
+		signatures = append(signatures, sig)
+	}
+	sort.Strings(signatures)
+
+	// Build groups
+	var groups []hostRuleGroup
+	for _, sig := range signatures {
+		hosts := signatureToHosts[sig]
+		sort.Strings(hosts) // Sort hosts within group
+
+		// Separate no-host from actual hosts
+		var actualHosts []string
+		hasNoHost := false
+		for _, h := range hosts {
+			if h == noHostKey {
+				hasNoHost = true
+			} else {
+				actualHosts = append(actualHosts, h)
+			}
+		}
+
+		// If we have both no-host and actual hosts, split them
+		if hasNoHost && len(actualHosts) > 0 {
+			// No-host gets its own group
+			groups = append(groups, hostRuleGroup{
+				hosts: []string{noHostKey},
+				rules: signatureToRules[sig],
+			})
+			// Actual hosts get their group
+			if len(actualHosts) > 0 {
+				groups = append(groups, hostRuleGroup{
+					hosts: actualHosts,
+					rules: signatureToRules[sig],
+				})
+			}
+		} else {
+			groups = append(groups, hostRuleGroup{
+				hosts: hosts,
+				rules: signatureToRules[sig],
+			})
+		}
+	}
+
+	return groups
+}
+
+// rulesSignature generates a deterministic signature for a set of rules
+func rulesSignature(rules []gwapiv1.HTTPRouteRule) string {
+	// Serialize rules to JSON for comparison
+	data, err := json.Marshal(rules)
+	if err != nil {
+		// Fallback to simple hash
+		return fmt.Sprintf("rules-%d", len(rules))
+	}
+	hash := sha256.Sum256(data)
+	return hex.EncodeToString(hash[:])
+}
+
+// generateRouteName creates a route name based on Ingress name.
+// - Single route: uses Ingress name directly
+// - Multiple routes with different rules: uses Ingress name with index suffix
+func generateRouteName(ingressName string, _ []string, index, totalGroups int) string {
+	// If only one group, use Ingress name directly
+	if totalGroups == 1 {
+		return ingressName
+	}
+
+	// Multiple groups - need suffix
+	return fmt.Sprintf("%s-%d", ingressName, index+1)
+}
+
+// grpcHostRuleGroup holds hosts that share the same gRPC rules
+type grpcHostRuleGroup struct {
+	hosts []string
+	rules []gwapiv1.GRPCRouteRule
+}
+
 // convertToGRPCRoutes generates GRPCRoutes from Ingress rules
 func convertToGRPCRoutes(input ConversionInput, parentRef gwapiv1.ParentReference, warnings []string) ([]*gwapiv1.GRPCRoute, []string) {
 	ingress := input.Ingress
 	var grpcRoutes []*gwapiv1.GRPCRoute
 
-	// Group rules by host
+	// Collect rules per host
 	hostRules := make(map[string][]gwapiv1.GRPCRouteRule)
 	const noHostKey = ""
 
-	for i, rule := range ingress.Spec.Rules {
+	for _, rule := range ingress.Spec.Rules {
 		host := transformHostname(rule.Host, input.DomainReplace, input.DomainSuffix)
 		if rule.HTTP == nil {
-			warnings = append(warnings, fmt.Sprintf("rule[%d] has no HTTP configuration, skipped", i))
+			// Rule has host but no HTTP paths - track host for default backend routing
+			if host != "" {
+				if _, exists := hostRules[host]; !exists {
+					hostRules[host] = []gwapiv1.GRPCRouteRule{}
+				}
+			}
 			continue
 		}
 
@@ -281,20 +380,13 @@ func convertToGRPCRoutes(input ConversionInput, parentRef gwapiv1.ParentReferenc
 		warnings = append(warnings, defaultWarnings...)
 	}
 
-	// Sort hosts for deterministic output ordering
-	hosts := make([]string, 0, len(hostRules))
-	for host := range hostRules {
-		if host != noHostKey {
-			hosts = append(hosts, host)
-		}
-	}
-	sort.Strings(hosts)
+	// Group hosts by rule signature
+	ruleGroups := groupGRPCHostsByRules(hostRules, defaultRule)
 
-	// Process host-specific rules in sorted order
-	for _, host := range hosts {
-		rules := hostRules[host]
+	// Generate GRPCRoutes from groups
+	for i, group := range ruleGroups {
+		routeName := generateGRPCRouteName(ingress.Name, group.hosts, i, len(ruleGroups))
 
-		routeName := grpcRouteName(ingress.Name, host)
 		grpcRoute := &gwapiv1.GRPCRoute{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      routeName,
@@ -305,42 +397,27 @@ func convertToGRPCRoutes(input ConversionInput, parentRef gwapiv1.ParentReferenc
 				CommonRouteSpec: gwapiv1.CommonRouteSpec{
 					ParentRefs: []gwapiv1.ParentReference{parentRef},
 				},
-				Hostnames: []gwapiv1.Hostname{gwapiv1.Hostname(host)},
-				Rules:     rules,
+				Rules: group.rules,
 			},
 		}
 
-		if defaultRule != nil {
-			grpcRoute.Spec.Rules = append(grpcRoute.Spec.Rules, *defaultRule)
+		// Add hostnames if any
+		if len(group.hosts) > 0 && group.hosts[0] != noHostKey {
+			hostnames := make([]gwapiv1.Hostname, len(group.hosts))
+			for j, h := range group.hosts {
+				hostnames[j] = gwapiv1.Hostname(h)
+			}
+			grpcRoute.Spec.Hostnames = hostnames
 		}
 
 		grpcRoutes = append(grpcRoutes, grpcRoute)
 	}
 
-	// Process no-host rules (catch-all)
-	if noHostRules, ok := hostRules[noHostKey]; ok {
-		if defaultRule != nil {
-			noHostRules = append(noHostRules, *defaultRule)
-		}
-
+	// Handle case where only default backend exists
+	if len(ruleGroups) == 0 && defaultRule != nil {
 		grpcRoute := &gwapiv1.GRPCRoute{
 			ObjectMeta: metav1.ObjectMeta{
-				Name:      ingress.Name + "-grpc",
-				Namespace: ingress.Namespace,
-				Labels:    copyLabels(ingress.Labels),
-			},
-			Spec: gwapiv1.GRPCRouteSpec{
-				CommonRouteSpec: gwapiv1.CommonRouteSpec{
-					ParentRefs: []gwapiv1.ParentReference{parentRef},
-				},
-				Rules: noHostRules,
-			},
-		}
-		grpcRoutes = append(grpcRoutes, grpcRoute)
-	} else if defaultRule != nil && len(hostRules) == 0 {
-		grpcRoute := &gwapiv1.GRPCRoute{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      ingress.Name + "-grpc",
+				Name:      ingress.Name,
 				Namespace: ingress.Namespace,
 				Labels:    copyLabels(ingress.Labels),
 			},
@@ -357,33 +434,83 @@ func convertToGRPCRoutes(input ConversionInput, parentRef gwapiv1.ParentReferenc
 	return grpcRoutes, warnings
 }
 
-// grpcRouteName generates GRPCRoute name from Ingress name and host.
-// If truncation is needed, appends a short hash to avoid collisions.
-func grpcRouteName(ingressName, host string) string {
-	if host == "" {
-		return ingressName + "-grpc"
+// groupGRPCHostsByRules consolidates hosts that share identical gRPC rules
+func groupGRPCHostsByRules(hostRules map[string][]gwapiv1.GRPCRouteRule, defaultRule *gwapiv1.GRPCRouteRule) []grpcHostRuleGroup {
+	const noHostKey = ""
+
+	signatureToHosts := make(map[string][]string)
+	signatureToRules := make(map[string][]gwapiv1.GRPCRouteRule)
+
+	for host, rules := range hostRules {
+		finalRules := rules
+		if defaultRule != nil {
+			finalRules = append(finalRules, *defaultRule)
+		}
+
+		sig := grpcRulesSignature(finalRules)
+		signatureToHosts[sig] = append(signatureToHosts[sig], host)
+		signatureToRules[sig] = finalRules
 	}
-	// Sanitize host for use in name (replace dots with dashes)
-	sanitized := strings.ReplaceAll(host, ".", "-")
-	sanitized = strings.ReplaceAll(sanitized, "*", "wildcard")
 
-	fullName := fmt.Sprintf("%s-grpc-%s", ingressName, sanitized)
+	signatures := make([]string, 0, len(signatureToHosts))
+	for sig := range signatureToHosts {
+		signatures = append(signatures, sig)
+	}
+	sort.Strings(signatures)
 
-	// K8s name limit is 253 chars, but keep under 63 for DNS label compatibility
-	const maxLen = 63
-	if len(fullName) <= maxLen {
-		return fullName
+	var groups []grpcHostRuleGroup
+	for _, sig := range signatures {
+		hosts := signatureToHosts[sig]
+		sort.Strings(hosts)
+
+		var actualHosts []string
+		hasNoHost := false
+		for _, h := range hosts {
+			if h == noHostKey {
+				hasNoHost = true
+			} else {
+				actualHosts = append(actualHosts, h)
+			}
+		}
+
+		if hasNoHost && len(actualHosts) > 0 {
+			groups = append(groups, grpcHostRuleGroup{
+				hosts: []string{noHostKey},
+				rules: signatureToRules[sig],
+			})
+			if len(actualHosts) > 0 {
+				groups = append(groups, grpcHostRuleGroup{
+					hosts: actualHosts,
+					rules: signatureToRules[sig],
+				})
+			}
+		} else {
+			groups = append(groups, grpcHostRuleGroup{
+				hosts: hosts,
+				rules: signatureToRules[sig],
+			})
+		}
 	}
 
-	// Truncation needed - append hash suffix to avoid collisions
-	hash := sha256.Sum256([]byte(host))
-	hashSuffix := hex.EncodeToString(hash[:])[:8]
+	return groups
+}
 
-	maxTruncLen := maxLen - 1 - len(hashSuffix)
-	truncated := fullName[:maxTruncLen]
-	truncated = strings.TrimRight(truncated, "-")
+// grpcRulesSignature generates a deterministic signature for gRPC rules
+func grpcRulesSignature(rules []gwapiv1.GRPCRouteRule) string {
+	data, err := json.Marshal(rules)
+	if err != nil {
+		return fmt.Sprintf("grpc-rules-%d", len(rules))
+	}
+	hash := sha256.Sum256(data)
+	return hex.EncodeToString(hash[:])
+}
 
-	return fmt.Sprintf("%s-%s", truncated, hashSuffix)
+// generateGRPCRouteName creates a gRPC route name
+func generateGRPCRouteName(ingressName string, _ []string, index, totalGroups int) string {
+	if totalGroups == 1 {
+		return ingressName
+	}
+	return fmt.Sprintf("%s-%d", ingressName, index+1)
 }
 
 // convertPathToGRPCRule converts an Ingress path to a GRPCRouteRule
@@ -392,8 +519,6 @@ func convertPathToGRPCRule(path networkingv1.HTTPIngressPath, namespace string, 
 	rule := gwapiv1.GRPCRouteRule{}
 
 	// For gRPC, path-based matching is limited
-	// Ingress path /foo.Bar/Baz could map to service=foo.Bar, method=Baz
-	// But typically, Ingress paths for gRPC are just / or a generic prefix
 	if path.Path != "" && path.Path != "/" {
 		warnings = append(warnings, fmt.Sprintf("path %q will be ignored for GRPCRoute; use service/method matching in GRPCRoute spec if needed", path.Path))
 	}
@@ -443,7 +568,7 @@ func convertServiceBackendToGRPC(svc *networkingv1.IngressServiceBackend, namesp
 		},
 	}
 
-	// Set port with Service lookup fallback (same logic as HTTP)
+	// Set port with Service lookup fallback
 	switch {
 	case svc.Port.Number != 0:
 		port := svc.Port.Number
@@ -495,14 +620,12 @@ func convertTLSConfig(tlsConfigs []networkingv1.IngressTLS, namespace, domainRep
 	var warnings []string
 
 	for _, tls := range tlsConfigs {
-		// Warn if TLS has hosts but no secret (relies on cert-manager or external provisioning)
 		if len(tls.Hosts) > 0 && tls.SecretName == "" {
 			warnings = append(warnings,
 				fmt.Sprintf("TLS config has hosts %v but no secretName; Gateway will need manual certificate configuration or cert-manager",
 					tls.Hosts))
 		}
 
-		// Each TLS config can have multiple hosts sharing the same secret
 		for _, host := range tls.Hosts {
 			listener := TLSListener{
 				Hostname:        gwapiv1.Hostname(transformHostname(host, domainReplace, domainSuffix)),
@@ -512,7 +635,6 @@ func convertTLSConfig(tlsConfigs []networkingv1.IngressTLS, namespace, domainRep
 			listeners = append(listeners, listener)
 		}
 
-		// If no hosts specified but secret exists, it's a catch-all TLS
 		if len(tls.Hosts) == 0 && tls.SecretName != "" {
 			listener := TLSListener{
 				Hostname:        "*",
@@ -526,47 +648,11 @@ func convertTLSConfig(tlsConfigs []networkingv1.IngressTLS, namespace, domainRep
 	return listeners, warnings
 }
 
-// httpRouteName generates HTTPRoute name from Ingress name and host.
-// For host-specific routes, appends sanitized host suffix.
-// If truncation is needed, appends a short hash to avoid collisions.
-func httpRouteName(ingressName, host string) string {
-	if host == "" {
-		return ingressName
-	}
-	// Sanitize host for use in name (replace dots with dashes)
-	sanitized := strings.ReplaceAll(host, ".", "-")
-	sanitized = strings.ReplaceAll(sanitized, "*", "wildcard")
-
-	fullName := fmt.Sprintf("%s-%s", ingressName, sanitized)
-
-	// K8s name limit is 253 chars, but keep under 63 for DNS label compatibility
-	const maxLen = 63
-	if len(fullName) <= maxLen {
-		return fullName
-	}
-
-	// Truncation needed - append hash suffix to avoid collisions
-	// Hash the original host to generate unique suffix
-	hash := sha256.Sum256([]byte(host))
-	hashSuffix := hex.EncodeToString(hash[:])[:8] // First 8 chars of hash
-
-	// Reserve space for hash suffix and separator
-	// Format: <truncated>-<hash>
-	maxTruncLen := maxLen - 1 - len(hashSuffix) // -1 for separator
-	truncated := fullName[:maxTruncLen]
-
-	// Ensure we don't end with a dash
-	truncated = strings.TrimRight(truncated, "-")
-
-	return fmt.Sprintf("%s-%s", truncated, hashSuffix)
-}
-
 func buildParentRef(gatewayName, gatewayNamespace, routeNamespace string) gwapiv1.ParentReference {
 	ref := gwapiv1.ParentReference{
 		Name: gwapiv1.ObjectName(gatewayName),
 	}
 
-	// Only set namespace if different from route namespace
 	if gatewayNamespace != "" && gatewayNamespace != routeNamespace {
 		ns := gwapiv1.Namespace(gatewayNamespace)
 		ref.Namespace = &ns
@@ -575,7 +661,7 @@ func buildParentRef(gatewayName, gatewayNamespace, routeNamespace string) gwapiv
 	return ref
 }
 
-func convertPathWithServices(path networkingv1.HTTPIngressPath, namespace string, services map[types.NamespacedName]*corev1.Service) (gwapiv1.HTTPRouteRule, []string) {
+func convertPathWithServices(path networkingv1.HTTPIngressPath, namespace string, services map[types.NamespacedName]*corev1.Service, useRegex bool) (gwapiv1.HTTPRouteRule, []string) {
 	var warnings []string
 	rule := gwapiv1.HTTPRouteRule{}
 
@@ -586,10 +672,10 @@ func convertPathWithServices(path networkingv1.HTTPIngressPath, namespace string
 			Value: &path.Path,
 		}
 
-		pathType := convertPathType(path.PathType)
+		pathType := convertPathTypeWithRegex(path.PathType, useRegex)
 		pathMatch.Type = &pathType
 
-		if path.PathType != nil && *path.PathType == networkingv1.PathTypeImplementationSpecific {
+		if path.PathType != nil && *path.PathType == networkingv1.PathTypeImplementationSpecific && !useRegex {
 			warnings = append(warnings, fmt.Sprintf("path %q uses ImplementationSpecific type, converted to PathPrefix", path.Path))
 		}
 
@@ -604,7 +690,6 @@ func convertPathWithServices(path networkingv1.HTTPIngressPath, namespace string
 		rule.BackendRefs = []gwapiv1.HTTPBackendRef{backendRef}
 		warnings = append(warnings, backendWarnings...)
 	} else if path.Backend.Resource != nil {
-		// Resource backends (non-Service) are not supported
 		warnings = append(warnings, fmt.Sprintf("resource backend %q not supported; only Service backends are converted", path.Backend.Resource.Name))
 	}
 
@@ -622,11 +707,19 @@ func convertPathType(pathType *networkingv1.PathType) gwapiv1.PathMatchType {
 	case networkingv1.PathTypePrefix:
 		return gwapiv1.PathMatchPathPrefix
 	case networkingv1.PathTypeImplementationSpecific:
-		// Default to prefix for implementation-specific
 		return gwapiv1.PathMatchPathPrefix
 	default:
 		return gwapiv1.PathMatchPathPrefix
 	}
+}
+
+// convertPathTypeWithRegex converts Ingress PathType to Gateway API PathMatchType.
+// If useRegex is true, returns RegularExpression regardless of the PathType.
+func convertPathTypeWithRegex(pathType *networkingv1.PathType, useRegex bool) gwapiv1.PathMatchType {
+	if useRegex {
+		return gwapiv1.PathMatchRegularExpression
+	}
+	return convertPathType(pathType)
 }
 
 // convertServiceBackendWithLookup converts a service backend with optional Service lookup for port resolution
@@ -641,18 +734,15 @@ func convertServiceBackendWithLookup(svc *networkingv1.IngressServiceBackend, na
 		},
 	}
 
-	// Set port with Service lookup fallback
 	switch {
 	case svc.Port.Number != 0:
 		port := svc.Port.Number
-		// Validate port range
 		if port < 1 || port > 65535 {
 			warnings = append(warnings, fmt.Sprintf("service %q has invalid port number %d (must be 1-65535)", svc.Name, port))
 		}
 		backendRef.Port = &port
 
 	case svc.Port.Name != "":
-		// Try to resolve named port via Service lookup
 		if services != nil {
 			key := types.NamespacedName{Name: svc.Name, Namespace: namespace}
 			if service, ok := services[key]; ok {
@@ -669,7 +759,6 @@ func convertServiceBackendWithLookup(svc *networkingv1.IngressServiceBackend, na
 		}
 
 	default:
-		// Neither port number nor name - try to use single-port Service
 		if services != nil {
 			key := types.NamespacedName{Name: svc.Name, Namespace: namespace}
 			if service, ok := services[key]; ok {
@@ -748,20 +837,11 @@ func copyLabels(labels map[string]string) map[string]string {
 }
 
 // transformHostname applies domain suffix replacement to a hostname.
-// If replace is empty or suffix is empty, returns host unchanged.
-// Handles wildcards: *.example.com → *.new.io
-// Examples with replace="example.com", suffix="new.io":
-//   - app.example.com → app.new.io
-//   - foo.bar.example.com → foo.bar.new.io
-//   - example.com → new.io
-//   - *.example.com → *.new.io
-//   - app.other.com → app.other.com (no match)
 func transformHostname(host, replace, suffix string) string {
 	if replace == "" || suffix == "" {
 		return host
 	}
 
-	// Handle wildcard prefix
 	wildcardPrefix := ""
 	checkHost := host
 	if strings.HasPrefix(host, "*.") {
@@ -769,18 +849,14 @@ func transformHostname(host, replace, suffix string) string {
 		checkHost = host[2:]
 	}
 
-	// Check if host ends with replace domain
 	if checkHost == replace {
-		// Exact match (minus wildcard): example.com → new.io
 		return wildcardPrefix + suffix
 	}
 
 	if strings.HasSuffix(checkHost, "."+replace) {
-		// Subdomain match: app.example.com → app.new.io
 		prefix := strings.TrimSuffix(checkHost, "."+replace)
 		return wildcardPrefix + prefix + "." + suffix
 	}
 
-	// No match, return unchanged
 	return host
 }

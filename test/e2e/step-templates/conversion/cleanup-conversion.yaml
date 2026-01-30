@@ -15,9 +15,9 @@
 # Step Template: Cleanup Ingress, Service, and HTTPRoutes for conversion tests
 # Required bindings:
 #   - ingress_name: Ingress name
-#   - namespace: namespace for resources
 # Optional bindings:
 #   - service_name: Service name (default: same as ingress_name)
+# Note: Namespace is hardcoded to 'default' - see test/e2e/CLAUDE.md for why
 apiVersion: chainsaw.kyverno.io/v1alpha1
 kind: StepTemplate
 metadata:
@@ -28,16 +28,16 @@ spec:
       value: ($ingress_name)
   try:
     - script:
+        cluster: conversion
         timeout: 60s
         env:
           - name: INGRESS_NAME
             value: ($ingress_name)
           - name: SERVICE_NAME
             value: ($service_name)
-          - name: NAMESPACE
-            value: ($namespace)
         content: |
           set -e
+          NAMESPACE=default
 
           # Delete Ingress
           kubectl delete ingress "$INGRESS_NAME" -n "$NAMESPACE" --ignore-not-found
@@ -51,7 +51,7 @@ spec:
             -l "kubelb.k8c.io/source-ingress=${SOURCE_LABEL}" --ignore-not-found
 
           # Wait for cleanup to complete
-          for i in $(seq 1 10); do
+          i=1; while [ "$i" -le 10 ]; do
             ROUTES=$(kubectl get httproutes.gateway.networking.k8s.io -n "$NAMESPACE" \
               -l "kubelb.k8c.io/source-ingress=${SOURCE_LABEL}" -o name 2>/dev/null || echo "")
             if [ -z "$ROUTES" ]; then
@@ -59,6 +59,7 @@ spec:
               exit 0
             fi
             sleep 1
+            i=$((i + 1))
           done
 
           echo "WARNING: Some HTTPRoutes may still exist"

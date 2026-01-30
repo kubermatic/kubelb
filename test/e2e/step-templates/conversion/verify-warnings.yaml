@@ -15,8 +15,8 @@
 # Step Template: Verify Ingress has conversion-warnings annotation containing expected pattern
 # Required bindings:
 #   - ingress_name: Ingress name
-#   - namespace: Ingress namespace
 #   - warning_pattern: grep pattern to match in warnings annotation
+# Note: Namespace is hardcoded to 'default' - see test/e2e/CLAUDE.md for why
 apiVersion: chainsaw.kyverno.io/v1alpha1
 kind: StepTemplate
 metadata:
@@ -24,18 +24,18 @@ metadata:
 spec:
   try:
     - script:
+        cluster: conversion
         timeout: 60s
         env:
           - name: INGRESS_NAME
             value: ($ingress_name)
-          - name: NAMESPACE
-            value: ($namespace)
           - name: WARNING_PATTERN
             value: ($warning_pattern)
         content: |
           set -e
+          NAMESPACE=default
 
-          for i in $(seq 1 30); do
+          i=1; while [ "$i" -le 30 ]; do
             WARNINGS=$(kubectl get ingress "$INGRESS_NAME" -n "$NAMESPACE" \
               -o jsonpath='{.metadata.annotations.kubelb\.k8c\.io/conversion-warnings}' 2>/dev/null || echo "")
 
@@ -54,6 +54,7 @@ spec:
 
             echo "Attempt $i: status='$STATUS', warnings='$WARNINGS', looking for '$WARNING_PATTERN'..."
             sleep 2
+            i=$((i + 1))
           done
 
           echo "FAILED: Warning pattern '$WARNING_PATTERN' not found"

@@ -31,8 +31,6 @@ spec:
   bindings:
     - name: name
       value: conv-cors
-    - name: namespace
-      value: default
     - name: transformed_host
       value: conv-cors.gateway.local
   steps:
@@ -90,8 +88,6 @@ spec:
           bindings:
             - name: ingress_name
               value: ($name)
-            - name: namespace
-              value: ($namespace)
             - name: expected_host
               value: ($transformed_host)
 
@@ -103,8 +99,6 @@ spec:
           bindings:
             - name: ingress_name
               value: ($name)
-            - name: namespace
-              value: ($namespace)
             - name: warning_pattern
               value: SecurityPolicy
 
@@ -116,5 +110,3 @@ spec:
           bindings:
             - name: ingress_name
               value: ($name)
-            - name: namespace
-              value: ($namespace)

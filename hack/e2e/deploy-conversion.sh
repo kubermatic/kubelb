@@ -283,6 +283,12 @@ load_ccm_image
 deploy_addons
 wait_for_addons
 configure_metallb_pool
+
+# Apply GatewayClass and ClusterIssuer
+echodate "Applying GatewayClass and ClusterIssuer..."
+export KUBECONFIG="${KUBECONFIGS_DIR}/conversion.kubeconfig"
+kubectl apply -f "${E2E_MANIFESTS_DIR}/kubelb-manager/manifests.yaml"
+
 deploy_ccm_standalone
 deploy_test_apps
 

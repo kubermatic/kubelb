@@ -34,8 +34,6 @@ spec:
   bindings:
     - name: name
       value: conv-domain
-    - name: namespace
-      value: default
   steps:
     - name: create-service
       description: Create ClusterIP service
@@ -118,5 +116,3 @@ spec:
           bindings:
             - name: ingress_name
               value: ($name)
-            - name: namespace
-              value: ($namespace)

@@ -85,23 +85,17 @@ func handleAppRoot(key, value string, _ map[string]string) ([]gwapiv1.HTTPRouteF
 	return nil, []string{warning}
 }
 
-// handleUseRegex generates warning for use-regex annotation when used standalone
+// handleUseRegex handles use-regex annotation.
 // nginx.ingress.kubernetes.io/use-regex: "true"
-// Regex path matching is not directly supported in Gateway API
-func handleUseRegex(_, value string, annotations map[string]string) ([]gwapiv1.HTTPRouteFilter, []string) {
+// When true, paths are converted to RegularExpression path type.
+func handleUseRegex(_, value string, _ map[string]string) ([]gwapiv1.HTTPRouteFilter, []string) {
 	if value != boolTrue {
 		return nil, nil
 	}
 
-	// If used with rewrite-target, the warning is already generated there
-	if _, hasRewrite := annotations[RewriteTarget]; hasRewrite {
-		return nil, nil
-	}
-
-	warning := "use-regex=true enables regex path matching which is not directly supported in Gateway API; " +
-		"standard Gateway API uses Exact, PathPrefix, or RegularExpression (implementation-specific) path types; " +
-		"review paths and convert regex patterns to supported match types"
-	return nil, []string{warning}
+	// use-regex=true is now converted to pathType: RegularExpression.
+	// Note: RegularExpression support is implementation-specific in Gateway API.
+	return nil, []string{"use-regex=true converted to pathType: RegularExpression (support is implementation-specific)"}
 }
 
 // containsCaptureGroup checks if the value contains regex capture group references

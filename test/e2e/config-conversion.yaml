@@ -25,12 +25,12 @@ spec:
 
   # Timeouts for various operations
   timeouts:
-    apply: 30s
-    assert: 60s
-    cleanup: 30s
+    apply: 60s
+    assert: 120s
+    cleanup: 60s
     delete: 30s
     error: 30s
-    exec: 120s
+    exec: 300s
 
   # Cleanup resources after tests
   cleanup:
@@ -40,7 +40,7 @@ spec:
   execution:
     failFast: false
     repeatCount: 1
-    parallel: 8
+    parallel: 1 # Reduced to prevent Gateway race conditions
 
   # Discovery settings
   discovery:

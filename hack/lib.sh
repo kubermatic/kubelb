@@ -129,6 +129,20 @@ is_containerized() {
   [ -n "${KUBERNETES_SERVICE_HOST:-}" ] || [ -n "${CONTAINERIZED:-}" ]
 }
 
+# Check if binary is linux/amd64 (required for Kind containers)
+# Returns 0 if binary is linux/amd64, 1 otherwise
+is_linux_amd64() {
+  local binary="$1"
+  if [[ ! -f "${binary}" ]]; then
+    return 1
+  fi
+  # file output examples:
+  #   ELF 64-bit LSB executable, x86-64 (linux/amd64)
+  #   Mach-O 64-bit executable arm64 (darwin/arm64)
+  #   Mach-O 64-bit executable x86_64 (darwin/amd64)
+  file "${binary}" | grep -q "ELF 64-bit.*x86-64"
+}
+
 containerize() {
   local cmd="$1"
   local image="${CONTAINERIZE_IMAGE:-quay.io/kubermatic/util:2.0.0}"

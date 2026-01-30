@@ -15,10 +15,10 @@
 # Step Template: Verify Gateway exists with correct GatewayClass and listeners
 # Required bindings:
 #   - gateway_name: Gateway name
-#   - namespace: Gateway namespace
 # Optional bindings:
 #   - gateway_class: expected GatewayClass (default: eg)
 #   - min_listeners: minimum number of listeners (default: 1)
+# Note: Namespace is hardcoded to 'default' - see test/e2e/CLAUDE.md for why
 apiVersion: chainsaw.kyverno.io/v1alpha1
 kind: StepTemplate
 metadata:
@@ -31,20 +31,20 @@ spec:
       value: "1"
   try:
     - script:
+        cluster: conversion
         timeout: 60s
         env:
           - name: GATEWAY_NAME
             value: ($gateway_name)
-          - name: NAMESPACE
-            value: ($namespace)
           - name: EXPECTED_CLASS
             value: ($gateway_class)
           - name: MIN_LISTENERS
             value: ($min_listeners)
         content: |
           set -e
+          NAMESPACE=default
 
-          for i in $(seq 1 30); do
+          i=1; while [ "$i" -le 30 ]; do
             # Check if Gateway exists
             if kubectl get gateway.gateway.networking.k8s.io "$GATEWAY_NAME" -n "$NAMESPACE" &>/dev/null; then
               # Verify GatewayClass
@@ -88,6 +88,7 @@ spec:
 
             echo "Attempt $i: waiting for Gateway..."
             sleep 2
+            i=$((i + 1))
           done
 
           echo "FAILED: Gateway $GATEWAY_NAME not found in namespace $NAMESPACE"

@@ -242,3 +242,186 @@ func TestIntegration_HeadersWithConverter(t *testing.T) {
 		}
 	})
 }
+
+func TestHandleHSTS(t *testing.T) {
+	tests := []struct {
+		name           string
+		value          string
+		annotations    map[string]string
+		expectFilters  int
+		expectWarnings int
+		expectedHeader string
+	}{
+		{
+			name:           "HSTS disabled",
+			value:          "false",
+			annotations:    nil,
+			expectFilters:  0,
+			expectWarnings: 0,
+		},
+		{
+			name:           "HSTS enabled with defaults",
+			value:          "true",
+			annotations:    map[string]string{},
+			expectFilters:  1,
+			expectWarnings: 0,
+			expectedHeader: "max-age=31536000",
+		},
+		{
+			name:  "HSTS with custom max-age",
+			value: "true",
+			annotations: map[string]string{
+				HSTSMaxAge: "86400",
+			},
+			expectFilters:  1,
+			expectWarnings: 0,
+			expectedHeader: "max-age=86400",
+		},
+		{
+			name:  "HSTS with includeSubDomains",
+			value: "true",
+			annotations: map[string]string{
+				HSTSIncludeSubdomains: "true",
+			},
+			expectFilters:  1,
+			expectWarnings: 0,
+			expectedHeader: "max-age=31536000; includeSubDomains",
+		},
+		{
+			name:  "HSTS with preload",
+			value: "true",
+			annotations: map[string]string{
+				HSTSPreload: "true",
+			},
+			expectFilters:  1,
+			expectWarnings: 0,
+			expectedHeader: "max-age=31536000; preload",
+		},
+		{
+			name:  "HSTS with all options",
+			value: "true",
+			annotations: map[string]string{
+				HSTSMaxAge:            "63072000",
+				HSTSIncludeSubdomains: "true",
+				HSTSPreload:           "true",
+			},
+			expectFilters:  1,
+			expectWarnings: 0,
+			expectedHeader: "max-age=63072000; includeSubDomains; preload",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			filters, warnings := handleHSTS(HSTS, tt.value, tt.annotations)
+
+			if len(filters) != tt.expectFilters {
+				t.Errorf("expected %d filters, got %d", tt.expectFilters, len(filters))
+			}
+			if len(warnings) != tt.expectWarnings {
+				t.Errorf("expected %d warnings, got %d: %v", tt.expectWarnings, len(warnings), warnings)
+			}
+
+			if tt.expectFilters > 0 {
+				f := filters[0]
+				if f.Type != gwapiv1.HTTPRouteFilterResponseHeaderModifier {
+					t.Errorf("expected ResponseHeaderModifier filter, got %s", f.Type)
+				}
+				if f.ResponseHeaderModifier == nil {
+					t.Fatal("ResponseHeaderModifier is nil")
+				}
+				if len(f.ResponseHeaderModifier.Set) != 1 {
+					t.Fatalf("expected 1 header, got %d", len(f.ResponseHeaderModifier.Set))
+				}
+				header := f.ResponseHeaderModifier.Set[0]
+				if header.Name != "Strict-Transport-Security" {
+					t.Errorf("expected Strict-Transport-Security header, got %s", header.Name)
+				}
+				if header.Value != tt.expectedHeader {
+					t.Errorf("expected header value %q, got %q", tt.expectedHeader, header.Value)
+				}
+			}
+		})
+	}
+}
+
+func TestBuildHSTSHeaderValue(t *testing.T) {
+	tests := []struct {
+		name        string
+		annotations map[string]string
+		expected    string
+	}{
+		{
+			name:        "defaults",
+			annotations: map[string]string{},
+			expected:    "max-age=31536000",
+		},
+		{
+			name:        "custom max-age",
+			annotations: map[string]string{HSTSMaxAge: "86400"},
+			expected:    "max-age=86400",
+		},
+		{
+			name:        "with includeSubDomains",
+			annotations: map[string]string{HSTSIncludeSubdomains: "true"},
+			expected:    "max-age=31536000; includeSubDomains",
+		},
+		{
+			name:        "with preload",
+			annotations: map[string]string{HSTSPreload: "true"},
+			expected:    "max-age=31536000; preload",
+		},
+		{
+			name: "full config",
+			annotations: map[string]string{
+				HSTSMaxAge:            "63072000",
+				HSTSIncludeSubdomains: "true",
+				HSTSPreload:           "true",
+			},
+			expected: "max-age=63072000; includeSubDomains; preload",
+		},
+		{
+			name:        "includeSubDomains false",
+			annotations: map[string]string{HSTSIncludeSubdomains: "false"},
+			expected:    "max-age=31536000",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := buildHSTSHeaderValue(tt.annotations)
+			if got != tt.expected {
+				t.Errorf("expected %q, got %q", tt.expected, got)
+			}
+		})
+	}
+}
+
+func TestIntegration_HSTSWithConverter(t *testing.T) {
+	c := NewConverter()
+
+	result := c.Convert(map[string]string{
+		HSTS:                  "true",
+		HSTSMaxAge:            "86400",
+		HSTSIncludeSubdomains: "true",
+	})
+
+	if len(result.Filters) != 1 {
+		t.Fatalf("expected 1 filter, got %d", len(result.Filters))
+	}
+	if result.Filters[0].Type != gwapiv1.HTTPRouteFilterResponseHeaderModifier {
+		t.Errorf("expected ResponseHeaderModifier, got %s", result.Filters[0].Type)
+	}
+
+	// Should have processed 3 annotations
+	if len(result.Processed) != 3 {
+		t.Errorf("expected 3 processed annotations, got %d: %v", len(result.Processed), result.Processed)
+	}
+
+	// Verify header value
+	header := result.Filters[0].ResponseHeaderModifier.Set[0]
+	expected := "max-age=86400; includeSubDomains"
+	if header.Value != expected {
+		t.Errorf("expected %q, got %q", expected, header.Value)
+	}
+}

@@ -65,7 +65,8 @@ func TestConvertIngress_SingleHost(t *testing.T) {
 	}
 
 	route := result.HTTPRoutes[0]
-	if route.Name != "test-ingress-foo-example-com" {
+	// With single host, route name is just the Ingress name
+	if route.Name != "test-ingress" {
 		t.Errorf("unexpected route name: %s", route.Name)
 	}
 	if len(route.Spec.Hostnames) != 1 || route.Spec.Hostnames[0] != "foo.example.com" {
@@ -609,25 +610,6 @@ func TestConvertIngress_ParentRefNamespace(t *testing.T) {
 	}
 }
 
-func TestHTTPRouteName(t *testing.T) {
-	tests := []struct {
-		ingressName string
-		host        string
-		expected    string
-	}{
-		{"my-ingress", "foo.com", "my-ingress-foo-com"},
-		{"ing", "a.b.c.d", "ing-a-b-c-d"},
-		{"test", "", "test"},
-	}
-
-	for _, tt := range tests {
-		got := httpRouteName(tt.ingressName, tt.host)
-		if got != tt.expected {
-			t.Errorf("httpRouteName(%q, %q) = %q, want %q", tt.ingressName, tt.host, got, tt.expected)
-		}
-	}
-}
-
 func TestConvertIngress_DeterministicOrdering(t *testing.T) {
 	// Create Ingress with multiple hosts to test ordering stability
 	ingress := &networkingv1.Ingress{
@@ -714,11 +696,18 @@ func TestConvertIngress_DeterministicOrdering(t *testing.T) {
 		}
 	}
 
-	// Verify routes are alphabetically sorted by hostname
-	expectedOrder := []gwapiv1.Hostname{"alpha.com", "beta.com", "zebra.com"}
-	for i, route := range firstResult.HTTPRoutes {
-		if route.Spec.Hostnames[0] != expectedOrder[i] {
-			t.Errorf("route %d: expected hostname %s, got %s", i, expectedOrder[i], route.Spec.Hostnames[0])
+	// Verify all expected hosts are present (order depends on rule signature hash)
+	expectedHosts := map[gwapiv1.Hostname]bool{"alpha.com": false, "beta.com": false, "zebra.com": false}
+	for _, route := range firstResult.HTTPRoutes {
+		if len(route.Spec.Hostnames) != 1 {
+			t.Errorf("route %s: expected 1 hostname, got %d", route.Name, len(route.Spec.Hostnames))
+			continue
+		}
+		expectedHosts[route.Spec.Hostnames[0]] = true
+	}
+	for host, found := range expectedHosts {
+		if !found {
+			t.Errorf("expected hostname %s not found in routes", host)
 		}
 	}
 }
@@ -1341,7 +1330,8 @@ func TestConvertIngress_GRPCRoute(t *testing.T) {
 	}
 
 	grpcRoute := result.GRPCRoutes[0]
-	if grpcRoute.Name != "grpc-ingress-grpc-grpc-example-com" {
+	// With single host, route name is just the Ingress name
+	if grpcRoute.Name != "grpc-ingress" {
 		t.Errorf("unexpected GRPCRoute name: %s", grpcRoute.Name)
 	}
 	if len(grpcRoute.Spec.Hostnames) != 1 || grpcRoute.Spec.Hostnames[0] != "grpc.example.com" {
@@ -1436,33 +1426,141 @@ func TestConvertIngress_GRPCRoute_MultipleHosts(t *testing.T) {
 		t.Fatalf("expected 2 GRPCRoutes, got %d", len(result.GRPCRoutes))
 	}
 
-	// Verify each route has exactly one host (alphabetically sorted)
-	expectedHosts := []gwapiv1.Hostname{"api.grpc.io", "data.grpc.io"}
-	for i, route := range result.GRPCRoutes {
+	// Verify all expected hosts are present (order depends on rule signature hash)
+	expectedHosts := map[gwapiv1.Hostname]bool{"api.grpc.io": false, "data.grpc.io": false}
+	for _, route := range result.GRPCRoutes {
 		if len(route.Spec.Hostnames) != 1 {
-			t.Errorf("route %d has %d hostnames, expected 1", i, len(route.Spec.Hostnames))
+			t.Errorf("route %s: expected 1 hostname, got %d", route.Name, len(route.Spec.Hostnames))
+			continue
 		}
-		if route.Spec.Hostnames[0] != expectedHosts[i] {
-			t.Errorf("route %d: expected hostname %s, got %s", i, expectedHosts[i], route.Spec.Hostnames[0])
+		expectedHosts[route.Spec.Hostnames[0]] = true
+	}
+	for host, found := range expectedHosts {
+		if !found {
+			t.Errorf("expected hostname %s not found in routes", host)
 		}
 	}
 }
 
-func TestGRPCRouteName(t *testing.T) {
-	tests := []struct {
-		ingressName string
-		host        string
-		expected    string
-	}{
-		{"my-ingress", "foo.com", "my-ingress-grpc-foo-com"},
-		{"ing", "a.b.c", "ing-grpc-a-b-c"},
-		{"test", "", "test-grpc"},
+func TestConvertIngress_UseRegex(t *testing.T) {
+	ingress := &networkingv1.Ingress{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "regex-ingress",
+			Namespace: "default",
+			Annotations: map[string]string{
+				"nginx.ingress.kubernetes.io/use-regex": "true",
+			},
+		},
+		Spec: networkingv1.IngressSpec{
+			Rules: []networkingv1.IngressRule{
+				{
+					Host: "example.com",
+					IngressRuleValue: networkingv1.IngressRuleValue{
+						HTTP: &networkingv1.HTTPIngressRuleValue{
+							Paths: []networkingv1.HTTPIngressPath{
+								{
+									Path:     "/api/v[0-9]+/.*",
+									PathType: ptr.To(networkingv1.PathTypeImplementationSpecific),
+									Backend: networkingv1.IngressBackend{
+										Service: &networkingv1.IngressServiceBackend{
+											Name: "api-svc",
+											Port: networkingv1.ServiceBackendPort{Number: 8080},
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
 	}
 
-	for _, tt := range tests {
-		got := grpcRouteName(tt.ingressName, tt.host)
-		if got != tt.expected {
-			t.Errorf("grpcRouteName(%q, %q) = %q, want %q", tt.ingressName, tt.host, got, tt.expected)
+	result := ConvertIngress(ingress, "gateway", "default")
+
+	if len(result.HTTPRoutes) != 1 {
+		t.Fatalf("expected 1 HTTPRoute, got %d", len(result.HTTPRoutes))
+	}
+
+	route := result.HTTPRoutes[0]
+	if len(route.Spec.Rules) != 1 {
+		t.Fatalf("expected 1 rule, got %d", len(route.Spec.Rules))
+	}
+
+	rule := route.Spec.Rules[0]
+	if len(rule.Matches) != 1 {
+		t.Fatalf("expected 1 match, got %d", len(rule.Matches))
+	}
+
+	match := rule.Matches[0]
+	if match.Path == nil || match.Path.Type == nil {
+		t.Fatal("path match type not set")
+	}
+
+	// Should be RegularExpression due to use-regex annotation
+	if *match.Path.Type != gwapiv1.PathMatchRegularExpression {
+		t.Errorf("expected pathType RegularExpression, got %v", *match.Path.Type)
+	}
+
+	// Should have warning about regex conversion
+	hasRegexWarning := false
+	for _, w := range result.Warnings {
+		if w == "use-regex=true converted to pathType: RegularExpression (support is implementation-specific)" {
+			hasRegexWarning = true
+			break
 		}
+	}
+	if !hasRegexWarning {
+		t.Errorf("expected regex conversion warning, got: %v", result.Warnings)
+	}
+}
+
+func TestConvertIngress_UseRegexFalse(t *testing.T) {
+	ingress := &networkingv1.Ingress{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "no-regex-ingress",
+			Namespace: "default",
+			Annotations: map[string]string{
+				"nginx.ingress.kubernetes.io/use-regex": "false",
+			},
+		},
+		Spec: networkingv1.IngressSpec{
+			Rules: []networkingv1.IngressRule{
+				{
+					Host: "example.com",
+					IngressRuleValue: networkingv1.IngressRuleValue{
+						HTTP: &networkingv1.HTTPIngressRuleValue{
+							Paths: []networkingv1.HTTPIngressPath{
+								{
+									Path:     "/api",
+									PathType: ptr.To(networkingv1.PathTypePrefix),
+									Backend: networkingv1.IngressBackend{
+										Service: &networkingv1.IngressServiceBackend{
+											Name: "api-svc",
+											Port: networkingv1.ServiceBackendPort{Number: 8080},
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	result := ConvertIngress(ingress, "gateway", "default")
+
+	if len(result.HTTPRoutes) != 1 {
+		t.Fatalf("expected 1 HTTPRoute, got %d", len(result.HTTPRoutes))
+	}
+
+	route := result.HTTPRoutes[0]
+	rule := route.Spec.Rules[0]
+	match := rule.Matches[0]
+
+	// Should be PathPrefix, not RegularExpression
+	if *match.Path.Type != gwapiv1.PathMatchPathPrefix {
+		t.Errorf("expected pathType PathPrefix, got %v", *match.Path.Type)
 	}
 }

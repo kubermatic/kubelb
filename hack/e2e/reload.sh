@@ -70,6 +70,20 @@ store_hash() {
   echo "${hash}" > "${HASH_DIR}/${key}.hash"
 }
 
+# Check if existing binaries have wrong architecture (e.g., darwin/arm64 instead of linux/amd64)
+# If wrong arch, clear stored hashes to force rebuild and reload
+arch_ok=true
+if [[ -f "${BIN_DIR}/kubelb" ]] && ! is_linux_amd64 "${BIN_DIR}/kubelb"; then
+  echodate "WARNING: kubelb binary has wrong architecture, forcing rebuild"
+  rm -f "${HASH_DIR}/kubelb.hash"
+  arch_ok=false
+fi
+if [[ -f "${BIN_DIR}/ccm" ]] && ! is_linux_amd64 "${BIN_DIR}/ccm"; then
+  echodate "WARNING: ccm binary has wrong architecture, forcing rebuild"
+  rm -f "${HASH_DIR}/ccm.hash"
+  arch_ok=false
+fi
+
 # Build binaries with e2e tags (Go cache makes unchanged builds fast)
 # Use fixed BUILD_DATE to ensure reproducible binaries for hash comparison
 echodate "Building binaries..."

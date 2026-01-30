@@ -120,9 +120,17 @@ const (
 	LimitRPM = "nginx.ingress.kubernetes.io/limit-rpm"
 )
 
-// Regex annotation - now handled with standalone warning
+// Regex annotation - now handled with RegularExpression path type
 const (
 	UseRegex = "nginx.ingress.kubernetes.io/use-regex"
+)
+
+// HSTS annotations - converted to Strict-Transport-Security response header
+const (
+	HSTS                  = "nginx.ingress.kubernetes.io/hsts"
+	HSTSMaxAge            = "nginx.ingress.kubernetes.io/hsts-max-age"
+	HSTSIncludeSubdomains = "nginx.ingress.kubernetes.io/hsts-include-subdomains"
+	HSTSPreload           = "nginx.ingress.kubernetes.io/hsts-preload"
 )
 
 // Unhandled annotations - defined for reference but not processed by the converter.

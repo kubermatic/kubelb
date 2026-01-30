@@ -316,6 +316,7 @@ e2e-select: chainsaw ## Run e2e tests matching label selector (e.g., make e2e-se
 CONVERSION_E2E_DIR ?= $(E2E_DIR)/tests/conversion
 CONVERSION_CONFIG ?= $(E2E_DIR)/config-conversion.yaml
 CONVERSION_VALUES ?= $(E2E_DIR)/values-conversion.yaml
+CONVERSION_CLUSTER ?= --cluster conversion=$(KUBECONFIGS_DIR)/conversion.kubeconfig
 
 .PHONY: e2e-conversion-setup-kind
 e2e-conversion-setup-kind: ## Setup single Kind cluster for conversion tests
@@ -334,15 +335,19 @@ e2e-conversion-local: e2e-conversion-setup-local e2e-conversion ## Full conversi
 .PHONY: e2e-conversion-setup-local
 e2e-conversion-setup-local: e2e-cleanup-kind e2e-conversion-setup-kind e2e-conversion-deploy ## Reset Kind cluster and redeploy for conversion
 
+.PHONY: e2e-conversion-reload
+e2e-conversion-reload: ## Reload CCM in conversion cluster if binary changed
+	KUBECONFIGS_DIR=$(KUBECONFIGS_DIR) ./hack/e2e/reload-conversion.sh
+
 .PHONY: e2e-conversion
-e2e-conversion: chainsaw ## Run conversion e2e tests
-	KUBECONFIG=$(KUBECONFIGS_DIR)/conversion.kubeconfig $(CHAINSAW) test $(CONVERSION_E2E_DIR) \
-		--config $(CONVERSION_CONFIG) --values $(CONVERSION_VALUES)
+e2e-conversion: chainsaw e2e-conversion-reload ## Run conversion e2e tests (reloads CCM if changed)
+	$(CHAINSAW) test $(CONVERSION_E2E_DIR) \
+		--config $(CONVERSION_CONFIG) --values $(CONVERSION_VALUES) $(CONVERSION_CLUSTER)
 
 .PHONY: e2e-conversion-select
-e2e-conversion-select: chainsaw ## Run conversion e2e tests matching label selector
-	KUBECONFIG=$(KUBECONFIGS_DIR)/conversion.kubeconfig $(CHAINSAW) test $(CONVERSION_E2E_DIR) \
-		--config $(CONVERSION_CONFIG) --values $(CONVERSION_VALUES) --selector $(select)
+e2e-conversion-select: chainsaw  ## Run conversion e2e tests matching label selector (reloads CCM if changed)
+	$(CHAINSAW) test $(CONVERSION_E2E_DIR) \
+		--config $(CONVERSION_CONFIG) --values $(CONVERSION_VALUES) $(CONVERSION_CLUSTER) --selector $(select)
 
 .PHONY: shfmt
 shfmt:

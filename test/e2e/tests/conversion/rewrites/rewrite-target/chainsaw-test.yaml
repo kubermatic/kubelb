@@ -31,8 +31,6 @@ spec:
   bindings:
     - name: name
       value: conv-rewrite
-    - name: namespace
-      value: default
     - name: transformed_host
       value: conv-rewrite.gateway.local
   steps:
@@ -88,8 +86,6 @@ spec:
           bindings:
             - name: ingress_name
               value: ($name)
-            - name: namespace
-              value: ($namespace)
             - name: expected_host
               value: ($transformed_host)
 
@@ -129,8 +125,6 @@ spec:
           bindings:
             - name: ingress_name
               value: ($name)
-            - name: namespace
-              value: ($namespace)
             - name: expected_status
               value: converted
 
@@ -142,5 +136,3 @@ spec:
           bindings:
             - name: ingress_name
               value: ($name)
-            - name: namespace
-              value: ($namespace)

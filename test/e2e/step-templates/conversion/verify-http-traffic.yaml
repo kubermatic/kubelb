@@ -30,10 +30,11 @@ spec:
       value: kubelb
     - name: gateway_namespace
       value: default
-    - name: path
+    - name: slug_path
       value: /
   try:
     - script:
+        cluster: conversion
         timeout: 120s
         env:
           - name: HOST
@@ -44,14 +45,14 @@ spec:
             value: ($gateway_name)
           - name: GATEWAY_NS
             value: ($gateway_namespace)
-          - name: PATH
-            value: ($path)
+          - name: SLUG_PATH
+            value: ($slug_path)
         content: |
           set -e
 
           # First wait for Gateway IP
           IP=""
-          for i in $(seq 1 30); do
+          i=1; while [ "$i" -le 30 ]; do
             IP=$(kubectl get gateway.gateway.networking.k8s.io "$GATEWAY_NAME" -n "$GATEWAY_NS" \
               -o jsonpath='{.status.addresses[0].value}' 2>/dev/null || echo "")
             if [ -n "$IP" ]; then
@@ -59,6 +60,7 @@ spec:
             fi
             echo "Attempt $i: waiting for Gateway IP..."
             sleep 2
+            i=$((i + 1))
           done
 
           if [ -z "$IP" ]; then
@@ -69,19 +71,20 @@ spec:
           echo "Gateway IP: $IP"
 
           # Now test HTTP traffic
-          for i in $(seq 1 20); do
-            RESPONSE=$(curl -s --max-time 5 -H "Host: ${HOST}" "http://${IP}${PATH}" 2>/dev/null || true)
+          i=1; while [ "$i" -le 20 ]; do
+            RESPONSE=$(curl -s --max-time 5 -H "Host: ${HOST}" "http://${IP}${SLUG_PATH}" 2>/dev/null || true)
 
             if echo "$RESPONSE" | grep -q "$EXPECTED"; then
               echo "SUCCESS: HTTP response matched"
               echo "  Host: $HOST"
-              echo "  Path: $PATH"
+              echo "  Path: $SLUG_PATH"
               echo "  Expected: $EXPECTED"
               exit 0
             fi
 
             echo "Attempt $i: waiting for route propagation..."
             sleep 3
+            i=$((i + 1))
           done
 
           echo "FAILED: Expected '$EXPECTED' in response"

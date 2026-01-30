@@ -19,6 +19,9 @@ package ingressconversion
 const (
 	ControllerName = "ingress-conversion-controller"
 
+	// Common string constants
+	boolTrue = "true"
+
 	// Annotations
 	AnnotationSkipConversion     = "kubelb.k8c.io/skip-conversion"
 	AnnotationConversionStatus   = "kubelb.k8c.io/conversion-status"
@@ -32,6 +35,7 @@ const (
 	// Status values
 	ConversionStatusConverted = "converted"
 	ConversionStatusPartial   = "partial"
+	ConversionStatusPending   = "pending" // Routes created but not yet accepted
 	ConversionStatusFailed    = "failed"
 
 	// NGINX annotations (for skip logic and protocol detection)

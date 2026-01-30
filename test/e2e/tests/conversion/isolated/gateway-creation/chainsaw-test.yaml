@@ -34,8 +34,6 @@ spec:
   bindings:
     - name: name
       value: conv-gw-create
-    - name: namespace
-      value: default
     - name: transformed_host
       value: conv-gwcreate.gateway.local
   steps:
@@ -109,8 +107,6 @@ spec:
           bindings:
             - name: gateway_name
               value: kubelb
-            - name: namespace
-              value: default
 
     - name: verify-managed-by-label
       description: Verify Gateway has managed-by label
@@ -140,5 +136,3 @@ spec:
           bindings:
             - name: ingress_name
               value: ($name)
-            - name: namespace
-              value: ($namespace)

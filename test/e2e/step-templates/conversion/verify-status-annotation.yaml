@@ -15,8 +15,8 @@
 # Step Template: Verify Ingress has conversion status annotation
 # Required bindings:
 #   - ingress_name: Ingress name
-#   - namespace: Ingress namespace
 #   - expected_status: expected status value (converted or partial)
+# Note: Namespace is hardcoded to 'default' - see test/e2e/CLAUDE.md for why
 apiVersion: chainsaw.kyverno.io/v1alpha1
 kind: StepTemplate
 metadata:
@@ -24,18 +24,18 @@ metadata:
 spec:
   try:
     - script:
+        cluster: conversion
         timeout: 60s
         env:
           - name: INGRESS_NAME
             value: ($ingress_name)
-          - name: NAMESPACE
-            value: ($namespace)
           - name: EXPECTED_STATUS
             value: ($expected_status)
         content: |
           set -e
+          NAMESPACE=default
 
-          for i in $(seq 1 30); do
+          i=1; while [ "$i" -le 30 ]; do
             STATUS=$(kubectl get ingress "$INGRESS_NAME" -n "$NAMESPACE" \
               -o jsonpath='{.metadata.annotations.kubelb\.k8c\.io/conversion-status}' 2>/dev/null || echo "")
 
@@ -52,6 +52,7 @@ spec:
 
             echo "Attempt $i: status='$STATUS', waiting for '$EXPECTED_STATUS'..."
             sleep 2
+            i=$((i + 1))
           done
 
           echo "FAILED: Expected conversion-status '$EXPECTED_STATUS', got '$STATUS'"

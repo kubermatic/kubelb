@@ -32,8 +32,6 @@ spec:
   bindings:
     - name: name
       value: conv-rewrite-capture
-    - name: namespace
-      value: default
     - name: transformed_host
       value: conv-capture.gateway.local
   steps:
@@ -90,8 +88,6 @@ spec:
           bindings:
             - name: ingress_name
               value: ($name)
-            - name: namespace
-              value: ($namespace)
             - name: expected_host
               value: ($transformed_host)
 
@@ -103,8 +99,6 @@ spec:
           bindings:
             - name: ingress_name
               value: ($name)
-            - name: namespace
-              value: ($namespace)
             - name: warning_pattern
               value: capture
 
@@ -116,8 +110,6 @@ spec:
           bindings:
             - name: ingress_name
               value: ($name)
-            - name: namespace
-              value: ($namespace)
             - name: expected_status
               value: partial
 
@@ -129,5 +121,3 @@ spec:
           bindings:
             - name: ingress_name
               value: ($name)
-            - name: namespace
-              value: ($namespace)

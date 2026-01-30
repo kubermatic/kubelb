@@ -23,6 +23,7 @@ metadata:
   labels:
     conversion: "true"
     category: basic
+    test: conversion-default-backend
     parallel: "true"
 spec:
   description: |
@@ -31,14 +32,13 @@ spec:
   bindings:
     - name: name
       value: conv-default-backend
-    - name: namespace
-      value: default
     - name: transformed_host
       value: conv-default.gateway.local
   steps:
     # Step 1: Create ClusterIP service
     - name: create-service
       description: Create ClusterIP service
+      cluster: conversion
       try:
         - apply:
             resource:
@@ -58,6 +58,7 @@ spec:
     # Step 2: Create Ingress with defaultBackend
     - name: create-ingress
       description: Create Ingress with defaultBackend
+      cluster: conversion
       try:
         - apply:
             resource:
@@ -85,8 +86,6 @@ spec:
           bindings:
             - name: ingress_name
               value: ($name)
-            - name: namespace
-              value: ($namespace)
             - name: expected_host
               value: ($transformed_host)
 
@@ -99,8 +98,6 @@ spec:
           bindings:
             - name: ingress_name
               value: ($name)
-            - name: namespace
-              value: ($namespace)
             - name: expected_status
               value: converted
 
@@ -113,7 +110,7 @@ spec:
           bindings:
             - name: host
               value: ($transformed_host)
-            - name: path
+            - name: slug_path
               value: /random/path
             - name: expected_response
               value: hello-shared
@@ -127,5 +124,3 @@ spec:
           bindings:
             - name: ingress_name
               value: ($name)
-            - name: namespace
-              value: ($namespace)

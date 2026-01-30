@@ -74,6 +74,12 @@ func (c *Converter) registerHandlers() {
 	c.handlers[XForwardedPrefix] = handleXForwardedPrefix
 	c.handlers[PreserveHost] = handlePreserveHost
 
+	// HSTS
+	c.handlers[HSTS] = handleHSTS
+	c.handlers[HSTSMaxAge] = handleHSTSAnnotation
+	c.handlers[HSTSIncludeSubdomains] = handleHSTSAnnotation
+	c.handlers[HSTSPreload] = handleHSTSAnnotation
+
 	// Timeouts
 	c.handlers[ProxyConnectTimeout] = handleProxyConnectTimeout
 	c.handlers[ProxyReadTimeout] = handleProxyReadTimeout

@@ -180,3 +180,61 @@ func parseHeaderList(value string) ([]gwapiv1.HTTPHeader, []string) {
 
 	return headers, warnings
 }
+
+// handleHSTS converts HSTS annotations to a Strict-Transport-Security response header.
+// nginx.ingress.kubernetes.io/hsts: "true"
+// nginx.ingress.kubernetes.io/hsts-max-age: "31536000" (default)
+// nginx.ingress.kubernetes.io/hsts-include-subdomains: "true"
+// nginx.ingress.kubernetes.io/hsts-preload: "true"
+func handleHSTS(_, value string, annotations map[string]string) ([]gwapiv1.HTTPRouteFilter, []string) {
+	if value != boolTrue {
+		return nil, nil
+	}
+
+	// Build Strict-Transport-Security header value
+	headerValue := buildHSTSHeaderValue(annotations)
+
+	filter := gwapiv1.HTTPRouteFilter{
+		Type: gwapiv1.HTTPRouteFilterResponseHeaderModifier,
+		ResponseHeaderModifier: &gwapiv1.HTTPHeaderFilter{
+			Set: []gwapiv1.HTTPHeader{
+				{
+					Name:  "Strict-Transport-Security",
+					Value: headerValue,
+				},
+			},
+		},
+	}
+
+	return []gwapiv1.HTTPRouteFilter{filter}, nil
+}
+
+// handleHSTSAnnotation handles auxiliary HSTS annotations (max-age, include-subdomains, preload).
+// These are processed as part of handleHSTS and don't generate separate filters.
+func handleHSTSAnnotation(_, _ string, _ map[string]string) ([]gwapiv1.HTTPRouteFilter, []string) {
+	// Processed as part of handleHSTS; no standalone action
+	return nil, nil
+}
+
+// buildHSTSHeaderValue constructs the Strict-Transport-Security header value from annotations.
+func buildHSTSHeaderValue(annotations map[string]string) string {
+	// Default max-age is 31536000 (1 year) as per nginx-ingress defaults
+	maxAge := "31536000"
+	if v, ok := annotations[HSTSMaxAge]; ok && v != "" {
+		maxAge = v
+	}
+
+	value := "max-age=" + maxAge
+
+	// Include subdomains if enabled
+	if v, ok := annotations[HSTSIncludeSubdomains]; ok && v == "true" {
+		value += "; includeSubDomains"
+	}
+
+	// Add preload if enabled
+	if v, ok := annotations[HSTSPreload]; ok && v == "true" {
+		value += "; preload"
+	}
+
+	return value
+}

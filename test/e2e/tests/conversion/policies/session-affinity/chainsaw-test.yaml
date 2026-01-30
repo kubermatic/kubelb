@@ -30,8 +30,6 @@ spec:
   bindings:
     - name: name
       value: conv-affinity
-    - name: namespace
-      value: default
     - name: transformed_host
       value: conv-affinity.gateway.local
   steps:
@@ -89,8 +87,6 @@ spec:
           bindings:
             - name: ingress_name
               value: ($name)
-            - name: namespace
-              value: ($namespace)
             - name: expected_host
               value: ($transformed_host)
 
@@ -102,8 +98,6 @@ spec:
           bindings:
             - name: ingress_name
               value: ($name)
-            - name: namespace
-              value: ($namespace)
             - name: warning_pattern
               value: BackendTrafficPolicy
 
@@ -115,5 +109,3 @@ spec:
           bindings:
             - name: ingress_name
               value: ($name)
-            - name: namespace
-              value: ($namespace)
