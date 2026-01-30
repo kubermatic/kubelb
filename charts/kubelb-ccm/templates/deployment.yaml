@@ -107,9 +107,6 @@ spec:
             {{ if not .Values.kubelb.ingressConversion.propagateExternalDnsAnnotations -}}
             - --conversion-propagate-external-dns-annotations=false
             {{ end -}}
-            {{ if .Values.kubelb.ingressConversion.cleanupStale -}}
-            - --conversion-cleanup-stale=true
-            {{ end -}}
             {{ if .Values.kubelb.ingressConversion.disableEnvoyGatewayFeatures -}}
             - --conversion-disable-envoy-gateway-features=true
             {{ end -}}

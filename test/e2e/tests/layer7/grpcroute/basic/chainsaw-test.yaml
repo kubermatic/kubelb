@@ -68,6 +68,7 @@ spec:
                     containers:
                       - name: grpcbin
                         image: docker.io/kong/grpcbin:latest
+                        imagePullPolicy: IfNotPresent
                         ports:
                           - containerPort: 9000
                             name: grpc
@@ -213,7 +214,7 @@ spec:
               for i in $(seq 1 10); do
                 # Use grpcurl to test the grpcbin HelloService
                 RESPONSE=$(kubectl run grpcurl-test-$$-$i -n default --rm -i --restart=Never \
-                  --image=fullstorydev/grpcurl:latest \
+                  --image=fullstorydev/grpcurl:v1.9.1 \
                   -- -plaintext -authority "${HOST}" -d '{"greeting":"test"}' "${IP}:80" hello.HelloService/SayHello 2>&1 || true)
                 if echo "$RESPONSE" | grep -q "reply"; then
                   echo "gRPC response OK: reply received"

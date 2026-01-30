@@ -15,45 +15,29 @@
 # Gateway Annotations Test
 # Verifies:
 # - Gateway has static annotations from gatewayAnnotations config
-# - Annotations are preserved when Gateway is updated
+# - Basic conversion still works with annotations
 apiVersion: chainsaw.kyverno.io/v1alpha1
 kind: Test
 metadata:
-  name: conversion-isolated-gateway-annotations
+  name: conversion-basic-gateway-annotations
   labels:
     conversion: "true"
-    test: "conversion-isolated-gateway-annotations"
-    category: isolated
-    parallel: "false"
+    test: "conversion-basic-gateway-annotations"
+    category: basic
+    parallel: "true"
 spec:
-  concurrent: false
   description: |
     Test that Gateway annotations from gatewayAnnotations config are applied.
     Verifies static annotations configured via --conversion-gateway-annotations flag
     are present on the created Gateway.
   bindings:
     - name: name
-      value: conv-gw-annotations
+      value: conv-gw-annot
+    - name: original_host
+      value: conv-gw-annot.test.local
     - name: transformed_host
-      value: conv-gwannotations.gateway.local
+      value: conv-gw-annot.gateway.local
   steps:
-    - name: cleanup-existing
-      description: Remove existing Gateway for clean test
-      try:
-        - script:
-            timeout: 30s
-            content: |
-              kubectl delete gateway.gateway.networking.k8s.io kubelb -n default --ignore-not-found
-              for i in $(seq 1 10); do
-                if ! kubectl get gateway.gateway.networking.k8s.io kubelb -n default &>/dev/null; then
-                  echo "Gateway cleaned up"
-                  exit 0
-                fi
-                sleep 1
-              done
-            check:
-              ($error == null): true
-
     - name: create-service
       description: Create ClusterIP service
       try:
@@ -62,7 +46,7 @@ spec:
               apiVersion: v1
               kind: Service
               metadata:
-                name: conv-gw-annotations
+                name: conv-gw-annot
                 namespace: default
               spec:
                 type: ClusterIP
@@ -73,31 +57,42 @@ spec:
                     targetPort: 5678
 
     - name: create-ingress
-      description: Create Ingress to trigger Gateway creation
+      description: Create Ingress with nginx ingressClass
       try:
         - apply:
             resource:
               apiVersion: networking.k8s.io/v1
               kind: Ingress
               metadata:
-                name: conv-gw-annotations
+                name: conv-gw-annot
                 namespace: default
               spec:
                 ingressClassName: nginx
                 rules:
-                  - host: conv-gwannotations.test.local
+                  - host: conv-gw-annot.test.local
                     http:
                       paths:
                         - path: /
                           pathType: Prefix
                           backend:
                             service:
-                              name: conv-gw-annotations
+                              name: conv-gw-annot
                               port:
                                 number: 80
 
-    - name: verify-gateway-created
-      description: Verify Gateway created
+    - name: verify-httproute
+      description: Verify HTTPRoute exists with transformed hostname
+      use:
+        template: ../../../../step-templates/conversion/verify-httproute.yaml
+        with:
+          bindings:
+            - name: ingress_name
+              value: ($name)
+            - name: expected_host
+              value: ($transformed_host)
+
+    - name: verify-gateway
+      description: Verify Gateway exists with correct settings
       use:
         template: ../../../../step-templates/conversion/verify-gateway.yaml
         with:
@@ -142,19 +137,19 @@ spec:
             check:
               ($error == null): true
 
-    - name: verify-httproute
-      description: Verify HTTPRoute created
+    - name: verify-status
+      description: Verify Ingress has conversion-status=converted
       use:
-        template: ../../../../step-templates/conversion/verify-httproute.yaml
+        template: ../../../../step-templates/conversion/verify-status-annotation.yaml
         with:
           bindings:
             - name: ingress_name
               value: ($name)
-            - name: expected_host
-              value: ($transformed_host)
+            - name: expected_status
+              value: converted
 
-    - name: verify-traffic
-      description: Verify traffic works
+    - name: verify-http
+      description: Verify HTTP response via Envoy Gateway
       use:
         template: ../../../../step-templates/conversion/verify-http-traffic.yaml
         with:

@@ -72,7 +72,8 @@ spec:
                   spec:
                     containers:
                       - name: echo
-                        image: hashicorp/http-echo:latest
+                        image: hashicorp/http-echo:1.0
+                        imagePullPolicy: IfNotPresent
                         args:
                           - -text=hello-from-httproute
                           - -listen=:8080
@@ -254,7 +255,8 @@ spec:
                   spec:
                     containers:
                       - name: echo
-                        image: hashicorp/http-echo:latest
+                        image: hashicorp/http-echo:1.0
+                        imagePullPolicy: IfNotPresent
                         args:
                           - -text=hello-from-httproute-v2
                           - -listen=:8080

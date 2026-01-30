@@ -74,8 +74,6 @@ kubelb:
     gatewayAnnotations: ""
     # -- propagateExternalDnsAnnotations propagates external-dns annotations to Gateway/HTTPRoute
     propagateExternalDnsAnnotations: true
-    # -- cleanupStale enables cleanup of stale HTTPRoutes/GRPCRoutes when hosts are removed from Ingress
-    cleanupStale: true
     # -- disableEnvoyGatewayFeatures disables creation of Envoy Gateway policies (SecurityPolicy, BackendTrafficPolicy)
     disableEnvoyGatewayFeatures: false
 

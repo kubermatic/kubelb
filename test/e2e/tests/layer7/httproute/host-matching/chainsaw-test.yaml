@@ -62,7 +62,8 @@ spec:
                   spec:
                     containers:
                       - name: echo
-                        image: hashicorp/http-echo:latest
+                        image: hashicorp/http-echo:1.0
+                        imagePullPolicy: IfNotPresent
                         args:
                           - -text=host-a-response
                           - -listen=:8080
@@ -103,7 +104,8 @@ spec:
                   spec:
                     containers:
                       - name: echo
-                        image: hashicorp/http-echo:latest
+                        image: hashicorp/http-echo:1.0
+                        imagePullPolicy: IfNotPresent
                         args:
                           - -text=host-b-response
                           - -listen=:8080

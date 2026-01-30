@@ -85,7 +85,6 @@ cosign verify quay.io/kubermatic/kubelb-ccm:v1.3.0 \
 | kubelb.enableLeaderElection | bool | `true` | Enable the leader election. |
 | kubelb.enableSecretSynchronizer | bool | `false` | Enable to automatically convert Secrets labelled with `kubelb.k8c.io/managed-by: kubelb` to Sync Secrets. This is used to sync secrets from tenants to the LB cluster in a controlled and secure way. |
 | kubelb.gatewayAPICRDsChannel | string | `"standard"` | gatewayAPICRDsChannel specifies the channel for the Gateway API CRDs. Options are `standard` and `experimental`. |
-| kubelb.ingressConversion.cleanupStale | bool | `true` | cleanupStale enables cleanup of stale HTTPRoutes/GRPCRoutes when hosts are removed from Ingress |
 | kubelb.ingressConversion.disableEnvoyGatewayFeatures | bool | `false` | disableEnvoyGatewayFeatures disables creation of Envoy Gateway policies (SecurityPolicy, BackendTrafficPolicy) |
 | kubelb.ingressConversion.domainReplace | string | `""` | domainReplace is the domain suffix to replace in hostnames |
 | kubelb.ingressConversion.domainSuffix | string | `""` | domainSuffix is the replacement domain suffix for hostnames |

@@ -56,7 +56,8 @@ spec:
                   spec:
                     containers:
                       - name: echo
-                        image: hashicorp/http-echo:0.2.3
+                        image: hashicorp/http-echo:1.0
+                        imagePullPolicy: IfNotPresent
                         args: ["-text=response-from-host1-backend"]
                         ports:
                           - containerPort: 5678
@@ -79,7 +80,8 @@ spec:
                   spec:
                     containers:
                       - name: echo
-                        image: hashicorp/http-echo:0.2.3
+                        image: hashicorp/http-echo:1.0
+                        imagePullPolicy: IfNotPresent
                         args: ["-text=response-from-host2-backend"]
                         ports:
                           - containerPort: 5678
@@ -102,7 +104,8 @@ spec:
                   spec:
                     containers:
                       - name: echo
-                        image: hashicorp/http-echo:0.2.3
+                        image: hashicorp/http-echo:1.0
+                        imagePullPolicy: IfNotPresent
                         args: ["-text=response-from-host3-backend"]
                         ports:
                           - containerPort: 5678

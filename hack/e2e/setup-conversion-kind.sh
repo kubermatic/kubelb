@@ -220,6 +220,64 @@ kubeadmConfigPatches:
     --config <(echo "${config}") &> "${logfile}"
 }
 
+prepull_images() {
+  local images_file="${ROOT_DIR}/hack/e2e/images-conversion.yaml"
+  if [[ ! -f "${images_file}" ]]; then
+    echodate "No images-conversion.yaml found, skipping pre-pull"
+    return 0
+  fi
+
+  # In CI, skip prepull - on-demand pulls are faster for cold cache
+  if [[ "${CI:-}" == "true" ]] || [[ -n "${PROW_JOB_ID:-}" ]] || [[ -n "${JOB_NAME:-}" ]] || [[ -n "${GITHUB_ACTIONS:-}" ]]; then
+    echodate "CI detected, skipping pre-pull (on-demand faster)"
+    return 0
+  fi
+
+  # Parse images from YAML (flat list under "images:")
+  local images=()
+  while IFS= read -r line; do
+    if [[ "${line}" =~ ^[[:space:]]*-[[:space:]]+(.+)$ ]]; then
+      images+=("${BASH_REMATCH[1]}")
+    fi
+  done < "${images_file}"
+
+  if [[ ${#images[@]} -eq 0 ]]; then
+    echodate "No images found in images-conversion.yaml"
+    return 0
+  fi
+
+  # Local dev: pull missing images to docker cache, then kind load
+  # This makes subsequent runs fast (kind load from cache vs network pull)
+  local missing_images=()
+  for image in "${images[@]}"; do
+    if ! docker image inspect "${image}" &> /dev/null; then
+      missing_images+=("${image}")
+    fi
+  done
+
+  if [[ ${#missing_images[@]} -gt 0 ]]; then
+    echodate "Caching ${#missing_images[@]} images to docker (one-time for faster future runs)..."
+    local pull_pids=()
+    for image in "${missing_images[@]}"; do
+      echodate "  Pulling ${image}..."
+      docker pull "${image}" &> /dev/null &
+      pull_pids+=($!)
+    done
+    for pid in "${pull_pids[@]}"; do
+      wait ${pid} || true
+    done
+  fi
+
+  echodate "Loading ${#images[@]} images into conversion cluster..."
+
+  for image in "${images[@]}"; do
+    kind load docker-image "${image}" --name "conversion" &> /dev/null &
+  done
+  wait
+
+  echodate "Pre-pull complete"
+}
+
 #######################################
 # Main
 #######################################
@@ -257,6 +315,12 @@ if ! create_cluster "conversion"; then
 fi
 
 printElapsed "cluster_creation" $CLUSTER_CREATE_START
+
+# Pre-pull test images (skipped in CI, caches locally for faster subsequent runs)
+echodate ""
+PREPULL_START=$(nowms)
+prepull_images
+printElapsed "image_prepull" $PREPULL_START
 
 # Wait for background tasks
 if [[ -n "${GO_MOD_PID}" ]]; then

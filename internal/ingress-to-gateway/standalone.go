@@ -87,7 +87,6 @@ func SetupReconciler(mgr ctrl.Manager, opts Options) error {
 		DomainReplace:               opts.DomainReplace,
 		DomainSuffix:                opts.DomainSuffix,
 		PropagateExternalDNS:        opts.PropagateExternalDNS,
-		CleanupStale:                opts.CleanupStale,
 		GatewayAnnotations:          opts.GatewayAnnotations,
 		DisableEnvoyGatewayFeatures: opts.DisableEnvoyGatewayFeatures,
 	}).SetupWithManager(mgr)

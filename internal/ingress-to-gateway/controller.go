@@ -60,7 +60,6 @@ type Reconciler struct {
 	DomainReplace               string
 	DomainSuffix                string
 	PropagateExternalDNS        bool
-	CleanupStale                bool
 	GatewayAnnotations          map[string]string
 	DisableEnvoyGatewayFeatures bool
 }
@@ -81,24 +80,14 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 	ingress := &networkingv1.Ingress{}
 	if err := r.Get(ctx, req.NamespacedName, ingress); err != nil {
 		if kerrors.IsNotFound(err) {
-			// Ingress deleted - cleanup routes if CleanupStale enabled
-			if r.CleanupStale {
-				if err := r.cleanupRoutesForDeletedIngress(ctx, log, req.NamespacedName); err != nil {
-					return ctrl.Result{}, err
-				}
-			}
+			// Ingress deleted - routes persist for migration
 			return ctrl.Result{}, nil
 		}
 		return ctrl.Result{}, err
 	}
 
-	// If being deleted and cleanup enabled, clean up routes
+	// If being deleted, skip - routes persist for migration
 	if ingress.DeletionTimestamp != nil {
-		if r.CleanupStale {
-			if err := r.cleanupRoutesForDeletedIngress(ctx, log, req.NamespacedName); err != nil {
-				return ctrl.Result{}, err
-			}
-		}
 		return ctrl.Result{}, nil
 	}
 
@@ -234,16 +223,6 @@ func (r *Reconciler) reconcile(ctx context.Context, log logr.Logger, ingress *ne
 		grpcRouteNames = append(grpcRouteNames, fmt.Sprintf("%s/%s", grpcRoute.Namespace, grpcRoute.Name))
 	}
 
-	// Clean up stale routes (hosts removed from Ingress)
-	if r.CleanupStale {
-		if err := r.cleanupStaleHTTPRoutes(ctx, log, ingress, httpRouteNames); err != nil {
-			return false, fmt.Errorf("failed to cleanup stale HTTPRoutes: %w", err)
-		}
-		if err := r.cleanupStaleGRPCRoutes(ctx, log, ingress, grpcRouteNames); err != nil {
-			return false, fmt.Errorf("failed to cleanup stale GRPCRoutes: %w", err)
-		}
-	}
-
 	// Reconcile Envoy Gateway policies (if enabled)
 	var policyWarnings []string
 	if !r.DisableEnvoyGatewayFeatures && len(result.HTTPRoutes) > 0 {
@@ -360,176 +339,6 @@ func (r *Reconciler) updateIngressStatusStaged(ctx context.Context, ingress *net
 	}
 
 	return r.Update(ctx, current)
-}
-
-// cleanupStaleHTTPRoutes removes HTTPRoutes that were created from this Ingress but are no longer desired
-func (r *Reconciler) cleanupStaleHTTPRoutes(ctx context.Context, log logr.Logger, ingress *networkingv1.Ingress, desiredRouteNames []string) error {
-	// Build set of desired route names for quick lookup
-	desired := make(map[string]bool, len(desiredRouteNames))
-	for _, name := range desiredRouteNames {
-		desired[name] = true
-	}
-
-	// List all HTTPRoutes with source label pointing to this Ingress
-	sourceLabel := fmt.Sprintf("%s.%s", ingress.Name, ingress.Namespace)
-	httpRouteList := &gwapiv1.HTTPRouteList{}
-	if err := r.List(ctx, httpRouteList,
-		ctrlclient.InNamespace(ingress.Namespace),
-		ctrlclient.MatchingLabels{policies.LabelSourceIngress: sourceLabel}); err != nil {
-		return fmt.Errorf("failed to list HTTPRoutes: %w", err)
-	}
-
-	// Delete any HTTPRoutes not in desired set
-	for i := range httpRouteList.Items {
-		route := &httpRouteList.Items[i]
-		routeKey := fmt.Sprintf("%s/%s", route.Namespace, route.Name)
-		if !desired[routeKey] {
-			log.Info("Deleting stale HTTPRoute", "name", route.Name, "namespace", route.Namespace)
-			if err := r.Delete(ctx, route); err != nil {
-				if !kerrors.IsNotFound(err) {
-					return fmt.Errorf("failed to delete stale HTTPRoute %s: %w", routeKey, err)
-				}
-			}
-		}
-	}
-
-	return nil
-}
-
-// cleanupStaleGRPCRoutes removes GRPCRoutes that were created from this Ingress but are no longer desired
-func (r *Reconciler) cleanupStaleGRPCRoutes(ctx context.Context, log logr.Logger, ingress *networkingv1.Ingress, desiredRouteNames []string) error {
-	// Build set of desired route names for quick lookup
-	desired := make(map[string]bool, len(desiredRouteNames))
-	for _, name := range desiredRouteNames {
-		desired[name] = true
-	}
-
-	// List all GRPCRoutes with source label pointing to this Ingress
-	sourceLabel := fmt.Sprintf("%s.%s", ingress.Name, ingress.Namespace)
-	grpcRouteList := &gwapiv1.GRPCRouteList{}
-	if err := r.List(ctx, grpcRouteList,
-		ctrlclient.InNamespace(ingress.Namespace),
-		ctrlclient.MatchingLabels{policies.LabelSourceIngress: sourceLabel}); err != nil {
-		return fmt.Errorf("failed to list GRPCRoutes: %w", err)
-	}
-
-	// Delete any GRPCRoutes not in desired set
-	for i := range grpcRouteList.Items {
-		route := &grpcRouteList.Items[i]
-		routeKey := fmt.Sprintf("%s/%s", route.Namespace, route.Name)
-		if !desired[routeKey] {
-			log.Info("Deleting stale GRPCRoute", "name", route.Name, "namespace", route.Namespace)
-			if err := r.Delete(ctx, route); err != nil {
-				if !kerrors.IsNotFound(err) {
-					return fmt.Errorf("failed to delete stale GRPCRoute %s: %w", routeKey, err)
-				}
-			}
-		}
-	}
-
-	return nil
-}
-
-// cleanupRoutesForDeletedIngress removes all routes and policies created from a deleted Ingress
-func (r *Reconciler) cleanupRoutesForDeletedIngress(ctx context.Context, log logr.Logger, ingressKey types.NamespacedName) error {
-	sourceLabel := fmt.Sprintf("%s.%s", ingressKey.Name, ingressKey.Namespace)
-
-	// Delete all HTTPRoutes with this source label
-	httpRouteList := &gwapiv1.HTTPRouteList{}
-	if err := r.List(ctx, httpRouteList,
-		ctrlclient.InNamespace(ingressKey.Namespace),
-		ctrlclient.MatchingLabels{policies.LabelSourceIngress: sourceLabel}); err != nil {
-		return fmt.Errorf("failed to list HTTPRoutes for cleanup: %w", err)
-	}
-
-	for i := range httpRouteList.Items {
-		route := &httpRouteList.Items[i]
-		log.Info("Deleting HTTPRoute for deleted Ingress", "name", route.Name, "namespace", route.Namespace)
-		if err := r.Delete(ctx, route); err != nil {
-			if !kerrors.IsNotFound(err) {
-				return fmt.Errorf("failed to delete HTTPRoute %s/%s: %w", route.Namespace, route.Name, err)
-			}
-		}
-	}
-
-	// Delete all GRPCRoutes with this source label
-	grpcRouteList := &gwapiv1.GRPCRouteList{}
-	if err := r.List(ctx, grpcRouteList,
-		ctrlclient.InNamespace(ingressKey.Namespace),
-		ctrlclient.MatchingLabels{policies.LabelSourceIngress: sourceLabel}); err != nil {
-		return fmt.Errorf("failed to list GRPCRoutes for cleanup: %w", err)
-	}
-
-	for i := range grpcRouteList.Items {
-		route := &grpcRouteList.Items[i]
-		log.Info("Deleting GRPCRoute for deleted Ingress", "name", route.Name, "namespace", route.Namespace)
-		if err := r.Delete(ctx, route); err != nil {
-			if !kerrors.IsNotFound(err) {
-				return fmt.Errorf("failed to delete GRPCRoute %s/%s: %w", route.Namespace, route.Name, err)
-			}
-		}
-	}
-
-	// Delete all Envoy Gateway policies with this source label (if enabled)
-	if !r.DisableEnvoyGatewayFeatures {
-		if err := r.cleanupPoliciesForDeletedIngress(ctx, log, ingressKey); err != nil {
-			return fmt.Errorf("failed to cleanup policies for deleted Ingress: %w", err)
-		}
-	}
-
-	return nil
-}
-
-// cleanupPoliciesForDeletedIngress removes all policies created from a deleted Ingress
-func (r *Reconciler) cleanupPoliciesForDeletedIngress(ctx context.Context, log logr.Logger, ingressKey types.NamespacedName) error {
-	sourceLabel := fmt.Sprintf("%s.%s", ingressKey.Name, ingressKey.Namespace)
-
-	// Delete all SecurityPolicies
-	securityPolicies := &egv1alpha1.SecurityPolicyList{}
-	if err := r.List(ctx, securityPolicies,
-		ctrlclient.InNamespace(ingressKey.Namespace),
-		ctrlclient.MatchingLabels{policies.LabelSourceIngress: sourceLabel}); err != nil {
-		return fmt.Errorf("failed to list SecurityPolicies for cleanup: %w", err)
-	}
-	for i := range securityPolicies.Items {
-		policy := &securityPolicies.Items[i]
-		log.Info("Deleting SecurityPolicy for deleted Ingress", "name", policy.Name)
-		if err := r.Delete(ctx, policy); err != nil && !kerrors.IsNotFound(err) {
-			return fmt.Errorf("failed to delete SecurityPolicy %s: %w", policy.Name, err)
-		}
-	}
-
-	// Delete all BackendTrafficPolicies
-	backendPolicies := &egv1alpha1.BackendTrafficPolicyList{}
-	if err := r.List(ctx, backendPolicies,
-		ctrlclient.InNamespace(ingressKey.Namespace),
-		ctrlclient.MatchingLabels{policies.LabelSourceIngress: sourceLabel}); err != nil {
-		return fmt.Errorf("failed to list BackendTrafficPolicies for cleanup: %w", err)
-	}
-	for i := range backendPolicies.Items {
-		policy := &backendPolicies.Items[i]
-		log.Info("Deleting BackendTrafficPolicy for deleted Ingress", "name", policy.Name)
-		if err := r.Delete(ctx, policy); err != nil && !kerrors.IsNotFound(err) {
-			return fmt.Errorf("failed to delete BackendTrafficPolicy %s: %w", policy.Name, err)
-		}
-	}
-
-	// Delete all ClientTrafficPolicies
-	clientPolicies := &egv1alpha1.ClientTrafficPolicyList{}
-	if err := r.List(ctx, clientPolicies,
-		ctrlclient.InNamespace(ingressKey.Namespace),
-		ctrlclient.MatchingLabels{policies.LabelSourceIngress: sourceLabel}); err != nil {
-		return fmt.Errorf("failed to list ClientTrafficPolicies for cleanup: %w", err)
-	}
-	for i := range clientPolicies.Items {
-		policy := &clientPolicies.Items[i]
-		log.Info("Deleting ClientTrafficPolicy for deleted Ingress", "name", policy.Name)
-		if err := r.Delete(ctx, policy); err != nil && !kerrors.IsNotFound(err) {
-			return fmt.Errorf("failed to delete ClientTrafficPolicy %s: %w", policy.Name, err)
-		}
-	}
-
-	return nil
 }
 
 // reconcilePolicies creates or updates Envoy Gateway policies for the Ingress.
@@ -676,77 +485,7 @@ func (r *Reconciler) reconcilePolicies(ctx context.Context, log logr.Logger, ing
 		policyNames = append(policyNames, policy.Name)
 	}
 
-	// Cleanup stale policies
-	if r.CleanupStale {
-		if err := r.cleanupStalePolicies(ctx, log, ingress, policyNames); err != nil {
-			log.Error(err, "Failed to cleanup stale policies")
-		}
-	}
-
 	return policyResult.Warnings, nil
-}
-
-// cleanupStalePolicies removes policies that were created from this Ingress but are no longer needed.
-func (r *Reconciler) cleanupStalePolicies(ctx context.Context, log logr.Logger, ingress *networkingv1.Ingress, desiredPolicyNames []string) error {
-	desired := make(map[string]bool, len(desiredPolicyNames))
-	for _, name := range desiredPolicyNames {
-		desired[name] = true
-	}
-
-	sourceLabel := fmt.Sprintf("%s.%s", ingress.Name, ingress.Namespace)
-
-	// Cleanup stale SecurityPolicies
-	securityPolicies := &egv1alpha1.SecurityPolicyList{}
-	if err := r.List(ctx, securityPolicies,
-		ctrlclient.InNamespace(ingress.Namespace),
-		ctrlclient.MatchingLabels{policies.LabelSourceIngress: sourceLabel}); err != nil {
-		return fmt.Errorf("failed to list SecurityPolicies: %w", err)
-	}
-	for i := range securityPolicies.Items {
-		policy := &securityPolicies.Items[i]
-		if !desired[policy.Name] {
-			log.Info("Deleting stale SecurityPolicy", "name", policy.Name)
-			if err := r.Delete(ctx, policy); err != nil && !kerrors.IsNotFound(err) {
-				return fmt.Errorf("failed to delete SecurityPolicy %s: %w", policy.Name, err)
-			}
-		}
-	}
-
-	// Cleanup stale BackendTrafficPolicies
-	backendPolicies := &egv1alpha1.BackendTrafficPolicyList{}
-	if err := r.List(ctx, backendPolicies,
-		ctrlclient.InNamespace(ingress.Namespace),
-		ctrlclient.MatchingLabels{policies.LabelSourceIngress: sourceLabel}); err != nil {
-		return fmt.Errorf("failed to list BackendTrafficPolicies: %w", err)
-	}
-	for i := range backendPolicies.Items {
-		policy := &backendPolicies.Items[i]
-		if !desired[policy.Name] {
-			log.Info("Deleting stale BackendTrafficPolicy", "name", policy.Name)
-			if err := r.Delete(ctx, policy); err != nil && !kerrors.IsNotFound(err) {
-				return fmt.Errorf("failed to delete BackendTrafficPolicy %s: %w", policy.Name, err)
-			}
-		}
-	}
-
-	// Cleanup stale ClientTrafficPolicies
-	clientPolicies := &egv1alpha1.ClientTrafficPolicyList{}
-	if err := r.List(ctx, clientPolicies,
-		ctrlclient.InNamespace(ingress.Namespace),
-		ctrlclient.MatchingLabels{policies.LabelSourceIngress: sourceLabel}); err != nil {
-		return fmt.Errorf("failed to list ClientTrafficPolicies: %w", err)
-	}
-	for i := range clientPolicies.Items {
-		policy := &clientPolicies.Items[i]
-		if !desired[policy.Name] {
-			log.Info("Deleting stale ClientTrafficPolicy", "name", policy.Name)
-			if err := r.Delete(ctx, policy); err != nil && !kerrors.IsNotFound(err) {
-				return fmt.Errorf("failed to delete ClientTrafficPolicy %s: %w", policy.Name, err)
-			}
-		}
-	}
-
-	return nil
 }
 
 // emitWarningEvents emits Kubernetes events for conversion warnings

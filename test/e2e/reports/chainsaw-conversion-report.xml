@@ -1,1 +1,227 @@
-<testsuites name="chainsaw-report" time="0.000308"></testsuites>
+<testsuites name="chainsaw-report" time="1168.362059" tests="49" failures="39">
+  <testsuite name="test/e2e/tests/conversion/redirects/ssl-redirect" tests="1" failures="1" errors="0" id="0" time="">
+    <testcase name="conversion-redirects-ssl-redirect" classname="" time="123.576837">
+      <failure message="($error == null): Invalid value: false: Expected value: true"></failure>
+    </testcase>
+  </testsuite>
+  <testsuite name="test/e2e/tests/conversion/policies/ip-access" tests="1" failures="1" errors="0" id="0" time="">
+    <testcase name="conversion-policies-ip-access" classname="" time="124.057513">
+      <failure message="($error == null): Invalid value: false: Expected value: true"></failure>
+    </testcase>
+  </testsuite>
+  <testsuite name="test/e2e/tests/conversion/tls/basic" tests="1" failures="1" errors="0" id="0" time="">
+    <testcase name="conversion-tls-basic" classname="" time="123.938059">
+      <failure message="($error == null): Invalid value: false: Expected value: true"></failure>
+    </testcase>
+  </testsuite>
+  <testsuite name="test/e2e/tests/conversion/headers/proxy-set-headers" tests="1" failures="1" errors="0" id="0" time="">
+    <testcase name="conversion-headers-proxy-set" classname="" time="123.594771">
+      <failure message="($error == null): Invalid value: false: Expected value: true"></failure>
+    </testcase>
+  </testsuite>
+  <testsuite name="test/e2e/tests/conversion/headers/hsts" tests="1" failures="1" errors="0" id="0" time="">
+    <testcase name="conversion-headers-hsts" classname="" time="124.157131">
+      <failure message="($error == null): Invalid value: false: Expected value: true"></failure>
+    </testcase>
+  </testsuite>
+  <testsuite name="test/e2e/tests/conversion/isolated/no-domain-transform" tests="1" failures="1" errors="0" id="0" time="">
+    <testcase name="conversion-isolated-domain-transform" classname="" time="121.148327">
+      <failure message="($error == null): Invalid value: false: Expected value: true"></failure>
+    </testcase>
+  </testsuite>
+  <testsuite name="test/e2e/tests/conversion/tls/multi-host" tests="1" failures="1" errors="0" id="0" time="">
+    <testcase name="conversion-tls-multi-host" classname="" time="123.686426">
+      <failure message="($error == null): Invalid value: false: Expected value: true"></failure>
+    </testcase>
+  </testsuite>
+  <testsuite name="test/e2e/tests/conversion/policies/combined-backend" tests="1" failures="0" errors="0" id="0" time="">
+    <testcase name="conversion-policies-combined-backend" classname="" time="1.169520"></testcase>
+  </testsuite>
+  <testsuite name="test/e2e/tests/conversion/headers/x-forwarded-prefix" tests="1" failures="1" errors="0" id="0" time="">
+    <testcase name="conversion-headers-x-forwarded-prefix" classname="" time="127.118399">
+      <failure message="($error == null): Invalid value: false: Expected value: true"></failure>
+    </testcase>
+  </testsuite>
+  <testsuite name="test/e2e/tests/conversion/basic/multi-host" tests="1" failures="1" errors="0" id="0" time="">
+    <testcase name="conversion-basic-multi-host" classname="" time="127.779230">
+      <failure message="($error == null): Invalid value: false: Expected value: true"></failure>
+    </testcase>
+  </testsuite>
+  <testsuite name="test/e2e/tests/conversion/headers/custom-headers" tests="1" failures="1" errors="0" id="0" time="">
+    <testcase name="conversion-headers-custom" classname="" time="123.477051">
+      <failure message="($error == null): Invalid value: false: Expected value: true"></failure>
+    </testcase>
+  </testsuite>
+  <testsuite name="test/e2e/tests/conversion/isolated/gateway-creation" tests="1" failures="1" errors="0" id="0" time="">
+    <testcase name="conversion-isolated-gateway-creation" classname="" time="124.282687">
+      <failure message="($error == null): Invalid value: false: Expected value: true"></failure>
+    </testcase>
+  </testsuite>
+  <testsuite name="test/e2e/tests/conversion/unsupported/proxy-ssl" tests="1" failures="0" errors="0" id="0" time="">
+    <testcase name="conversion-unsupported-proxy-ssl" classname="" time="3.439083"></testcase>
+  </testsuite>
+  <testsuite name="test/e2e/tests/conversion/grpc/basic" tests="1" failures="0" errors="0" id="0" time="">
+    <testcase name="conversion-grpc-basic" classname="" time="3.061445"></testcase>
+  </testsuite>
+  <testsuite name="test/e2e/tests/conversion/headers/configmap-ref" tests="1" failures="1" errors="0" id="0" time="">
+    <testcase name="conversion-headers-configmap-ref" classname="" time="127.146086">
+      <failure message="($error == null): Invalid value: false: Expected value: true"></failure>
+    </testcase>
+  </testsuite>
+  <testsuite name="test/e2e/tests/conversion/redirects/permanent-redirect-code" tests="1" failures="1" errors="0" id="0" time="">
+    <testcase name="conversion-redirects-permanent-code" classname="" time="123.572277">
+      <failure message="($error == null): Invalid value: false: Expected value: true"></failure>
+    </testcase>
+  </testsuite>
+  <testsuite name="test/e2e/tests/conversion/unsupported/canary-skip" tests="1" failures="0" errors="0" id="0" time="">
+    <testcase name="conversion-unsupported-canary" classname="" time="10.476658"></testcase>
+  </testsuite>
+  <testsuite name="test/e2e/tests/conversion/policies/body-size" tests="1" failures="1" errors="0" id="0" time="">
+    <testcase name="conversion-policies-body-size" classname="" time="126.094035">
+      <failure message="($error == null): Invalid value: false: Expected value: true"></failure>
+    </testcase>
+  </testsuite>
+  <testsuite name="test/e2e/tests/conversion/rewrites/app-root" tests="1" failures="1" errors="0" id="0" time="">
+    <testcase name="conversion-rewrites-app-root" classname="" time="126.276744">
+      <failure message="($error == null): Invalid value: false: Expected value: true"></failure>
+    </testcase>
+  </testsuite>
+  <testsuite name="test/e2e/tests/conversion/isolated/gateway-annotations" tests="1" failures="1" errors="0" id="0" time="">
+    <testcase name="conversion-isolated-gateway-annotations" classname="" time="124.666623">
+      <failure message="($error == null): Invalid value: false: Expected value: true"></failure>
+    </testcase>
+  </testsuite>
+  <testsuite name="test/e2e/tests/conversion/redirects/temporal-redirect" tests="1" failures="1" errors="0" id="0" time="">
+    <testcase name="conversion-redirects-temporal" classname="" time="120.566654">
+      <failure message="($error == null): Invalid value: false: Expected value: true"></failure>
+    </testcase>
+  </testsuite>
+  <testsuite name="test/e2e/tests/conversion/basic/default-backend" tests="1" failures="1" errors="0" id="0" time="">
+    <testcase name="conversion-basic-default-backend" classname="" time="123.849584">
+      <failure message="($error == null): Invalid value: false: Expected value: true"></failure>
+    </testcase>
+  </testsuite>
+  <testsuite name="test/e2e/tests/conversion/policies/session-affinity" tests="1" failures="1" errors="0" id="0" time="">
+    <testcase name="conversion-policies-session-affinity" classname="" time="123.530854">
+      <failure message="($error == null): Invalid value: false: Expected value: true"></failure>
+    </testcase>
+  </testsuite>
+  <testsuite name="test/e2e/tests/conversion/policies/limit-rpm" tests="1" failures="1" errors="0" id="0" time="">
+    <testcase name="conversion-policies-limit-rpm" classname="" time="123.531340">
+      <failure message="($error == null): Invalid value: false: Expected value: true"></failure>
+    </testcase>
+  </testsuite>
+  <testsuite name="test/e2e/tests/conversion/unsupported/snippets" tests="1" failures="1" errors="0" id="0" time="">
+    <testcase name="conversion-unsupported-snippets" classname="" time="123.237929">
+      <failure message="($error == null): Invalid value: false: Expected value: true"></failure>
+    </testcase>
+  </testsuite>
+  <testsuite name="test/e2e/tests/conversion/isolated/gateway-listener-merge" tests="1" failures="1" errors="0" id="0" time="">
+    <testcase name="conversion-isolated-listener-merge" classname="" time="123.320196">
+      <failure message="($error == null): Invalid value: false: Expected value: true"></failure>
+    </testcase>
+  </testsuite>
+  <testsuite name="test/e2e/tests/conversion/unsupported/ssl-passthrough" tests="1" failures="0" errors="0" id="0" time="">
+    <testcase name="conversion-unsupported-ssl-passthrough" classname="" time="3.526368"></testcase>
+  </testsuite>
+  <testsuite name="test/e2e/tests/conversion/policies/timeouts" tests="1" failures="1" errors="0" id="0" time="">
+    <testcase name="conversion-policies-timeouts" classname="" time="153.110538">
+      <failure message="($error == null): Invalid value: false: Expected value: true"></failure>
+    </testcase>
+  </testsuite>
+  <testsuite name="test/e2e/tests/conversion/policies/rate-limit" tests="1" failures="1" errors="0" id="0" time="">
+    <testcase name="conversion-policies-rate-limit" classname="" time="123.933796">
+      <failure message="($error == null): Invalid value: false: Expected value: true"></failure>
+    </testcase>
+  </testsuite>
+  <testsuite name="test/e2e/tests/conversion/policies/cleanup" tests="1" failures="0" errors="0" id="0" time="">
+    <testcase name="conversion-policies-cleanup" classname="" time="3.232632"></testcase>
+  </testsuite>
+  <testsuite name="test/e2e/tests/conversion/policies/cors" tests="1" failures="1" errors="0" id="0" time="">
+    <testcase name="conversion-policies-cors" classname="" time="125.048683">
+      <failure message="($error == null): Invalid value: false: Expected value: true"></failure>
+    </testcase>
+  </testsuite>
+  <testsuite name="test/e2e/tests/conversion/policies/auth" tests="1" failures="1" errors="0" id="0" time="">
+    <testcase name="conversion-policies-auth" classname="" time="125.938878">
+      <failure message="($error == null): Invalid value: false: Expected value: true"></failure>
+    </testcase>
+  </testsuite>
+  <testsuite name="test/e2e/tests/conversion/rewrites/rewrite-capture-groups" tests="1" failures="1" errors="0" id="0" time="">
+    <testcase name="conversion-rewrites-capture-groups" classname="" time="127.117877">
+      <failure message="($error == null): Invalid value: false: Expected value: true"></failure>
+    </testcase>
+  </testsuite>
+  <testsuite name="test/e2e/tests/conversion/redirects/force-ssl-redirect" tests="1" failures="1" errors="0" id="0" time="">
+    <testcase name="conversion-redirects-force-ssl" classname="" time="120.562172">
+      <failure message="($error == null): Invalid value: false: Expected value: true"></failure>
+    </testcase>
+  </testsuite>
+  <testsuite name="test/e2e/tests/conversion/policies/external-auth" tests="1" failures="1" errors="0" id="0" time="">
+    <testcase name="conversion-policies-external-auth" classname="" time="123.848523">
+      <failure message="($error == null): Invalid value: false: Expected value: true"></failure>
+    </testcase>
+  </testsuite>
+  <testsuite name="test/e2e/tests/conversion/policies/limit-connections" tests="1" failures="1" errors="0" id="0" time="">
+    <testcase name="conversion-policies-limit-connections" classname="" time="126.484301">
+      <failure message="($error == null): Invalid value: false: Expected value: true"></failure>
+    </testcase>
+  </testsuite>
+  <testsuite name="test/e2e/tests/conversion/integration/external-dns" tests="1" failures="1" errors="0" id="0" time="">
+    <testcase name="conversion-integration-external-dns" classname="" time="123.709754">
+      <failure message="($error == null): Invalid value: false: Expected value: true"></failure>
+    </testcase>
+  </testsuite>
+  <testsuite name="test/e2e/tests/conversion/basic/skip-conversion" tests="1" failures="0" errors="0" id="0" time="">
+    <testcase name="conversion-basic-skip-conversion" classname="" time="10.397710"></testcase>
+  </testsuite>
+  <testsuite name="test/e2e/tests/conversion/rewrites/rewrite-target" tests="1" failures="1" errors="0" id="0" time="">
+    <testcase name="conversion-rewrites-rewrite-target" classname="" time="123.421893">
+      <failure message="($error == null): Invalid value: false: Expected value: true"></failure>
+    </testcase>
+  </testsuite>
+  <testsuite name="test/e2e/tests/conversion/tls/cert-manager" tests="1" failures="1" errors="0" id="0" time="">
+    <testcase name="conversion-tls-cert-manager" classname="" time="122.911089">
+      <failure message="($error == null): Invalid value: false: Expected value: true"></failure>
+    </testcase>
+  </testsuite>
+  <testsuite name="test/e2e/tests/conversion/headers/upstream-vhost" tests="1" failures="0" errors="0" id="0" time="">
+    <testcase name="conversion-headers-upstream-vhost" classname="" time="3.134268"></testcase>
+  </testsuite>
+  <testsuite name="test/e2e/tests/conversion/redirects/permanent-redirect" tests="1" failures="1" errors="0" id="0" time="">
+    <testcase name="conversion-redirects-permanent" classname="" time="123.575863">
+      <failure message="($error == null): Invalid value: false: Expected value: true"></failure>
+    </testcase>
+  </testsuite>
+  <testsuite name="test/e2e/tests/conversion/policies/denylist" tests="1" failures="0" errors="0" id="0" time="">
+    <testcase name="conversion-policies-denylist" classname="" time="1.259890"></testcase>
+  </testsuite>
+  <testsuite name="test/e2e/tests/conversion/policies/combined-security" tests="1" failures="0" errors="0" id="0" time="">
+    <testcase name="conversion-policies-combined-security" classname="" time="1.060374"></testcase>
+  </testsuite>
+  <testsuite name="test/e2e/tests/conversion/integration/lifecycle" tests="1" failures="1" errors="0" id="0" time="">
+    <testcase name="conversion-integration-lifecycle" classname="" time="124.206784">
+      <failure message="($error == null): Invalid value: false: Expected value: true"></failure>
+    </testcase>
+  </testsuite>
+  <testsuite name="test/e2e/tests/conversion/integration/complex" tests="1" failures="1" errors="0" id="0" time="">
+    <testcase name="conversion-integration-complex" classname="" time="122.714641">
+      <failure message="($error == null): Invalid value: false: Expected value: true"></failure>
+    </testcase>
+  </testsuite>
+  <testsuite name="test/e2e/tests/conversion/basic/simple" tests="1" failures="1" errors="0" id="0" time="">
+    <testcase name="conversion-basic-simple" classname="" time="126.961555">
+      <failure message="($error == null): Invalid value: false: Expected value: true"></failure>
+    </testcase>
+  </testsuite>
+  <testsuite name="test/e2e/tests/conversion/basic/multi-path" tests="1" failures="1" errors="0" id="0" time="">
+    <testcase name="conversion-basic-multi-path" classname="" time="128.546484">
+      <failure message="($error == null): Invalid value: false: Expected value: true"></failure>
+    </testcase>
+  </testsuite>
+  <testsuite name="test/e2e/tests/conversion/headers/preserve-host" tests="1" failures="1" errors="0" id="0" time="">
+    <testcase name="conversion-headers-preserve-host" classname="" time="127.280074">
+      <failure message="($error == null): Invalid value: false: Expected value: true"></failure>
+    </testcase>
+  </testsuite>
+</testsuites>

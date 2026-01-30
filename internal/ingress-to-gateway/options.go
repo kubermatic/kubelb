@@ -32,7 +32,6 @@ type Options struct {
 	DomainReplace               string
 	DomainSuffix                string
 	PropagateExternalDNS        bool
-	CleanupStale                bool
 	GatewayAnnotations          map[string]string
 	DisableEnvoyGatewayFeatures bool
 }
@@ -85,7 +84,6 @@ func (o *Options) BindFlags(fs *flag.FlagSet) {
 		"Target domain to replace source domain with. Must be used with --conversion-domain-replace. "+
 			"If either flag is empty, hostnames are not transformed.")
 	fs.BoolVar(&o.PropagateExternalDNS, "conversion-propagate-external-dns-annotations", true, "Propagate external-dns annotations to Gateway (target) and HTTPRoute (others)")
-	fs.BoolVar(&o.CleanupStale, "conversion-cleanup-stale", true, "Delete orphaned HTTPRoutes when hosts are removed from Ingress")
 	fs.Var(&gatewayAnnotationsFlag{target: &o.GatewayAnnotations}, "conversion-gateway-annotations", "Annotations to add to created Gateway (comma-separated key=value pairs, e.g., 'cert-manager.io/cluster-issuer=letsencrypt,external-dns.alpha.kubernetes.io/target=lb.example.com')")
 	fs.BoolVar(&o.DisableEnvoyGatewayFeatures, "conversion-disable-envoy-gateway-features", false, "Disable Envoy Gateway policy creation (SecurityPolicy, BackendTrafficPolicy, ClientTrafficPolicy). When enabled, annotations that require policies will generate warnings instead.")
 }

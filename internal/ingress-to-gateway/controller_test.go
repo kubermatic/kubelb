@@ -125,34 +125,6 @@ func TestReconcilerDisableEnvoyGatewayFeatures(t *testing.T) {
 	}
 }
 
-func TestReconcilerCleanupStale(t *testing.T) {
-	tests := []struct {
-		name    string
-		cleanup bool
-	}{
-		{
-			name:    "cleanup enabled",
-			cleanup: true,
-		},
-		{
-			name:    "cleanup disabled",
-			cleanup: false,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			r := &Reconciler{
-				CleanupStale: tt.cleanup,
-			}
-
-			if r.CleanupStale != tt.cleanup {
-				t.Errorf("CleanupStale = %v, want %v", r.CleanupStale, tt.cleanup)
-			}
-		})
-	}
-}
-
 func TestShouldConvert(t *testing.T) {
 	tests := []struct {
 		name         string

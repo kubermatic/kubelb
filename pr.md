@@ -32,14 +32,20 @@ The converter can run in two modes:
 - Redirects → `RequestRedirect` filter (ssl-redirect, permanent-redirect, temporal-redirect)
 - Rewrites → `URLRewrite` filter (rewrite-target, app-root)
 - Headers → `RequestHeaderModifier` filter (proxy-set-headers, custom-headers)
-- Policies → warnings with suggested Gateway API equivalents (timeouts, CORS, rate-limiting, auth, affinity)
 - Unsupported → clear warnings (snippets, modsecurity, canary)
+
+**Envoy Gateway Policy Generation (Standalone Mode)**
+
+- Auto-creates SecurityPolicy for CORS, IP allowlist/denylist, basic auth
+- Auto-creates BackendTrafficPolicy for timeouts, rate limits, connection limits
+- Policies owned by HTTPRoute (not Ingress) so they persist after migration
+- Disable with `--conversion-disable-envoy-gateway-features` flag
 
 **Lifecycle**
 
 - Skip annotation (`kubelb.k8c.io/skip-conversion`) for opt-out
 - Status tracking via annotations (converted/partial/pending/failed/skipped)
-- Stale route cleanup when hosts are removed from Ingress
+- Routes persist after Ingress deletion (migration-friendly)
 - Once converted, Ingress is not re-reconciled (users own the generated routes)
 
 **Which issue(s) this PR fixes**:
@@ -51,6 +57,8 @@ Fixes #
 **Special notes for your reviewer**:
 
 The converter is designed as a migration tool, not a runtime sync. Once an Ingress is successfully converted (`conversion-status: converted` or `partial`), the controller stops watching it. Users then own the generated Gateway API resources and can modify them freely.
+
+Routes and policies intentionally persist after Ingress deletion - this allows gradual migration where users verify conversion then delete Ingresses at their own pace.
 
 To trigger re-conversion, remove the `kubelb.k8c.io/conversion-status` annotation from the Ingress.
 
@@ -68,12 +76,12 @@ To trigger re-conversion, remove the `kubelb.k8c.io/conversion-status` annotatio
 | `--conversion-domain-suffix` | Replacement suffix | |
 | `--conversion-gateway-annotations` | Annotations to add to Gateway (comma-separated key=value) | |
 | `--conversion-propagate-external-dns-annotations` | Propagate external-dns annotations | true |
-| `--conversion-cleanup-stale` | Delete orphaned routes | true |
+| `--conversion-disable-envoy-gateway-features` | Disable Envoy Gateway policy creation | false |
 
 **Does this PR introduce a user-facing change? Then add your Release Note here**:
 
 ```release-note
-New Ingress to Gateway API conversion feature. Automatically converts Ingress resources to HTTPRoutes/GRPCRoutes with support for common ingress-nginx annotations. Can run standalone or integrated with KubeLB CCM.
+New Ingress to Gateway API conversion feature. Automatically converts Ingress resources to HTTPRoutes/GRPCRoutes with support for common ingress-nginx annotations. Includes automatic Envoy Gateway policy generation for CORS, auth, timeouts, and rate limits. Can run standalone or integrated with KubeLB CCM.
 ```
 
 **Documentation**:
