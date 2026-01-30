@@ -26,10 +26,9 @@ import (
 	"strings"
 	"syscall"
 
+	egv1alpha1 "github.com/envoyproxy/gateway/api/v1alpha1"
 	"github.com/go-logr/logr"
 	"go.uber.org/zap/zapcore"
-
-	egv1alpha1 "github.com/envoyproxy/gateway/api/v1alpha1"
 
 	kubelbv1alpha1 "k8c.io/kubelb/api/ce/kubelb.k8c.io/v1alpha1"
 	"k8c.io/kubelb/internal/controllers/ccm"

@@ -22,9 +22,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/go-logr/logr"
-
 	egv1alpha1 "github.com/envoyproxy/gateway/api/v1alpha1"
+	"github.com/go-logr/logr"
 
 	"k8c.io/kubelb/internal/ingress-to-gateway/annotations"
 	"k8c.io/kubelb/internal/ingress-to-gateway/policies"
