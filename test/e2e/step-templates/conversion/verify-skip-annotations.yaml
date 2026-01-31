@@ -21,6 +21,7 @@ metadata:
 spec:
   try:
     - script:
+        cluster: standalone
         timeout: 60s
         env:
           - name: INGRESS_NAME

@@ -1,0 +1,179 @@
+# Copyright 2026 The KubeLB Authors.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# Single-node L7 Ingress Test
+# Runs on tenant2 (single-node cluster) to verify single-node edge cases
+apiVersion: chainsaw.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: single-node-ingress
+  labels:
+    all:
+    multi-tenant: "true"
+    test: single-node
+    resource: ingress
+    layer: layer7
+    nodes: single
+spec:
+  description: |
+    Test Ingress on single-node cluster (tenant2).
+    Verifies basic functionality works correctly without multiple nodes.
+  bindings:
+    - name: name
+      value: echo-single-node-ingress
+    - name: kubelb_namespace
+      value: tenant-secondary
+  steps:
+    # Step 1: Create ClusterIP service
+    - name: create-service
+      description: Create ClusterIP service pointing to echo-shared
+      cluster: tenant2
+      try:
+        - apply:
+            resource:
+              apiVersion: v1
+              kind: Service
+              metadata:
+                name: ($name)
+                namespace: default
+              spec:
+                type: ClusterIP
+                selector:
+                  app: echo-shared
+                ports:
+                  - port: 80
+                    targetPort: 5678
+
+    # Step 2: Create Ingress
+    - name: create-ingress
+      description: Create Ingress with kubelb class
+      cluster: tenant2
+      try:
+        - apply:
+            resource:
+              apiVersion: networking.k8s.io/v1
+              kind: Ingress
+              metadata:
+                name: ($name)
+                namespace: default
+              spec:
+                ingressClassName: kubelb
+                rules:
+                  - host: single-node-ingress.test.local
+                    http:
+                      paths:
+                        - path: /
+                          pathType: Prefix
+                          backend:
+                            service:
+                              name: ($name)
+                              port:
+                                number: 80
+
+    # Step 3: Verify Route CRD in kubelb cluster
+    - name: verify-route-crd
+      description: Verify Route CRD exists with correct labels
+      cluster: kubelb
+      try:
+        - script:
+            skipCommandOutput: true
+            timeout: 60s
+            env:
+              - name: NAME
+                value: ($name)
+            content: |
+              set -e
+              # Hardcode namespace to avoid chainsaw variable override
+              NAMESPACE=tenant-secondary
+              for i in $(seq 1 20); do
+                ROUTE=$(kubectl get routes.kubelb.k8c.io -n "$NAMESPACE" \
+                  -l kubelb.k8c.io/origin-name="$NAME" -o name 2>/dev/null | head -1)
+                if [ -n "$ROUTE" ]; then
+                  echo "SUCCESS: Route CRD found"
+                  exit 0
+                fi
+                echo "Attempt $i: waiting for Route CRD..."
+                sleep 2
+              done
+              echo "FAILED: No Route CRD found"
+              exit 1
+            check:
+              ($error == null): true
+
+    # Step 4: Verify Ingress gets LoadBalancer IP
+    - name: verify-status
+      description: Verify Ingress gets LoadBalancer IP
+      cluster: tenant2
+      try:
+        - assert:
+            timeout: 120s
+            resource:
+              apiVersion: networking.k8s.io/v1
+              kind: Ingress
+              metadata:
+                name: ($name)
+                namespace: default
+              status:
+                loadBalancer:
+                  ingress:
+                    - {}
+
+    # Step 5: Verify HTTP connectivity
+    - name: verify-http
+      description: Verify HTTP response via Host header
+      cluster: tenant2
+      try:
+        - script:
+            skipCommandOutput: true
+            timeout: 60s
+            env:
+              - name: NAME
+                value: ($name)
+            content: |
+              set -e
+              IP=$(kubectl get ingress "$NAME" -n default \
+                -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+              HOST="single-node-ingress.test.local"
+              EXPECTED="hello-shared"
+
+              for i in $(seq 1 15); do
+                RESPONSE=$(curl -s --max-time 5 -H "Host: ${HOST}" "http://${IP}/" 2>/dev/null || true)
+                if echo "$RESPONSE" | grep -q "$EXPECTED"; then
+                  echo "HTTP response OK"
+                  exit 0
+                fi
+                echo "Attempt $i: waiting for route propagation..."
+                sleep 2
+              done
+              echo "FAILED: Expected '$EXPECTED'"
+              exit 1
+            check:
+              ($error == null): true
+
+    # Cleanup
+    - name: cleanup
+      description: Cleanup resources
+      cluster: tenant2
+      try:
+        - script:
+            skipCommandOutput: true
+            timeout: 30s
+            env:
+              - name: NAME
+                value: ($name)
+            content: |
+              kubectl delete ingress "$NAME" -n default --ignore-not-found
+              kubectl delete service "$NAME" -n default --ignore-not-found
+              # Delete HTTPRoute created by converter
+              kubectl delete httproute -n default -l "kubelb.k8c.io/source-ingress=${NAME}.default" --ignore-not-found

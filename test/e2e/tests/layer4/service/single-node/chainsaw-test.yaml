@@ -1,0 +1,127 @@
+# Copyright 2026 The KubeLB Authors.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# Single-node L4 Service LoadBalancer Test
+# Runs on tenant2 (single-node cluster) to verify single-node edge cases
+apiVersion: chainsaw.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: single-node-service-loadbalancer
+  labels:
+    all:
+    multi-tenant: "true"
+    test: single-node
+    resource: service
+    layer: layer4
+    nodes: single
+spec:
+  description: |
+    Test LoadBalancer service on single-node cluster (tenant2).
+    Verifies basic functionality works correctly without multiple nodes.
+  bindings:
+    - name: service_name
+      value: echo-single-node
+    - name: kubelb_namespace
+      value: tenant-secondary
+  steps:
+    # Step 1: Create LoadBalancer service on tenant2
+    - name: create-loadbalancer-service
+      description: Create LoadBalancer service and wait for IP
+      cluster: tenant2
+      try:
+        - apply:
+            resource:
+              apiVersion: v1
+              kind: Service
+              metadata:
+                name: ($service_name)
+                namespace: default
+              spec:
+                type: LoadBalancer
+                selector:
+                  app: echo-shared
+                ports:
+                  - port: 80
+                    targetPort: 5678
+        - assert:
+            timeout: 60s
+            resource:
+              apiVersion: v1
+              kind: Service
+              metadata:
+                name: ($service_name)
+                namespace: default
+              status:
+                loadBalancer:
+                  ingress:
+                    - {}
+
+    # Step 2: Verify LoadBalancer CRD in kubelb cluster
+    - name: verify-loadbalancer-crd
+      description: Verify LoadBalancer CRD exists in kubelb
+      cluster: kubelb
+      try:
+        - script:
+            skipCommandOutput: true
+            timeout: 60s
+            env:
+              - name: LB_NS
+                value: ($kubelb_namespace)
+              - name: SERVICE_NAME
+                value: ($service_name)
+            content: |
+              set -e
+              for i in $(seq 1 10); do
+                LB=$(kubectl get loadbalancers.kubelb.k8c.io -n "$LB_NS" \
+                  -l kubelb.k8c.io/origin-name="$SERVICE_NAME" -o name 2>/dev/null | head -1)
+                if [ -n "$LB" ]; then
+                  PORT=$(kubectl get $LB -n "$LB_NS" -o jsonpath='{.spec.ports[0].port}')
+                  echo "SUCCESS: LoadBalancer CRD found with port $PORT"
+                  exit 0
+                fi
+                echo "Attempt $i: waiting for LoadBalancer CRD..."
+                sleep 2
+              done
+              echo "FAILED: No LoadBalancer CRD found"
+              exit 1
+            check:
+              ($error == null): true
+
+    # Step 3: Verify HTTP connectivity
+    - name: verify-http-response
+      description: Verify HTTP connectivity to echo-shared
+      use:
+        template: ../../../../step-templates/layer4/verify-http-response.yaml
+        with:
+          bindings:
+            - name: service_name
+              value: ($service_name)
+            - name: expected
+              value: hello-shared
+            - name: port
+              value: "80"
+            - name: tenant
+              value: tenant2
+
+    # Cleanup
+    - name: cleanup
+      description: Delete LoadBalancer service
+      cluster: tenant2
+      try:
+        - delete:
+            ref:
+              apiVersion: v1
+              kind: Service
+              name: ($service_name)
+              namespace: default

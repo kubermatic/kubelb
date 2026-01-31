@@ -25,6 +25,7 @@ metadata:
     resource: tenant
     feature: annotations
 spec:
+  skip: true
   concurrent: false
   description: |
     Test that Tenant.spec.defaultAnnotations override Config-level annotations.

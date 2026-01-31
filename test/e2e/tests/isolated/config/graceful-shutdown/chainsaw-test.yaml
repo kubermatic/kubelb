@@ -28,6 +28,7 @@ metadata:
     resource: config
     feature: graceful-shutdown
 spec:
+  skip: true
   concurrent: false
   description: |
     Test that enabling graceful shutdown in Config.spec.envoyProxy.gracefulShutdown

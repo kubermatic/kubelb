@@ -143,12 +143,21 @@ func (r *KubeLBServiceReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 		if err := recordKubeLBOperation("create", func() error {
 			return kubelbClient.Create(ctx, desiredLB)
 		}); err != nil {
-			ccmmetrics.ServiceReconcileTotal.WithLabelValues(req.Namespace, metrics.ResultError).Inc()
-			return ctrl.Result{}, err
+			if kerrors.IsAlreadyExists(err) {
+				// Race condition: re-fetch and fall through to update logic
+				if getErr := kubelbClient.Get(ctx, ctrlclient.ObjectKeyFromObject(desiredLB), &actualLB); getErr != nil {
+					ccmmetrics.ServiceReconcileTotal.WithLabelValues(req.Namespace, metrics.ResultError).Inc()
+					return ctrl.Result{}, fmt.Errorf("failed to get LoadBalancer after conflict: %w", getErr)
+				}
+			} else {
+				ccmmetrics.ServiceReconcileTotal.WithLabelValues(req.Namespace, metrics.ResultError).Inc()
+				return ctrl.Result{}, err
+			}
+		} else {
+			r.updateManagedServicesGauge(ctx, req.Namespace)
+			ccmmetrics.ServiceReconcileTotal.WithLabelValues(req.Namespace, metrics.ResultSuccess).Inc()
+			return ctrl.Result{}, nil
 		}
-		r.updateManagedServicesGauge(ctx, req.Namespace)
-		ccmmetrics.ServiceReconcileTotal.WithLabelValues(req.Namespace, metrics.ResultSuccess).Inc()
-		return ctrl.Result{}, nil
 	}
 
 	log.V(6).Info("load balancer status", "LoadBalancer", actualLB.Status.LoadBalancer.Ingress, "service", service.Status.LoadBalancer.Ingress)
@@ -183,10 +192,14 @@ func (r *KubeLBServiceReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 	}
 
 	log.V(1).Info("updating LoadBalancer spec", "name", desiredLB.Name, "namespace", desiredLB.Namespace)
-	actualLB.Spec = desiredLB.Spec
-	actualLB.Annotations = desiredLB.Annotations
 
-	err = recordKubeLBOperation("update", func() error {
+	err = retry.RetryOnConflict(retry.DefaultRetry, func() error {
+		// Re-fetch the latest version before updating
+		if getErr := kubelbClient.Get(ctx, ctrlclient.ObjectKeyFromObject(desiredLB), &actualLB); getErr != nil {
+			return getErr
+		}
+		actualLB.Spec = desiredLB.Spec
+		actualLB.Annotations = desiredLB.Annotations
 		return kubelbClient.Update(ctx, &actualLB)
 	})
 	if err != nil {

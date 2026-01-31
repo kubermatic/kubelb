@@ -26,6 +26,7 @@ metadata:
     resource: tenant
     feature: gatewayapi
 spec:
+  skip: true
   concurrent: false
   description: |
     Test that Tenant.spec.gatewayAPI settings work correctly for

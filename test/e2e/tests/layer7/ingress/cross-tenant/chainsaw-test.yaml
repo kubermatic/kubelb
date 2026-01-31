@@ -23,6 +23,7 @@ metadata:
   name: cross-tenant-ingress
   labels:
     all:
+    multi-tenant: "true"
     test: cross-tenant-ingress
     resource: ingress
     layer: layer7
@@ -451,20 +452,21 @@ spec:
               NS_PRIMARY="tenant-primary"
               NS_SECONDARY="tenant-secondary"
 
-              for i in $(seq 1 20); do
+              # Only check for Ingress routes - tenant2 converter creates Gateway/HTTPRoute routes too
+              for i in $(seq 1 30); do
                 ROUTE_P=$(kubectl get routes.kubelb.k8c.io -n "$NS_PRIMARY" \
-                  -l kubelb.k8c.io/origin-name="shared-name" -o name 2>/dev/null | head -1)
+                  -l kubelb.k8c.io/origin-name="shared-name",kubelb.k8c.io/origin-resource-kind="Ingress.networking.k8s.io" -o name 2>/dev/null | head -1)
                 ROUTE_S=$(kubectl get routes.kubelb.k8c.io -n "$NS_SECONDARY" \
-                  -l kubelb.k8c.io/origin-name="shared-name" -o name 2>/dev/null | head -1)
+                  -l kubelb.k8c.io/origin-name="shared-name",kubelb.k8c.io/origin-resource-kind="Ingress.networking.k8s.io" -o name 2>/dev/null | head -1)
 
                 if [ -z "$ROUTE_P" ] && [ -z "$ROUTE_S" ]; then
-                  echo "SUCCESS: Route CRDs removed from both namespaces"
+                  echo "SUCCESS: Ingress Route CRDs removed from both namespaces"
                   exit 0
                 fi
                 sleep 2
               done
 
-              echo "FAILED: Route CRDs not removed"
+              echo "FAILED: Ingress Route CRDs not removed"
               exit 1
             check:
               ($error == null): true
@@ -485,3 +487,5 @@ spec:
               kubectl delete ingress shared-name -n default --ignore-not-found
               kubectl delete deployment shared-name -n default --ignore-not-found
               kubectl delete service shared-name -n default --ignore-not-found
+              # Delete HTTPRoute created by converter
+              kubectl delete httproute -n default -l "kubelb.k8c.io/source-ingress=shared-name.default" --ignore-not-found

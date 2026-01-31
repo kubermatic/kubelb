@@ -136,7 +136,7 @@ spec:
             timeout: 60s
             content: |
               set -e
-              for i in $(seq 1 10); do
+              for i in $(seq 1 30); do
                 IP=$(kubectl get gateway basic-gw -n default \
                   -o jsonpath='{.status.addresses[0].value}' 2>/dev/null || true)
                 if [ -n "$IP" ]; then

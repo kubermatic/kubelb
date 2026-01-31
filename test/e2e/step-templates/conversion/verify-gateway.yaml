@@ -31,7 +31,7 @@ spec:
       value: "1"
   try:
     - script:
-        cluster: conversion
+        cluster: standalone
         timeout: 60s
         env:
           - name: GATEWAY_NAME

@@ -51,3 +51,4 @@ spec:
   #   --cluster kubelb=$KUBECONFIGS_DIR/kubelb.kubeconfig
   #   --cluster tenant1=$KUBECONFIGS_DIR/tenant1.kubeconfig
   #   --cluster tenant2=$KUBECONFIGS_DIR/tenant2.kubeconfig
+  #   --cluster standalone=$KUBECONFIGS_DIR/standalone.kubeconfig

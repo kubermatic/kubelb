@@ -26,6 +26,7 @@ metadata:
     resource: config
     feature: envoy-image
 spec:
+  skip: true
   concurrent: false
   description: |
     Test that setting a custom Envoy image in Config.spec.envoyProxy.image

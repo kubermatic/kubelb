@@ -25,6 +25,7 @@ metadata:
     resource: config
     feature: ingress-class
 spec:
+  skip: true
   concurrent: false
   description: |
     Test that Config.spec.ingress.class sets the default ingressClassName

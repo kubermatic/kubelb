@@ -34,7 +34,7 @@ spec:
       value: /
   try:
     - script:
-        cluster: conversion
+        cluster: standalone
         timeout: 120s
         env:
           - name: HOST

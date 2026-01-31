@@ -1,0 +1,124 @@
+# Copyright 2026 The KubeLB Authors.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+apiVersion: chainsaw.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: conversion-basic-default-backend
+  labels:
+    suite: conversion
+    layer: layer7
+    conversion: "true"
+    category: basic
+    test: conversion-default-backend
+    parallel: "true"
+spec:
+  description: |
+    Test Ingress default backend conversion.
+    Creates Ingress with defaultBackend, verifies HTTPRoute has catch-all rule.
+  bindings:
+    - name: name
+      value: conv-default-backend
+    - name: transformed_host
+      value: conv-default.gateway.local
+  steps:
+    # Step 1: Create ClusterIP service
+    - name: create-service
+      description: Create ClusterIP service
+      cluster: standalone
+      try:
+        - apply:
+            resource:
+              apiVersion: v1
+              kind: Service
+              metadata:
+                name: conv-default-backend
+                namespace: default
+              spec:
+                type: ClusterIP
+                selector:
+                  app: echo-shared
+                ports:
+                  - port: 80
+                    targetPort: 5678
+
+    # Step 2: Create Ingress with defaultBackend
+    - name: create-ingress
+      description: Create Ingress with defaultBackend
+      cluster: standalone
+      try:
+        - apply:
+            resource:
+              apiVersion: networking.k8s.io/v1
+              kind: Ingress
+              metadata:
+                name: conv-default-backend
+                namespace: default
+              spec:
+                ingressClassName: nginx
+                defaultBackend:
+                  service:
+                    name: conv-default-backend
+                    port:
+                      number: 80
+                rules:
+                  - host: conv-default.test.local
+
+    # Step 3: Verify HTTPRoute created
+    - name: verify-httproute
+      description: Verify HTTPRoute exists
+      use:
+        template: ../../../../../step-templates/conversion/verify-httproute.yaml
+        with:
+          bindings:
+            - name: ingress_name
+              value: ($name)
+            - name: expected_host
+              value: ($transformed_host)
+
+    # Step 4: Verify conversion status
+    - name: verify-status
+      description: Verify Ingress has conversion-status=converted
+      use:
+        template: ../../../../../step-templates/conversion/verify-status-annotation.yaml
+        with:
+          bindings:
+            - name: ingress_name
+              value: ($name)
+            - name: expected_status
+              value: converted
+
+    # Step 5: Verify HTTP traffic to catch-all path
+    - name: verify-http
+      description: Verify HTTP for any path
+      use:
+        template: ../../../../../step-templates/conversion/verify-http-traffic.yaml
+        with:
+          bindings:
+            - name: host
+              value: ($transformed_host)
+            - name: slug_path
+              value: /random/path
+            - name: expected_response
+              value: hello-shared
+
+    # Cleanup
+    - name: cleanup
+      description: Cleanup resources
+      use:
+        template: ../../../../../step-templates/conversion/cleanup-conversion.yaml
+        with:
+          bindings:
+            - name: ingress_name
+              value: ($name)

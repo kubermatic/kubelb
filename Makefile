@@ -97,7 +97,7 @@ manifests: generate controller-gen ## Generate WebhookConfiguration, ClusterRole
 generate: controller-gen ## Generate code containing DeepCopy, DeepCopyInto, and DeepCopyObject method implementations.
 	$(CONTROLLER_GEN) object:headerFile="hack/boilerplate/boilerplate.go.txt" paths="./..."
 
-update-codegen: generate controller-gen manifests reconciler-gen generate-helm-docs generate-metricsdocs fmt vet go-mod-tidy
+update-codegen: generate controller-gen manifests reconciler-gen generate-helm-docs generate-metricsdocs shfmt fmt vet go-mod-tidy
 
 helm-dependency-update:
 	./hack/ensure-helm-repos.sh && \
@@ -273,13 +273,15 @@ E2E_DIR ?= ./test/e2e
 KUBECONFIGS_DIR ?= $(shell pwd)/.e2e-kubeconfigs
 CHAINSAW_CONFIG ?= $(E2E_DIR)/config.yaml
 CHAINSAW_VALUES ?= $(E2E_DIR)/values.yaml
+# All 4 clusters: kubelb (manager), tenant1 (multi-node), tenant2 (single-node), standalone (conversion)
 CHAINSAW_CLUSTERS ?= --cluster kubelb=$(KUBECONFIGS_DIR)/kubelb.kubeconfig \
 	--cluster tenant1=$(KUBECONFIGS_DIR)/tenant1.kubeconfig \
-	--cluster tenant2=$(KUBECONFIGS_DIR)/tenant2.kubeconfig
+	--cluster tenant2=$(KUBECONFIGS_DIR)/tenant2.kubeconfig \
+	--cluster standalone=$(KUBECONFIGS_DIR)/standalone.kubeconfig
 CHAINSAW_FLAGS ?= --config $(CHAINSAW_CONFIG) --values $(CHAINSAW_VALUES) $(CHAINSAW_CLUSTERS)
 
 .PHONY: e2e-setup-kind
-e2e-setup-kind: ## Setup Kind clusters for e2e tests
+e2e-setup-kind: ## Setup Kind clusters for e2e tests (kubelb, tenant1, tenant2, standalone)
 	./hack/e2e/setup-kind.sh
 
 .PHONY: e2e-cleanup-kind
@@ -287,7 +289,7 @@ e2e-cleanup-kind: ## Cleanup Kind clusters
 	./hack/e2e/cleanup-kind.sh
 
 .PHONY: e2e-deploy
-e2e-deploy: ## Deploy KubeLB to Kind clusters
+e2e-deploy: ## Deploy KubeLB to all Kind clusters
 	KUBECONFIGS_DIR=$(KUBECONFIGS_DIR) ./hack/e2e/deploy.sh
 
 .PHONY: e2e-reload
@@ -304,51 +306,12 @@ e2e-local: e2e-setup-local e2e
 e2e-setup-local: e2e-cleanup-kind e2e-setup-kind e2e-deploy ## Reset Kind clusters and redeploy
 
 .PHONY: e2e
-e2e: chainsaw ## Run e2e tests (requires KUBECONFIGS_DIR or existing clusters)
+e2e: chainsaw ## Run all e2e tests (requires KUBECONFIGS_DIR or existing clusters)
 	KUBECONFIG=$(KUBECONFIGS_DIR)/tenant1.kubeconfig $(CHAINSAW) test $(E2E_DIR)/tests $(CHAINSAW_FLAGS) --quiet
 
 .PHONY: e2e-select
 e2e-select: chainsaw ## Run e2e tests matching label selector (e.g., make e2e-select select=layer=layer4)
 	KUBECONFIG=$(KUBECONFIGS_DIR)/tenant1.kubeconfig $(CHAINSAW) test $(E2E_DIR)/tests $(CHAINSAW_FLAGS) --selector $(select)
-
-##@ Conversion E2E Testing (Standalone Mode - Single Cluster)
-
-CONVERSION_E2E_DIR ?= $(E2E_DIR)/tests/conversion
-CONVERSION_CONFIG ?= $(E2E_DIR)/config-conversion.yaml
-CONVERSION_VALUES ?= $(E2E_DIR)/values-conversion.yaml
-# Register conversion as named cluster for explicit references in step templates
-CONVERSION_CLUSTER ?= --cluster conversion=$(KUBECONFIGS_DIR)/conversion.kubeconfig
-
-.PHONY: e2e-conversion-setup-kind
-e2e-conversion-setup-kind: ## Setup single Kind cluster for conversion tests
-	./hack/e2e/setup-conversion-kind.sh
-
-.PHONY: e2e-conversion-deploy
-e2e-conversion-deploy: ## Deploy CCM in standalone conversion mode to single cluster
-	KUBECONFIGS_DIR=$(KUBECONFIGS_DIR) ./hack/e2e/deploy-conversion.sh
-
-.PHONY: e2e-conversion-kind
-e2e-conversion-kind: e2e-conversion-setup-kind e2e-conversion-deploy e2e-conversion ## Full conversion e2e with Kind setup
-
-.PHONY: e2e-conversion-local
-e2e-conversion-local: e2e-conversion-setup-local e2e-conversion ## Full conversion e2e with local reset
-
-.PHONY: e2e-conversion-setup-local
-e2e-conversion-setup-local: e2e-cleanup-kind e2e-conversion-setup-kind e2e-conversion-deploy ## Reset Kind cluster and redeploy for conversion
-
-.PHONY: e2e-conversion-reload
-e2e-conversion-reload: ## Reload CCM in conversion cluster if binary changed
-	KUBECONFIGS_DIR=$(KUBECONFIGS_DIR) ./hack/e2e/reload-conversion.sh
-
-.PHONY: e2e-conversion
-e2e-conversion: chainsaw e2e-conversion-reload ## Run conversion e2e tests (reloads CCM if changed)
-	KUBECONFIG=$(KUBECONFIGS_DIR)/conversion.kubeconfig $(CHAINSAW) test $(CONVERSION_E2E_DIR) \
-		--config $(CONVERSION_CONFIG) --values $(CONVERSION_VALUES) $(CONVERSION_CLUSTER)
-
-.PHONY: e2e-conversion-select
-e2e-conversion-select: chainsaw  ## Run conversion e2e tests matching label selector (reloads CCM if changed)
-	KUBECONFIG=$(KUBECONFIGS_DIR)/conversion.kubeconfig $(CHAINSAW) test $(CONVERSION_E2E_DIR) \
-		--config $(CONVERSION_CONFIG) --values $(CONVERSION_VALUES) $(CONVERSION_CLUSTER) --selector $(select)
 
 .PHONY: shfmt
 shfmt:

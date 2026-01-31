@@ -35,7 +35,7 @@ HASH_DIR="${KUBECONFIGS_DIR}/.reload-hashes"
 mkdir -p "${HASH_DIR}"
 
 # Verify kubeconfigs exist
-for cluster in kubelb tenant1 tenant2; do
+for cluster in kubelb tenant1 tenant2 standalone; do
   if [[ ! -f "${KUBECONFIGS_DIR}/${cluster}.kubeconfig" ]]; then
     echo "Error: ${KUBECONFIGS_DIR}/${cluster}.kubeconfig not found"
     echo "Run 'make e2e-setup-kind' first"
@@ -141,15 +141,18 @@ if [[ "${ccm_changed}" == "true" ]]; then
   echodate "Building ccm image..."
   docker build -q -t "${CCM_IMAGE}" -f "${ROOT_DIR}/ccm.goreleaser.dockerfile" "${BIN_DIR}/"
 
-  echodate "Loading ccm image into tenant clusters..."
+  echodate "Loading ccm image into tenant and standalone clusters..."
   kind load docker-image --name=tenant1 "${CCM_IMAGE}" &
   kind load docker-image --name=tenant2 "${CCM_IMAGE}" &
+  kind load docker-image --name=standalone "${CCM_IMAGE}" &
   wait
 
   echodate "Restarting CCM deployments..."
   kubectl --kubeconfig="${KUBECONFIGS_DIR}/tenant1.kubeconfig" \
     rollout restart deployment/kubelb-ccm -n kubelb &
   kubectl --kubeconfig="${KUBECONFIGS_DIR}/tenant2.kubeconfig" \
+    rollout restart deployment/kubelb-ccm -n kubelb &
+  kubectl --kubeconfig="${KUBECONFIGS_DIR}/standalone.kubeconfig" \
     rollout restart deployment/kubelb-ccm -n kubelb &
   wait
 

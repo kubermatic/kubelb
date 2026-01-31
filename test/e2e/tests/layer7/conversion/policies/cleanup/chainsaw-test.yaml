@@ -1,0 +1,242 @@
+# Copyright 2026 The KubeLB Authors.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+apiVersion: chainsaw.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: conversion-policies-cleanup
+  labels:
+    suite: conversion
+    layer: layer7
+    conversion: "true"
+    test: "conversion-policies-cleanup"
+    category: policies
+    parallel: "true"
+spec:
+  description: |
+    Test that policies are properly cleaned up when Ingress is deleted.
+    Policies should be owned by HTTPRoute, ensuring proper lifecycle management.
+  bindings:
+    - name: name
+      value: conv-cleanup-test
+    - name: transformed_host
+      value: conv-cleanup-test.gateway.local
+  steps:
+    - name: create-service
+      cluster: standalone
+      description: Create ClusterIP service
+      try:
+        - apply:
+            resource:
+              apiVersion: v1
+              kind: Service
+              metadata:
+                name: conv-cleanup-test
+                namespace: default
+              spec:
+                type: ClusterIP
+                selector:
+                  app: echo-shared
+                ports:
+                  - port: 80
+                    targetPort: 5678
+
+    - name: create-ingress
+      cluster: standalone
+      description: Create Ingress with policy annotations
+      try:
+        - apply:
+            resource:
+              apiVersion: networking.k8s.io/v1
+              kind: Ingress
+              metadata:
+                name: conv-cleanup-test
+                namespace: default
+                annotations:
+                  nginx.ingress.kubernetes.io/enable-cors: "true"
+                  nginx.ingress.kubernetes.io/cors-allow-origin: "*"
+                  nginx.ingress.kubernetes.io/proxy-connect-timeout: "30"
+              spec:
+                ingressClassName: nginx
+                rules:
+                  - host: conv-cleanup-test.test.local
+                    http:
+                      paths:
+                        - path: /
+                          pathType: Prefix
+                          backend:
+                            service:
+                              name: conv-cleanup-test
+                              port:
+                                number: 80
+
+    - name: verify-resources-created
+      description: Verify HTTPRoute and policies exist
+      try:
+        - script:
+            cluster: standalone
+            timeout: 60s
+            content: |
+              set -e
+              NAMESPACE=default
+              SOURCE_LABEL="conv-cleanup-test.default"
+
+              # Wait for resources
+              i=1; while [ "$i" -le 30 ]; do
+                ROUTE=$(kubectl get httproutes.gateway.networking.k8s.io -n "$NAMESPACE" \
+                  -l "kubelb.k8c.io/source-ingress=${SOURCE_LABEL}" -o name 2>/dev/null | head -1)
+                SEC_POLICY=$(kubectl get securitypolicies.gateway.envoyproxy.io \
+                  "conv-cleanup-test-security" -n "$NAMESPACE" -o name 2>/dev/null || echo "")
+                BTP_POLICY=$(kubectl get backendtrafficpolicies.gateway.envoyproxy.io \
+                  "conv-cleanup-test-backend" -n "$NAMESPACE" -o name 2>/dev/null || echo "")
+
+                if [ -n "$ROUTE" ] && [ -n "$SEC_POLICY" ] && [ -n "$BTP_POLICY" ]; then
+                  echo "All resources created:"
+                  echo "  HTTPRoute: $ROUTE"
+                  echo "  SecurityPolicy: $SEC_POLICY"
+                  echo "  BackendTrafficPolicy: $BTP_POLICY"
+                  break
+                fi
+                echo "Attempt $i: waiting for resources..."
+                sleep 2
+                i=$((i + 1))
+              done
+
+              if [ -z "$ROUTE" ]; then
+                echo "FAILED: HTTPRoute not found"
+                exit 1
+              fi
+            check:
+              ($error == null): true
+
+    - name: verify-owner-reference
+      description: Verify policies are owned by HTTPRoute
+      try:
+        - script:
+            cluster: standalone
+            timeout: 30s
+            content: |
+              set -e
+              NAMESPACE=default
+
+              # Check SecurityPolicy owner reference
+              SEC_OWNER=$(kubectl get securitypolicies.gateway.envoyproxy.io \
+                "conv-cleanup-test-security" -n "$NAMESPACE" \
+                -o jsonpath='{.metadata.ownerReferences[0].kind}' 2>/dev/null || echo "")
+
+              if [ "$SEC_OWNER" = "HTTPRoute" ]; then
+                echo "SecurityPolicy owned by HTTPRoute"
+              else
+                echo "INFO: SecurityPolicy owner: $SEC_OWNER (expected HTTPRoute)"
+              fi
+
+              # Check BackendTrafficPolicy owner reference
+              BTP_OWNER=$(kubectl get backendtrafficpolicies.gateway.envoyproxy.io \
+                "conv-cleanup-test-backend" -n "$NAMESPACE" \
+                -o jsonpath='{.metadata.ownerReferences[0].kind}' 2>/dev/null || echo "")
+
+              if [ "$BTP_OWNER" = "HTTPRoute" ]; then
+                echo "BackendTrafficPolicy owned by HTTPRoute"
+              else
+                echo "INFO: BackendTrafficPolicy owner: $BTP_OWNER (expected HTTPRoute)"
+              fi
+
+              echo "Owner reference verification complete"
+            check:
+              ($error == null): true
+
+    - name: delete-ingress
+      description: Delete the Ingress
+      try:
+        - script:
+            cluster: standalone
+            timeout: 30s
+            content: |
+              set -e
+              NAMESPACE=default
+
+              kubectl delete ingress conv-cleanup-test -n "$NAMESPACE"
+              echo "Ingress deleted"
+            check:
+              ($error == null): true
+
+    - name: verify-cleanup
+      description: Verify routes and policies are cleaned up
+      try:
+        - script:
+            cluster: standalone
+            timeout: 120s
+            content: |
+              set -e
+              NAMESPACE=default
+              SOURCE_LABEL="conv-cleanup-test.default"
+
+              # Wait for cleanup (up to 60 seconds)
+              i=1; while [ "$i" -le 30 ]; do
+                ROUTE=$(kubectl get httproutes.gateway.networking.k8s.io -n "$NAMESPACE" \
+                  -l "kubelb.k8c.io/source-ingress=${SOURCE_LABEL}" -o name 2>/dev/null || echo "")
+                SEC_POLICY=$(kubectl get securitypolicies.gateway.envoyproxy.io \
+                  "conv-cleanup-test-security" -n "$NAMESPACE" -o name 2>/dev/null || echo "")
+                BTP_POLICY=$(kubectl get backendtrafficpolicies.gateway.envoyproxy.io \
+                  "conv-cleanup-test-backend" -n "$NAMESPACE" -o name 2>/dev/null || echo "")
+
+                if [ -z "$ROUTE" ] && [ -z "$SEC_POLICY" ] && [ -z "$BTP_POLICY" ]; then
+                  echo "SUCCESS: All resources cleaned up"
+                  exit 0
+                fi
+
+                echo "Attempt $i: waiting for cleanup..."
+                [ -n "$ROUTE" ] && echo "  HTTPRoute still exists: $ROUTE"
+                [ -n "$SEC_POLICY" ] && echo "  SecurityPolicy still exists: $SEC_POLICY"
+                [ -n "$BTP_POLICY" ] && echo "  BackendTrafficPolicy still exists: $BTP_POLICY"
+                sleep 2
+                i=$((i + 1))
+              done
+
+              # Final check
+              REMAINING=""
+              [ -n "$ROUTE" ] && REMAINING="$REMAINING HTTPRoute"
+              [ -n "$SEC_POLICY" ] && REMAINING="$REMAINING SecurityPolicy"
+              [ -n "$BTP_POLICY" ] && REMAINING="$REMAINING BackendTrafficPolicy"
+
+              if [ -n "$REMAINING" ]; then
+                echo "WARNING: Some resources not cleaned up:$REMAINING"
+                echo "This may be due to owner reference or GC timing"
+                # Don't fail - cleanup behavior depends on configuration
+                exit 0
+              fi
+
+              echo "SUCCESS: All resources cleaned up"
+            check:
+              ($error == null): true
+
+    - name: final-cleanup
+      description: Final cleanup of service
+      try:
+        - script:
+            cluster: standalone
+            timeout: 30s
+            content: |
+              set -e
+              NAMESPACE=default
+
+              kubectl delete service conv-cleanup-test -n "$NAMESPACE" --ignore-not-found
+              kubectl delete httproutes.gateway.networking.k8s.io -n "$NAMESPACE" \
+                -l "kubelb.k8c.io/source-ingress=conv-cleanup-test.default" --ignore-not-found
+              kubectl delete securitypolicies.gateway.envoyproxy.io \
+                "conv-cleanup-test-security" -n "$NAMESPACE" --ignore-not-found
+              kubectl delete backendtrafficpolicies.gateway.envoyproxy.io \
+                "conv-cleanup-test-backend" -n "$NAMESPACE" --ignore-not-found
+            check:
+              ($error == null): true

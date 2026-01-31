@@ -1,0 +1,150 @@
+# Copyright 2026 The KubeLB Authors.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+apiVersion: chainsaw.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: conversion-policies-denylist
+  labels:
+    suite: conversion
+    layer: layer7
+    conversion: "true"
+    test: "conversion-policies-denylist"
+    category: policies
+    parallel: "true"
+spec:
+  description: |
+    Test IP denylist annotations conversion.
+    Verifies SecurityPolicy is created with Deny authorization rule.
+  bindings:
+    - name: name
+      value: conv-denylist
+    - name: transformed_host
+      value: conv-denylist.gateway.local
+  steps:
+    - name: create-service
+      cluster: standalone
+      description: Create ClusterIP service
+      try:
+        - apply:
+            resource:
+              apiVersion: v1
+              kind: Service
+              metadata:
+                name: conv-denylist
+                namespace: default
+              spec:
+                type: ClusterIP
+                selector:
+                  app: echo-shared
+                ports:
+                  - port: 80
+                    targetPort: 5678
+
+    - name: create-ingress
+      cluster: standalone
+      description: Create Ingress with denylist annotation
+      try:
+        - apply:
+            resource:
+              apiVersion: networking.k8s.io/v1
+              kind: Ingress
+              metadata:
+                name: conv-denylist
+                namespace: default
+                annotations:
+                  nginx.ingress.kubernetes.io/denylist-source-range: "203.0.113.0/24,198.51.100.0/24"
+              spec:
+                ingressClassName: nginx
+                rules:
+                  - host: conv-denylist.test.local
+                    http:
+                      paths:
+                        - path: /
+                          pathType: Prefix
+                          backend:
+                            service:
+                              name: conv-denylist
+                              port:
+                                number: 80
+
+    - name: verify-httproute
+      description: Verify HTTPRoute exists
+      use:
+        template: ../../../../../step-templates/conversion/verify-httproute.yaml
+        with:
+          bindings:
+            - name: ingress_name
+              value: ($name)
+            - name: expected_host
+              value: ($transformed_host)
+
+    - name: verify-security-policy
+      description: Verify SecurityPolicy exists with authorization
+      use:
+        template: ../../../../../step-templates/conversion/verify-policy.yaml
+        with:
+          bindings:
+            - name: ingress_name
+              value: ($name)
+            - name: policy_type
+              value: security
+            - name: expected_field
+              value: ".spec.authorization"
+
+    - name: verify-denylist-rule
+      description: Verify SecurityPolicy has Deny rule
+      try:
+        - script:
+            cluster: standalone
+            timeout: 60s
+            content: |
+              set -e
+              NAMESPACE=default
+              POLICY_NAME="conv-denylist-security"
+
+              # Get the authorization rules
+              RULES=$(kubectl get securitypolicies.gateway.envoyproxy.io "$POLICY_NAME" \
+                -n "$NAMESPACE" -o jsonpath='{.spec.authorization.rules}' 2>/dev/null || echo "")
+
+              if [ -z "$RULES" ]; then
+                echo "FAILED: No authorization rules found"
+                exit 1
+              fi
+
+              echo "Authorization rules: $RULES"
+
+              # Check for Deny action in rules
+              HAS_DENY=$(kubectl get securitypolicies.gateway.envoyproxy.io "$POLICY_NAME" \
+                -n "$NAMESPACE" -o jsonpath='{.spec.authorization.rules[*].action}' 2>/dev/null || echo "")
+
+              if echo "$HAS_DENY" | grep -q "Deny"; then
+                echo "SUCCESS: Found Deny action in rules"
+                exit 0
+              fi
+
+              echo "FAILED: No Deny action found in authorization rules"
+              kubectl get securitypolicies.gateway.envoyproxy.io "$POLICY_NAME" -n "$NAMESPACE" -o yaml
+              exit 1
+            check:
+              ($error == null): true
+
+    - name: cleanup
+      description: Cleanup resources
+      use:
+        template: ../../../../../step-templates/conversion/cleanup-conversion.yaml
+        with:
+          bindings:
+            - name: ingress_name
+              value: ($name)

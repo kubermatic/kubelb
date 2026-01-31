@@ -71,7 +71,7 @@ get_helm_command() {
 # Verify prerequisites
 #######################################
 verify_kubeconfigs() {
-  for cluster in kubelb tenant1 tenant2; do
+  for cluster in kubelb tenant1 tenant2 standalone; do
     if [[ ! -f "${KUBECONFIGS_DIR}/${cluster}.kubeconfig" ]]; then
       echo "Error: ${KUBECONFIGS_DIR}/${cluster}.kubeconfig not found"
       echo "Run 'make e2e-setup-kind' first"
@@ -146,12 +146,26 @@ load_images() {
   # Load images in parallel to all clusters
   # kubelb cluster: needs kubelb + ccm images
   # tenant clusters: need ccm image (CCM runs there)
+  # standalone cluster: needs ccm image (standalone mode)
   kind load docker-image --name=kubelb "${KUBELB_IMAGE}" "${CCM_IMAGE}" &
   kind load docker-image --name=tenant1 "${CCM_IMAGE}" &
   kind load docker-image --name=tenant2 "${CCM_IMAGE}" &
+  kind load docker-image --name=standalone "${CCM_IMAGE}" &
   wait
 
   printElapsed "image_loads" ${load_start}
+}
+
+#######################################
+# Ensure helm repos are configured (call once before deploys)
+#######################################
+ensure_helm_repos_once() {
+  local marker="${KUBECONFIGS_DIR}/.helm-repos-configured"
+  if [[ ! -f "${marker}" ]]; then
+    echodate "Ensuring helm repos are configured..."
+    "${ROOT_DIR}/hack/ensure-helm-repos.sh"
+    touch "${marker}"
+  fi
 }
 
 #######################################
@@ -182,7 +196,8 @@ EOF
 
   # Create temp chart with local kubelb-addons dependency
   # This ensures e2e tests use latest local charts
-  local temp_chart_dir="${KUBECONFIGS_DIR}/charts"
+  # Use manager-specific subdir to avoid race with parallel standalone deploy
+  local temp_chart_dir="${KUBECONFIGS_DIR}/charts/manager"
   rm -rf "${temp_chart_dir}"
   mkdir -p "${temp_chart_dir}"
   cp -r "${CHARTS_DIR}/kubelb-manager" "${temp_chart_dir}/"
@@ -204,8 +219,7 @@ EOF
   local chart_hash
   chart_hash=$(sha256sum "${CHARTS_DIR}/kubelb-manager/Chart.yaml" "${CHARTS_DIR}/kubelb-addons/Chart.yaml" 2> /dev/null | sha256sum | cut -c1-8)
   if [[ ! -f "${temp_chart_dir}/.helm-deps-${chart_hash}" ]]; then
-    echodate "Ensuring helm repos are configured..."
-    "${ROOT_DIR}/hack/ensure-helm-repos.sh"
+    ensure_helm_repos_once
     echodate "Building kubelb-addons dependencies..."
     helm dependency build "${temp_chart_dir}/kubelb-addons"
     echodate "Updating kubelb-manager dependencies..."
@@ -323,7 +337,7 @@ deploy_ccms() {
     ["secondary"]="tenant2"
   )
 
-  # In conversion mode, only deploy to tenant1 with standalone settings
+  # In standalone mode, only deploy to tenant1 with standalone settings
   if [[ "${CONVERSION_MODE}" == "true" ]]; then
     unset TENANT_MAP
     declare -A TENANT_MAP=(
@@ -342,7 +356,7 @@ deploy_ccms() {
       # Create kubelb namespace in tenant cluster
       kubectl create ns kubelb 2> /dev/null || true
 
-      # Skip kubelb-cluster secret in conversion standalone mode
+      # Skip kubelb-cluster secret in standalone conversion mode
       if [[ "${CONVERSION_MODE}" != "true" ]]; then
         # Create secret with kubeconfig to kubelb management cluster
         kubectl -n kubelb create secret generic kubelb-cluster \
@@ -359,9 +373,13 @@ deploy_ccms() {
       local extra_args=""
 
       if [[ "${CONVERSION_MODE}" == "true" ]]; then
-        values_file="${E2E_MANIFESTS_DIR}/kubelb-ccm/values-conversion.yaml"
+        values_file="${E2E_MANIFESTS_DIR}/kubelb-ccm/values-standalone.yaml"
       else
         extra_args="--set kubelb.tenantName=${tenant}"
+        # tenant2 uses integrated conversion mode (kubelb + local HTTPRoute conversion)
+        if [[ "$cluster" == "tenant2" ]]; then
+          values_file="${E2E_MANIFESTS_DIR}/kubelb-ccm/values-integrated.yaml"
+        fi
       fi
 
       helm ${helm_cmd} kubelb-ccm "${CHARTS_DIR}/kubelb-ccm" \
@@ -408,7 +426,7 @@ wait_for_ready() {
     ["secondary"]="tenant2"
   )
 
-  # In conversion mode, only wait for tenant1
+  # In standalone mode, only wait for tenant1
   if [[ "${CONVERSION_MODE}" == "true" ]]; then
     unset TENANT_MAP
     declare -A TENANT_MAP=(
@@ -480,10 +498,166 @@ wait_for_ready() {
 }
 
 #######################################
+# Deploy kubelb-addons to standalone cluster (standalone mode)
+#######################################
+deploy_standalone_addons() {
+  echodate "Deploying kubelb-addons to standalone cluster..."
+  local deploy_start=$(nowms)
+
+  export KUBECONFIG="${KUBECONFIGS_DIR}/standalone.kubeconfig"
+
+  # Create namespace
+  kubectl create ns kubelb 2> /dev/null || true
+
+  # Build addons dependencies (skip if unchanged - use hash-based caching)
+  local addons_hash
+  addons_hash=$(sha256sum "${CHARTS_DIR}/kubelb-addons/Chart.yaml" "${CHARTS_DIR}/kubelb-addons/Chart.lock" 2> /dev/null | sha256sum | cut -c1-8)
+  local addons_cache_marker="${KUBECONFIGS_DIR}/.addons-deps-${addons_hash}"
+  if [[ ! -f "${addons_cache_marker}" ]]; then
+    ensure_helm_repos_once
+    echodate "Building kubelb-addons dependencies..."
+    helm dependency build "${CHARTS_DIR}/kubelb-addons" &> /dev/null
+    touch "${addons_cache_marker}"
+  else
+    echodate "Addons dependencies unchanged, skipping build"
+  fi
+
+  # Install/upgrade addons
+  local helm_cmd
+  helm_cmd=$(get_helm_command "kubelb-addons" "kubelb")
+
+  helm ${helm_cmd} kubelb-addons "${CHARTS_DIR}/kubelb-addons" \
+    --namespace kubelb \
+    --values "${E2E_MANIFESTS_DIR}/standalone/addons-values.yaml"
+
+  printElapsed "standalone_addons_deploy" ${deploy_start}
+}
+
+#######################################
+# Deploy CCM in standalone conversion mode to standalone cluster
+#######################################
+deploy_standalone_ccm() {
+  echodate "Deploying CCM in standalone conversion mode..."
+  local deploy_start=$(nowms)
+
+  export KUBECONFIG="${KUBECONFIGS_DIR}/standalone.kubeconfig"
+
+  # Set pull policy based on cluster type
+  local pull_policy="IfNotPresent"
+  if is_kind_cluster && [[ -z "${IMAGE_REGISTRY}" ]]; then
+    pull_policy="Never"
+  fi
+
+  # Install/upgrade CCM
+  local helm_cmd
+  helm_cmd=$(get_helm_command "kubelb-ccm" "kubelb")
+
+  helm ${helm_cmd} kubelb-ccm "${CHARTS_DIR}/kubelb-ccm" \
+    --namespace kubelb \
+    --values "${E2E_MANIFESTS_DIR}/kubelb-ccm/values-standalone.yaml" \
+    --set image.repository="${CCM_IMAGE%:*}" \
+    --set image.tag="${CCM_IMAGE#*:}" \
+    --set image.pullPolicy="${pull_policy}" \
+    --set imagePullSecrets=
+
+  # Restart deployment to pick up new image (tag is fixed :e2e)
+  if [[ "${helm_cmd}" == "upgrade" ]]; then
+    echodate "Restarting kubelb-ccm deployment on standalone cluster..."
+    kubectl -n kubelb rollout restart deployment/kubelb-ccm
+  fi
+
+  printElapsed "standalone_ccm_deploy" ${deploy_start}
+}
+
+#######################################
+# Wait for standalone cluster addons to be ready
+#######################################
+wait_for_standalone_ready() {
+  echodate "Waiting for standalone cluster to be ready..."
+  local wait_start=$(nowms)
+
+  export KUBECONFIG="${KUBECONFIGS_DIR}/standalone.kubeconfig"
+
+  # Wait for Gateway API CRDs
+  kubectl wait --for=condition=established crd gatewayclasses.gateway.networking.k8s.io --timeout=5m &
+  local gateway_crd_pid=$!
+
+  # Wait for cert-manager CRDs
+  kubectl wait --for=condition=established crd certificates.cert-manager.io --timeout=5m &
+  local cert_crd_pid=$!
+
+  # Wait for ingress-nginx
+  kubectl -n kubelb wait --for=condition=available deployment/kubelb-addons-ingress-nginx-controller --timeout=5m &
+  local ingress_pid=$!
+
+  # Wait for envoy-gateway
+  kubectl -n kubelb wait --for=condition=available deployment/envoy-gateway --timeout=5m &
+  local envoy_pid=$!
+
+  # Wait for MetalLB
+  kubectl -n kubelb wait --for=condition=available deployment/kubelb-addons-metallb-controller --timeout=5m &
+  local metallb_pid=$!
+
+  # Wait for cert-manager
+  kubectl -n kubelb wait --for=condition=available deployment/kubelb-addons-cert-manager --timeout=5m &
+  local certmanager_pid=$!
+
+  # Wait for CCM
+  kubectl -n kubelb wait --for=condition=available deployment/kubelb-ccm --timeout=5m &
+  local ccm_pid=$!
+
+  # Collect results
+  local failed=()
+  wait ${gateway_crd_pid} || failed+=("gateway-crds")
+  wait ${cert_crd_pid} || failed+=("cert-manager-crds")
+  wait ${ingress_pid} || failed+=("ingress-nginx")
+  wait ${envoy_pid} || failed+=("envoy-gateway")
+  wait ${metallb_pid} || failed+=("metallb")
+  wait ${certmanager_pid} || failed+=("cert-manager")
+  wait ${ccm_pid} || failed+=("ccm")
+
+  if [[ ${#failed[@]} -gt 0 ]]; then
+    echodate "ERROR: Failed to verify standalone cluster: ${failed[*]}"
+    exit 1
+  fi
+
+  printElapsed "standalone_ready" ${wait_start}
+
+  # Configure MetalLB IP pool for standalone cluster
+  configure_standalone_metallb_pool
+
+  # Apply GatewayClass and ClusterIssuer
+  echodate "Applying manifests to standalone cluster..."
+  kubectl apply -f "${E2E_MANIFESTS_DIR}/kubelb-manager/manifests.yaml"
+}
+
+#######################################
+# Configure MetalLB IP pool for standalone cluster
+#######################################
+configure_standalone_metallb_pool() {
+  echodate "Configuring MetalLB IP pool for standalone cluster..."
+  export KUBECONFIG="${KUBECONFIGS_DIR}/standalone.kubeconfig"
+
+  local metallb_ip_range="${METALLB_IP_RANGE}"
+
+  if [[ -z "${metallb_ip_range}" ]]; then
+    # Auto-detect from Kind's Docker network (use different range than kubelb cluster)
+    local metallb_gw
+    metallb_gw=$(docker network inspect -f json kind | jq --raw-output '.[].IPAM.Config[].Gateway | select(. != null) | select(contains(":") | not)' | sed -e 's/\(.*\..*\).*\..*\..*/\1/')
+    # Use .255.150-.255.199 range (different from kubelb's .255.200-.255.250)
+    metallb_ip_range="${metallb_gw}.255.150-${metallb_gw}.255.199"
+  fi
+
+  echodate "Conversion MetalLB IP pool: ${metallb_ip_range}"
+  sed "s|\${METALLB_IP_RANGE}|${metallb_ip_range}|g" \
+    "${E2E_MANIFESTS_DIR}/metallb/ipaddresspool.yaml.tpl" | kubectl apply -f -
+}
+
+#######################################
 # Deploy shared test apps to tenant clusters
 #######################################
 deploy_test_apps() {
-  echodate "Deploying shared test apps to tenant clusters..."
+  echodate "Deploying shared test apps to all clusters..."
 
   declare -A TENANT_MAP=(
     ["primary"]="tenant1"
@@ -495,6 +669,10 @@ deploy_test_apps() {
     KUBECONFIG="${KUBECONFIGS_DIR}/${cluster}.kubeconfig" \
       kubectl apply -f "${E2E_MANIFESTS_DIR}/test-apps/echo-server.yaml" &
   done
+
+  # Also deploy to standalone cluster
+  KUBECONFIG="${KUBECONFIGS_DIR}/standalone.kubeconfig" \
+    kubectl apply -f "${E2E_MANIFESTS_DIR}/test-apps/echo-server.yaml" &
 
   wait
   echodate "Test apps deployed (pods starting in background)"
@@ -520,10 +698,37 @@ echodate ""
 verify_kubeconfigs
 build_images
 load_images
-deploy_kubelb_manager
+
+# Ensure helm repos configured once before parallel deploys
+ensure_helm_repos_once
+
+# Deploy kubelb manager and standalone addons in parallel (both do similar helm work)
+deploy_kubelb_manager &
+manager_pid=$!
+deploy_standalone_addons &
+standalone_addons_pid=$!
+
+# Wait for manager before tenant setup (tenants need manager CRDs)
+wait ${manager_pid}
+
 setup_tenants
-deploy_ccms
-wait_for_ready
+deploy_ccms &
+ccm_pid=$!
+
+# Wait for standalone addons before CCM deploy
+wait ${standalone_addons_pid}
+deploy_standalone_ccm &
+standalone_ccm_pid=$!
+
+# Wait for CCMs to finish
+wait ${ccm_pid}
+wait ${standalone_ccm_pid}
+
+# Wait for all clusters to be ready in parallel
+wait_for_ready &
+wait_for_standalone_ready &
+wait
+
 deploy_test_apps
 
 echodate ""
@@ -532,8 +737,9 @@ echodate "  Deployment Complete"
 echodate "============================================"
 echodate ""
 echodate "Clusters ready:"
-echodate "  kubelb:  export KUBECONFIG=${KUBECONFIGS_DIR}/kubelb.kubeconfig"
-echodate "  tenant1: export KUBECONFIG=${KUBECONFIGS_DIR}/tenant1.kubeconfig"
-echodate "  tenant2: export KUBECONFIG=${KUBECONFIGS_DIR}/tenant2.kubeconfig"
+echodate "  kubelb:     export KUBECONFIG=${KUBECONFIGS_DIR}/kubelb.kubeconfig"
+echodate "  tenant1:    export KUBECONFIG=${KUBECONFIGS_DIR}/tenant1.kubeconfig"
+echodate "  tenant2:    export KUBECONFIG=${KUBECONFIGS_DIR}/tenant2.kubeconfig"
+echodate "  standalone: export KUBECONFIG=${KUBECONFIGS_DIR}/standalone.kubeconfig"
 echodate ""
 printElapsed "total_deploy" ${SCRIPT_START}

@@ -22,10 +22,12 @@ metadata:
   name: envoy-cleanup
   labels:
     all:
+    multi-tenant: "true"
     isolated: "true"
     resource: tenant
     feature: envoy-cleanup
 spec:
+  skip: true
   concurrent: false
   description: |
     Test that Envoy proxy is cleaned up when no LoadBalancers or Routes

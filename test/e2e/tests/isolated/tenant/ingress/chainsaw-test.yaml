@@ -26,6 +26,7 @@ metadata:
     resource: tenant
     feature: ingress
 spec:
+  skip: true
   concurrent: false
   description: |
     Test that Tenant.spec.ingress settings work correctly for

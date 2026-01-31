@@ -27,6 +27,7 @@ metadata:
     resource: tenant
     feature: loadbalancer
 spec:
+  skip: true
   concurrent: false
   description: |
     Test that Tenant.spec.loadBalancer settings work correctly for

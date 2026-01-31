@@ -1,0 +1,130 @@
+# Copyright 2026 The KubeLB Authors.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+apiVersion: chainsaw.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: conversion-redirects-permanent
+  labels:
+    suite: conversion
+    layer: layer7
+    conversion: "true"
+    test: "conversion-redirects-permanent"
+    category: redirects
+    parallel: "true"
+spec:
+  description: |
+    Test permanent-redirect annotation conversion.
+    Verifies actual 301 redirect with correct Location header.
+  bindings:
+    - name: name
+      value: conv-perm-redir
+    - name: transformed_host
+      value: conv-permredir.gateway.local
+  steps:
+    - name: create-service
+      cluster: standalone
+      description: Create ClusterIP service
+      try:
+        - apply:
+            resource:
+              apiVersion: v1
+              kind: Service
+              metadata:
+                name: conv-perm-redir
+                namespace: default
+              spec:
+                type: ClusterIP
+                selector:
+                  app: echo-shared
+                ports:
+                  - port: 80
+                    targetPort: 5678
+
+    - name: create-ingress
+      cluster: standalone
+      description: Create Ingress with permanent-redirect
+      try:
+        - apply:
+            resource:
+              apiVersion: networking.k8s.io/v1
+              kind: Ingress
+              metadata:
+                name: conv-perm-redir
+                namespace: default
+                annotations:
+                  nginx.ingress.kubernetes.io/permanent-redirect: "https://example.com/new-location"
+              spec:
+                ingressClassName: nginx
+                rules:
+                  - host: conv-permredir.test.local
+                    http:
+                      paths:
+                        - path: /
+                          pathType: Prefix
+                          backend:
+                            service:
+                              name: conv-perm-redir
+                              port:
+                                number: 80
+
+    - name: verify-httproute
+      cluster: standalone
+      description: Verify HTTPRoute exists with redirect filter
+      try:
+        - script:
+            timeout: 60s
+            content: |
+              set -e
+              SOURCE_LABEL="conv-perm-redir.default"
+
+              for i in $(seq 1 30); do
+                HTTPROUTE=$(kubectl get httproutes.gateway.networking.k8s.io -n default \
+                  -l "kubelb.k8c.io/source-ingress=${SOURCE_LABEL}" -o name 2>/dev/null | head -1)
+
+                if [ -n "$HTTPROUTE" ]; then
+                  FILTERS=$(kubectl get $HTTPROUTE -n default -o jsonpath='{.spec.rules[*].filters}')
+                  if echo "$FILTERS" | grep -q "RequestRedirect"; then
+                    echo "SUCCESS: HTTPRoute has redirect filter"
+                    exit 0
+                  fi
+                fi
+                sleep 2
+              done
+              echo "FAILED: No redirect filter found"
+              exit 1
+            check:
+              ($error == null): true
+
+    - name: verify-redirect-traffic
+      description: Verify actual 301 redirect behavior
+      use:
+        template: ../../../../../step-templates/conversion/verify-redirect.yaml
+        with:
+          bindings:
+            - name: host
+              value: ($transformed_host)
+            - name: expected_status
+              value: "301"
+            - name: expected_location
+              value: "example.com/new-location"
+
+    - name: cleanup
+      description: Cleanup resources
+      use:
+        template: ../../../../../step-templates/conversion/cleanup-conversion.yaml
+        with:
+          bindings:
+            - name: ingress_name
+              value: ($name)

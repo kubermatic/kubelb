@@ -15,6 +15,14 @@
 fullnameOverride: kubelb
 priorityClassName: kubelb-high-priority
 
+resources:
+  requests:
+    cpu: 100m
+    memory: 256Mi
+  limits:
+    cpu: 500m
+    memory: 512Mi
+
 kubelb:
   enableGatewayAPI: true
   debug: true

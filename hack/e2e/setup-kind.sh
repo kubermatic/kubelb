@@ -26,7 +26,7 @@ cleanup() {
   set +e
   if [[ "${CLEANUP_ON_EXIT:-false}" == "true" ]] && [[ "${TEST_FAILED}" == "true" ]]; then
     echodate "Test failed, cleaning up clusters..."
-    kind delete clusters kubelb tenant1 tenant2 &> /dev/null || true
+    kind delete clusters kubelb tenant1 tenant2 standalone &> /dev/null || true
   fi
 }
 
@@ -81,10 +81,15 @@ CHAINSAW_PID=$!
 KIND_IMAGE="${KIND_IMAGE:-kindest/node:v1.35.0}"
 
 # Cluster definitions: name -> type (empty = single node, multinode = 3 workers)
+# - kubelb: manager cluster (single-node)
+# - tenant1: normal CCM hub-and-spoke (multi-node for endpoint/node tests)
+# - tenant2: normal CCM hub-and-spoke (single-node for edge cases)
+# - standalone: standalone conversion CCM (single-node)
 declare -A CLUSTERS=(
   ["kubelb"]=""
-  ["tenant1"]=""
-  ["tenant2"]="multinode"
+  ["tenant1"]="multinode"
+  ["tenant2"]=""
+  ["standalone"]=""
 )
 
 #######################################
@@ -297,7 +302,14 @@ prepull_images() {
   fi
 
   echodate "Loading ${#images[@]} images into kubelb cluster..."
-  kind load docker-image --name "kubelb" "${images[@]}" &> /dev/null
+  local load_pids=()
+  for image in "${images[@]}"; do
+    kind load docker-image --name "kubelb" "${image}" &> /dev/null &
+    load_pids+=($!)
+  done
+  for pid in "${load_pids[@]}"; do
+    wait ${pid} || true
+  done
 
   echodate "Pre-pull complete"
 }

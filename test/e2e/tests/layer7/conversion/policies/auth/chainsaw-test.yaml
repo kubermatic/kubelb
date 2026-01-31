@@ -1,0 +1,151 @@
+# Copyright 2026 The KubeLB Authors.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+apiVersion: chainsaw.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: conversion-policies-auth
+  labels:
+    suite: conversion
+    layer: layer7
+    conversion: "true"
+    test: "conversion-policies-auth"
+    category: policies
+    parallel: "true"
+spec:
+  description: |
+    Test auth annotations conversion.
+    Verifies SecurityPolicy is created and warning is generated.
+    Note: nginx htpasswd secrets (key: "auth") are incompatible with Envoy Gateway
+    BasicAuth (expects key: ".users"), so traffic will fail with 500 until secret
+    is manually converted. This test verifies the conversion machinery works.
+  bindings:
+    - name: name
+      value: conv-auth
+    - name: transformed_host
+      value: conv-auth.gateway.local
+  steps:
+    - name: create-service
+      cluster: standalone
+      description: Create ClusterIP service
+      try:
+        - apply:
+            resource:
+              apiVersion: v1
+              kind: Service
+              metadata:
+                name: conv-auth
+                namespace: default
+              spec:
+                type: ClusterIP
+                selector:
+                  app: echo-shared
+                ports:
+                  - port: 80
+                    targetPort: 5678
+
+    - name: create-auth-secret
+      cluster: standalone
+      description: Create basic auth secret
+      try:
+        - apply:
+            resource:
+              apiVersion: v1
+              kind: Secret
+              metadata:
+                name: conv-auth-secret
+                namespace: default
+              type: Opaque
+              data:
+                # user:password (base64 encoded htpasswd format)
+                auth: dXNlcjokYXByMSRIMmtJTEJNeSRuYXh5czlqb2JnVjBEaG1HLnA3dUIw
+
+    - name: create-ingress
+      cluster: standalone
+      description: Create Ingress with auth annotations
+      try:
+        - apply:
+            resource:
+              apiVersion: networking.k8s.io/v1
+              kind: Ingress
+              metadata:
+                name: conv-auth
+                namespace: default
+                annotations:
+                  nginx.ingress.kubernetes.io/auth-type: basic
+                  nginx.ingress.kubernetes.io/auth-secret: conv-auth-secret
+                  nginx.ingress.kubernetes.io/auth-realm: "Authentication Required"
+              spec:
+                ingressClassName: nginx
+                rules:
+                  - host: conv-auth.test.local
+                    http:
+                      paths:
+                        - path: /
+                          pathType: Prefix
+                          backend:
+                            service:
+                              name: conv-auth
+                              port:
+                                number: 80
+
+    - name: verify-httproute
+      description: Verify HTTPRoute exists
+      use:
+        template: ../../../../../step-templates/conversion/verify-httproute.yaml
+        with:
+          bindings:
+            - name: ingress_name
+              value: ($name)
+            - name: expected_host
+              value: ($transformed_host)
+
+    - name: verify-security-policy
+      description: Verify SecurityPolicy is created with basicAuth
+      use:
+        template: ../../../../../step-templates/conversion/verify-policy.yaml
+        with:
+          bindings:
+            - name: ingress_name
+              value: ($name)
+            - name: policy_type
+              value: security
+            - name: expected_field
+              value: ".spec.basicAuth"
+
+    - name: verify-warning
+      description: Verify warning about secret format conversion
+      use:
+        template: ../../../../../step-templates/conversion/verify-warnings.yaml
+        with:
+          bindings:
+            - name: ingress_name
+              value: ($name)
+            - name: warning_pattern
+              value: SecurityPolicy
+
+    - name: cleanup
+      cluster: standalone
+      description: Cleanup resources
+      try:
+        - script:
+            timeout: 30s
+            content: |
+              kubectl delete ingress conv-auth -n default --ignore-not-found
+              kubectl delete service conv-auth -n default --ignore-not-found
+              kubectl delete secret conv-auth-secret -n default --ignore-not-found
+              kubectl delete httproutes.gateway.networking.k8s.io -n default \
+                -l "kubelb.k8c.io/source-ingress=conv-auth.default" --ignore-not-found
+              kubectl delete securitypolicies.gateway.envoyproxy.io -n default \
+                -l "kubelb.k8c.io/source-ingress=conv-auth.default" --ignore-not-found 2>/dev/null || true

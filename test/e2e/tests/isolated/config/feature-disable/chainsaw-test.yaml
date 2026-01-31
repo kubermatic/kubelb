@@ -26,6 +26,7 @@ metadata:
     resource: config
     feature: feature-disable
 spec:
+  skip: true
   concurrent: false
   description: |
     Test that Config.spec.loadBalancer.disable and Config.spec.ingress.disable

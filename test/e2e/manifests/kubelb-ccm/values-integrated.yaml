@@ -1,0 +1,42 @@
+# Copyright 2026 The KubeLB Authors.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# Helm values for kubelb-ccm in integrated conversion mode (e2e tests)
+# CCM with kubelb + ingressConversion enabled (integrated mode for tenant2)
+
+fullnameOverride: kubelb-ccm
+
+kubelb:
+  clusterSecretName: kubelb-cluster
+  nodeAddressType: InternalIP
+  enableSecretSynchronizer: true
+  enableGatewayAPI: true
+  installGatewayAPICRDs: true
+
+  ingressConversion:
+    enabled: true
+    standaloneMode: false
+    gatewayName: kubelb-int-conv
+    gatewayNamespace: default
+    gatewayClass: kubelb # Uses kubelb class - Gateway is proxied to kubelb cluster
+    ingressClass: kubelb # Convert kubelb class ingresses (same as what CCM watches)
+    domainReplace: test.local
+    domainSuffix: gateway.local
+
+serviceMonitor:
+  enabled: false
+
+grafana:
+  dashboards:
+    enabled: false
