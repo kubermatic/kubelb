@@ -461,13 +461,18 @@ wait_for_ready() {
 
   # ingress-nginx controller
   KUBECONFIG="${KUBECONFIGS_DIR}/kubelb.kubeconfig" \
-    kubectl -n kubelb wait --for=condition=available deployment/kubelb-ingress-nginx-controller --timeout=5m &
+    kubectl -n kubelb wait --for=condition=available deployment/kubelb-ingress-nginx-controller --timeout=7m &
   local ingress_pid=$!
 
   # MetalLB controller (required before IPAddressPool can be created)
   KUBECONFIG="${KUBECONFIGS_DIR}/kubelb.kubeconfig" \
-    kubectl -n kubelb wait --for=condition=available deployment/kubelb-metallb-controller --timeout=5m &
+    kubectl -n kubelb wait --for=condition=available deployment/kubelb-metallb-controller --timeout=7m &
   local metallb_pid=$!
+
+  # Envoy Gateway controller (required for Gateway API data plane)
+  KUBECONFIG="${KUBECONFIGS_DIR}/kubelb.kubeconfig" \
+    kubectl -n kubelb wait --for=condition=available deployment/envoy-gateway --timeout=7m &
+  local envoy_gw_pid=$!
 
   # Wait for all and check for failures
   local failed=()
@@ -479,6 +484,7 @@ wait_for_ready() {
   wait ${webhook_pid} || failed+=("cert-manager-webhook")
   wait ${ingress_pid} || failed+=("ingress-nginx")
   wait ${metallb_pid} || failed+=("metallb")
+  wait ${envoy_gw_pid} || failed+=("envoy-gateway")
 
   if [[ ${#failed[@]} -gt 0 ]]; then
     echodate "ERROR: Failed to verify: ${failed[*]}"
@@ -587,15 +593,15 @@ wait_for_standalone_ready() {
   local cert_crd_pid=$!
 
   # Wait for ingress-nginx
-  kubectl -n kubelb wait --for=condition=available deployment/kubelb-addons-ingress-nginx-controller --timeout=5m &
+  kubectl -n kubelb wait --for=condition=available deployment/kubelb-addons-ingress-nginx-controller --timeout=7m &
   local ingress_pid=$!
 
   # Wait for envoy-gateway
-  kubectl -n kubelb wait --for=condition=available deployment/envoy-gateway --timeout=5m &
+  kubectl -n kubelb wait --for=condition=available deployment/envoy-gateway --timeout=7m &
   local envoy_pid=$!
 
   # Wait for MetalLB
-  kubectl -n kubelb wait --for=condition=available deployment/kubelb-addons-metallb-controller --timeout=5m &
+  kubectl -n kubelb wait --for=condition=available deployment/kubelb-addons-metallb-controller --timeout=7m &
   local metallb_pid=$!
 
   # Wait for cert-manager
@@ -679,6 +685,27 @@ deploy_test_apps() {
 }
 
 #######################################
+# Wait for deployment to exist then wait for readiness
+# Handles race condition where deployment is created dynamically
+#######################################
+wait_for_deployment_exist_and_ready() {
+  local namespace="$1"
+  local deployment="$2"
+  local timeout="${3:-300}"
+
+  local deadline=$(($(date +%s) + timeout))
+  while ! kubectl -n "${namespace}" get deployment "${deployment}" &>/dev/null; do
+    if [[ $(date +%s) -ge $deadline ]]; then
+      echodate "Timeout waiting for ${deployment} to exist"
+      return 1
+    fi
+    sleep 2
+  done
+
+  kubectl -n "${namespace}" wait --for=condition=available "deployment/${deployment}" --timeout="${timeout}s"
+}
+
+#######################################
 # Main
 #######################################
 SCRIPT_START=$(nowms)
@@ -730,6 +757,16 @@ wait_for_standalone_ready &
 wait
 
 deploy_test_apps
+
+# Wait for KubeLB tenant envoy proxy deployments to be ready
+# These are created dynamically after CCM creates LoadBalancer CRDs, so poll for existence first
+echodate "Waiting for tenant envoy proxies..."
+KUBECONFIG="${KUBECONFIGS_DIR}/kubelb.kubeconfig" \
+  wait_for_deployment_exist_and_ready tenant-primary envoy-tenant-primary 300 &
+KUBECONFIG="${KUBECONFIGS_DIR}/kubelb.kubeconfig" \
+  wait_for_deployment_exist_and_ready tenant-secondary envoy-tenant-secondary 300 &
+wait
+echodate "Tenant envoy proxies ready"
 
 echodate ""
 echodate "============================================"

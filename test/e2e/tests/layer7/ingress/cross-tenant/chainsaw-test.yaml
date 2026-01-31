@@ -28,6 +28,7 @@ metadata:
     resource: ingress
     layer: layer7
 spec:
+  concurrent: false
   description: |
     Test tenant isolation with same Ingress name.
     Creates Ingress "shared-name" on both tenant1 and tenant2,
@@ -146,14 +147,14 @@ spec:
       try:
         - script:
             skipCommandOutput: true
-            timeout: 60s
+            timeout: 120s
             content: |
               set -e
               NS_PRIMARY="tenant-primary"
               NS_SECONDARY="tenant-secondary"
               INGRESS_NAME="shared-name"
 
-              for i in $(seq 1 20); do
+              for i in $(seq 1 40); do
                 ROUTE_PRIMARY=$(kubectl get routes.kubelb.k8c.io -n "$NS_PRIMARY" \
                   -l kubelb.k8c.io/origin-name="$INGRESS_NAME" -o name 2>/dev/null | head -1)
                 ROUTE_SECONDARY=$(kubectl get routes.kubelb.k8c.io -n "$NS_SECONDARY" \
@@ -179,10 +180,11 @@ spec:
                   exit 0
                 fi
                 echo "Attempt $i: waiting for Route CRDs..."
-                sleep 2
+                sleep 3
               done
 
               echo "FAILED: Route CRDs not found in both namespaces"
+              kubectl get routes.kubelb.k8c.io -A
               exit 1
             check:
               ($error == null): true

@@ -300,10 +300,10 @@ spec:
             content: |
               set -e
               for i in $(seq 1 45); do
-                # Get listener conditions
-                RESOLVED=$(kubectl get gateway.gateway.networking.k8s.io kubelb -n default \
-                  -o jsonpath='{.status.listeners[?(@.name=~"https.*")].conditions[?(@.type=="ResolvedRefs")].status}' \
-                  2>/dev/null || echo "")
+                # Get all listener statuses and check for HTTPS listeners with ResolvedRefs=True
+                # Using jq since JSONPath doesn't support regex
+                RESOLVED=$(kubectl get gateway.gateway.networking.k8s.io kubelb -n default -o json 2>/dev/null | \
+                  jq -r '.status.listeners[]? | select(.name | startswith("https")) | .conditions[]? | select(.type=="ResolvedRefs") | .status' 2>/dev/null || echo "")
 
                 # Check if any HTTPS listener has ResolvedRefs=True
                 if echo "$RESOLVED" | grep -q "True"; then
@@ -313,9 +313,8 @@ spec:
                 fi
 
                 # Check for False status with reason
-                REASON=$(kubectl get gateway.gateway.networking.k8s.io kubelb -n default \
-                  -o jsonpath='{.status.listeners[?(@.name=~"https.*")].conditions[?(@.type=="ResolvedRefs")].reason}' \
-                  2>/dev/null || echo "")
+                REASON=$(kubectl get gateway.gateway.networking.k8s.io kubelb -n default -o json 2>/dev/null | \
+                  jq -r '.status.listeners[]? | select(.name | startswith("https")) | .conditions[]? | select(.type=="ResolvedRefs") | .reason' 2>/dev/null || echo "")
 
                 if [ -n "$REASON" ] && [ "$REASON" != "" ]; then
                   echo "Current status: ResolvedRefs reason=$REASON"
@@ -416,19 +415,24 @@ spec:
 
     - name: verify-status
       cluster: standalone
-      description: Verify conversion status
+      description: Verify conversion status (requires 5s verification delay)
       try:
         - script:
             timeout: 30s
             content: |
               set -e
-              STATUS=$(kubectl get ingress conv-xns-tls -n conv-tls-sync-ns \
-                -o jsonpath='{.metadata.annotations.kubelb\.k8c\.io/conversion-status}' 2>/dev/null || echo "")
-              if [ "$STATUS" = "converted" ]; then
-                echo "SUCCESS: Conversion status is 'converted'"
-                exit 0
-              fi
-              echo "Status: $STATUS (expected: converted)"
+              # Controller requires two verification passes with 5s delay
+              for i in $(seq 1 15); do
+                STATUS=$(kubectl get ingress conv-xns-tls -n conv-tls-sync-ns \
+                  -o jsonpath='{.metadata.annotations.kubelb\.k8c\.io/conversion-status}' 2>/dev/null || echo "")
+                if [ "$STATUS" = "converted" ]; then
+                  echo "SUCCESS: Conversion status is 'converted'"
+                  exit 0
+                fi
+                echo "Attempt $i: status=$STATUS, waiting..."
+                sleep 2
+              done
+              echo "FAILED: Status is '$STATUS' (expected: converted)"
               exit 1
             check:
               ($error == null): true

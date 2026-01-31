@@ -38,7 +38,7 @@ spec:
   steps:
     - name: create-namespace
       cluster: standalone
-      description: Create test namespace (different from Gateway namespace)
+      description: Create test namespace
       try:
         - apply:
             resource:
@@ -281,19 +281,24 @@ spec:
 
     - name: verify-status
       cluster: standalone
-      description: Verify conversion status
+      description: Verify conversion status (requires 5s verification delay)
       try:
         - script:
             timeout: 30s
             content: |
               set -e
-              STATUS=$(kubectl get ingress conv-xns-routes -n conv-xns-test \
-                -o jsonpath='{.metadata.annotations.kubelb\.k8c\.io/conversion-status}' 2>/dev/null || echo "")
-              if [ "$STATUS" = "converted" ]; then
-                echo "SUCCESS: Conversion status is 'converted'"
-                exit 0
-              fi
-              echo "Status: $STATUS (expected: converted)"
+              # Controller requires two verification passes with 5s delay
+              for i in $(seq 1 15); do
+                STATUS=$(kubectl get ingress conv-xns-routes -n conv-xns-test \
+                  -o jsonpath='{.metadata.annotations.kubelb\.k8c\.io/conversion-status}' 2>/dev/null || echo "")
+                if [ "$STATUS" = "converted" ]; then
+                  echo "SUCCESS: Conversion status is 'converted'"
+                  exit 0
+                fi
+                echo "Attempt $i: status=$STATUS, waiting..."
+                sleep 2
+              done
+              echo "FAILED: Status is '$STATUS' (expected: converted)"
               exit 1
             check:
               ($error == null): true

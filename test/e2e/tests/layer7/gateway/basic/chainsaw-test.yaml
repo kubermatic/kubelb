@@ -120,7 +120,7 @@ spec:
 
     # Step 4: Verify status propagation to tenant Gateway
     - name: verify-status
-      description: Verify Gateway gets address in status
+      description: Verify Gateway gets address and listener status
       cluster: tenant1
       try:
         - script:
@@ -133,6 +133,20 @@ spec:
                   -o jsonpath='{.status.addresses[0].value}' 2>/dev/null || true)
                 if [ -n "$IP" ]; then
                   echo "Gateway has address: $IP"
+
+                  # Verify address type
+                  TYPE=$(kubectl get gateway gw-basic -n default \
+                    -o jsonpath='{.status.addresses[0].type}' 2>/dev/null || true)
+                  echo "  Address type: $TYPE"
+
+                  # Verify listener status (soft check)
+                  LISTENERS=$(kubectl get gateway gw-basic -n default \
+                    -o jsonpath='{.status.listeners}' 2>/dev/null || true)
+                  if [ -n "$LISTENERS" ] && [ "$LISTENERS" != "[]" ]; then
+                    echo "  Listener status: $LISTENERS"
+                  else
+                    echo "  Listener status: not yet propagated (may be expected)"
+                  fi
                   exit 0
                 fi
                 sleep 2

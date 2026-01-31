@@ -12,9 +12,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# Gateway TLS Test
+# Gateway TLS Test (with Multi-Listener)
 # Verifies:
-# - Gateway with HTTPS listener and TLS configuration creates Route CRD
+# - Gateway with HTTP + HTTPS listeners creates Route CRD
+# - All listeners are configured in generated Gateway
 # - TLS settings are preserved in generated Gateway
 # - Certificate refs are processed
 apiVersion: chainsaw.kyverno.io/v1alpha1
@@ -28,9 +29,9 @@ metadata:
     layer: layer7
 spec:
   description: |
-    Test Gateway with HTTPS listener and TLS configuration.
-    Creates Gateway with TLS termination on tenant1,
-    verifies Route CRD and TLS settings in generated Gateway.
+    Test Gateway with HTTP and HTTPS listeners (multi-listener) and TLS configuration.
+    Creates Gateway with HTTP + TLS termination on tenant1,
+    verifies Route CRD, both listeners, and TLS settings in generated Gateway.
   bindings:
     - name: name
       value: gw-tls
@@ -65,9 +66,9 @@ spec:
             check:
               ($error == null): true
 
-    # Step 2: Create Gateway with HTTPS listener
+    # Step 2: Create Gateway with HTTP and HTTPS listeners (multi-listener)
     - name: create-gateway
-      description: Create Gateway with HTTPS listener
+      description: Create Gateway with HTTP and HTTPS listeners
       cluster: tenant1
       try:
         - apply:
@@ -80,6 +81,12 @@ spec:
               spec:
                 gatewayClassName: kubelb
                 listeners:
+                  - name: http
+                    protocol: HTTP
+                    port: 80
+                    allowedRoutes:
+                      namespaces:
+                        from: All
                   - name: https
                     protocol: HTTPS
                     port: 443
@@ -106,9 +113,9 @@ spec:
             - name: kubelb_namespace
               value: ($kubelb_namespace)
 
-    # Step 4: Verify generated Gateway has TLS config
+    # Step 4: Verify generated Gateway has both listeners and TLS config
     - name: verify-tls-config
-      description: Verify generated Gateway has TLS configuration
+      description: Verify generated Gateway has HTTP and HTTPS listeners with TLS
       cluster: kubelb
       try:
         - script:
@@ -124,19 +131,27 @@ spec:
                   -l kubelb.k8c.io/origin-name="$GATEWAY_NAME" -o name 2>/dev/null | head -1)
 
                 if [ -n "$GEN_GW" ]; then
-                  # Verify TLS mode
-                  TLS_MODE=$(kubectl get $GEN_GW -n "$NAMESPACE" \
-                    -o jsonpath='{.spec.listeners[0].tls.mode}')
+                  # Get listener names
+                  LISTENERS=$(kubectl get $GEN_GW -n "$NAMESPACE" \
+                    -o jsonpath='{.spec.listeners[*].name}')
 
-                  if [ "$TLS_MODE" = "Terminate" ]; then
-                    echo "Generated Gateway TLS verified"
-                    echo "  TLS mode: $TLS_MODE"
-                    exit 0
+                  # Check both listeners exist
+                  if echo "$LISTENERS" | grep -q "http" && echo "$LISTENERS" | grep -q "https"; then
+                    # Verify TLS mode on https listener
+                    TLS_MODE=$(kubectl get $GEN_GW -n "$NAMESPACE" \
+                      -o jsonpath='{.spec.listeners[?(@.name=="https")].tls.mode}')
+
+                    if [ "$TLS_MODE" = "Terminate" ]; then
+                      echo "Generated Gateway multi-listener with TLS verified"
+                      echo "  Listeners: $LISTENERS"
+                      echo "  TLS mode: $TLS_MODE"
+                      exit 0
+                    fi
                   fi
                 fi
                 sleep 2
               done
-              echo "FAILED: Generated Gateway TLS not configured"
+              echo "FAILED: Generated Gateway missing listeners or TLS config"
               exit 1
             check:
               ($error == null): true

@@ -126,24 +126,26 @@ spec:
 
     # Step 3: Wait for Gateway ready
     - name: wait-gateway-ready
-      description: Wait for Gateway to have address
+      description: Wait for Gateway to have address (can take ~60s for LB IP)
       cluster: tenant1
       try:
         - script:
             skipCommandOutput: true
-            timeout: 60s
+            timeout: 120s
             content: |
               set -e
-              for i in $(seq 1 20); do
+              for i in $(seq 1 40); do
                 IP=$(kubectl get gateway wildcard-gw -n default \
                   -o jsonpath='{.status.addresses[0].value}' 2>/dev/null || true)
                 if [ -n "$IP" ]; then
                   echo "Gateway ready with IP: $IP"
                   exit 0
                 fi
-                sleep 2
+                echo "Attempt $i: waiting for Gateway LB IP..."
+                sleep 3
               done
               echo "FAILED: Gateway not ready"
+              kubectl get gateway wildcard-gw -n default -o yaml
               exit 1
             check:
               ($error == null): true

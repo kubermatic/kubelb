@@ -124,6 +124,14 @@ increase_inotify_limits() {
   fi
 }
 
+is_docker_network_reachable() {
+  # Test if host can reach Docker network gateway without docker-mac-net-connect
+  # This indicates Docker Desktop host networking is enabled
+  local gateway
+  gateway=$(docker network inspect bridge -f '{{(index .IPAM.Config 0).Gateway}}' 2> /dev/null)
+  [[ -n "$gateway" ]] && ping -c 1 -t 1 "$gateway" &> /dev/null
+}
+
 setup_mac_docker_networking() {
   if [[ "${OS}" != "darwin" ]]; then
     return 0
@@ -138,7 +146,20 @@ setup_mac_docker_networking() {
     return 0
   fi
 
-  # Install docker-mac-net-connect if missing
+  # Check if routes already exist (docker-mac-net-connect running)
+  if netstat -rnf inet 2> /dev/null | grep -q "172.*utun"; then
+    echodate "Docker network routes already configured"
+    return 0
+  fi
+
+  # Check if Docker Desktop host networking is enabled (native reachability)
+  if is_docker_network_reachable; then
+    echodate "Using Docker Desktop host networking (native)"
+    return 0
+  fi
+
+  # Fall back to docker-mac-net-connect
+  # Install if missing
   if ! brew list chipmk/tap/docker-mac-net-connect &> /dev/null; then
     echodate "Installing docker-mac-net-connect..."
     brew install chipmk/tap/docker-mac-net-connect
@@ -147,13 +168,8 @@ setup_mac_docker_networking() {
   local dmn_bin="/opt/homebrew/opt/docker-mac-net-connect/bin/docker-mac-net-connect"
   if [[ ! -x "${dmn_bin}" ]]; then
     echodate "WARNING: docker-mac-net-connect binary not found"
+    echodate "  Enable Docker Desktop host networking: Settings → Resources → Network → Host networking"
     return 1
-  fi
-
-  # Check if already running and working (routes exist)
-  if netstat -rnf inet 2> /dev/null | grep -q "172.*utun"; then
-    echodate "Docker network routes already configured"
-    return 0
   fi
 
   # Get Docker socket path from current context (required for sudo)
@@ -197,6 +213,7 @@ setup_mac_docker_networking() {
   done
 
   echodate "WARNING: Docker network routes not detected. LoadBalancer IPs may not be reachable."
+  echodate "  Enable Docker Desktop host networking: Settings → Resources → Network → Host networking"
   return 1
 }
 
@@ -238,10 +255,16 @@ kubeadmConfigPatches:
     maxParallelImagePulls: 10"
 
   if [[ "${type}" == "multinode" ]]; then
+    # 3 nodes total: control-plane (also runs workloads) + 2 workers
+    # Provides 3 endpoints for L4 NodePort tests while saving resources
     config="${config}
 nodes:
   - role: control-plane
-  - role: worker
+    kubeadmConfigPatches:
+      - |
+        kind: InitConfiguration
+        nodeRegistration:
+          taints: []
   - role: worker
   - role: worker"
   fi
@@ -310,6 +333,50 @@ prepull_images() {
   for pid in "${load_pids[@]}"; do
     wait ${pid} || true
   done
+
+  # Load standalone cluster images
+  local standalone_images_file="${ROOT_DIR}/hack/e2e/images-standalone.yaml"
+  if [[ -f "${standalone_images_file}" ]]; then
+    local standalone_images=()
+    while IFS= read -r line; do
+      if [[ "${line}" =~ ^[[:space:]]*-[[:space:]]+(.+)$ ]]; then
+        standalone_images+=("${BASH_REMATCH[1]}")
+      fi
+    done < "${standalone_images_file}"
+
+    if [[ ${#standalone_images[@]} -gt 0 ]]; then
+      # Pull missing images
+      local missing_standalone=()
+      for image in "${standalone_images[@]}"; do
+        if ! docker image inspect "${image}" &> /dev/null; then
+          missing_standalone+=("${image}")
+        fi
+      done
+
+      if [[ ${#missing_standalone[@]} -gt 0 ]]; then
+        echodate "Caching ${#missing_standalone[@]} standalone images to docker..."
+        local pull_pids=()
+        for image in "${missing_standalone[@]}"; do
+          echodate "  Pulling ${image}..."
+          docker pull "${image}" &> /dev/null &
+          pull_pids+=($!)
+        done
+        for pid in "${pull_pids[@]}"; do
+          wait ${pid} || true
+        done
+      fi
+
+      echodate "Loading ${#standalone_images[@]} images into standalone cluster..."
+      load_pids=()
+      for image in "${standalone_images[@]}"; do
+        kind load docker-image --name "standalone" "${image}" &> /dev/null &
+        load_pids+=($!)
+      done
+      for pid in "${load_pids[@]}"; do
+        wait ${pid} || true
+      done
+    fi
+  fi
 
   echodate "Pre-pull complete"
 }

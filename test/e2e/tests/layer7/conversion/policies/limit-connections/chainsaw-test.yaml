@@ -26,7 +26,7 @@ metadata:
 spec:
   description: |
     Test limit-connections annotation conversion.
-    Connection limiting requires BackendTrafficPolicy - verifies warning is generated.
+    Verifies BackendTrafficPolicy is created with circuitBreaker.maxConnections.
   bindings:
     - name: name
       value: conv-limit-conn
@@ -90,16 +90,18 @@ spec:
             - name: expected_host
               value: ($transformed_host)
 
-    - name: verify-warning
-      description: Verify warning about BackendTrafficPolicy
+    - name: verify-backend-traffic-policy
+      description: Verify BackendTrafficPolicy created with circuitBreaker
       use:
-        template: ../../../../../step-templates/conversion/verify-warnings.yaml
+        template: ../../../../../step-templates/conversion/verify-policy.yaml
         with:
           bindings:
             - name: ingress_name
               value: ($name)
-            - name: warning_pattern
-              value: "limit-connections"
+            - name: policy_type
+              value: backendtraffic
+            - name: expected_field
+              value: ".spec.circuitBreaker"
 
     - name: verify-traffic
       description: Verify basic traffic works

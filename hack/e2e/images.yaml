@@ -17,6 +17,7 @@
 images:
   - quay.io/brancz/kube-rbac-proxy:v0.20.1
   - docker.io/envoyproxy/gateway:v1.3.0
+  - docker.io/envoyproxy/gateway:v1.6.2
   - envoyproxy/envoy:distroless-v1.36.4
   - quay.io/metallb/speaker:v0.15.3
   - quay.io/frrouting/frr:10.4.1

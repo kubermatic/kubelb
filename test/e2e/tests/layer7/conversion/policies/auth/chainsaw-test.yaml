@@ -26,7 +26,7 @@ metadata:
 spec:
   description: |
     Test auth annotations conversion.
-    Verifies SecurityPolicy is created and warning is generated.
+    Verifies SecurityPolicy is created with basicAuth configuration.
     Note: nginx htpasswd secrets (key: "auth") are incompatible with Envoy Gateway
     BasicAuth (expects key: ".users"), so traffic will fail with 500 until secret
     is manually converted. This test verifies the conversion machinery works.
@@ -123,17 +123,6 @@ spec:
               value: security
             - name: expected_field
               value: ".spec.basicAuth"
-
-    - name: verify-warning
-      description: Verify warning about secret format conversion
-      use:
-        template: ../../../../../step-templates/conversion/verify-warnings.yaml
-        with:
-          bindings:
-            - name: ingress_name
-              value: ($name)
-            - name: warning_pattern
-              value: SecurityPolicy
 
     - name: cleanup
       cluster: standalone

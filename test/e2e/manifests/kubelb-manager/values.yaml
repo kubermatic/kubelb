@@ -46,6 +46,14 @@ kubelb-addons:
 
   metallb:
     enabled: true
+    speaker:
+      frr:
+        enabled: false  # L2 mode only, FRR not needed
+    controller:
+      resources:
+        requests:
+          cpu: 50m
+          memory: 64Mi
 
   gatewayClass:
     create: false
@@ -58,6 +66,21 @@ kubelb-addons:
 
   envoy-gateway:
     enabled: true
+    deployment:
+      envoyGateway:
+        resources:
+          requests:
+            cpu: 100m
+            memory: 128Mi
+    config:
+      envoyGateway:
+        provider:
+          type: Kubernetes
+          kubernetes:
+            leaderElection:
+              leaseDuration: 30s
+              renewDeadline: 20s
+              retryPeriod: 4s
 
   cert-manager:
     enabled: true
