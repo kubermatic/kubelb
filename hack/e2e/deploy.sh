@@ -694,7 +694,7 @@ wait_for_deployment_exist_and_ready() {
   local timeout="${3:-300}"
 
   local deadline=$(($(date +%s) + timeout))
-  while ! kubectl -n "${namespace}" get deployment "${deployment}" &>/dev/null; do
+  while ! kubectl -n "${namespace}" get deployment "${deployment}" &> /dev/null; do
     if [[ $(date +%s) -ge $deadline ]]; then
       echodate "Timeout waiting for ${deployment} to exist"
       return 1
