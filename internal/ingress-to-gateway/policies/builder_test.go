@@ -277,11 +277,8 @@ func TestBackendTrafficPolicyBuilder_RateLimitRPS(t *testing.T) {
 	if policy.Spec.RateLimit == nil {
 		t.Fatal("RateLimit spec is nil")
 	}
-	if policy.Spec.RateLimit.Type != egv1alpha1.LocalRateLimitType {
-		t.Errorf("Expected Local rate limit type, got %v", policy.Spec.RateLimit.Type)
-	}
 	if policy.Spec.RateLimit.Local == nil || len(policy.Spec.RateLimit.Local.Rules) != 1 {
-		t.Fatal("Expected 1 rate limit rule")
+		t.Fatal("Expected 1 local rate limit rule")
 	}
 
 	rule := policy.Spec.RateLimit.Local.Rules[0]

@@ -148,6 +148,19 @@ rules:
   - patch
   - delete
 {{- end }}
+{{- if .Values.kubelb.ingressConversion.copyTLSSecrets }}
+# TLS secret sync for cross-namespace certificate references
+- apiGroups:
+  - ""
+  resources:
+  - secrets
+  verbs:
+  - get
+  - list
+  - watch
+  - create
+  - update
+{{- end }}
 {{- end }}
 {{- if not .Values.kubelb.disableIngressController }}
 - apiGroups:

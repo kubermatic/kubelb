@@ -77,7 +77,7 @@ func handleAuthType(_, value string, annotations map[string]string) ([]gwapiv1.H
 	}
 
 	switch value {
-	case "basic":
+	case AuthTypeBasic:
 		secret := annotations[AuthSecret]
 		realm := annotations[AuthRealm]
 

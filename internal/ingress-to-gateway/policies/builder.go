@@ -20,13 +20,11 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
-	"time"
 
 	egv1alpha1 "github.com/envoyproxy/gateway/api/v1alpha1"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
-	gwapiv1a2 "sigs.k8s.io/gateway-api/apis/v1alpha2"
 )
 
 const (
@@ -56,14 +54,14 @@ func NewPolicyBuilder(ingressName, ingressNamespace, routeName string) *PolicyBu
 }
 
 // policyTargetRef creates a target reference to an HTTPRoute.
-func (b *PolicyBuilder) policyTargetRef() gwapiv1a2.LocalPolicyTargetReferenceWithSectionName {
-	return gwapiv1a2.LocalPolicyTargetReferenceWithSectionName(gwapiv1.LocalPolicyTargetReferenceWithSectionName{
+func (b *PolicyBuilder) policyTargetRef() gwapiv1.LocalPolicyTargetReferenceWithSectionName {
+	return gwapiv1.LocalPolicyTargetReferenceWithSectionName{
 		LocalPolicyTargetReference: gwapiv1.LocalPolicyTargetReference{
 			Group: gwapiv1.Group(gwapiv1.GroupName),
 			Kind:  gwapiv1.Kind("HTTPRoute"),
 			Name:  gwapiv1.ObjectName(b.RouteName),
 		},
-	})
+	}
 }
 
 // policyLabels creates standard labels for policies.
@@ -114,7 +112,7 @@ func (b *SecurityPolicyBuilder) SetCORS(
 		b.cors.ExposeHeaders = exposeHeaders
 	}
 	if maxAgeSeconds != nil {
-		d := metav1.Duration{Duration: time.Duration(*maxAgeSeconds) * time.Second}
+		d := gwapiv1.Duration(fmt.Sprintf("%ds", *maxAgeSeconds))
 		b.cors.MaxAge = &d
 	}
 	if allowCredentials != nil {
@@ -292,7 +290,6 @@ func (b *BackendTrafficPolicyBuilder) SetRateLimitRPS(rps int) *BackendTrafficPo
 	}
 
 	b.rateLimit = &egv1alpha1.RateLimitSpec{
-		Type: egv1alpha1.LocalRateLimitType,
 		Local: &egv1alpha1.LocalRateLimit{
 			Rules: []egv1alpha1.RateLimitRule{
 				{
@@ -314,7 +311,6 @@ func (b *BackendTrafficPolicyBuilder) SetRateLimitRPM(rpm int) *BackendTrafficPo
 	}
 
 	b.rateLimit = &egv1alpha1.RateLimitSpec{
-		Type: egv1alpha1.LocalRateLimitType,
 		Local: &egv1alpha1.LocalRateLimit{
 			Rules: []egv1alpha1.RateLimitRule{
 				{

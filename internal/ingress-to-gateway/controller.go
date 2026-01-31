@@ -34,7 +34,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/client-go/tools/record"
+	"k8s.io/client-go/tools/events"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	ctrlclient "sigs.k8s.io/controller-runtime/pkg/client"
@@ -51,7 +51,7 @@ type Reconciler struct {
 
 	Log      logr.Logger
 	Scheme   *runtime.Scheme
-	Recorder record.EventRecorder
+	Recorder events.EventRecorder
 
 	GatewayName                 string
 	GatewayNamespace            string
@@ -62,6 +62,7 @@ type Reconciler struct {
 	PropagateExternalDNS        bool
 	GatewayAnnotations          map[string]string
 	DisableEnvoyGatewayFeatures bool
+	CopyTLSSecrets              bool
 }
 
 // +kubebuilder:rbac:groups=networking.k8s.io,resources=ingresses,verbs=get;list;watch;update;patch
@@ -71,6 +72,7 @@ type Reconciler struct {
 // +kubebuilder:rbac:groups=gateway.envoyproxy.io,resources=securitypolicies,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=gateway.envoyproxy.io,resources=backendtrafficpolicies,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=gateway.envoyproxy.io,resources=clienttrafficpolicies,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups="",resources=secrets,verbs=get;list;watch;create;update
 
 func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	log := r.Log.WithValues("name", req.NamespacedName)
@@ -108,7 +110,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 	}
 
 	if requeue {
-		return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
+		return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
 	}
 
 	return ctrl.Result{}, nil
@@ -117,20 +119,27 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 func (r *Reconciler) reconcile(ctx context.Context, log logr.Logger, ingress *networkingv1.Ingress) (requeue bool, err error) {
 	services := r.fetchServicesForIngress(ctx, log, ingress)
 	result := ConvertIngressWithServices(ConversionInput{
-		Ingress:          ingress,
-		GatewayName:      r.GatewayName,
-		GatewayNamespace: r.GatewayNamespace,
-		Services:         services,
-		DomainReplace:    r.DomainReplace,
-		DomainSuffix:     r.DomainSuffix,
+		Ingress:            ingress,
+		GatewayName:        r.GatewayName,
+		GatewayNamespace:   r.GatewayNamespace,
+		Services:           services,
+		DomainReplace:      r.DomainReplace,
+		DomainSuffix:       r.DomainSuffix,
+		SkipPolicyWarnings: !r.DisableEnvoyGatewayFeatures, // skip warnings when policies ARE auto-created
 	})
 
 	if len(result.HTTPRoutes) == 0 && len(result.GRPCRoutes) == 0 {
 		return false, fmt.Errorf("conversion produced no routes")
 	}
 
+	// Sync TLS secrets to Gateway namespace before reconciling Gateway
+	tlsListeners, err := r.syncTLSSecrets(ctx, log, result.TLSListeners)
+	if err != nil {
+		return false, fmt.Errorf("failed to sync TLS secrets: %w", err)
+	}
+
 	// Reconcile Gateway first (create/update with listeners and annotations)
-	if err := r.reconcileGateway(ctx, log, ingress, result.TLSListeners); err != nil {
+	if err := r.reconcileGateway(ctx, log, ingress, tlsListeners); err != nil {
 		return false, fmt.Errorf("failed to reconcile Gateway: %w", err)
 	}
 
@@ -224,7 +233,7 @@ func (r *Reconciler) reconcile(ctx context.Context, log logr.Logger, ingress *ne
 				log.V(1).Info("HTTPRoute acceptance timed out", "name", httpRoute.Name)
 			} else {
 				allWarnings = append(allWarnings, fmt.Sprintf("HTTPRoute %s not accepted: %s", httpRoute.Name, acceptance.reason))
-				r.Recorder.Eventf(ingress, corev1.EventTypeWarning, "RouteNotAccepted",
+				r.Recorder.Eventf(ingress, nil, corev1.EventTypeWarning, "RouteNotAccepted", "Reconciling",
 					"HTTPRoute %s not accepted by Gateway: %s", httpRoute.Name, acceptance.reason)
 			}
 		}
@@ -239,14 +248,15 @@ func (r *Reconciler) reconcile(ctx context.Context, log logr.Logger, ingress *ne
 				log.V(1).Info("GRPCRoute acceptance timed out", "name", grpcRoute.Name)
 			} else {
 				allWarnings = append(allWarnings, fmt.Sprintf("GRPCRoute %s not accepted: %s", grpcRoute.Name, acceptance.reason))
-				r.Recorder.Eventf(ingress, corev1.EventTypeWarning, "RouteNotAccepted",
+				r.Recorder.Eventf(ingress, nil, corev1.EventTypeWarning, "RouteNotAccepted", "Reconciling",
 					"GRPCRoute %s not accepted by Gateway: %s", grpcRoute.Name, acceptance.reason)
 			}
 		}
 	}
 
 	// Update Ingress annotations with conversion status
-	if err := r.updateIngressStatusStaged(ctx, ingress, allWarnings, httpRouteNames, grpcRouteNames, routeAcceptance, hasTimeout); err != nil {
+	needsRequeue, err := r.updateIngressStatusStaged(ctx, ingress, allWarnings, httpRouteNames, grpcRouteNames, routeAcceptance, hasTimeout)
+	if err != nil {
 		return false, fmt.Errorf("failed to update Ingress status: %w", err)
 	}
 
@@ -256,24 +266,22 @@ func (r *Reconciler) reconcile(ctx context.Context, log logr.Logger, ingress *ne
 	log.Info("Successfully converted Ingress",
 		"httproutes", len(result.HTTPRoutes),
 		"grpcroutes", len(result.GRPCRoutes),
-		"warnings", len(allWarnings))
+		"warnings", len(allWarnings),
+		"requeue", needsRequeue)
 
-	// Requeue if routes timed out waiting for acceptance
-	return hasTimeout, nil
+	return needsRequeue, nil
 }
 
-func (r *Reconciler) updateIngressStatusStaged(ctx context.Context, ingress *networkingv1.Ingress, warnings, httpRouteNames, grpcRouteNames []string, routeAcceptance map[string]bool, hasTimeout bool) error {
-	// Re-fetch to avoid conflicts
-	current := &networkingv1.Ingress{}
-	if err := r.Get(ctx, types.NamespacedName{Name: ingress.Name, Namespace: ingress.Namespace}, current); err != nil {
-		return err
-	}
+// statusDecision holds the computed status and whether to requeue for verification
+type statusDecision struct {
+	status          string
+	requeue         bool
+	clearVerifyTime bool
+}
 
-	if current.Annotations == nil {
-		current.Annotations = make(map[string]string)
-	}
-
-	// Determine status based on acceptance results
+// determineConversionStatus computes the status based on acceptance, warnings, and verification state.
+// Two-phase verification: routes must be accepted on two separate reconciles before marking "converted".
+func (r *Reconciler) determineConversionStatus(current *networkingv1.Ingress, routeAcceptance map[string]bool, warnings []string, hasTimeout bool) statusDecision {
 	allAccepted := true
 	for _, accepted := range routeAcceptance {
 		if !accepted {
@@ -282,14 +290,63 @@ func (r *Reconciler) updateIngressStatusStaged(ctx context.Context, ingress *net
 		}
 	}
 
-	var status string
-	switch {
-	case hasTimeout:
-		status = ConversionStatusPending
-	case allAccepted && len(warnings) == 0:
-		status = ConversionStatusConverted
-	default:
-		status = ConversionStatusPartial
+	// If routes timed out or aren't accepted, stay pending or partial
+	if hasTimeout {
+		return statusDecision{status: ConversionStatusPending, requeue: true, clearVerifyTime: true}
+	}
+
+	if !allAccepted {
+		return statusDecision{status: ConversionStatusPartial, requeue: false, clearVerifyTime: true}
+	}
+
+	// Routes are accepted - check if this is first or second verification pass
+	verifyTime := current.Annotations[AnnotationVerificationTimestamp]
+	if verifyTime == "" {
+		// First pass: routes look accepted, but need verification pass
+		// Mark pending and requeue
+		return statusDecision{status: ConversionStatusPending, requeue: true, clearVerifyTime: false}
+	}
+
+	// Second pass: parse verification timestamp
+	ts, err := time.Parse(time.RFC3339, verifyTime)
+	if err != nil {
+		// Invalid timestamp, treat as first pass
+		return statusDecision{status: ConversionStatusPending, requeue: true, clearVerifyTime: false}
+	}
+
+	// Require 5s between first verification and final status
+	verifyDelay := 5 * time.Second
+	if time.Since(ts) < verifyDelay {
+		// Not enough time elapsed, requeue
+		return statusDecision{status: ConversionStatusPending, requeue: true, clearVerifyTime: false}
+	}
+
+	// Verified! Routes still accepted after delay
+	if len(warnings) > 0 {
+		return statusDecision{status: ConversionStatusPartial, requeue: false, clearVerifyTime: true}
+	}
+	return statusDecision{status: ConversionStatusConverted, requeue: false, clearVerifyTime: true}
+}
+
+func (r *Reconciler) updateIngressStatusStaged(ctx context.Context, ingress *networkingv1.Ingress, warnings, httpRouteNames, grpcRouteNames []string, routeAcceptance map[string]bool, hasTimeout bool) (bool, error) {
+	// Re-fetch to avoid conflicts
+	current := &networkingv1.Ingress{}
+	if err := r.Get(ctx, types.NamespacedName{Name: ingress.Name, Namespace: ingress.Namespace}, current); err != nil {
+		return false, err
+	}
+
+	if current.Annotations == nil {
+		current.Annotations = make(map[string]string)
+	}
+
+	decision := r.determineConversionStatus(current, routeAcceptance, warnings, hasTimeout)
+
+	// Set or clear verification timestamp
+	if decision.clearVerifyTime {
+		delete(current.Annotations, AnnotationVerificationTimestamp)
+	} else if current.Annotations[AnnotationVerificationTimestamp] == "" {
+		// First verification pass - set timestamp
+		current.Annotations[AnnotationVerificationTimestamp] = time.Now().Format(time.RFC3339)
 	}
 
 	if len(warnings) > 0 {
@@ -298,7 +355,7 @@ func (r *Reconciler) updateIngressStatusStaged(ctx context.Context, ingress *net
 		delete(current.Annotations, AnnotationConversionWarnings)
 	}
 
-	current.Annotations[AnnotationConversionStatus] = status
+	current.Annotations[AnnotationConversionStatus] = decision.status
 
 	if len(httpRouteNames) > 0 {
 		current.Annotations[AnnotationConvertedHTTPRoute] = strings.Join(httpRouteNames, ",")
@@ -312,7 +369,7 @@ func (r *Reconciler) updateIngressStatusStaged(ctx context.Context, ingress *net
 		delete(current.Annotations, AnnotationConvertedGRPCRoute)
 	}
 
-	return r.Update(ctx, current)
+	return decision.requeue, r.Update(ctx, current)
 }
 
 // reconcilePolicies creates or updates Envoy Gateway policies for the Ingress.
@@ -444,11 +501,11 @@ func (r *Reconciler) emitWarningEvents(ingress *networkingv1.Ingress, warnings [
 	// Emit a single event summarizing warnings
 	if len(warnings) <= 3 {
 		for _, warning := range warnings {
-			r.Recorder.Eventf(ingress, corev1.EventTypeWarning, "ConversionWarning", "%s", warning)
+			r.Recorder.Eventf(ingress, nil, corev1.EventTypeWarning, "ConversionWarning", "Reconciling", "%s", warning)
 		}
 	} else {
 		// Too many warnings, summarize
-		r.Recorder.Eventf(ingress, corev1.EventTypeWarning, "ConversionWarning",
+		r.Recorder.Eventf(ingress, nil, corev1.EventTypeWarning, "ConversionWarning", "Reconciling",
 			"Conversion completed with %d warnings. First: %s", len(warnings), warnings[0])
 	}
 }
@@ -573,68 +630,110 @@ func (r *Reconciler) fetchService(ctx context.Context, log logr.Logger, key type
 	services[key] = svc
 }
 
-// isAlreadyConverted checks if an Ingress has been successfully converted
-func isAlreadyConverted(obj *networkingv1.Ingress) bool {
-	ann := obj.GetAnnotations()
-	if ann == nil {
+// syncTLSSecrets copies TLS secrets from source namespaces to the Gateway namespace.
+// Returns the updated TLSListeners with synced secret names.
+func (r *Reconciler) syncTLSSecrets(ctx context.Context, log logr.Logger, tlsListeners []TLSListener) ([]TLSListener, error) {
+	if !r.CopyTLSSecrets {
+		return tlsListeners, nil
+	}
+
+	result := make([]TLSListener, len(tlsListeners))
+	copy(result, tlsListeners)
+
+	seen := make(map[string]bool)
+	for i, tls := range result {
+		if tls.SourceSecretName == "" {
+			continue
+		}
+
+		// Skip if source namespace is same as gateway namespace (no copy needed)
+		if tls.SourceSecretNamespace == r.GatewayNamespace {
+			continue
+		}
+
+		// Generate synced secret name: ingress-<namespace>-<secretname>
+		syncedName := fmt.Sprintf("ingress-%s-%s", tls.SourceSecretNamespace, tls.SourceSecretName)
+
+		// Dedupe - only sync once per source secret
+		sourceKey := fmt.Sprintf("%s/%s", tls.SourceSecretNamespace, tls.SourceSecretName)
+		if seen[sourceKey] {
+			result[i].SecretName = syncedName
+			continue
+		}
+		seen[sourceKey] = true
+
+		// Fetch source secret
+		sourceSecret := &corev1.Secret{}
+		sourceKey = tls.SourceSecretNamespace + "/" + tls.SourceSecretName
+		if err := r.Get(ctx, types.NamespacedName{
+			Name:      tls.SourceSecretName,
+			Namespace: tls.SourceSecretNamespace,
+		}, sourceSecret); err != nil {
+			if kerrors.IsNotFound(err) {
+				log.V(1).Info("TLS secret not found in source namespace", "secret", sourceKey)
+				continue
+			}
+			return nil, fmt.Errorf("failed to get TLS secret %s: %w", sourceKey, err)
+		}
+
+		// Create or update secret in Gateway namespace
+		targetSecret := &corev1.Secret{}
+		targetKey := types.NamespacedName{Name: syncedName, Namespace: r.GatewayNamespace}
+		err := r.Get(ctx, targetKey, targetSecret)
+		if err != nil {
+			if kerrors.IsNotFound(err) {
+				// Create new secret
+				targetSecret = &corev1.Secret{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      syncedName,
+						Namespace: r.GatewayNamespace,
+						Labels: map[string]string{
+							LabelManagedBy: ControllerName,
+						},
+						Annotations: map[string]string{
+							"kubelb.k8c.io/source-secret": sourceKey,
+						},
+					},
+					Type: sourceSecret.Type,
+					Data: sourceSecret.Data,
+				}
+				log.Info("Creating synced TLS secret", "name", syncedName, "source", sourceKey)
+				if err := r.Create(ctx, targetSecret); err != nil {
+					return nil, fmt.Errorf("failed to create synced TLS secret %s: %w", syncedName, err)
+				}
+			} else {
+				return nil, fmt.Errorf("failed to get target TLS secret %s: %w", syncedName, err)
+			}
+		} else {
+			// Update existing secret if data changed
+			if !secretDataEqual(sourceSecret.Data, targetSecret.Data) {
+				targetSecret.Data = sourceSecret.Data
+				targetSecret.Type = sourceSecret.Type
+				log.Info("Updating synced TLS secret", "name", syncedName, "source", sourceKey)
+				if err := r.Update(ctx, targetSecret); err != nil {
+					return nil, fmt.Errorf("failed to update synced TLS secret %s: %w", syncedName, err)
+				}
+			}
+		}
+
+		// Update the listener to use the synced secret name
+		result[i].SecretName = syncedName
+	}
+
+	return result, nil
+}
+
+// secretDataEqual compares two secret data maps
+func secretDataEqual(a, b map[string][]byte) bool {
+	if len(a) != len(b) {
 		return false
 	}
-	status := ann[AnnotationConversionStatus]
-	return status == ConversionStatusConverted || status == ConversionStatusPartial
-}
-
-func (r *Reconciler) resourceFilter() predicate.Predicate {
-	return predicate.Funcs{
-		CreateFunc: func(e event.CreateEvent) bool {
-			obj, ok := e.Object.(*networkingv1.Ingress)
-			if !ok {
-				return false
-			}
-			if isAlreadyConverted(obj) {
-				return false
-			}
-			decision := r.shouldConvert(obj)
-			// Process if we should convert OR if we need to annotate
-			return decision.shouldConvert || decision.annotate
-		},
-		UpdateFunc: func(e event.UpdateEvent) bool {
-			obj, ok := e.ObjectNew.(*networkingv1.Ingress)
-			if !ok {
-				return false
-			}
-			if isAlreadyConverted(obj) {
-				return false
-			}
-			decision := r.shouldConvert(obj)
-			// Process if we should convert OR if we need to annotate
-			return decision.shouldConvert || decision.annotate
-		},
-		DeleteFunc: func(e event.DeleteEvent) bool {
-			// Always process deletes to clean up HTTPRoutes
-			_, ok := e.Object.(*networkingv1.Ingress)
-			return ok
-		},
-		GenericFunc: func(e event.GenericEvent) bool {
-			obj, ok := e.Object.(*networkingv1.Ingress)
-			if !ok {
-				return false
-			}
-			if isAlreadyConverted(obj) {
-				return false
-			}
-			decision := r.shouldConvert(obj)
-			// Process if we should convert OR if we need to annotate
-			return decision.shouldConvert || decision.annotate
-		},
+	for k, v := range a {
+		if bv, ok := b[k]; !ok || string(v) != string(bv) {
+			return false
+		}
 	}
-}
-
-func (r *Reconciler) SetupWithManager(mgr ctrl.Manager) error {
-	return ctrl.NewControllerManagedBy(mgr).
-		Named(ControllerName).
-		For(&networkingv1.Ingress{}, builder.WithPredicates(r.resourceFilter())).
-		WithOptions(controller.Options{MaxConcurrentReconciles: 10}).
-		Complete(r)
+	return true
 }
 
 // routeAcceptanceResult holds result of checking route acceptance
@@ -749,4 +848,68 @@ func (r *Reconciler) waitForGRPCRouteAcceptance(ctx context.Context, routeName, 
 		time.Sleep(interval)
 	}
 	return routeAcceptanceResult{accepted: false, reason: "Timeout"}
+}
+
+// isAlreadyConverted checks if an Ingress has been successfully converted
+func isAlreadyConverted(obj *networkingv1.Ingress) bool {
+	ann := obj.GetAnnotations()
+	if ann == nil {
+		return false
+	}
+	status := ann[AnnotationConversionStatus]
+	return status == ConversionStatusConverted || status == ConversionStatusPartial
+}
+
+func (r *Reconciler) resourceFilter() predicate.Predicate {
+	return predicate.Funcs{
+		CreateFunc: func(e event.CreateEvent) bool {
+			obj, ok := e.Object.(*networkingv1.Ingress)
+			if !ok {
+				return false
+			}
+			if isAlreadyConverted(obj) {
+				return false
+			}
+			decision := r.shouldConvert(obj)
+			// Process if we should convert OR if we need to annotate
+			return decision.shouldConvert || decision.annotate
+		},
+		UpdateFunc: func(e event.UpdateEvent) bool {
+			obj, ok := e.ObjectNew.(*networkingv1.Ingress)
+			if !ok {
+				return false
+			}
+			if isAlreadyConverted(obj) {
+				return false
+			}
+			decision := r.shouldConvert(obj)
+			// Process if we should convert OR if we need to annotate
+			return decision.shouldConvert || decision.annotate
+		},
+		DeleteFunc: func(e event.DeleteEvent) bool {
+			// Always process deletes to clean up HTTPRoutes
+			_, ok := e.Object.(*networkingv1.Ingress)
+			return ok
+		},
+		GenericFunc: func(e event.GenericEvent) bool {
+			obj, ok := e.Object.(*networkingv1.Ingress)
+			if !ok {
+				return false
+			}
+			if isAlreadyConverted(obj) {
+				return false
+			}
+			decision := r.shouldConvert(obj)
+			// Process if we should convert OR if we need to annotate
+			return decision.shouldConvert || decision.annotate
+		},
+	}
+}
+
+func (r *Reconciler) SetupWithManager(mgr ctrl.Manager) error {
+	return ctrl.NewControllerManagedBy(mgr).
+		Named(ControllerName).
+		For(&networkingv1.Ingress{}, builder.WithPredicates(r.resourceFilter())).
+		WithOptions(controller.Options{MaxConcurrentReconciles: 10}).
+		Complete(r)
 }

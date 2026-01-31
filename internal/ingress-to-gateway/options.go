@@ -17,6 +17,7 @@ limitations under the License.
 package ingressconversion
 
 import (
+	"errors"
 	"flag"
 	"strings"
 )
@@ -34,6 +35,7 @@ type Options struct {
 	PropagateExternalDNS        bool
 	GatewayAnnotations          map[string]string
 	DisableEnvoyGatewayFeatures bool
+	CopyTLSSecrets              bool
 }
 
 // gatewayAnnotationsFlag implements flag.Value for parsing comma-separated key=value pairs
@@ -73,7 +75,7 @@ func (o *Options) BindFlags(fs *flag.FlagSet) {
 	fs.BoolVar(&o.StandaloneMode, "ingress-conversion-only", false, "Run as standalone Ingress-to-Gateway converter. Disables all other controllers.")
 	fs.BoolVar(&o.Enabled, "enable-ingress-conversion", false, "Enable automatic Ingress to HTTPRoute conversion")
 	fs.StringVar(&o.GatewayName, "conversion-gateway-name", "kubelb", "Gateway name for converted HTTPRoutes")
-	fs.StringVar(&o.GatewayNamespace, "conversion-gateway-namespace", "", "Gateway namespace (empty = same namespace as HTTPRoute)")
+	fs.StringVar(&o.GatewayNamespace, "conversion-gateway-namespace", "kubelb", "Gateway namespace for the shared Gateway (required)")
 	fs.StringVar(&o.GatewayClassName, "conversion-gateway-class", "kubelb", "GatewayClass name for created Gateway")
 	fs.StringVar(&o.IngressClass, "conversion-ingress-class", "", "Only convert Ingresses with this class (empty = convert all)")
 	fs.StringVar(&o.DomainReplace, "conversion-domain-replace", "",
@@ -86,4 +88,13 @@ func (o *Options) BindFlags(fs *flag.FlagSet) {
 	fs.BoolVar(&o.PropagateExternalDNS, "conversion-propagate-external-dns-annotations", true, "Propagate external-dns annotations to Gateway (target) and HTTPRoute (others)")
 	fs.Var(&gatewayAnnotationsFlag{target: &o.GatewayAnnotations}, "conversion-gateway-annotations", "Annotations to add to created Gateway (comma-separated key=value pairs, e.g., 'cert-manager.io/cluster-issuer=letsencrypt,external-dns.alpha.kubernetes.io/target=lb.example.com')")
 	fs.BoolVar(&o.DisableEnvoyGatewayFeatures, "conversion-disable-envoy-gateway-features", false, "Disable Envoy Gateway policy creation (SecurityPolicy, BackendTrafficPolicy, ClientTrafficPolicy). When enabled, annotations that require policies will generate warnings instead.")
+	fs.BoolVar(&o.CopyTLSSecrets, "conversion-copy-tls-secrets", true, "Copy TLS secrets from Ingress namespace to Gateway namespace for cross-namespace certificate references")
+}
+
+// Validate checks the Options for consistency
+func (o *Options) Validate() error {
+	if (o.Enabled || o.StandaloneMode) && o.GatewayNamespace == "" {
+		return errors.New("--conversion-gateway-namespace is required")
+	}
+	return nil
 }

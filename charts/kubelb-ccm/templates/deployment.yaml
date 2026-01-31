@@ -110,6 +110,9 @@ spec:
             {{ if .Values.kubelb.ingressConversion.disableEnvoyGatewayFeatures -}}
             - --conversion-disable-envoy-gateway-features=true
             {{ end -}}
+            {{ if eq .Values.kubelb.ingressConversion.copyTLSSecrets false -}}
+            - --conversion-copy-tls-secrets=false
+            {{ end -}}
             {{ if not .Values.kubelb.ingressConversion.standaloneMode -}}
             - --cluster-name={{ required "A valid .Values.kubelb.tenantName to specify the tenant name is required!" .Values.kubelb.tenantName }}
             {{ end -}}

@@ -153,3 +153,65 @@ func TestConverter_ProcessedTracking(t *testing.T) {
 		t.Errorf("expected 2 processed annotations, got %d: %v", len(result.Processed), result.Processed)
 	}
 }
+
+func TestConverterWithOptions_SkipPolicyWarnings(t *testing.T) {
+	// Annotations that would normally generate policy warnings
+	policyAnnotations := map[string]string{
+		ProxyConnectTimeout:  "30",
+		ProxyReadTimeout:     "60",
+		ProxySendTimeout:     "60",
+		EnableCORS:           "true",
+		CORSAllowOrigin:      "*",
+		LimitRPS:             "100",
+		LimitConnections:     "50",
+		WhitelistSourceRange: "10.0.0.0/8",
+		DenylistSourceRange:  "192.168.0.0/16",
+		AuthType:             "basic",
+		AuthSecret:           "my-secret",
+	}
+
+	t.Run("default converter generates warnings", func(t *testing.T) {
+		c := NewConverter()
+		result := c.Convert(policyAnnotations)
+
+		if len(result.Warnings) == 0 {
+			t.Error("expected warnings from default converter, got none")
+		}
+	})
+
+	t.Run("skip policy warnings suppresses warnings", func(t *testing.T) {
+		c := NewConverterWithOptions(true)
+		result := c.Convert(policyAnnotations)
+
+		// Should have no warnings for auto-converted policy annotations
+		for _, warning := range result.Warnings {
+			t.Errorf("unexpected warning: %s", warning)
+		}
+	})
+
+	t.Run("non-policy warnings still generated", func(t *testing.T) {
+		c := NewConverterWithOptions(true)
+		result := c.Convert(map[string]string{
+			ServerSnippet: "some snippet", // not supported
+			AuthType:      "digest",       // unsupported auth type
+		})
+
+		// Should still have warnings for unsupported annotations
+		if len(result.Warnings) < 2 {
+			t.Errorf("expected at least 2 warnings for unsupported annotations, got %d: %v",
+				len(result.Warnings), result.Warnings)
+		}
+	})
+
+	t.Run("auth-url still warns even with skip policy warnings", func(t *testing.T) {
+		c := NewConverterWithOptions(true)
+		result := c.Convert(map[string]string{
+			AuthURL: "https://auth.example.com/verify",
+		})
+
+		// auth-url requires manual configuration, should still warn
+		if len(result.Warnings) == 0 {
+			t.Error("expected warning for auth-url, got none")
+		}
+	})
+}

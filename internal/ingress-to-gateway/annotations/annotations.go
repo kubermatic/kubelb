@@ -120,6 +120,11 @@ const (
 	LimitRPM = "nginx.ingress.kubernetes.io/limit-rpm"
 )
 
+// Auth type values
+const (
+	AuthTypeBasic = "basic"
+)
+
 // Regex annotation - now handled with RegularExpression path type
 const (
 	UseRegex = "nginx.ingress.kubernetes.io/use-regex"

@@ -59,8 +59,8 @@ kubelb:
     standaloneMode: false
     # -- gatewayName is the name of the Gateway for converted HTTPRoutes
     gatewayName: kubelb
-    # -- gatewayNamespace is the namespace for the Gateway (empty = same as HTTPRoute)
-    gatewayNamespace: ""
+    # -- gatewayNamespace is the namespace for the shared Gateway (required)
+    gatewayNamespace: kubelb
     # -- gatewayClass is the GatewayClass name for created Gateway
     gatewayClass: kubelb
     # -- ingressClass filters Ingresses to convert (empty = convert all)
@@ -76,6 +76,8 @@ kubelb:
     propagateExternalDnsAnnotations: true
     # -- disableEnvoyGatewayFeatures disables creation of Envoy Gateway policies (SecurityPolicy, BackendTrafficPolicy)
     disableEnvoyGatewayFeatures: false
+    # -- copyTLSSecrets copies TLS secrets from Ingress namespace to Gateway namespace for cross-namespace certificate references
+    copyTLSSecrets: true
 
 resources:
   limits:

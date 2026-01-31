@@ -107,7 +107,7 @@ increase_inotify_limits() {
       colima ssh -- sudo sysctl -w fs.inotify.max_user_instances=${max_instances} > /dev/null 2>&1 || true
     else
       # Docker Desktop: use privileged container
-      docker run --privileged --rm alpine:latest sh -c \
+      docker run --privileged --rm alpine:3.23.3 sh -c \
         "sysctl -w fs.inotify.max_user_watches=${max_watches} && sysctl -w fs.inotify.max_user_instances=${max_instances}" \
         > /dev/null 2>&1 || true
     fi

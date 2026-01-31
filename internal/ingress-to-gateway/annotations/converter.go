@@ -39,6 +39,8 @@ type AnnotationConversionResult struct {
 type Converter struct {
 	// handlers maps annotation keys to their conversion functions
 	handlers map[string]AnnotationHandler
+	// skipPolicyWarnings skips warnings for annotations that are auto-converted to Envoy Gateway policies
+	skipPolicyWarnings bool
 }
 
 // AnnotationHandler processes a single annotation and returns filters/warnings
@@ -46,8 +48,16 @@ type AnnotationHandler func(key, value string, annotations map[string]string) ([
 
 // NewConverter creates a new annotation converter with all registered handlers
 func NewConverter() *Converter {
+	return NewConverterWithOptions(false)
+}
+
+// NewConverterWithOptions creates a new annotation converter with options.
+// If skipPolicyWarnings is true, warnings for annotations that are auto-converted
+// to Envoy Gateway policies (timeouts, CORS, rate limits, IP access) are suppressed.
+func NewConverterWithOptions(skipPolicyWarnings bool) *Converter {
 	c := &Converter{
-		handlers: make(map[string]AnnotationHandler),
+		handlers:           make(map[string]AnnotationHandler),
+		skipPolicyWarnings: skipPolicyWarnings,
 	}
 	c.registerHandlers()
 	return c
@@ -80,28 +90,55 @@ func (c *Converter) registerHandlers() {
 	c.handlers[HSTSIncludeSubdomains] = handleHSTSAnnotation
 	c.handlers[HSTSPreload] = handleHSTSAnnotation
 
-	// Timeouts
-	c.handlers[ProxyConnectTimeout] = handleProxyConnectTimeout
-	c.handlers[ProxyReadTimeout] = handleProxyReadTimeout
-	c.handlers[ProxySendTimeout] = handleProxySendTimeout
+	// Timeouts - generate warnings only if policies won't be auto-created
+	if c.skipPolicyWarnings {
+		c.handlers[ProxyConnectTimeout] = handlePolicyAnnotationSilent
+		c.handlers[ProxyReadTimeout] = handlePolicyAnnotationSilent
+		c.handlers[ProxySendTimeout] = handlePolicyAnnotationSilent
+	} else {
+		c.handlers[ProxyConnectTimeout] = handleProxyConnectTimeout
+		c.handlers[ProxyReadTimeout] = handleProxyReadTimeout
+		c.handlers[ProxySendTimeout] = handleProxySendTimeout
+	}
 
-	// CORS
-	c.handlers[EnableCORS] = handleEnableCORS
-	c.handlers[CORSAllowOrigin] = handleCORSAnnotation
-	c.handlers[CORSAllowMethods] = handleCORSAnnotation
-	c.handlers[CORSAllowHeaders] = handleCORSAnnotation
-	c.handlers[CORSExposeHeaders] = handleCORSAnnotation
-	c.handlers[CORSAllowCredentials] = handleCORSAnnotation
-	c.handlers[CORSMaxAge] = handleCORSAnnotation
+	// CORS - generate warnings only if policies won't be auto-created
+	if c.skipPolicyWarnings {
+		c.handlers[EnableCORS] = handlePolicyAnnotationSilent
+		c.handlers[CORSAllowOrigin] = handlePolicyAnnotationSilent
+		c.handlers[CORSAllowMethods] = handlePolicyAnnotationSilent
+		c.handlers[CORSAllowHeaders] = handlePolicyAnnotationSilent
+		c.handlers[CORSExposeHeaders] = handlePolicyAnnotationSilent
+		c.handlers[CORSAllowCredentials] = handlePolicyAnnotationSilent
+		c.handlers[CORSMaxAge] = handlePolicyAnnotationSilent
+	} else {
+		c.handlers[EnableCORS] = handleEnableCORS
+		c.handlers[CORSAllowOrigin] = handleCORSAnnotation
+		c.handlers[CORSAllowMethods] = handleCORSAnnotation
+		c.handlers[CORSAllowHeaders] = handleCORSAnnotation
+		c.handlers[CORSExposeHeaders] = handleCORSAnnotation
+		c.handlers[CORSAllowCredentials] = handleCORSAnnotation
+		c.handlers[CORSMaxAge] = handleCORSAnnotation
+	}
 
-	// Rate limiting
-	c.handlers[LimitRPS] = handleLimitRPS
-	c.handlers[LimitRPM] = handleLimitRPM
-	c.handlers[LimitConnections] = handleLimitConnections
+	// Rate limiting - generate warnings only if policies won't be auto-created
+	if c.skipPolicyWarnings {
+		c.handlers[LimitRPS] = handlePolicyAnnotationSilent
+		c.handlers[LimitRPM] = handlePolicyAnnotationSilent
+		c.handlers[LimitConnections] = handlePolicyAnnotationSilent
+	} else {
+		c.handlers[LimitRPS] = handleLimitRPS
+		c.handlers[LimitRPM] = handleLimitRPM
+		c.handlers[LimitConnections] = handleLimitConnections
+	}
 
-	// IP access control
-	c.handlers[WhitelistSourceRange] = handleWhitelistSourceRange
-	c.handlers[DenylistSourceRange] = handleDenylistSourceRange
+	// IP access control - generate warnings only if policies won't be auto-created
+	if c.skipPolicyWarnings {
+		c.handlers[WhitelistSourceRange] = handlePolicyAnnotationSilent
+		c.handlers[DenylistSourceRange] = handlePolicyAnnotationSilent
+	} else {
+		c.handlers[WhitelistSourceRange] = handleWhitelistSourceRange
+		c.handlers[DenylistSourceRange] = handleDenylistSourceRange
+	}
 
 	// Request size
 	c.handlers[ProxyBodySize] = handleProxyBodySize
@@ -114,10 +151,18 @@ func (c *Converter) registerHandlers() {
 	c.handlers[SessionCookieSameSite] = handleSessionCookieAnnotation
 
 	// Authentication
-	c.handlers[AuthType] = handleAuthType
-	c.handlers[AuthURL] = handleAuthURL
-	c.handlers[AuthSecret] = handleAuthAnnotation
-	c.handlers[AuthRealm] = handleAuthAnnotation
+	// auth-type=basic IS auto-converted to SecurityPolicy, so skip warning when policies are auto-created
+	// auth-url requires manual configuration, so always show warning
+	if c.skipPolicyWarnings {
+		c.handlers[AuthType] = handleAuthTypeSilent
+		c.handlers[AuthSecret] = handlePolicyAnnotationSilent
+		c.handlers[AuthRealm] = handlePolicyAnnotationSilent
+	} else {
+		c.handlers[AuthType] = handleAuthType
+		c.handlers[AuthSecret] = handleAuthAnnotation
+		c.handlers[AuthRealm] = handleAuthAnnotation
+	}
+	c.handlers[AuthURL] = handleAuthURL // always warn - requires manual configuration
 
 	// Backend protocol
 	c.handlers[BackendProtocol] = handleBackendProtocol
@@ -207,4 +252,28 @@ func deduplicateFilters(filters []gwapiv1.HTTPRouteFilter) []gwapiv1.HTTPRouteFi
 
 func handleNotSupported(key, _ string, _ map[string]string) ([]gwapiv1.HTTPRouteFilter, []string) {
 	return nil, []string{fmt.Sprintf("annotation %q is not supported in Gateway API conversion", key)}
+}
+
+// handlePolicyAnnotationSilent silently acknowledges annotations that are auto-converted to Envoy Gateway policies.
+// No warnings are generated because the policy creation is handled separately.
+func handlePolicyAnnotationSilent(_, _ string, _ map[string]string) ([]gwapiv1.HTTPRouteFilter, []string) {
+	return nil, nil
+}
+
+// handleAuthTypeSilent handles auth-type annotation silently for basic auth (auto-converted),
+// but still generates warnings for unsupported auth types.
+func handleAuthTypeSilent(_, value string, _ map[string]string) ([]gwapiv1.HTTPRouteFilter, []string) {
+	if value == "" {
+		return nil, nil
+	}
+
+	switch value {
+	case AuthTypeBasic:
+		// Auto-converted to SecurityPolicy - no warning needed
+		return nil, nil
+	case "digest":
+		return nil, []string{"auth-type=digest is not supported in Gateway API; consider using basic auth or external auth"}
+	default:
+		return nil, []string{fmt.Sprintf("auth-type=%q is not supported", value)}
+	}
 }

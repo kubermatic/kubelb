@@ -26,7 +26,6 @@ metadata:
     resource: config
     feature: default-annotations
 spec:
-  skip: true
   concurrent: false
   description: |
     Test that Config.spec.defaultAnnotations are applied to created LoadBalancer services.

@@ -109,7 +109,7 @@ func buildSecurityPolicy(input PolicyConversionInput) *egv1alpha1.SecurityPolicy
 	}
 
 	// Basic auth
-	if input.Annotations[AuthType] == "basic" {
+	if input.Annotations[AuthType] == AuthTypeBasic {
 		builder.SetBasicAuth(input.Annotations[AuthSecret], input.IngressNamespace)
 	}
 

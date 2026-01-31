@@ -44,14 +44,20 @@ type ConversionInput struct {
 	DomainReplace string
 	// DomainSuffix is the replacement domain suffix (e.g., "new.io")
 	DomainSuffix string
+	// SkipPolicyWarnings suppresses warnings for annotations that are auto-converted to Envoy Gateway policies.
+	// Set to true when DisableEnvoyGatewayFeatures is false (policies ARE being auto-created).
+	SkipPolicyWarnings bool
 }
 
 // TLSListener represents a TLS listener configuration for the Gateway
 type TLSListener struct {
-	Hostname   gwapiv1.Hostname
+	Hostname gwapiv1.Hostname
+	// SecretName is the name to use in Gateway CertificateRefs (synced name if copied)
 	SecretName string
-	// SecretNamespace is the namespace of the secret (same as Ingress namespace)
-	SecretNamespace string
+	// SourceSecretNamespace is the namespace where the original secret exists (Ingress namespace)
+	SourceSecretNamespace string
+	// SourceSecretName is the original secret name from the Ingress TLS config
+	SourceSecretName string
 }
 
 // ConversionResult holds the converted HTTPRoutes, Gateway configs, and any warnings
@@ -104,7 +110,7 @@ func ConvertIngressWithServices(input ConversionInput) ConversionResult {
 	// Convert annotations to filters (only for HTTPRoute, not gRPC)
 	var annotationResult annotations.AnnotationConversionResult
 	if !isGRPC {
-		annotationConverter := annotations.NewConverter()
+		annotationConverter := annotations.NewConverterWithOptions(input.SkipPolicyWarnings)
 		annotationResult = annotationConverter.Convert(ingress.Annotations)
 		result.Warnings = append(result.Warnings, annotationResult.Warnings...)
 		result.ProcessedAnnotations = annotationResult.Processed
@@ -651,18 +657,20 @@ func convertTLSConfig(tlsConfigs []networkingv1.IngressTLS, namespace, domainRep
 
 		for _, host := range tls.Hosts {
 			listener := TLSListener{
-				Hostname:        gwapiv1.Hostname(transformHostname(host, domainReplace, domainSuffix)),
-				SecretName:      tls.SecretName,
-				SecretNamespace: namespace,
+				Hostname:              gwapiv1.Hostname(transformHostname(host, domainReplace, domainSuffix)),
+				SecretName:            tls.SecretName,
+				SourceSecretNamespace: namespace,
+				SourceSecretName:      tls.SecretName,
 			}
 			listeners = append(listeners, listener)
 		}
 
 		if len(tls.Hosts) == 0 && tls.SecretName != "" {
 			listener := TLSListener{
-				Hostname:        "*",
-				SecretName:      tls.SecretName,
-				SecretNamespace: namespace,
+				Hostname:              "*",
+				SecretName:            tls.SecretName,
+				SourceSecretNamespace: namespace,
+				SourceSecretName:      tls.SecretName,
 			}
 			listeners = append(listeners, listener)
 		}

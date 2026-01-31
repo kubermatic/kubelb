@@ -434,6 +434,9 @@ func setupControllers(mgr, kubeLBMgr ctrl.Manager, setupLog logr.Logger, opt *op
 	}
 
 	if opt.conversionOpts.Enabled {
+		if err := opt.conversionOpts.Validate(); err != nil {
+			return err
+		}
 		if err := ingressconversion.SetupReconciler(mgr, opt.conversionOpts); err != nil {
 			setupLog.Error(err, "unable to create controller", "controller", ingressconversion.ControllerName)
 			return err

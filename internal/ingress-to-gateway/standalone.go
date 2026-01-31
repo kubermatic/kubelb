@@ -37,6 +37,12 @@ type StandaloneConfig struct {
 // RunStandalone starts the converter as a standalone controller without LB cluster
 func RunStandalone(ctx context.Context, cfg StandaloneConfig, opts Options) int {
 	setupLog := ctrl.Log.WithName("setup")
+
+	if err := opts.Validate(); err != nil {
+		setupLog.Error(err, "invalid configuration")
+		return 1
+	}
+
 	setupLog.Info("starting standalone Ingress-to-Gateway converter")
 
 	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
@@ -79,7 +85,7 @@ func SetupReconciler(mgr ctrl.Manager, opts Options) error {
 		Client:                      mgr.GetClient(),
 		Log:                         ctrl.Log.WithName("controllers").WithName(ControllerName),
 		Scheme:                      mgr.GetScheme(),
-		Recorder:                    mgr.GetEventRecorderFor(ControllerName),
+		Recorder:                    mgr.GetEventRecorder(ControllerName),
 		GatewayName:                 opts.GatewayName,
 		GatewayNamespace:            opts.GatewayNamespace,
 		GatewayClassName:            opts.GatewayClassName,
@@ -89,5 +95,6 @@ func SetupReconciler(mgr ctrl.Manager, opts Options) error {
 		PropagateExternalDNS:        opts.PropagateExternalDNS,
 		GatewayAnnotations:          opts.GatewayAnnotations,
 		DisableEnvoyGatewayFeatures: opts.DisableEnvoyGatewayFeatures,
+		CopyTLSSecrets:              opts.CopyTLSSecrets,
 	}).SetupWithManager(mgr)
 }

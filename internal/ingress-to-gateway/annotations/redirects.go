@@ -142,7 +142,7 @@ func createURLRedirectFilter(targetURL *url.URL, statusCode int) []gwapiv1.HTTPR
 
 		// Set port if specified
 		if portStr := targetURL.Port(); portStr != "" {
-			if port, err := strconv.Atoi(portStr); err == nil {
+			if port, err := strconv.Atoi(portStr); err == nil && port > 0 && port <= 65535 {
 				gwPort := gwapiv1.PortNumber(port)
 				filter.RequestRedirect.Port = &gwPort
 			}

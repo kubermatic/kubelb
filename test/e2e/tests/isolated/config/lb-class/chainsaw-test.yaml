@@ -26,7 +26,6 @@ metadata:
     resource: config
     feature: lb-class
 spec:
-  skip: true
   concurrent: false
   description: |
     Test that Config.spec.loadBalancer.class sets the loadBalancerClass

@@ -284,8 +284,8 @@ func TestConvertIngress_TLSListeners(t *testing.T) {
 	if listener.SecretName != "tls-secret" {
 		t.Errorf("unexpected secret name: %s", listener.SecretName)
 	}
-	if listener.SecretNamespace != "default" {
-		t.Errorf("unexpected secret namespace: %s", listener.SecretNamespace)
+	if listener.SourceSecretNamespace != "default" {
+		t.Errorf("unexpected secret namespace: %s", listener.SourceSecretNamespace)
 	}
 }
 

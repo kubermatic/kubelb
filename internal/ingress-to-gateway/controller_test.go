@@ -18,6 +18,7 @@ package ingressconversion
 
 import (
 	"testing"
+	"time"
 
 	networkingv1 "k8s.io/api/networking/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -287,6 +288,133 @@ func TestShouldConvert(t *testing.T) {
 			got := r.shouldConvert(tt.ingress)
 			if got.shouldConvert != tt.want {
 				t.Errorf("shouldConvert().shouldConvert = %v, want %v", got.shouldConvert, tt.want)
+			}
+		})
+	}
+}
+
+func TestDetermineConversionStatus(t *testing.T) {
+	r := &Reconciler{}
+
+	tests := []struct {
+		name            string
+		annotations     map[string]string
+		routeAcceptance map[string]bool
+		warnings        []string
+		hasTimeout      bool
+		wantStatus      string
+		wantRequeue     bool
+		wantClearVerify bool
+	}{
+		{
+			name:            "timeout always returns pending and requeues",
+			annotations:     map[string]string{},
+			routeAcceptance: map[string]bool{"route1": true},
+			warnings:        nil,
+			hasTimeout:      true,
+			wantStatus:      ConversionStatusPending,
+			wantRequeue:     true,
+			wantClearVerify: true,
+		},
+		{
+			name:            "route not accepted returns partial",
+			annotations:     map[string]string{},
+			routeAcceptance: map[string]bool{"route1": false},
+			warnings:        nil,
+			hasTimeout:      false,
+			wantStatus:      ConversionStatusPartial,
+			wantRequeue:     false,
+			wantClearVerify: true,
+		},
+		{
+			name:            "first verification - no timestamp, returns pending",
+			annotations:     map[string]string{},
+			routeAcceptance: map[string]bool{"route1": true},
+			warnings:        nil,
+			hasTimeout:      false,
+			wantStatus:      ConversionStatusPending,
+			wantRequeue:     true,
+			wantClearVerify: false,
+		},
+		{
+			name: "second verification - timestamp too recent, returns pending",
+			annotations: map[string]string{
+				AnnotationVerificationTimestamp: time.Now().Format(time.RFC3339),
+			},
+			routeAcceptance: map[string]bool{"route1": true},
+			warnings:        nil,
+			hasTimeout:      false,
+			wantStatus:      ConversionStatusPending,
+			wantRequeue:     true,
+			wantClearVerify: false,
+		},
+		{
+			name: "second verification - timestamp old enough, no warnings - converted",
+			annotations: map[string]string{
+				AnnotationVerificationTimestamp: time.Now().Add(-6 * time.Second).Format(time.RFC3339),
+			},
+			routeAcceptance: map[string]bool{"route1": true},
+			warnings:        nil,
+			hasTimeout:      false,
+			wantStatus:      ConversionStatusConverted,
+			wantRequeue:     false,
+			wantClearVerify: true,
+		},
+		{
+			name: "second verification - timestamp old enough, has warnings - partial",
+			annotations: map[string]string{
+				AnnotationVerificationTimestamp: time.Now().Add(-6 * time.Second).Format(time.RFC3339),
+			},
+			routeAcceptance: map[string]bool{"route1": true},
+			warnings:        []string{"some warning"},
+			hasTimeout:      false,
+			wantStatus:      ConversionStatusPartial,
+			wantRequeue:     false,
+			wantClearVerify: true,
+		},
+		{
+			name: "invalid timestamp - treat as first pass",
+			annotations: map[string]string{
+				AnnotationVerificationTimestamp: "invalid-timestamp",
+			},
+			routeAcceptance: map[string]bool{"route1": true},
+			warnings:        nil,
+			hasTimeout:      false,
+			wantStatus:      ConversionStatusPending,
+			wantRequeue:     true,
+			wantClearVerify: false,
+		},
+		{
+			name:            "multiple routes - one not accepted returns partial",
+			annotations:     map[string]string{},
+			routeAcceptance: map[string]bool{"route1": true, "route2": false},
+			warnings:        nil,
+			hasTimeout:      false,
+			wantStatus:      ConversionStatusPartial,
+			wantRequeue:     false,
+			wantClearVerify: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ingress := &networkingv1.Ingress{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:        "test",
+					Annotations: tt.annotations,
+				},
+			}
+
+			got := r.determineConversionStatus(ingress, tt.routeAcceptance, tt.warnings, tt.hasTimeout)
+
+			if got.status != tt.wantStatus {
+				t.Errorf("status = %q, want %q", got.status, tt.wantStatus)
+			}
+			if got.requeue != tt.wantRequeue {
+				t.Errorf("requeue = %v, want %v", got.requeue, tt.wantRequeue)
+			}
+			if got.clearVerifyTime != tt.wantClearVerify {
+				t.Errorf("clearVerifyTime = %v, want %v", got.clearVerifyTime, tt.wantClearVerify)
 			}
 		})
 	}

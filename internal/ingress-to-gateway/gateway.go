@@ -161,6 +161,11 @@ func buildListeners(tlsListeners []TLSListener) []gwapiv1.Listener {
 			Name:     "http",
 			Port:     80,
 			Protocol: gwapiv1.HTTPProtocolType,
+			AllowedRoutes: &gwapiv1.AllowedRoutes{
+				Namespaces: &gwapiv1.RouteNamespaces{
+					From: ptr.To(gwapiv1.NamespacesFromAll),
+				},
+			},
 		},
 	}
 
@@ -180,6 +185,11 @@ func buildListeners(tlsListeners []TLSListener) []gwapiv1.Listener {
 			Hostname: ptr.To(tls.Hostname),
 			Port:     443,
 			Protocol: gwapiv1.HTTPSProtocolType,
+			AllowedRoutes: &gwapiv1.AllowedRoutes{
+				Namespaces: &gwapiv1.RouteNamespaces{
+					From: ptr.To(gwapiv1.NamespacesFromAll),
+				},
+			},
 			TLS: &gwapiv1.ListenerTLSConfig{
 				Mode: ptr.To(gwapiv1.TLSModeTerminate),
 				CertificateRefs: []gwapiv1.SecretObjectReference{
@@ -280,6 +290,24 @@ func listenerConfigEqual(a, b gwapiv1.Listener) bool {
 	}
 	if a.Hostname != nil && *a.Hostname != *b.Hostname {
 		return false
+	}
+
+	// Compare AllowedRoutes
+	if (a.AllowedRoutes == nil) != (b.AllowedRoutes == nil) {
+		return false
+	}
+	if a.AllowedRoutes != nil {
+		if (a.AllowedRoutes.Namespaces == nil) != (b.AllowedRoutes.Namespaces == nil) {
+			return false
+		}
+		if a.AllowedRoutes.Namespaces != nil {
+			if (a.AllowedRoutes.Namespaces.From == nil) != (b.AllowedRoutes.Namespaces.From == nil) {
+				return false
+			}
+			if a.AllowedRoutes.Namespaces.From != nil && *a.AllowedRoutes.Namespaces.From != *b.AllowedRoutes.Namespaces.From {
+				return false
+			}
+		}
 	}
 
 	// Compare TLS config

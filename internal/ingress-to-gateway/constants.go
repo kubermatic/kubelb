@@ -35,9 +35,13 @@ const (
 	// Status values
 	ConversionStatusConverted = "converted"
 	ConversionStatusPartial   = "partial"
-	ConversionStatusPending   = "pending" // Routes created but not yet accepted
+	ConversionStatusPending   = "pending" // Routes created, awaiting verification
 	ConversionStatusFailed    = "failed"
 	ConversionStatusSkipped   = "skipped"
+
+	// Verification annotation - tracks when routes were first verified
+	// Used to require a second verification pass before marking as converted
+	AnnotationVerificationTimestamp = "kubelb.k8c.io/verification-timestamp"
 
 	// Skip reason annotation
 	AnnotationConversionSkipReason = "kubelb.k8c.io/conversion-skip-reason"
