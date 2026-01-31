@@ -12,10 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# Body Size Annotation Conversion Test
-# Verifies:
-# - proxy-body-size annotation generates warning (needs ClientTrafficPolicy)
-# - Basic traffic still works
 apiVersion: chainsaw.kyverno.io/v1alpha1
 kind: Test
 metadata:

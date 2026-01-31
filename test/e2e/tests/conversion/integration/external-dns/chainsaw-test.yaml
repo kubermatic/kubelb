@@ -12,11 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# External-DNS Integration Test
-# Verifies:
-# - external-dns.alpha.kubernetes.io/target propagated to Gateway
-# - external-dns.alpha.kubernetes.io/hostname propagated to HTTPRoute
-# - Traffic still works
 apiVersion: chainsaw.kyverno.io/v1alpha1
 kind: Test
 metadata:

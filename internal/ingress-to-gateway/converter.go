@@ -184,7 +184,6 @@ func convertToHTTPRoutes(input ConversionInput, parentRef gwapiv1.ParentReferenc
 			httpRouteRule, ruleWarnings := convertPathWithServices(path, ingress.Namespace, input.Services, useRegex)
 			warnings = append(warnings, ruleWarnings...)
 
-			// Add annotation filters to the rule
 			if len(filters) > 0 {
 				httpRouteRule.Filters = append(httpRouteRule.Filters, filters...)
 			}

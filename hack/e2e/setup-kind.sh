@@ -297,13 +297,7 @@ prepull_images() {
   fi
 
   echodate "Loading ${#images[@]} images into kubelb cluster..."
-
-  # Load all images into kubelb cluster only
-  echodate "  Loading images into kubelb cluster..."
-  for image in "${images[@]}"; do
-    kind load docker-image "${image}" --name "kubelb" &> /dev/null &
-  done
-  wait
+  kind load docker-image --name "kubelb" "${images[@]}" &> /dev/null
 
   echodate "Pre-pull complete"
 }

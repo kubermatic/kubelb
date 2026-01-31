@@ -12,11 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# CORS Annotations Conversion Test
-# Verifies:
-# - enable-cors, cors-allow-* annotations generate warning (needs SecurityPolicy)
-# - Basic traffic still works
-# - CORS preflight response if implemented
 apiVersion: chainsaw.kyverno.io/v1alpha1
 kind: Test
 metadata:

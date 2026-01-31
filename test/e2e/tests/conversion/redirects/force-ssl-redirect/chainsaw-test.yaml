@@ -12,10 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# Force SSL Redirect Conversion Test
-# Verifies:
-# - nginx.ingress.kubernetes.io/force-ssl-redirect annotation
-# - HTTP request receives redirect to HTTPS
 apiVersion: chainsaw.kyverno.io/v1alpha1
 kind: Test
 metadata:

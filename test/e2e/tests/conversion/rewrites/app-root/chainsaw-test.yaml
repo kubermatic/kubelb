@@ -12,10 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# App Root Conversion Test
-# Verifies:
-# - nginx.ingress.kubernetes.io/app-root annotation
-# - Root path (/) redirects to app-root path
 apiVersion: chainsaw.kyverno.io/v1alpha1
 kind: Test
 metadata:

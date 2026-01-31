@@ -45,9 +45,6 @@ METALLB_IP_RANGE="${METALLB_IP_RANGE:-}"
 
 mkdir -p "${LOGS_DIR}"
 
-#######################################
-# Verify prerequisites
-#######################################
 verify_kubeconfig() {
   if [[ ! -f "${KUBECONFIGS_DIR}/conversion.kubeconfig" ]]; then
     echo "Error: ${KUBECONFIGS_DIR}/conversion.kubeconfig not found"
@@ -66,9 +63,6 @@ get_helm_command() {
   fi
 }
 
-#######################################
-# Build CCM image
-#######################################
 build_ccm_image() {
   if [[ "${SKIP_BUILD}" == "true" ]]; then
     echodate "Skipping image build (SKIP_BUILD=true)"
@@ -93,9 +87,6 @@ build_ccm_image() {
   printElapsed "ccm_build" ${build_start}
 }
 
-#######################################
-# Load CCM image into Kind cluster
-#######################################
 load_ccm_image() {
   if [[ "${SKIP_IMAGE_LOAD}" == "true" ]]; then
     echodate "Skipping image load (SKIP_IMAGE_LOAD=true)"
@@ -110,9 +101,6 @@ load_ccm_image() {
   printElapsed "image_load" ${load_start}
 }
 
-#######################################
-# Deploy kubelb-addons
-#######################################
 deploy_addons() {
   echodate "Deploying kubelb-addons..."
   local deploy_start=$(nowms)
@@ -137,16 +125,11 @@ deploy_addons() {
 
   helm ${helm_cmd} kubelb-addons "${CHARTS_DIR}/kubelb-addons" \
     --namespace kubelb \
-    --values "${E2E_MANIFESTS_DIR}/conversion/addons-values.yaml" \
-    --wait \
-    --timeout 10m
+    --values "${E2E_MANIFESTS_DIR}/conversion/addons-values.yaml"
 
   printElapsed "addons_deploy" ${deploy_start}
 }
 
-#######################################
-# Configure MetalLB IP pool
-#######################################
 configure_metallb_pool() {
   echodate "Configuring MetalLB IP pool..."
   export KUBECONFIG="${KUBECONFIGS_DIR}/conversion.kubeconfig"
@@ -165,9 +148,6 @@ configure_metallb_pool() {
     "${E2E_MANIFESTS_DIR}/metallb/ipaddresspool.yaml.tpl" | kubectl apply -f -
 }
 
-#######################################
-# Deploy CCM in standalone conversion mode
-#######################################
 deploy_ccm_standalone() {
   echodate "Deploying CCM in standalone conversion mode..."
   local deploy_start=$(nowms)
@@ -201,9 +181,6 @@ deploy_ccm_standalone() {
   printElapsed "ccm_deploy" ${deploy_start}
 }
 
-#######################################
-# Wait for addons to be ready
-#######################################
 wait_for_addons() {
   echodate "Waiting for addons to be ready..."
   local wait_start=$(nowms)
@@ -251,31 +228,18 @@ wait_for_addons() {
   printElapsed "addons_ready" ${wait_start}
 }
 
-#######################################
-# Deploy test apps
-#######################################
 deploy_test_apps() {
   echodate "Deploying test apps..."
 
   export KUBECONFIG="${KUBECONFIGS_DIR}/conversion.kubeconfig"
   kubectl apply -f "${E2E_MANIFESTS_DIR}/test-apps/echo-server.yaml"
 
-  # Wait for echo-server
-  kubectl wait --for=condition=available deployment/echo-shared -n default --timeout=2m
-
   echodate "Test apps deployed"
 }
 
-#######################################
-# Main
-#######################################
 SCRIPT_START=$(nowms)
 
-echodate "============================================"
-echodate "  ${TEST_NAME}"
-echodate "============================================"
-echodate "CCM image: ${CCM_IMAGE}"
-echodate ""
+echodate "Starting ${TEST_NAME} (CCM: ${CCM_IMAGE})"
 
 verify_kubeconfig
 build_ccm_image
@@ -292,18 +256,5 @@ kubectl apply -f "${E2E_MANIFESTS_DIR}/kubelb-manager/manifests.yaml"
 deploy_ccm_standalone
 deploy_test_apps
 
-echodate ""
-echodate "============================================"
-echodate "  Deployment Complete"
-echodate "============================================"
-echodate ""
-echodate "Cluster ready:"
-echodate "  export KUBECONFIG=${KUBECONFIGS_DIR}/conversion.kubeconfig"
-echodate ""
-echodate "CCM running in standalone conversion mode"
-echodate "  Gateway: kubelb (namespace: default)"
-echodate "  GatewayClass: eg"
-echodate "  IngressClass: nginx"
-echodate "  Domain: test.local -> gateway.local"
-echodate ""
+echodate "Deployment complete: export KUBECONFIG=${KUBECONFIGS_DIR}/conversion.kubeconfig"
 printElapsed "total_deploy" ${SCRIPT_START}

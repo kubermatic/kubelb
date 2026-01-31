@@ -12,11 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# Snippets Annotation Conversion Test
-# Verifies:
-# - server-snippet, configuration-snippet annotations generate warnings
-# - HTTPRoute still created (partial conversion)
-# - Basic traffic still works despite warnings
 apiVersion: chainsaw.kyverno.io/v1alpha1
 kind: Test
 metadata:

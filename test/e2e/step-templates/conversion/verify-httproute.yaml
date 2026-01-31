@@ -76,10 +76,40 @@ spec:
                 exit 1
               fi
 
+              # Verify at least one rule exists
+              RULE_COUNT=$(kubectl get $HTTPROUTE -n "$NAMESPACE" \
+                -o jsonpath='{.spec.rules}' | jq 'length' 2>/dev/null || echo "0")
+              if [ "$RULE_COUNT" -lt 1 ]; then
+                echo "FAILED: HTTPRoute has no rules"
+                exit 1
+              fi
+
+              # Check backend reference (may be empty for redirect routes)
+              BACKEND_NAME=$(kubectl get $HTTPROUTE -n "$NAMESPACE" \
+                -o jsonpath='{.spec.rules[0].backendRefs[0].name}' 2>/dev/null || echo "")
+              if [ -z "$BACKEND_NAME" ]; then
+                # Check if there are filters (redirect routes don't have backends)
+                FILTER_COUNT=$(kubectl get $HTTPROUTE -n "$NAMESPACE" \
+                  -o jsonpath='{.spec.rules[0].filters}' 2>/dev/null | jq 'length' 2>/dev/null || echo "0")
+                if [ "$FILTER_COUNT" = "0" ] || [ "$FILTER_COUNT" = "null" ]; then
+                  echo "WARNING: HTTPRoute has no backend reference or filters"
+                fi
+              fi
+
+              # Verify route is accepted by gateway
+              ACCEPTED=$(kubectl get $HTTPROUTE -n "$NAMESPACE" \
+                -o jsonpath='{.status.parents[0].conditions[?(@.type=="Accepted")].status}' 2>/dev/null || echo "")
+              if [ "$ACCEPTED" != "True" ]; then
+                echo "WARNING: HTTPRoute not yet accepted (status: $ACCEPTED)"
+              fi
+
               echo "SUCCESS: HTTPRoute verified"
               echo "  HTTPRoute: $HTTPROUTE"
               echo "  Hostname: $HOSTNAME"
               echo "  ParentRef: $GATEWAY_NAME"
+              echo "  Rules: $RULE_COUNT"
+              echo "  Backend: $BACKEND_NAME"
+              echo "  Accepted: $ACCEPTED"
               exit 0
             fi
 

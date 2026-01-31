@@ -12,10 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# HSTS Header Conversion Test
-# Verifies:
-# - nginx.ingress.kubernetes.io/hsts annotation
-# - Generates warning about SecurityPolicy requirement
 apiVersion: chainsaw.kyverno.io/v1alpha1
 kind: Test
 metadata:

@@ -12,10 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# Rate Limit Annotations Conversion Test
-# Verifies:
-# - limit-rps, limit-connections annotations generate warning (needs BackendTrafficPolicy)
-# - Basic traffic still works
 apiVersion: chainsaw.kyverno.io/v1alpha1
 kind: Test
 metadata:

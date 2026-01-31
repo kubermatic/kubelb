@@ -12,11 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# Permanent Redirect Code Conversion Test
-# Verifies:
-# - nginx.ingress.kubernetes.io/permanent-redirect-code annotation
-# - Actual redirect with correct status code
-# Note: Gateway API has limited redirect codes, may map 308→301
 apiVersion: chainsaw.kyverno.io/v1alpha1
 kind: Test
 metadata:

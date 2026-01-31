@@ -66,9 +66,6 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-#######################################
-# Configuration
-#######################################
 export KUBECONFIGS_DIR="${KUBECONFIGS_DIR:-${ROOT_DIR}/.e2e-kubeconfigs}"
 export LOGS_DIR="${KUBECONFIGS_DIR}/logs"
 mkdir -p "${KUBECONFIGS_DIR}" "${LOGS_DIR}"
@@ -84,9 +81,6 @@ CHAINSAW_PID=$!
 
 KIND_IMAGE="${KIND_IMAGE:-kindest/node:v1.35.0}"
 
-#######################################
-# Helper functions (reused from setup-kind.sh)
-#######################################
 increase_inotify_limits() {
   local max_watches=524288
   local max_instances=512
@@ -269,26 +263,14 @@ prepull_images() {
   fi
 
   echodate "Loading ${#images[@]} images into conversion cluster..."
-
-  for image in "${images[@]}"; do
-    kind load docker-image "${image}" --name "conversion" &> /dev/null &
-  done
-  wait
+  kind load docker-image --name "conversion" "${images[@]}" &> /dev/null
 
   echodate "Pre-pull complete"
 }
 
-#######################################
-# Main
-#######################################
 SCRIPT_START=$(nowms)
 
-echodate "============================================"
-echodate "  ${TEST_NAME}"
-echodate "============================================"
-echodate "Kubeconfigs dir: ${KUBECONFIGS_DIR}"
-echodate "Kind image: ${KIND_IMAGE}"
-echodate ""
+echodate "Starting ${TEST_NAME} (Kind: ${KIND_IMAGE})"
 
 increase_inotify_limits
 setup_mac_docker_networking
@@ -339,15 +321,5 @@ if [[ -n "${CHAINSAW_PID}" ]]; then
   fi
 fi
 
-# Summary
-echodate ""
-echodate "============================================"
-echodate "  Setup Complete"
-echodate "============================================"
-echodate ""
-echodate "Cluster created: conversion"
-echodate ""
-echodate "Kubeconfig:"
-echodate "  export KUBECONFIG=${KUBECONFIGS_DIR}/conversion.kubeconfig"
-echodate ""
+echodate "Setup complete: export KUBECONFIG=${KUBECONFIGS_DIR}/conversion.kubeconfig"
 printElapsed "total_setup" $SCRIPT_START

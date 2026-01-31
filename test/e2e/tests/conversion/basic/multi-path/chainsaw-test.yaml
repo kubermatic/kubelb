@@ -12,10 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# Multi-path Ingress-to-Gateway Conversion Test
-# Verifies:
-# - Ingress with multiple paths creates HTTPRoute with multiple rules
-# - Each path routes to correct backend (proven by distinct responses)
 apiVersion: chainsaw.kyverno.io/v1alpha1
 kind: Test
 metadata:

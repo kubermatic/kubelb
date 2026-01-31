@@ -12,11 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# Proxy Set Headers Conversion Test
-# Verifies:
-# - nginx.ingress.kubernetes.io/proxy-set-headers annotation
-# - Headers from ConfigMap are added to requests
-# - Backend receives the configured headers
 apiVersion: chainsaw.kyverno.io/v1alpha1
 kind: Test
 metadata:

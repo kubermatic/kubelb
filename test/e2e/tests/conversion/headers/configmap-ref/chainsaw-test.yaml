@@ -12,11 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# ConfigMap Reference Headers Conversion Test
-# Verifies:
-# - proxy-set-headers with ConfigMap reference generates warning
-# - HTTPRoute still created (partial conversion)
-# - Basic traffic still works
 apiVersion: chainsaw.kyverno.io/v1alpha1
 kind: Test
 metadata:

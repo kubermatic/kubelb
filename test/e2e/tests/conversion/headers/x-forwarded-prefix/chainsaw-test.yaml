@@ -12,10 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# X-Forwarded-Prefix Header Conversion Test
-# Verifies:
-# - nginx.ingress.kubernetes.io/x-forwarded-prefix annotation
-# - Sets X-Forwarded-Prefix header via RequestHeaderModifier filter
 apiVersion: chainsaw.kyverno.io/v1alpha1
 kind: Test
 metadata:

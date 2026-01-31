@@ -12,10 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# Policy Cleanup Test
-# Verifies:
-# - Policies are owned by HTTPRoute (not Ingress)
-# - When Ingress is deleted, routes and policies are cleaned up
 apiVersion: chainsaw.kyverno.io/v1alpha1
 kind: Test
 metadata:

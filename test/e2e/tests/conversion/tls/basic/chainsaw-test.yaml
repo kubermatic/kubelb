@@ -12,10 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# Basic TLS Conversion Test
-# Verifies:
-# - Ingress with TLS creates Gateway with HTTPS listener
-# - HTTPS traffic works (with self-signed cert)
 apiVersion: chainsaw.kyverno.io/v1alpha1
 kind: Test
 metadata:
@@ -134,8 +130,71 @@ spec:
             check:
               ($error == null): true
 
-    - name: verify-traffic
-      description: Verify HTTP traffic works (HTTPS listener config verified separately)
+    - name: verify-https-traffic
+      description: Verify HTTPS traffic works with self-signed certificate
+      try:
+        - script:
+            cluster: conversion
+            timeout: 120s
+            content: |
+              set -e
+              HOST="conv-tlsbasic.gateway.local"
+
+              # Get Gateway IP
+              IP=""
+              i=1; while [ "$i" -le 30 ]; do
+                IP=$(kubectl get gateway.gateway.networking.k8s.io kubelb -n default \
+                  -o jsonpath='{.status.addresses[0].value}' 2>/dev/null || echo "")
+                if [ -n "$IP" ]; then
+                  break
+                fi
+                sleep 2
+                i=$((i + 1))
+              done
+
+              if [ -z "$IP" ]; then
+                echo "FAILED: Gateway has no IP"
+                exit 1
+              fi
+
+              echo "Gateway IP: $IP"
+
+              # Wait for HTTPS to be ready and test
+              # IMPORTANT: Must use --resolve to set SNI correctly for hostname-specific HTTPS listeners
+              i=1; while [ "$i" -le 20 ]; do
+                # Test HTTPS with self-signed cert (-k to skip verification)
+                # --resolve sets both DNS and SNI, unlike -H "Host:" which only sets HTTP header
+                RESPONSE=$(curl -s -k --max-time 5 \
+                  --resolve "${HOST}:443:${IP}" \
+                  "https://${HOST}/" 2>/dev/null || echo "")
+
+                if echo "$RESPONSE" | grep -q "hello-shared"; then
+                  echo "SUCCESS: HTTPS traffic works"
+                  echo "  Host: $HOST"
+                  echo "  Response contains: hello-shared"
+
+                  # Verify certificate is being served
+                  CERT_CN=$(echo | openssl s_client -connect "${IP}:443" -servername "${HOST}" 2>/dev/null \
+                    | openssl x509 -noout -subject 2>/dev/null | grep -o "CN = [^,]*" || echo "")
+                  if [ -n "$CERT_CN" ]; then
+                    echo "  Certificate: $CERT_CN"
+                  fi
+
+                  exit 0
+                fi
+
+                echo "Attempt $i: waiting for HTTPS route..."
+                sleep 3
+                i=$((i + 1))
+              done
+
+              echo "FAILED: HTTPS traffic not working"
+              exit 1
+            check:
+              ($error == null): true
+
+    - name: verify-http-traffic
+      description: Verify HTTP traffic also works (dual-stack)
       use:
         template: ../../../../step-templates/conversion/verify-http-traffic.yaml
         with:

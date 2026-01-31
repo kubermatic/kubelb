@@ -12,10 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# IP Denylist Annotations Conversion Test
-# Verifies:
-# - denylist-source-range annotation creates SecurityPolicy with Deny action
-# - Basic traffic still works
 apiVersion: chainsaw.kyverno.io/v1alpha1
 kind: Test
 metadata:

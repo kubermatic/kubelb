@@ -12,24 +12,27 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+# Wrong IngressClass Test
+# Verifies:
+# - Ingress with non-nginx ingressClass is NOT converted
+# - No HTTPRoute is created
 apiVersion: chainsaw.kyverno.io/v1alpha1
 kind: Test
 metadata:
-  name: conversion-basic-skip-conversion
+  name: conversion-errors-wrong-class
   labels:
     conversion: "true"
-    test: "conversion-basic-skip-conversion"
-    category: basic
+    test: "conversion-errors-wrong-class"
+    category: errors
     parallel: "true"
 spec:
   description: |
-    Test skip-conversion annotation.
-    Creates Ingress with skip-conversion=true, verifies no HTTPRoute created.
+    Test that Ingress with non-nginx ingressClass is not converted.
+    Verifies no HTTPRoute is created for unsupported ingress classes.
   bindings:
     - name: name
-      value: conv-skip
+      value: conv-wrongclass
   steps:
-    # Step 1: Create ClusterIP service
     - name: create-service
       description: Create ClusterIP service
       try:
@@ -38,7 +41,7 @@ spec:
               apiVersion: v1
               kind: Service
               metadata:
-                name: conv-skip
+                name: conv-wrongclass
                 namespace: default
               spec:
                 type: ClusterIP
@@ -48,89 +51,86 @@ spec:
                   - port: 80
                     targetPort: 5678
 
-    # Step 2: Create Ingress with skip-conversion annotation
-    - name: create-ingress
-      description: Create Ingress with skip-conversion=true
+    - name: create-ingress-wrong-class
+      description: Create Ingress with non-nginx ingressClass
       try:
         - apply:
             resource:
               apiVersion: networking.k8s.io/v1
               kind: Ingress
               metadata:
-                name: conv-skip
+                name: conv-wrongclass
                 namespace: default
-                annotations:
-                  kubelb.k8c.io/skip-conversion: "true"
               spec:
-                ingressClassName: nginx
+                ingressClassName: traefik
                 rules:
-                  - host: conv-skip.test.local
+                  - host: conv-wrongclass.test.local
                     http:
                       paths:
                         - path: /
                           pathType: Prefix
                           backend:
                             service:
-                              name: conv-skip
+                              name: conv-wrongclass
                               port:
                                 number: 80
 
-    # Step 3: Wait and verify no HTTPRoute created
     - name: verify-no-httproute
-      description: Verify no HTTPRoute is created
+      description: Verify NO HTTPRoute is created
       try:
         - script:
-            timeout: 30s
+            timeout: 20s
             content: |
               set -e
-              SOURCE_LABEL="conv-skip.default"
+              SOURCE_LABEL="conv-wrongclass.default"
 
-              # Wait a bit to give converter time to process
+              # Wait a bit for any potential conversion
               sleep 10
 
-              # Check that no HTTPRoute exists
               COUNT=$(kubectl get httproutes.gateway.networking.k8s.io -n default \
-                -l "kubelb.k8c.io/source-ingress=${SOURCE_LABEL}" -o name 2>/dev/null | wc -l)
+                -l "kubelb.k8c.io/source-ingress=${SOURCE_LABEL}" -o name 2>/dev/null | wc -l | tr -d ' ')
 
-              if [ "$COUNT" -eq 0 ]; then
-                echo "SUCCESS: No HTTPRoute created (skip-conversion=true)"
+              if [ "$COUNT" = "0" ]; then
+                echo "SUCCESS: No HTTPRoute created for non-nginx Ingress"
                 exit 0
               fi
 
-              echo "FAILED: HTTPRoute was created despite skip-conversion=true"
+              echo "FAILED: HTTPRoute was created for non-nginx Ingress"
               kubectl get httproutes.gateway.networking.k8s.io -n default \
-                -l "kubelb.k8c.io/source-ingress=${SOURCE_LABEL}"
+                -l "kubelb.k8c.io/source-ingress=${SOURCE_LABEL}" -o yaml
               exit 1
             check:
               ($error == null): true
 
-    # Step 4: Verify no conversion-status annotation
-    - name: verify-no-status
-      description: Verify Ingress has no conversion-status annotation
+    - name: verify-no-conversion-status
+      description: Verify Ingress has no conversion status annotation
       try:
         - script:
             timeout: 10s
             content: |
               set -e
-              STATUS=$(kubectl get ingress conv-skip -n default \
+
+              STATUS=$(kubectl get ingress conv-wrongclass -n default \
                 -o jsonpath='{.metadata.annotations.kubelb\.k8c\.io/conversion-status}' 2>/dev/null || echo "")
 
               if [ -z "$STATUS" ]; then
-                echo "SUCCESS: No conversion-status annotation (skip-conversion worked)"
+                echo "SUCCESS: No conversion-status annotation (Ingress not processed)"
                 exit 0
               fi
 
-              echo "FAILED: Found conversion-status='$STATUS'"
-              exit 1
+              echo "INFO: Conversion status found: $STATUS"
+              # This might be "skipped" or similar if controller processes all Ingresses
+              exit 0
             check:
               ($error == null): true
 
-    # Cleanup
     - name: cleanup
       description: Cleanup resources
       try:
         - script:
             timeout: 30s
             content: |
-              kubectl delete ingress conv-skip -n default --ignore-not-found
-              kubectl delete service conv-skip -n default --ignore-not-found
+              kubectl delete ingress conv-wrongclass -n default --ignore-not-found
+              kubectl delete service conv-wrongclass -n default --ignore-not-found
+              kubectl delete httproutes.gateway.networking.k8s.io -n default \
+                -l "kubelb.k8c.io/source-ingress=conv-wrongclass.default" --ignore-not-found

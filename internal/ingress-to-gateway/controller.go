@@ -149,17 +149,7 @@ func (r *Reconciler) reconcile(ctx context.Context, log logr.Logger, ingress *ne
 
 	// Reconcile HTTPRoutes
 	for _, httpRoute := range result.HTTPRoutes {
-		if httpRoute.Labels == nil {
-			httpRoute.Labels = make(map[string]string)
-		}
-		httpRoute.Labels[policies.LabelSourceIngress] = fmt.Sprintf("%s.%s", ingress.Name, ingress.Namespace)
-
-		if httpRoute.Annotations == nil {
-			httpRoute.Annotations = make(map[string]string)
-		}
-		for k, v := range externalDNSAnnotations {
-			httpRoute.Annotations[k] = v
-		}
+		applyRouteMetadata(httpRoute, ingress, externalDNSAnnotations)
 
 		existing := &gwapiv1.HTTPRoute{}
 		err := r.Get(ctx, types.NamespacedName{Name: httpRoute.Name, Namespace: httpRoute.Namespace}, existing)
@@ -187,17 +177,7 @@ func (r *Reconciler) reconcile(ctx context.Context, log logr.Logger, ingress *ne
 
 	// Reconcile GRPCRoutes
 	for _, grpcRoute := range result.GRPCRoutes {
-		if grpcRoute.Labels == nil {
-			grpcRoute.Labels = make(map[string]string)
-		}
-		grpcRoute.Labels[policies.LabelSourceIngress] = fmt.Sprintf("%s.%s", ingress.Name, ingress.Namespace)
-
-		if grpcRoute.Annotations == nil {
-			grpcRoute.Annotations = make(map[string]string)
-		}
-		for k, v := range externalDNSAnnotations {
-			grpcRoute.Annotations[k] = v
-		}
+		applyRouteMetadata(grpcRoute, ingress, externalDNSAnnotations)
 
 		existing := &gwapiv1.GRPCRoute{}
 		err := r.Get(ctx, types.NamespacedName{Name: grpcRoute.Name, Namespace: grpcRoute.Namespace}, existing)
@@ -342,10 +322,7 @@ func (r *Reconciler) updateIngressStatusStaged(ctx context.Context, ingress *net
 }
 
 // reconcilePolicies creates or updates Envoy Gateway policies for the Ingress.
-//
-//nolint:gocyclo // complexity is due to handling 3 policy types with similar patterns
 func (r *Reconciler) reconcilePolicies(ctx context.Context, log logr.Logger, ingress *networkingv1.Ingress, routeName string) ([]string, error) {
-	// Convert annotations to policies
 	policyResult := annotations.ConvertToPolicies(annotations.PolicyConversionInput{
 		IngressName:      ingress.Name,
 		IngressNamespace: ingress.Namespace,
@@ -353,8 +330,6 @@ func (r *Reconciler) reconcilePolicies(ctx context.Context, log logr.Logger, ing
 		GatewayName:      r.GatewayName,
 		Annotations:      ingress.Annotations,
 	})
-
-	var policyNames []string
 
 	// Fetch the HTTPRoute to use as owner reference
 	// Policies should be owned by the route (not Ingress) so they persist after migration
@@ -369,17 +344,10 @@ func (r *Reconciler) reconcilePolicies(ctx context.Context, log logr.Logger, ing
 		if policy == nil {
 			continue
 		}
-		if policy.Labels == nil {
-			policy.Labels = make(map[string]string)
-		}
-		policy.Labels[policies.LabelSourceIngress] = fmt.Sprintf("%s.%s", ingress.Name, ingress.Namespace)
-
-		// Set owner reference to HTTPRoute for automatic GC cleanup
-		// Route owns policies so they share lifecycle (not tied to Ingress which gets deleted after migration)
 		if routeErr == nil {
-			if err := controllerutil.SetControllerReference(httpRoute, policy, r.Scheme); err != nil {
-				log.Error(err, "Failed to set owner reference on SecurityPolicy", "name", policy.Name)
-			}
+			r.setPolicyOwnerRef(policy, ingress, httpRoute, log)
+		} else {
+			r.setPolicyOwnerRef(policy, ingress, nil, log)
 		}
 
 		existing := &egv1alpha1.SecurityPolicy{}
@@ -402,7 +370,6 @@ func (r *Reconciler) reconcilePolicies(ctx context.Context, log logr.Logger, ing
 				return policyResult.Warnings, fmt.Errorf("failed to update SecurityPolicy: %w", err)
 			}
 		}
-		policyNames = append(policyNames, policy.Name)
 	}
 
 	// Reconcile BackendTrafficPolicies
@@ -410,16 +377,10 @@ func (r *Reconciler) reconcilePolicies(ctx context.Context, log logr.Logger, ing
 		if policy == nil {
 			continue
 		}
-		if policy.Labels == nil {
-			policy.Labels = make(map[string]string)
-		}
-		policy.Labels[policies.LabelSourceIngress] = fmt.Sprintf("%s.%s", ingress.Name, ingress.Namespace)
-
-		// Set owner reference to HTTPRoute for automatic GC cleanup
 		if routeErr == nil {
-			if err := controllerutil.SetControllerReference(httpRoute, policy, r.Scheme); err != nil {
-				log.Error(err, "Failed to set owner reference on BackendTrafficPolicy", "name", policy.Name)
-			}
+			r.setPolicyOwnerRef(policy, ingress, httpRoute, log)
+		} else {
+			r.setPolicyOwnerRef(policy, ingress, nil, log)
 		}
 
 		existing := &egv1alpha1.BackendTrafficPolicy{}
@@ -442,7 +403,6 @@ func (r *Reconciler) reconcilePolicies(ctx context.Context, log logr.Logger, ing
 				return policyResult.Warnings, fmt.Errorf("failed to update BackendTrafficPolicy: %w", err)
 			}
 		}
-		policyNames = append(policyNames, policy.Name)
 	}
 
 	// Reconcile ClientTrafficPolicies
@@ -450,16 +410,10 @@ func (r *Reconciler) reconcilePolicies(ctx context.Context, log logr.Logger, ing
 		if policy == nil {
 			continue
 		}
-		if policy.Labels == nil {
-			policy.Labels = make(map[string]string)
-		}
-		policy.Labels[policies.LabelSourceIngress] = fmt.Sprintf("%s.%s", ingress.Name, ingress.Namespace)
-
-		// Set owner reference to HTTPRoute for automatic GC cleanup
 		if routeErr == nil {
-			if err := controllerutil.SetControllerReference(httpRoute, policy, r.Scheme); err != nil {
-				log.Error(err, "Failed to set owner reference on ClientTrafficPolicy", "name", policy.Name)
-			}
+			r.setPolicyOwnerRef(policy, ingress, httpRoute, log)
+		} else {
+			r.setPolicyOwnerRef(policy, ingress, nil, log)
 		}
 
 		existing := &egv1alpha1.ClientTrafficPolicy{}
@@ -482,7 +436,6 @@ func (r *Reconciler) reconcilePolicies(ctx context.Context, log logr.Logger, ing
 				return policyResult.Warnings, fmt.Errorf("failed to update ClientTrafficPolicy: %w", err)
 			}
 		}
-		policyNames = append(policyNames, policy.Name)
 	}
 
 	return policyResult.Warnings, nil
@@ -694,6 +647,46 @@ func (r *Reconciler) SetupWithManager(mgr ctrl.Manager) error {
 type routeAcceptanceResult struct {
 	accepted bool
 	reason   string
+}
+
+// ensureMetadata initializes Labels and Annotations maps if nil
+func ensureMetadata(obj metav1.Object) {
+	if obj.GetLabels() == nil {
+		obj.SetLabels(make(map[string]string))
+	}
+	if obj.GetAnnotations() == nil {
+		obj.SetAnnotations(make(map[string]string))
+	}
+}
+
+// applyRouteMetadata sets source ingress label and copies annotations to a route
+func applyRouteMetadata(obj metav1.Object, ingress *networkingv1.Ingress, annotations map[string]string) {
+	ensureMetadata(obj)
+	labels := obj.GetLabels()
+	labels[policies.LabelSourceIngress] = fmt.Sprintf("%s.%s", ingress.Name, ingress.Namespace)
+	obj.SetLabels(labels)
+
+	objAnnotations := obj.GetAnnotations()
+	for k, v := range annotations {
+		objAnnotations[k] = v
+	}
+	obj.SetAnnotations(objAnnotations)
+}
+
+// setPolicyOwnerRef sets the source ingress label and owner reference on a policy
+func (r *Reconciler) setPolicyOwnerRef(policy ctrlclient.Object, ingress *networkingv1.Ingress, httpRoute *gwapiv1.HTTPRoute, log logr.Logger) {
+	labels := policy.GetLabels()
+	if labels == nil {
+		labels = make(map[string]string)
+	}
+	labels[policies.LabelSourceIngress] = fmt.Sprintf("%s.%s", ingress.Name, ingress.Namespace)
+	policy.SetLabels(labels)
+
+	if httpRoute != nil {
+		if err := controllerutil.SetControllerReference(httpRoute, policy, r.Scheme); err != nil {
+			log.Error(err, "Failed to set owner reference on policy", "name", policy.GetName())
+		}
+	}
 }
 
 // waitForRouteAcceptance polls HTTPRoute status until Accepted or timeout

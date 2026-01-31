@@ -12,10 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# Combined Security Policy Test
-# Verifies:
-# - CORS + IP whitelist + basic auth combined
-# - Single SecurityPolicy with all features
 apiVersion: chainsaw.kyverno.io/v1alpha1
 kind: Test
 metadata:

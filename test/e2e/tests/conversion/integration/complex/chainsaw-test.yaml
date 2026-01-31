@@ -12,11 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# Complex Integration Test
-# Verifies:
-# - Multi-host + TLS + redirects + rewrite combined
-# - All features work together
-# - Traffic works for both hosts
 apiVersion: chainsaw.kyverno.io/v1alpha1
 kind: Test
 metadata:

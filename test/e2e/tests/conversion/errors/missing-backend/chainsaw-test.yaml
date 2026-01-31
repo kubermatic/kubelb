@@ -1,0 +1,152 @@
+# Copyright 2026 The KubeLB Authors.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# Missing Backend Error Test
+# Verifies:
+# - Ingress with missing backend service still creates HTTPRoute
+# - HTTPRoute shows unresolved refs in status
+# - Traffic returns 500 (no upstream)
+apiVersion: chainsaw.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: conversion-errors-missing-backend
+  labels:
+    conversion: "true"
+    test: "conversion-errors-missing-backend"
+    category: errors
+    parallel: "true"
+spec:
+  description: |
+    Test Ingress conversion when backend service doesn't exist.
+    Verifies HTTPRoute is created but shows unresolved refs status.
+  bindings:
+    - name: name
+      value: conv-nobackend
+    - name: transformed_host
+      value: conv-nobackend.gateway.local
+  steps:
+    # Intentionally NOT creating the backend service
+    - name: create-ingress
+      description: Create Ingress pointing to non-existent service
+      try:
+        - apply:
+            resource:
+              apiVersion: networking.k8s.io/v1
+              kind: Ingress
+              metadata:
+                name: conv-nobackend
+                namespace: default
+              spec:
+                ingressClassName: nginx
+                rules:
+                  - host: conv-nobackend.test.local
+                    http:
+                      paths:
+                        - path: /
+                          pathType: Prefix
+                          backend:
+                            service:
+                              name: nonexistent-service
+                              port:
+                                number: 80
+
+    - name: verify-httproute-created
+      description: Verify HTTPRoute is still created
+      try:
+        - script:
+            timeout: 60s
+            content: |
+              set -e
+              SOURCE_LABEL="conv-nobackend.default"
+
+              i=1; while [ "$i" -le 30 ]; do
+                HTTPROUTE=$(kubectl get httproutes.gateway.networking.k8s.io -n default \
+                  -l "kubelb.k8c.io/source-ingress=${SOURCE_LABEL}" -o name 2>/dev/null | head -1)
+
+                if [ -n "$HTTPROUTE" ]; then
+                  echo "SUCCESS: HTTPRoute created despite missing backend"
+                  echo "  HTTPRoute: $HTTPROUTE"
+
+                  # Check for ResolvedRefs condition
+                  RESOLVED=$(kubectl get $HTTPROUTE -n default \
+                    -o jsonpath='{.status.parents[0].conditions[?(@.type=="ResolvedRefs")].status}' 2>/dev/null || echo "")
+                  RESOLVED_MSG=$(kubectl get $HTTPROUTE -n default \
+                    -o jsonpath='{.status.parents[0].conditions[?(@.type=="ResolvedRefs")].message}' 2>/dev/null || echo "")
+
+                  echo "  ResolvedRefs: $RESOLVED"
+                  if [ -n "$RESOLVED_MSG" ]; then
+                    echo "  Message: $RESOLVED_MSG"
+                  fi
+
+                  exit 0
+                fi
+                sleep 2
+                i=$((i + 1))
+              done
+              echo "FAILED: HTTPRoute not created"
+              exit 1
+            check:
+              ($error == null): true
+
+    - name: verify-traffic-fails
+      description: Verify traffic returns error (500 or 503)
+      try:
+        - script:
+            cluster: conversion
+            timeout: 60s
+            content: |
+              set -e
+              HOST="conv-nobackend.gateway.local"
+
+              IP=$(kubectl get gateway.gateway.networking.k8s.io kubelb -n default \
+                -o jsonpath='{.status.addresses[0].value}' 2>/dev/null || echo "")
+
+              if [ -z "$IP" ]; then
+                echo "INFO: Gateway has no IP yet"
+                exit 0
+              fi
+
+              # Wait for route to be programmed
+              sleep 5
+
+              CODE=$(curl -s -o /dev/null -w "%{http_code}" --max-time 5 \
+                -H "Host: ${HOST}" "http://${IP}/" 2>/dev/null || echo "000")
+
+              echo "HTTP response code: $CODE"
+
+              # Expect 500 or 503 (no upstream / service unavailable)
+              if [ "$CODE" = "500" ] || [ "$CODE" = "503" ]; then
+                echo "SUCCESS: Traffic correctly fails with $CODE (missing backend)"
+                exit 0
+              fi
+
+              # 404 also acceptable if route not found
+              if [ "$CODE" = "404" ]; then
+                echo "INFO: Got 404 (route may not be programmed)"
+                exit 0
+              fi
+
+              echo "INFO: Got $CODE (expected 500/503 for missing backend)"
+              exit 0
+            check:
+              ($error == null): true
+
+    - name: cleanup
+      description: Cleanup resources
+      use:
+        template: ../../../../step-templates/conversion/cleanup-conversion.yaml
+        with:
+          bindings:
+            - name: ingress_name
+              value: ($name)

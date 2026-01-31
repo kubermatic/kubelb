@@ -12,10 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# Multi-host TLS Conversion Test
-# Verifies:
-# - Ingress with multiple TLS hosts creates multiple HTTPS listeners
-# - HTTPS traffic works for each host
 apiVersion: chainsaw.kyverno.io/v1alpha1
 kind: Test
 metadata:

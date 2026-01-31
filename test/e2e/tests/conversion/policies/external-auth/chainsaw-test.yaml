@@ -12,10 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# External Auth (auth-url) Conversion Test
-# Verifies:
-# - auth-url annotation generates warning (needs SecurityPolicy)
-# - Basic traffic still works
 apiVersion: chainsaw.kyverno.io/v1alpha1
 kind: Test
 metadata:

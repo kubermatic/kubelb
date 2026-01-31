@@ -12,10 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# Default Backend Ingress-to-Gateway Conversion Test
-# Verifies:
-# - Ingress with defaultBackend creates HTTPRoute with catch-all path
-# - Traffic to any path routes to default backend
 apiVersion: chainsaw.kyverno.io/v1alpha1
 kind: Test
 metadata:

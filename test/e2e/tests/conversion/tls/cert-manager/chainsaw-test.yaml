@@ -12,13 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# cert-manager TLS Conversion Test
-# Verifies:
-# - Ingress with cert-manager annotations is converted to HTTPRoute
-# - TLS configuration creates HTTPS listener on Gateway
-# - Basic traffic works
-# Note: cert-manager annotations on Ingress are NOT propagated to Gateway.
-# Use gatewayAnnotations config to set cert-manager annotations on Gateway.
 apiVersion: chainsaw.kyverno.io/v1alpha1
 kind: Test
 metadata:

@@ -12,10 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# Proxy SSL Conversion Test
-# Verifies:
-# - nginx.ingress.kubernetes.io/proxy-ssl-secret annotation
-# - Generates warning about BackendTLSPolicy requirement
 apiVersion: chainsaw.kyverno.io/v1alpha1
 kind: Test
 metadata:

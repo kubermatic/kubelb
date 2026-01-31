@@ -12,13 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# Basic Ingress-to-Gateway Conversion Test
-# Verifies:
-# - Ingress with nginx class creates HTTPRoute
-# - HTTPRoute has correct parentRef to Gateway
-# - Domain transformation (test.local -> gateway.local)
-# - Conversion status annotation set to 'converted'
-# - HTTP traffic works via transformed hostname
 apiVersion: chainsaw.kyverno.io/v1alpha1
 kind: Test
 metadata:

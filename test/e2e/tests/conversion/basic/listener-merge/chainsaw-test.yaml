@@ -12,11 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# Gateway Listener Merge Test
-# Verifies:
-# - Multiple Ingresses with TLS add listeners to shared Gateway
-# - Our specific listeners exist (other tests may add more)
-# - Traffic works for both hosts
 apiVersion: chainsaw.kyverno.io/v1alpha1
 kind: Test
 metadata:

@@ -12,10 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# Combined Backend Traffic Policy Test
-# Verifies:
-# - Timeouts + rate-limit + connections combined
-# - Single BackendTrafficPolicy with all features
 apiVersion: chainsaw.kyverno.io/v1alpha1
 kind: Test
 metadata:

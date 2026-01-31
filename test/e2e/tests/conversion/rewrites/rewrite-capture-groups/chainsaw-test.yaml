@@ -12,11 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# Rewrite with Capture Groups Conversion Test
-# Verifies:
-# - Rewrite target with capture groups (/$2) generates warning
-# - HTTPRoute still created (partial conversion)
-# - Basic traffic still works despite warning
 apiVersion: chainsaw.kyverno.io/v1alpha1
 kind: Test
 metadata:
