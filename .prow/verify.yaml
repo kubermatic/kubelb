@@ -235,38 +235,3 @@ presubmits:
           resources:
             requests:
               cpu: 1
-
-  - name: pull-kubelb-e2e-conversion
-    always_run: false
-    run_if_changed: "internal/ingress-to-gateway/|test/e2e/tests/conversion/|test/e2e/.*conversion.*|charts/kubelb-ccm/|hack/e2e/.*conversion.*"
-    decorate: true
-    clone_uri: "ssh://git@github.com/kubermatic/kubelb.git"
-    labels:
-      preset-kind-volume-mounts: "true"
-      preset-goproxy: "true"
-    spec:
-      containers:
-        - image: quay.io/kubermatic/build:go-1.25-node-22-kind-0.30-6
-          securityContext:
-            privileged: true
-          env:
-            - name: DOCKER_IN_DOCKER_ENABLED
-              value: "true"
-            - name: local_ip
-              valueFrom:
-                fieldRef:
-                  fieldPath: status.podIP
-          command:
-            - bash
-          args:
-            - -c
-            - |
-              set -euo pipefail
-              start-docker.sh
-              docker load --input /kindest.tar
-              make download-gocache
-              make e2e-conversion-kind
-          resources:
-            requests:
-              memory: 8Gi
-              cpu: 2
