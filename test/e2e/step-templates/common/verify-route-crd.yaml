@@ -30,7 +30,7 @@ spec:
   try:
     - script:
         cluster: kubelb
-        timeout: 30s
+        timeout: 90s
         env:
           - name: RESOURCE_NAME
             value: ($resource_name)

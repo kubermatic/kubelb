@@ -20,6 +20,7 @@ dist/
 # E2e
 .e2e-kubeconfigs
 chainsaw-report.xml
+test/e2e/reports/*
 
 ## AI generated files
 .claude

@@ -1,0 +1,243 @@
+# Copyright 2026 The KubeLB Authors.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# Integrated Ingress Conversion Test
+# Verifies:
+# - Ingress with kubelb class works (standard kubelb flow)
+# - HTTPRoute is created locally by converter
+# - Both Ingress and HTTPRoute serve same content
+apiVersion: chainsaw.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: integrated-conversion-basic
+  labels:
+    all:
+    multi-tenant: "true"
+    resource: ingress
+    layer: layer7
+    feature: conversion
+    test: basic
+spec:
+  description: |
+    Test integrated conversion: Ingress with kubelb class creates Route CRD
+    AND HTTPRoute locally. Both paths serve same content via kubelb cluster.
+  bindings:
+    - name: name
+      value: int-conv-basic
+    - name: kubelb_namespace
+      value: tenant-secondary
+    - name: ingress_host
+      value: int-conv-basic.test.local
+    - name: httproute_host
+      value: int-conv-basic.gateway.local
+  steps:
+    # Step 1: Create ClusterIP service
+    - name: create-service
+      description: Create ClusterIP service pointing to echo-shared
+      cluster: tenant2
+      try:
+        - apply:
+            resource:
+              apiVersion: v1
+              kind: Service
+              metadata:
+                name: ($name)
+                namespace: default
+              spec:
+                type: ClusterIP
+                selector:
+                  app: echo-shared
+                ports:
+                  - port: 80
+                    targetPort: 5678
+
+    # Step 2: Create Ingress with kubelb class
+    - name: create-ingress
+      description: Create Ingress with kubelb ingressClass
+      cluster: tenant2
+      try:
+        - apply:
+            resource:
+              apiVersion: networking.k8s.io/v1
+              kind: Ingress
+              metadata:
+                name: ($name)
+                namespace: default
+              spec:
+                ingressClassName: kubelb
+                rules:
+                  - host: ($ingress_host)
+                    http:
+                      paths:
+                        - path: /
+                          pathType: Prefix
+                          backend:
+                            service:
+                              name: ($name)
+                              port:
+                                number: 80
+
+    # Step 3: Verify Ingress gets LoadBalancer IP
+    - name: verify-ingress-ip
+      description: Verify Ingress gets LoadBalancer IP from kubelb
+      cluster: tenant2
+      try:
+        - assert:
+            timeout: 120s
+            resource:
+              apiVersion: networking.k8s.io/v1
+              kind: Ingress
+              metadata:
+                name: ($name)
+                namespace: default
+              status:
+                loadBalancer:
+                  ingress:
+                    - {}
+
+    # Step 4: Verify Ingress traffic works
+    - name: verify-ingress-traffic
+      description: Verify HTTP via Ingress
+      cluster: tenant2
+      try:
+        - script:
+            skipCommandOutput: true
+            timeout: 60s
+            env:
+              - name: NAME
+                value: ($name)
+              - name: HOST
+                value: ($ingress_host)
+            content: |
+              set -e
+              IP=$(kubectl get ingress "$NAME" -n default \
+                -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+              EXPECTED="hello-shared"
+
+              for i in $(seq 1 15); do
+                RESPONSE=$(curl -s --max-time 5 -H "Host: ${HOST}" "http://${IP}/" 2>/dev/null || true)
+                if echo "$RESPONSE" | grep -q "$EXPECTED"; then
+                  echo "SUCCESS: Ingress traffic OK"
+                  exit 0
+                fi
+                echo "Attempt $i: waiting..."
+                sleep 2
+              done
+              echo "FAILED: Ingress traffic not working"
+              exit 1
+            check:
+              ($error == null): true
+
+    # Step 5: Verify HTTPRoute created locally by converter
+    - name: verify-httproute-exists
+      description: Verify HTTPRoute created by converter
+      cluster: tenant2
+      try:
+        - script:
+            skipCommandOutput: true
+            timeout: 60s
+            env:
+              - name: NAME
+                value: ($name)
+              - name: EXPECTED_HOST
+                value: ($httproute_host)
+            content: |
+              set -e
+              SOURCE_LABEL="${NAME}.default"
+
+              for i in $(seq 1 20); do
+                HTTPROUTE=$(kubectl get httproutes.gateway.networking.k8s.io -n default \
+                  -l "kubelb.k8c.io/source-ingress=${SOURCE_LABEL}" -o name 2>/dev/null | head -1)
+
+                if [ -n "$HTTPROUTE" ]; then
+                  HOSTNAME=$(kubectl get $HTTPROUTE -n default -o jsonpath='{.spec.hostnames[0]}')
+                  if [ "$HOSTNAME" = "$EXPECTED_HOST" ]; then
+                    echo "SUCCESS: HTTPRoute found with hostname $HOSTNAME"
+                    exit 0
+                  fi
+                fi
+                echo "Attempt $i: waiting for HTTPRoute..."
+                sleep 2
+              done
+              echo "FAILED: HTTPRoute not found"
+              exit 1
+            check:
+              ($error == null): true
+
+    # Step 6: Verify Gateway created with kubelb class
+    - name: verify-gateway-exists
+      description: Verify Gateway kubelb-int-conv created
+      cluster: tenant2
+      try:
+        - assert:
+            timeout: 120s
+            resource:
+              apiVersion: gateway.networking.k8s.io/v1
+              kind: Gateway
+              metadata:
+                name: kubelb-int-conv
+                namespace: default
+              spec:
+                gatewayClassName: kubelb
+              status:
+                addresses:
+                  - {}
+
+    # Step 7: Verify HTTPRoute traffic works and serves SAME content
+    - name: verify-httproute-traffic
+      description: Verify HTTP via HTTPRoute (same content as Ingress)
+      cluster: tenant2
+      try:
+        - script:
+            skipCommandOutput: true
+            timeout: 60s
+            env:
+              - name: HOST
+                value: ($httproute_host)
+            content: |
+              set -e
+              IP=$(kubectl get gateway.gateway.networking.k8s.io kubelb-int-conv -n default \
+                -o jsonpath='{.status.addresses[0].value}')
+              EXPECTED="hello-shared"
+
+              for i in $(seq 1 15); do
+                RESPONSE=$(curl -s --max-time 5 -H "Host: ${HOST}" "http://${IP}/" 2>/dev/null || true)
+                if echo "$RESPONSE" | grep -q "$EXPECTED"; then
+                  echo "SUCCESS: HTTPRoute traffic OK - same content as Ingress"
+                  exit 0
+                fi
+                echo "Attempt $i: waiting..."
+                sleep 2
+              done
+              echo "FAILED: HTTPRoute traffic not working"
+              exit 1
+            check:
+              ($error == null): true
+
+    # Cleanup
+    - name: cleanup
+      description: Cleanup resources
+      cluster: tenant2
+      try:
+        - script:
+            skipCommandOutput: true
+            timeout: 30s
+            env:
+              - name: NAME
+                value: ($name)
+            content: |
+              kubectl delete ingress "$NAME" -n default --ignore-not-found
+              kubectl delete service "$NAME" -n default --ignore-not-found
+              # Delete HTTPRoute created by converter
+              kubectl delete httproute -n default -l "kubelb.k8c.io/source-ingress=${NAME}.default" --ignore-not-found

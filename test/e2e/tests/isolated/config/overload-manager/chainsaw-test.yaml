@@ -27,6 +27,7 @@ metadata:
     resource: config
     feature: overload-manager
 spec:
+  
   concurrent: false
   description: |
     Test that enabling overload manager in Config.spec.envoyProxy.overloadManager

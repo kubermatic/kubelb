@@ -26,11 +26,13 @@ import (
 	"strings"
 	"syscall"
 
+	egv1alpha1 "github.com/envoyproxy/gateway/api/v1alpha1"
 	"github.com/go-logr/logr"
 	"go.uber.org/zap/zapcore"
 
 	kubelbv1alpha1 "k8c.io/kubelb/api/ce/kubelb.k8c.io/v1alpha1"
 	"k8c.io/kubelb/internal/controllers/ccm"
+	ingressconversion "k8c.io/kubelb/internal/ingress-to-gateway"
 	ccmmetrics "k8c.io/kubelb/internal/metrics/ccm"
 
 	corev1 "k8s.io/api/core/v1"
@@ -89,6 +91,9 @@ type options struct {
 	enableGatewayAPI           bool
 	installGatewayAPICRDs      bool
 	gatewayAPICRDsChannel      string
+
+	// Ingress-to-Gateway conversion
+	conversionOpts ingressconversion.Options
 }
 
 func main() {
@@ -121,6 +126,8 @@ func main() {
 	flag.BoolVar(&opt.installGatewayAPICRDs, "install-gateway-api-crds", false, "Installs and manages the Gateway API CRDs using gateway crd controller.")
 	flag.StringVar(&opt.gatewayAPICRDsChannel, "gateway-api-crds-channel", "standard", "Gateway API CRDs channel: 'standard' or 'experimental'.")
 
+	opt.conversionOpts.BindFlags(flag.CommandLine)
+
 	opts := zap.Options{
 		Development: false,
 		TimeEncoder: zapcore.ISO8601TimeEncoder,
@@ -130,6 +137,27 @@ func main() {
 
 	// Set up logger before validation checks
 	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&opts)))
+
+	// setup signal handler
+	ctx := ctrl.SetupSignalHandler()
+
+	// Standalone conversion mode - skip LB cluster setup
+	if opt.conversionOpts.StandaloneMode {
+		// Standalone mode needs Gateway API for HTTPRoute creation
+		utilruntime.Must(gwapiv1.Install(scheme))
+
+		if !opt.conversionOpts.DisableEnvoyGatewayFeatures {
+			utilruntime.Must(egv1alpha1.AddToScheme(scheme))
+		}
+
+		os.Exit(ingressconversion.RunStandalone(ctx, ingressconversion.StandaloneConfig{
+			Scheme:                  scheme,
+			MetricsAddr:             opt.metricsAddr,
+			ProbeAddr:               opt.probeAddr,
+			EnableLeaderElection:    opt.enableLeaderElection,
+			LeaderElectionNamespace: opt.leaderElectionNamespace,
+		}, opt.conversionOpts))
+	}
 
 	clusterName := opt.clusterName
 
@@ -169,9 +197,6 @@ func main() {
 	}
 
 	setupLog.V(1).Info("using endpoint address", "type", endpointAddressType)
-
-	// setup signal handler
-	ctx := ctrl.SetupSignalHandler()
 
 	kubeLBClientConfig := clientcmd.NewNonInteractiveDeferredLoadingClientConfig(
 		&clientcmd.ClientConfigLoadingRules{
@@ -406,6 +431,16 @@ func setupControllers(mgr, kubeLBMgr ctrl.Manager, setupLog logr.Logger, opt *op
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", ccm.SyncSecretControllerName)
 		return err
+	}
+
+	if opt.conversionOpts.Enabled {
+		if err := opt.conversionOpts.Validate(); err != nil {
+			return err
+		}
+		if err := ingressconversion.SetupReconciler(mgr, opt.conversionOpts); err != nil {
+			setupLog.Error(err, "unable to create controller", "controller", ingressconversion.ControllerName)
+			return err
+		}
 	}
 
 	return nil

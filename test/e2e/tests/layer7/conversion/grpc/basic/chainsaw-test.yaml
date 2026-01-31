@@ -1,0 +1,161 @@
+# Copyright 2026 The KubeLB Authors.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+apiVersion: chainsaw.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: conversion-grpc-basic
+  labels:
+    suite: conversion
+    layer: layer7
+    conversion: "true"
+    test: "conversion-grpc-basic"
+    category: grpc
+    parallel: "true"
+spec:
+  description: |
+    Test backend-protocol=GRPC annotation conversion.
+    Verifies Ingress with GRPC backend-protocol creates GRPCRoute (not HTTPRoute).
+  bindings:
+    - name: name
+      value: conv-grpc
+    - name: transformed_host
+      value: conv-grpc.gateway.local
+  steps:
+    - name: create-service
+      cluster: standalone
+      description: Create ClusterIP service
+      try:
+        - apply:
+            resource:
+              apiVersion: v1
+              kind: Service
+              metadata:
+                name: conv-grpc
+                namespace: default
+              spec:
+                type: ClusterIP
+                selector:
+                  app: echo-shared
+                ports:
+                  - port: 9000
+                    targetPort: 5678
+
+    - name: create-ingress
+      cluster: standalone
+      description: Create Ingress with backend-protocol=GRPC
+      try:
+        - apply:
+            resource:
+              apiVersion: networking.k8s.io/v1
+              kind: Ingress
+              metadata:
+                name: conv-grpc
+                namespace: default
+                annotations:
+                  nginx.ingress.kubernetes.io/backend-protocol: "GRPC"
+              spec:
+                ingressClassName: nginx
+                rules:
+                  - host: conv-grpc.test.local
+                    http:
+                      paths:
+                        - path: /
+                          pathType: Prefix
+                          backend:
+                            service:
+                              name: conv-grpc
+                              port:
+                                number: 9000
+
+    - name: verify-grpcroute
+      cluster: standalone
+      description: Verify GRPCRoute is created (not HTTPRoute)
+      try:
+        - script:
+            timeout: 60s
+            content: |
+              set -e
+              SOURCE_LABEL="conv-grpc.default"
+              NAMESPACE=default
+
+              for i in $(seq 1 30); do
+                # Check for GRPCRoute
+                GRPCROUTE=$(kubectl get grpcroutes.gateway.networking.k8s.io -n "$NAMESPACE" \
+                  -l "kubelb.k8c.io/source-ingress=${SOURCE_LABEL}" -o name 2>/dev/null | head -1)
+
+                if [ -n "$GRPCROUTE" ]; then
+                  echo "SUCCESS: GRPCRoute created"
+                  echo "  Route: $GRPCROUTE"
+
+                  # Verify hostname is transformed
+                  HOSTNAME=$(kubectl get $GRPCROUTE -n "$NAMESPACE" -o jsonpath='{.spec.hostnames[0]}')
+                  echo "  Hostname: $HOSTNAME"
+
+                  # Verify backendRef port
+                  PORT=$(kubectl get $GRPCROUTE -n "$NAMESPACE" -o jsonpath='{.spec.rules[0].backendRefs[0].port}')
+                  echo "  Backend Port: $PORT"
+
+                  exit 0
+                fi
+                sleep 2
+              done
+              echo "FAILED: GRPCRoute not found"
+              exit 1
+            check:
+              ($error == null): true
+
+    - name: verify-no-httproute
+      cluster: standalone
+      description: Verify HTTPRoute is NOT created
+      try:
+        - script:
+            timeout: 10s
+            content: |
+              set -e
+              SOURCE_LABEL="conv-grpc.default"
+              NAMESPACE=default
+
+              # Check for HTTPRoute - should NOT exist
+              HTTPROUTE=$(kubectl get httproutes.gateway.networking.k8s.io -n "$NAMESPACE" \
+                -l "kubelb.k8c.io/source-ingress=${SOURCE_LABEL}" -o name 2>/dev/null | head -1)
+
+              if [ -n "$HTTPROUTE" ]; then
+                echo "FAILED: HTTPRoute exists (expected only GRPCRoute)"
+                exit 1
+              fi
+
+              echo "SUCCESS: No HTTPRoute created (expected)"
+            check:
+              ($error == null): true
+
+    - name: verify-warning
+      description: Verify warning about GRPC annotation filters
+      use:
+        template: ../../../../../step-templates/conversion/verify-warnings.yaml
+        with:
+          bindings:
+            - name: ingress_name
+              value: ($name)
+            - name: warning_pattern
+              value: "backend-protocol=GRPC"
+
+    - name: cleanup
+      description: Cleanup resources
+      use:
+        template: ../../../../../step-templates/conversion/cleanup-conversion.yaml
+        with:
+          bindings:
+            - name: ingress_name
+              value: ($name)

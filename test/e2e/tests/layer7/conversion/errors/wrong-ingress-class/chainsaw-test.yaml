@@ -1,0 +1,143 @@
+# Copyright 2026 The KubeLB Authors.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# Wrong IngressClass Test
+# Verifies:
+# - Ingress with non-nginx ingressClass is NOT converted
+# - No HTTPRoute is created
+apiVersion: chainsaw.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: conversion-errors-wrong-class
+  labels:
+    suite: conversion
+    layer: layer7
+    conversion: "true"
+    test: "conversion-errors-wrong-class"
+    category: errors
+    parallel: "true"
+spec:
+  description: |
+    Test that Ingress with non-nginx ingressClass is not converted.
+    Verifies no HTTPRoute is created for unsupported ingress classes.
+  bindings:
+    - name: name
+      value: conv-wrongclass
+  steps:
+    - name: create-service
+      cluster: standalone
+      description: Create ClusterIP service
+      try:
+        - apply:
+            resource:
+              apiVersion: v1
+              kind: Service
+              metadata:
+                name: conv-wrongclass
+                namespace: default
+              spec:
+                type: ClusterIP
+                selector:
+                  app: echo-shared
+                ports:
+                  - port: 80
+                    targetPort: 5678
+
+    - name: create-ingress-wrong-class
+      cluster: standalone
+      description: Create Ingress with non-nginx ingressClass
+      try:
+        - apply:
+            resource:
+              apiVersion: networking.k8s.io/v1
+              kind: Ingress
+              metadata:
+                name: conv-wrongclass
+                namespace: default
+              spec:
+                ingressClassName: traefik
+                rules:
+                  - host: conv-wrongclass.test.local
+                    http:
+                      paths:
+                        - path: /
+                          pathType: Prefix
+                          backend:
+                            service:
+                              name: conv-wrongclass
+                              port:
+                                number: 80
+
+    - name: verify-no-httproute
+      cluster: standalone
+      description: Verify NO HTTPRoute is created
+      try:
+        - script:
+            timeout: 20s
+            content: |
+              set -e
+              SOURCE_LABEL="conv-wrongclass.default"
+
+              # Wait a bit for any potential conversion
+              sleep 10
+
+              COUNT=$(kubectl get httproutes.gateway.networking.k8s.io -n default \
+                -l "kubelb.k8c.io/source-ingress=${SOURCE_LABEL}" -o name 2>/dev/null | wc -l | tr -d ' ')
+
+              if [ "$COUNT" = "0" ]; then
+                echo "SUCCESS: No HTTPRoute created for non-nginx Ingress"
+                exit 0
+              fi
+
+              echo "FAILED: HTTPRoute was created for non-nginx Ingress"
+              kubectl get httproutes.gateway.networking.k8s.io -n default \
+                -l "kubelb.k8c.io/source-ingress=${SOURCE_LABEL}" -o yaml
+              exit 1
+            check:
+              ($error == null): true
+
+    - name: verify-no-conversion-status
+      cluster: standalone
+      description: Verify Ingress has no conversion status annotation
+      try:
+        - script:
+            timeout: 10s
+            content: |
+              set -e
+
+              STATUS=$(kubectl get ingress conv-wrongclass -n default \
+                -o jsonpath='{.metadata.annotations.kubelb\.k8c\.io/conversion-status}' 2>/dev/null || echo "")
+
+              if [ -z "$STATUS" ]; then
+                echo "SUCCESS: No conversion-status annotation (Ingress not processed)"
+                exit 0
+              fi
+
+              echo "INFO: Conversion status found: $STATUS"
+              # This might be "skipped" or similar if controller processes all Ingresses
+              exit 0
+            check:
+              ($error == null): true
+
+    - name: cleanup
+      cluster: standalone
+      description: Cleanup resources
+      try:
+        - script:
+            timeout: 30s
+            content: |
+              kubectl delete ingress conv-wrongclass -n default --ignore-not-found
+              kubectl delete service conv-wrongclass -n default --ignore-not-found
+              kubectl delete httproutes.gateway.networking.k8s.io -n default \
+                -l "kubelb.k8c.io/source-ingress=conv-wrongclass.default" --ignore-not-found

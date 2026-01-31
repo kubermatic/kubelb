@@ -22,6 +22,7 @@ metadata:
   name: envoy-cleanup
   labels:
     all:
+    multi-tenant: "true"
     isolated: "true"
     resource: tenant
     feature: envoy-cleanup

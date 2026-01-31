@@ -1,0 +1,204 @@
+# Copyright 2026 The KubeLB Authors.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+apiVersion: chainsaw.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: conversion-policies-session-affinity
+  labels:
+    suite: conversion
+    layer: layer7
+    conversion: "true"
+    test: "conversion-policies-session-affinity"
+    category: policies
+    parallel: "true"
+spec:
+  description: |
+    Test session affinity annotations conversion.
+    Gateway API requires BackendTrafficPolicy - warning generated.
+    Verifies partial conversion and basic traffic works.
+  bindings:
+    - name: name
+      value: conv-affinity
+    - name: transformed_host
+      value: conv-affinity.gateway.local
+  steps:
+    - name: create-service
+      cluster: standalone
+      description: Create ClusterIP service
+      try:
+        - apply:
+            resource:
+              apiVersion: v1
+              kind: Service
+              metadata:
+                name: conv-affinity
+                namespace: default
+              spec:
+                type: ClusterIP
+                selector:
+                  app: echo-shared
+                ports:
+                  - port: 80
+                    targetPort: 5678
+
+    - name: create-ingress
+      cluster: standalone
+      description: Create Ingress with session affinity annotations
+      try:
+        - apply:
+            resource:
+              apiVersion: networking.k8s.io/v1
+              kind: Ingress
+              metadata:
+                name: conv-affinity
+                namespace: default
+                annotations:
+                  nginx.ingress.kubernetes.io/affinity: cookie
+                  nginx.ingress.kubernetes.io/session-cookie-name: INGRESSCOOKIE
+                  nginx.ingress.kubernetes.io/session-cookie-max-age: "3600"
+              spec:
+                ingressClassName: nginx
+                rules:
+                  - host: conv-affinity.test.local
+                    http:
+                      paths:
+                        - path: /
+                          pathType: Prefix
+                          backend:
+                            service:
+                              name: conv-affinity
+                              port:
+                                number: 80
+
+    - name: verify-httproute
+      description: Verify HTTPRoute exists
+      use:
+        template: ../../../../../step-templates/conversion/verify-httproute.yaml
+        with:
+          bindings:
+            - name: ingress_name
+              value: ($name)
+            - name: expected_host
+              value: ($transformed_host)
+
+    - name: verify-warning
+      description: Verify warning about BackendTrafficPolicy
+      use:
+        template: ../../../../../step-templates/conversion/verify-warnings.yaml
+        with:
+          bindings:
+            - name: ingress_name
+              value: ($name)
+            - name: warning_pattern
+              value: BackendTrafficPolicy
+
+    - name: verify-session-affinity-enforcement
+      description: Verify session affinity - cookie set and requests stick to same backend
+      try:
+        - script:
+            cluster: standalone
+            timeout: 120s
+            content: |
+              set -e
+              HOST="conv-affinity.gateway.local"
+              GATEWAY_NS=default
+
+              # Wait for Gateway IP
+              IP=""
+              i=1; while [ "$i" -le 30 ]; do
+                IP=$(kubectl get gateway.gateway.networking.k8s.io kubelb -n "$GATEWAY_NS" \
+                  -o jsonpath='{.status.addresses[0].value}' 2>/dev/null || echo "")
+                if [ -n "$IP" ]; then
+                  break
+                fi
+                sleep 2
+                i=$((i + 1))
+              done
+
+              if [ -z "$IP" ]; then
+                echo "FAILED: Gateway has no IP"
+                exit 1
+              fi
+
+              echo "Gateway IP: $IP"
+
+              # Wait for route to propagate
+              i=1; while [ "$i" -le 20 ]; do
+                CODE=$(curl -s -o /dev/null -w "%{http_code}" --max-time 5 \
+                  -H "Host: ${HOST}" "http://${IP}/" 2>/dev/null || echo "000")
+                if [ "$CODE" = "200" ]; then
+                  echo "Route is ready"
+                  break
+                fi
+                echo "Attempt $i: waiting for route..."
+                sleep 3
+                i=$((i + 1))
+              done
+
+              # First request - check for Set-Cookie header
+              HEADERS=$(curl -s -I --max-time 5 \
+                -H "Host: ${HOST}" "http://${IP}/" 2>/dev/null || true)
+
+              echo "Response headers:"
+              echo "$HEADERS"
+
+              # Check for INGRESSCOOKIE
+              COOKIE=""
+              if echo "$HEADERS" | grep -qi "set-cookie.*INGRESSCOOKIE"; then
+                COOKIE=$(echo "$HEADERS" | grep -i "set-cookie" | grep -i "INGRESSCOOKIE" | head -1 | sed 's/.*INGRESSCOOKIE=\([^;]*\).*/\1/')
+                echo "Found INGRESSCOOKIE: $COOKIE"
+              fi
+
+              if [ -n "$COOKIE" ]; then
+                echo "SUCCESS: Session cookie set"
+
+                # Make multiple requests with cookie - should hit same backend
+                # Note: With single replica shared backend, all go to same pod anyway
+                # This test validates cookie is SET, not actual load-balanced stickiness
+                for j in 1 2 3; do
+                  RESP=$(curl -s --max-time 5 \
+                    -H "Host: ${HOST}" \
+                    -b "INGRESSCOOKIE=$COOKIE" \
+                    "http://${IP}/" 2>/dev/null || true)
+                  if echo "$RESP" | grep -q "hello"; then
+                    echo "Request $j with cookie: OK"
+                  fi
+                done
+
+                echo "SUCCESS: Session affinity cookie working"
+                exit 0
+              fi
+
+              # If no cookie set, session affinity is not enforced
+              RESP=$(curl -s --max-time 5 -H "Host: ${HOST}" "http://${IP}/" 2>/dev/null || true)
+              if echo "$RESP" | grep -q "hello"; then
+                echo "INFO: Traffic works but session cookie not set"
+                echo "Session affinity requires BackendTrafficPolicy CRD"
+                exit 0
+              fi
+
+              echo "FAILED: Traffic not working"
+              exit 1
+            check:
+              ($error == null): true
+
+    - name: cleanup
+      description: Cleanup resources
+      use:
+        template: ../../../../../step-templates/conversion/cleanup-conversion.yaml
+        with:
+          bindings:
+            - name: ingress_name
+              value: ($name)

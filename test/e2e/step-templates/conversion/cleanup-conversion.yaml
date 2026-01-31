@@ -1,0 +1,77 @@
+# Copyright 2026 The KubeLB Authors.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# Step Template: Cleanup Ingress, Service, and HTTPRoutes for conversion tests
+# Required bindings:
+#   - ingress_name: Ingress name
+# Optional bindings:
+#   - service_name: Service name (if not provided, defaults to ingress_name in script)
+# Note: Namespace is hardcoded to 'default' - see test/e2e/CLAUDE.md for why
+apiVersion: chainsaw.kyverno.io/v1alpha1
+kind: StepTemplate
+metadata:
+  name: cleanup-conversion
+spec:
+  try:
+    - script:
+        cluster: standalone
+        timeout: 60s
+        env:
+          - name: INGRESS_NAME
+            value: ($ingress_name)
+        content: |
+          set -e
+          NAMESPACE=default
+
+          # SERVICE_NAME defaults to INGRESS_NAME (callers can override by setting SERVICE_NAME env before sourcing)
+          SERVICE_NAME="${SERVICE_NAME:-$INGRESS_NAME}"
+
+          # Delete Ingress
+          kubectl delete ingress "$INGRESS_NAME" -n "$NAMESPACE" --ignore-not-found
+
+          # Delete Service
+          kubectl delete service "$SERVICE_NAME" -n "$NAMESPACE" --ignore-not-found
+
+          # Delete HTTPRoutes by source-ingress label
+          SOURCE_LABEL="${INGRESS_NAME}.${NAMESPACE}"
+          kubectl delete httproutes.gateway.networking.k8s.io -n "$NAMESPACE" \
+            -l "kubelb.k8c.io/source-ingress=${SOURCE_LABEL}" --ignore-not-found
+
+          # Delete GRPCRoutes by source-ingress label
+          kubectl delete grpcroutes.gateway.networking.k8s.io -n "$NAMESPACE" \
+            -l "kubelb.k8c.io/source-ingress=${SOURCE_LABEL}" --ignore-not-found
+
+          # Delete Envoy Gateway policies by source-ingress label
+          kubectl delete securitypolicies.gateway.envoyproxy.io -n "$NAMESPACE" \
+            -l "kubelb.k8c.io/source-ingress=${SOURCE_LABEL}" --ignore-not-found 2>/dev/null || true
+          kubectl delete backendtrafficpolicies.gateway.envoyproxy.io -n "$NAMESPACE" \
+            -l "kubelb.k8c.io/source-ingress=${SOURCE_LABEL}" --ignore-not-found 2>/dev/null || true
+          kubectl delete clienttrafficpolicies.gateway.envoyproxy.io -n "$NAMESPACE" \
+            -l "kubelb.k8c.io/source-ingress=${SOURCE_LABEL}" --ignore-not-found 2>/dev/null || true
+
+          # Wait for cleanup to complete
+          i=1; while [ "$i" -le 10 ]; do
+            ROUTES=$(kubectl get httproutes.gateway.networking.k8s.io -n "$NAMESPACE" \
+              -l "kubelb.k8c.io/source-ingress=${SOURCE_LABEL}" -o name 2>/dev/null || echo "")
+            if [ -z "$ROUTES" ]; then
+              echo "Cleanup complete"
+              exit 0
+            fi
+            sleep 1
+            i=$((i + 1))
+          done
+
+          echo "WARNING: Some HTTPRoutes may still exist"
+        check:
+          ($error == null): true

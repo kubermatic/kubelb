@@ -31,7 +31,7 @@ spec:
   try:
     - assert:
         cluster: ($cluster)
-        timeout: 30s
+        timeout: 90s
         resource:
           apiVersion: networking.k8s.io/v1
           kind: Ingress

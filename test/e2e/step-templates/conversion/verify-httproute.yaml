@@ -1,0 +1,124 @@
+# Copyright 2026 The KubeLB Authors.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# Step Template: Verify HTTPRoute exists with correct parentRef and hostname
+# Required bindings:
+#   - ingress_name: source Ingress name
+#   - expected_host: expected hostname in HTTPRoute (after domain transformation)
+# Optional bindings:
+#   - gateway_name: Gateway name (default: kubelb)
+# Note: Namespace is hardcoded to 'default' - see test/e2e/CLAUDE.md for why
+apiVersion: chainsaw.kyverno.io/v1alpha1
+kind: StepTemplate
+metadata:
+  name: verify-httproute
+spec:
+  bindings:
+    - name: gateway_name
+      value: kubelb
+  try:
+    - script:
+        cluster: standalone
+        timeout: 60s
+        env:
+          - name: INGRESS_NAME
+            value: ($ingress_name)
+          - name: EXPECTED_HOST
+            value: ($expected_host)
+          - name: GATEWAY_NAME
+            value: ($gateway_name)
+        content: |
+          set -e
+          NAMESPACE=default
+          GATEWAY_NS=default
+          SOURCE_LABEL="${INGRESS_NAME}.${NAMESPACE}"
+
+          i=1; while [ "$i" -le 30 ]; do
+            # Find HTTPRoute by source-ingress label
+            HTTPROUTE=$(kubectl get httproutes.gateway.networking.k8s.io -n "$NAMESPACE" \
+              -l "kubelb.k8c.io/source-ingress=${SOURCE_LABEL}" -o name 2>/dev/null | head -1)
+
+            if [ -n "$HTTPROUTE" ]; then
+              # Verify hostname
+              HOSTNAME=$(kubectl get $HTTPROUTE -n "$NAMESPACE" \
+                -o jsonpath='{.spec.hostnames[0]}')
+
+              if [ "$HOSTNAME" != "$EXPECTED_HOST" ]; then
+                echo "FAILED: Expected hostname '$EXPECTED_HOST', got '$HOSTNAME'"
+                exit 1
+              fi
+
+              # Verify parentRef
+              PARENT_NAME=$(kubectl get $HTTPROUTE -n "$NAMESPACE" \
+                -o jsonpath='{.spec.parentRefs[0].name}')
+              PARENT_NS=$(kubectl get $HTTPROUTE -n "$NAMESPACE" \
+                -o jsonpath='{.spec.parentRefs[0].namespace}')
+
+              if [ "$PARENT_NAME" != "$GATEWAY_NAME" ]; then
+                echo "FAILED: Expected parentRef name '$GATEWAY_NAME', got '$PARENT_NAME'"
+                exit 1
+              fi
+
+              # Parent namespace might be empty if same namespace
+              if [ -n "$PARENT_NS" ] && [ "$PARENT_NS" != "$GATEWAY_NS" ]; then
+                echo "FAILED: Expected parentRef namespace '$GATEWAY_NS', got '$PARENT_NS'"
+                exit 1
+              fi
+
+              # Verify at least one rule exists
+              RULE_COUNT=$(kubectl get $HTTPROUTE -n "$NAMESPACE" \
+                -o jsonpath='{.spec.rules}' | jq 'length' 2>/dev/null || echo "0")
+              if [ "$RULE_COUNT" -lt 1 ]; then
+                echo "FAILED: HTTPRoute has no rules"
+                exit 1
+              fi
+
+              # Check backend reference (may be empty for redirect routes)
+              BACKEND_NAME=$(kubectl get $HTTPROUTE -n "$NAMESPACE" \
+                -o jsonpath='{.spec.rules[0].backendRefs[0].name}' 2>/dev/null || echo "")
+              if [ -z "$BACKEND_NAME" ]; then
+                # Check if there are filters (redirect routes don't have backends)
+                FILTER_COUNT=$(kubectl get $HTTPROUTE -n "$NAMESPACE" \
+                  -o jsonpath='{.spec.rules[0].filters}' 2>/dev/null | jq 'length' 2>/dev/null || echo "0")
+                if [ "$FILTER_COUNT" = "0" ] || [ "$FILTER_COUNT" = "null" ]; then
+                  echo "WARNING: HTTPRoute has no backend reference or filters"
+                fi
+              fi
+
+              # Verify route is accepted by gateway
+              ACCEPTED=$(kubectl get $HTTPROUTE -n "$NAMESPACE" \
+                -o jsonpath='{.status.parents[0].conditions[?(@.type=="Accepted")].status}' 2>/dev/null || echo "")
+              if [ "$ACCEPTED" != "True" ]; then
+                echo "WARNING: HTTPRoute not yet accepted (status: $ACCEPTED)"
+              fi
+
+              echo "SUCCESS: HTTPRoute verified"
+              echo "  HTTPRoute: $HTTPROUTE"
+              echo "  Hostname: $HOSTNAME"
+              echo "  ParentRef: $GATEWAY_NAME"
+              echo "  Rules: $RULE_COUNT"
+              echo "  Backend: $BACKEND_NAME"
+              echo "  Accepted: $ACCEPTED"
+              exit 0
+            fi
+
+            echo "Attempt $i: waiting for HTTPRoute..."
+            sleep 2
+            i=$((i + 1))
+          done
+
+          echo "FAILED: HTTPRoute not found with label kubelb.k8c.io/source-ingress=${SOURCE_LABEL}"
+          exit 1
+        check:
+          ($error == null): true

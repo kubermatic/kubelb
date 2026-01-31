@@ -1,0 +1,284 @@
+# Copyright 2026 The KubeLB Authors.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# Integrated Conversion: Listener Merge Test
+# Verifies multiple Ingresses share the same Gateway and all paths work
+apiVersion: chainsaw.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: integrated-conversion-listener-merge
+  labels:
+    all:
+    multi-tenant: "true"
+    resource: ingress
+    layer: layer7
+    feature: conversion
+    test: listener-merge
+spec:
+  description: |
+    Test multiple Ingresses in integrated conversion mode.
+    All Ingresses work via kubelb, all converted HTTPRoutes share same Gateway.
+  bindings:
+    - name: kubelb_namespace
+      value: tenant-secondary
+  steps:
+    # Step 1: Create services
+    - name: create-services
+      cluster: tenant2
+      description: Create services for both Ingresses
+      try:
+        - apply:
+            resource:
+              apiVersion: v1
+              kind: Service
+              metadata:
+                name: int-lm1
+                namespace: default
+              spec:
+                type: ClusterIP
+                selector:
+                  app: echo-shared
+                ports:
+                  - port: 80
+                    targetPort: 5678
+        - apply:
+            resource:
+              apiVersion: v1
+              kind: Service
+              metadata:
+                name: int-lm2
+                namespace: default
+              spec:
+                type: ClusterIP
+                selector:
+                  app: echo-shared
+                ports:
+                  - port: 80
+                    targetPort: 5678
+
+    # Step 2: Create both Ingresses with kubelb class
+    - name: create-ingresses
+      cluster: tenant2
+      description: Create both Ingresses
+      try:
+        - apply:
+            resource:
+              apiVersion: networking.k8s.io/v1
+              kind: Ingress
+              metadata:
+                name: int-lm1
+                namespace: default
+              spec:
+                ingressClassName: kubelb
+                rules:
+                  - host: int-lm1.test.local
+                    http:
+                      paths:
+                        - path: /
+                          pathType: Prefix
+                          backend:
+                            service:
+                              name: int-lm1
+                              port:
+                                number: 80
+        - apply:
+            resource:
+              apiVersion: networking.k8s.io/v1
+              kind: Ingress
+              metadata:
+                name: int-lm2
+                namespace: default
+              spec:
+                ingressClassName: kubelb
+                rules:
+                  - host: int-lm2.test.local
+                    http:
+                      paths:
+                        - path: /
+                          pathType: Prefix
+                          backend:
+                            service:
+                              name: int-lm2
+                              port:
+                                number: 80
+
+    # Step 3: Verify both Ingresses get IPs
+    - name: verify-ingress-ips
+      cluster: tenant2
+      description: Verify both Ingresses get LoadBalancer IPs
+      try:
+        - assert:
+            timeout: 120s
+            resource:
+              apiVersion: networking.k8s.io/v1
+              kind: Ingress
+              metadata:
+                name: int-lm1
+                namespace: default
+              status:
+                loadBalancer:
+                  ingress:
+                    - {}
+        - assert:
+            timeout: 120s
+            resource:
+              apiVersion: networking.k8s.io/v1
+              kind: Ingress
+              metadata:
+                name: int-lm2
+                namespace: default
+              status:
+                loadBalancer:
+                  ingress:
+                    - {}
+
+    # Step 4: Verify Ingress traffic works for both
+    - name: verify-ingress-traffic
+      cluster: tenant2
+      description: Verify HTTP via both Ingresses
+      try:
+        - script:
+            skipCommandOutput: true
+            timeout: 60s
+            content: |
+              set -e
+              EXPECTED="hello-shared"
+
+              # Test int-lm1
+              IP1=$(kubectl get ingress int-lm1 -n default -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+              for i in $(seq 1 10); do
+                RESP=$(curl -s --max-time 5 -H "Host: int-lm1.test.local" "http://${IP1}/" 2>/dev/null || true)
+                if echo "$RESP" | grep -q "$EXPECTED"; then
+                  echo "int-lm1 Ingress OK"
+                  break
+                fi
+                sleep 2
+              done
+
+              # Test int-lm2
+              IP2=$(kubectl get ingress int-lm2 -n default -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+              for i in $(seq 1 10); do
+                RESP=$(curl -s --max-time 5 -H "Host: int-lm2.test.local" "http://${IP2}/" 2>/dev/null || true)
+                if echo "$RESP" | grep -q "$EXPECTED"; then
+                  echo "int-lm2 Ingress OK"
+                  echo "SUCCESS: Both Ingresses working"
+                  exit 0
+                fi
+                sleep 2
+              done
+              echo "FAILED: Ingress traffic not working"
+              exit 1
+            check:
+              ($error == null): true
+
+    # Step 5: Verify HTTPRoutes created for both
+    - name: verify-httproutes
+      cluster: tenant2
+      description: Verify both HTTPRoutes created by converter
+      try:
+        - script:
+            skipCommandOutput: true
+            timeout: 60s
+            content: |
+              set -e
+              for i in $(seq 1 20); do
+                HR1=$(kubectl get httproutes.gateway.networking.k8s.io -n default \
+                  -l "kubelb.k8c.io/source-ingress=int-lm1.default" -o name 2>/dev/null | head -1)
+                HR2=$(kubectl get httproutes.gateway.networking.k8s.io -n default \
+                  -l "kubelb.k8c.io/source-ingress=int-lm2.default" -o name 2>/dev/null | head -1)
+
+                if [ -n "$HR1" ] && [ -n "$HR2" ]; then
+                  echo "SUCCESS: Both HTTPRoutes found"
+                  exit 0
+                fi
+                echo "Attempt $i: waiting..."
+                sleep 2
+              done
+              echo "FAILED: HTTPRoutes not found"
+              exit 1
+            check:
+              ($error == null): true
+
+    # Step 6: Verify shared Gateway has IP
+    - name: verify-gateway
+      cluster: tenant2
+      description: Verify shared Gateway kubelb-int-conv
+      try:
+        - assert:
+            timeout: 120s
+            resource:
+              apiVersion: gateway.networking.k8s.io/v1
+              kind: Gateway
+              metadata:
+                name: kubelb-int-conv
+                namespace: default
+              spec:
+                gatewayClassName: kubelb
+              status:
+                addresses:
+                  - {}
+
+    # Step 7: Verify HTTPRoute traffic works for both (same content as Ingress)
+    - name: verify-httproute-traffic
+      cluster: tenant2
+      description: Verify HTTP via HTTPRoutes
+      try:
+        - script:
+            skipCommandOutput: true
+            timeout: 60s
+            content: |
+              set -e
+              IP=$(kubectl get gateway.gateway.networking.k8s.io kubelb-int-conv -n default \
+                -o jsonpath='{.status.addresses[0].value}')
+              EXPECTED="hello-shared"
+
+              # Test int-lm1.gateway.local
+              for i in $(seq 1 10); do
+                RESP=$(curl -s --max-time 5 -H "Host: int-lm1.gateway.local" "http://${IP}/" 2>/dev/null || true)
+                if echo "$RESP" | grep -q "$EXPECTED"; then
+                  echo "int-lm1 HTTPRoute OK"
+                  break
+                fi
+                sleep 2
+              done
+
+              # Test int-lm2.gateway.local
+              for i in $(seq 1 10); do
+                RESP=$(curl -s --max-time 5 -H "Host: int-lm2.gateway.local" "http://${IP}/" 2>/dev/null || true)
+                if echo "$RESP" | grep -q "$EXPECTED"; then
+                  echo "int-lm2 HTTPRoute OK"
+                  echo "SUCCESS: Both HTTPRoutes serving same content as Ingresses"
+                  exit 0
+                fi
+                sleep 2
+              done
+              echo "FAILED: HTTPRoute traffic not working"
+              exit 1
+            check:
+              ($error == null): true
+
+    # Cleanup
+    - name: cleanup
+      cluster: tenant2
+      description: Cleanup resources
+      try:
+        - script:
+            skipCommandOutput: true
+            timeout: 30s
+            content: |
+              kubectl delete ingress int-lm1 int-lm2 -n default --ignore-not-found
+              kubectl delete service int-lm1 int-lm2 -n default --ignore-not-found
+              # Delete HTTPRoutes created by converter
+              kubectl delete httproute -n default -l "kubelb.k8c.io/source-ingress=int-lm1.default" --ignore-not-found
+              kubectl delete httproute -n default -l "kubelb.k8c.io/source-ingress=int-lm2.default" --ignore-not-found

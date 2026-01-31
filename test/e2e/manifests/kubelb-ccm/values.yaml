@@ -23,7 +23,6 @@ kubelb:
   enableSecretSynchronizer: true
   enableGatewayAPI: true
   installGatewayAPICRDs: true
-  gatewayAPICRDsChannel: standard
 
 serviceMonitor:
   enabled: false

@@ -31,10 +31,23 @@ spec:
     spec:
       containers:
         - name: echo
-          image: hashicorp/http-echo:0.2.3
+          image: hashicorp/http-echo:1.0
+          imagePullPolicy: IfNotPresent
           args: ["-text=hello-shared"]
           ports:
             - containerPort: 5678
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 5678
+            initialDelaySeconds: 2
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 5678
+            initialDelaySeconds: 5
+            periodSeconds: 10
 ---
 # Baseline LoadBalancer service - keeps Envoy proxy running for tenant
 # Required because Envoy terminates when no LBs/Routes exist
@@ -50,3 +63,44 @@ spec:
   ports:
     - port: 80
       targetPort: 5678
+---
+# Echo server that returns request headers in JSON format
+# Used by tests that need to verify headers reach the backend
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: echo-headers
+  namespace: default
+  labels:
+    app: echo-headers
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: echo-headers
+  template:
+    metadata:
+      labels:
+        app: echo-headers
+    spec:
+      containers:
+        - name: echo
+          image: ealen/echo-server:0.9.2
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 80
+          env:
+            - name: PORT
+              value: "80"
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 80
+            initialDelaySeconds: 2
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 80
+            initialDelaySeconds: 5
+            periodSeconds: 10

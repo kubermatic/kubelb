@@ -1,0 +1,97 @@
+# Copyright 2026 The KubeLB Authors.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# Step Template: Verify Gateway exists with correct GatewayClass and listeners
+# Required bindings:
+#   - gateway_name: Gateway name
+# Optional bindings:
+#   - gateway_class: expected GatewayClass (default: eg)
+#   - min_listeners: minimum number of listeners (default: 1)
+# Note: Namespace is hardcoded to 'default' - see test/e2e/CLAUDE.md for why
+apiVersion: chainsaw.kyverno.io/v1alpha1
+kind: StepTemplate
+metadata:
+  name: verify-gateway
+spec:
+  bindings:
+    - name: gateway_class
+      value: eg
+    - name: min_listeners
+      value: "1"
+  try:
+    - script:
+        cluster: standalone
+        timeout: 60s
+        env:
+          - name: GATEWAY_NAME
+            value: ($gateway_name)
+          - name: EXPECTED_CLASS
+            value: ($gateway_class)
+          - name: MIN_LISTENERS
+            value: ($min_listeners)
+        content: |
+          set -e
+          NAMESPACE=default
+
+          i=1; while [ "$i" -le 30 ]; do
+            # Check if Gateway exists
+            if kubectl get gateway.gateway.networking.k8s.io "$GATEWAY_NAME" -n "$NAMESPACE" &>/dev/null; then
+              # Verify GatewayClass
+              CLASS=$(kubectl get gateway.gateway.networking.k8s.io "$GATEWAY_NAME" -n "$NAMESPACE" \
+                -o jsonpath='{.spec.gatewayClassName}')
+
+              if [ "$CLASS" != "$EXPECTED_CLASS" ]; then
+                echo "FAILED: Expected gatewayClassName '$EXPECTED_CLASS', got '$CLASS'"
+                exit 1
+              fi
+
+              # Verify listener count
+              LISTENER_COUNT=$(kubectl get gateway.gateway.networking.k8s.io "$GATEWAY_NAME" -n "$NAMESPACE" \
+                -o jsonpath='{.spec.listeners}' | jq 'length')
+
+              if [ "$LISTENER_COUNT" -lt "$MIN_LISTENERS" ]; then
+                echo "FAILED: Expected at least $MIN_LISTENERS listeners, got $LISTENER_COUNT"
+                exit 1
+              fi
+
+              # Verify managed-by label
+              MANAGED_BY=$(kubectl get gateway.gateway.networking.k8s.io "$GATEWAY_NAME" -n "$NAMESPACE" \
+                -o jsonpath='{.metadata.labels.kubelb\.k8c\.io/managed-by}')
+
+              if [ "$MANAGED_BY" != "ingress-conversion-controller" ]; then
+                echo "FAILED: Expected managed-by label 'ingress-conversion-controller', got '$MANAGED_BY'"
+                exit 1
+              fi
+
+              # Check for IP address (optional, may take time)
+              IP=$(kubectl get gateway.gateway.networking.k8s.io "$GATEWAY_NAME" -n "$NAMESPACE" \
+                -o jsonpath='{.status.addresses[0].value}' 2>/dev/null || echo "")
+
+              echo "SUCCESS: Gateway verified"
+              echo "  Gateway: $GATEWAY_NAME"
+              echo "  GatewayClass: $CLASS"
+              echo "  Listeners: $LISTENER_COUNT"
+              echo "  IP: ${IP:-pending}"
+              exit 0
+            fi
+
+            echo "Attempt $i: waiting for Gateway..."
+            sleep 2
+            i=$((i + 1))
+          done
+
+          echo "FAILED: Gateway $GATEWAY_NAME not found in namespace $NAMESPACE"
+          exit 1
+        check:
+          ($error == null): true

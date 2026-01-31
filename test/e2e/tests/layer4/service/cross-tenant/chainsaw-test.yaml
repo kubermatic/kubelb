@@ -23,6 +23,7 @@ metadata:
   name: cross-tenant-service-loadbalancer
   labels:
     all:
+    multi-tenant: "true"
     test: cross-tenant
     resource: service
     layer: layer4

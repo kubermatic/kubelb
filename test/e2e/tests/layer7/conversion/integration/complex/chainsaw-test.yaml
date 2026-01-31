@@ -1,0 +1,213 @@
+# Copyright 2026 The KubeLB Authors.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+apiVersion: chainsaw.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: conversion-integration-complex
+  labels:
+    suite: conversion
+    layer: layer7
+    conversion: "true"
+    test: "conversion-integration-complex"
+    category: integration
+    parallel: "true"
+spec:
+  description: |
+    Test complex Ingress with multiple features combined.
+    Verifies multi-host, TLS, SSL redirect, rewrite-target all work together.
+  bindings:
+    - name: name
+      value: conv-complex
+  steps:
+    - name: create-service
+      cluster: standalone
+      description: Create ClusterIP service
+      try:
+        - apply:
+            resource:
+              apiVersion: v1
+              kind: Service
+              metadata:
+                name: conv-complex
+                namespace: default
+              spec:
+                type: ClusterIP
+                selector:
+                  app: echo-shared
+                ports:
+                  - port: 80
+                    targetPort: 5678
+
+    - name: create-tls-secrets
+      cluster: standalone
+      description: Create TLS secrets
+      try:
+        - script:
+            timeout: 30s
+            content: |
+              openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
+                -keyout /tmp/cx1.key -out /tmp/cx1.crt \
+                -subj "/CN=api.gateway.local" 2>/dev/null
+              kubectl create secret tls conv-complex-tls1 \
+                --cert=/tmp/cx1.crt --key=/tmp/cx1.key \
+                -n default --dry-run=client -o yaml | kubectl apply -f -
+
+              openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
+                -keyout /tmp/cx2.key -out /tmp/cx2.crt \
+                -subj "/CN=web.gateway.local" 2>/dev/null
+              kubectl create secret tls conv-complex-tls2 \
+                --cert=/tmp/cx2.crt --key=/tmp/cx2.key \
+                -n default --dry-run=client -o yaml | kubectl apply -f -
+
+              rm -f /tmp/cx*.key /tmp/cx*.crt
+
+    - name: create-ingress
+      cluster: standalone
+      description: Create complex Ingress
+      try:
+        - apply:
+            resource:
+              apiVersion: networking.k8s.io/v1
+              kind: Ingress
+              metadata:
+                name: conv-complex
+                namespace: default
+                annotations:
+                  # Note: ssl-redirect and rewrite-target cannot be used together
+                  # (Gateway API doesn't allow both RequestRedirect and URLRewrite on same rule)
+                  cert-manager.io/cluster-issuer: letsencrypt-prod
+              spec:
+                ingressClassName: nginx
+                tls:
+                  - hosts:
+                      - api.test.local
+                    secretName: conv-complex-tls1
+                  - hosts:
+                      - web.test.local
+                    secretName: conv-complex-tls2
+                rules:
+                  - host: api.test.local
+                    http:
+                      paths:
+                        - path: /v1
+                          pathType: Prefix
+                          backend:
+                            service:
+                              name: conv-complex
+                              port:
+                                number: 80
+                  - host: web.test.local
+                    http:
+                      paths:
+                        - path: /app
+                          pathType: Prefix
+                          backend:
+                            service:
+                              name: conv-complex
+                              port:
+                                number: 80
+
+    - name: verify-httproutes-created
+      cluster: standalone
+      description: Verify HTTPRoutes created for both hosts
+      try:
+        - script:
+            timeout: 60s
+            content: |
+              set -e
+              SOURCE_LABEL="conv-complex.default"
+
+              for i in $(seq 1 30); do
+                COUNT=$(kubectl get httproutes.gateway.networking.k8s.io -n default \
+                  -l "kubelb.k8c.io/source-ingress=${SOURCE_LABEL}" -o name 2>/dev/null | wc -l)
+
+                if [ "$COUNT" -ge 1 ]; then
+                  echo "SUCCESS: Found $COUNT HTTPRoute(s)"
+                  kubectl get httproutes.gateway.networking.k8s.io -n default \
+                    -l "kubelb.k8c.io/source-ingress=${SOURCE_LABEL}" \
+                    -o custom-columns='NAME:.metadata.name,HOSTNAME:.spec.hostnames[0]'
+                  exit 0
+                fi
+                sleep 2
+              done
+              echo "FAILED: No HTTPRoutes found"
+              exit 1
+            check:
+              ($error == null): true
+
+    - name: verify-gateway-https-listeners
+      cluster: standalone
+      description: Verify Gateway has HTTPS listeners for both hosts
+      try:
+        - script:
+            timeout: 60s
+            content: |
+              set -e
+              for i in $(seq 1 30); do
+                HTTPS_COUNT=$(kubectl get gateway.gateway.networking.k8s.io kubelb -n default \
+                  -o jsonpath='{.spec.listeners[*].protocol}' 2>/dev/null | tr ' ' '\n' | grep -c HTTPS || echo "0")
+
+                if [ "$HTTPS_COUNT" -ge 2 ]; then
+                  echo "SUCCESS: Gateway has $HTTPS_COUNT HTTPS listeners"
+                  exit 0
+                fi
+                sleep 2
+              done
+              echo "FAILED: Expected at least 2 HTTPS listeners"
+              exit 1
+            check:
+              ($error == null): true
+
+    # Note: cert-manager annotation propagation from Ingress to Gateway is not implemented.
+    # Use gatewayAnnotations config to set cert-manager annotations on Gateway.
+
+    - name: verify-traffic-api
+      description: Verify HTTP traffic works for api.gateway.local (HTTPS listener config verified separately)
+      use:
+        template: ../../../../../step-templates/conversion/verify-http-traffic.yaml
+        with:
+          bindings:
+            - name: host
+              value: api.gateway.local
+            - name: slug_path
+              value: /v1
+            - name: expected_response
+              value: hello-shared
+
+    - name: verify-traffic-web
+      description: Verify HTTP traffic works for web.gateway.local (HTTPS listener config verified separately)
+      use:
+        template: ../../../../../step-templates/conversion/verify-http-traffic.yaml
+        with:
+          bindings:
+            - name: host
+              value: web.gateway.local
+            - name: slug_path
+              value: /app
+            - name: expected_response
+              value: hello-shared
+
+    - name: cleanup
+      cluster: standalone
+      description: Cleanup resources
+      try:
+        - script:
+            timeout: 30s
+            content: |
+              kubectl delete ingress conv-complex -n default --ignore-not-found
+              kubectl delete service conv-complex -n default --ignore-not-found
+              kubectl delete secret conv-complex-tls1 conv-complex-tls2 -n default --ignore-not-found
+              kubectl delete httproutes.gateway.networking.k8s.io -n default \
+                -l "kubelb.k8c.io/source-ingress=conv-complex.default" --ignore-not-found

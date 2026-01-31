@@ -31,6 +31,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/util/retry"
 	ctrlclient "sigs.k8s.io/controller-runtime/pkg/client"
 	gwapiv1alpha2 "sigs.k8s.io/gateway-api/apis/v1alpha2"
 )
@@ -87,16 +88,31 @@ func CreateUpdateRoute(ctx context.Context, client ctrlclient.Client, route kube
 		existingRoute = route // If the Route doesn't exist, create it
 		err = client.Create(ctx, &existingRoute)
 		if err != nil {
-			return fmt.Errorf("failed to create Route: %w", err)
+			if errors.IsAlreadyExists(err) {
+				// Race condition: another controller created the Route between our Get and Create.
+				// Re-fetch and fall through to update logic below.
+				if getErr := client.Get(ctx, types.NamespacedName{Name: route.Name, Namespace: route.Namespace}, &existingRoute); getErr != nil {
+					return fmt.Errorf("failed to get Route after conflict: %w", getErr)
+				}
+			} else {
+				return fmt.Errorf("failed to create Route: %w", err)
+			}
+		} else {
+			return nil
 		}
-		return nil
 	}
 
 	if !reflect.DeepEqual(existingRoute.Spec, route.Spec) || !reflect.DeepEqual(existingRoute.Labels, route.Labels) || !reflect.DeepEqual(existingRoute.Annotations, route.Annotations) {
-		existingRoute.Spec = route.Spec
-		existingRoute.Labels = route.Labels
-		existingRoute.Annotations = route.Annotations
-		err = client.Update(ctx, &existingRoute)
+		err = retry.RetryOnConflict(retry.DefaultRetry, func() error {
+			// Re-fetch the latest version before updating
+			if getErr := client.Get(ctx, types.NamespacedName{Name: route.Name, Namespace: route.Namespace}, &existingRoute); getErr != nil {
+				return getErr
+			}
+			existingRoute.Spec = route.Spec
+			existingRoute.Labels = route.Labels
+			existingRoute.Annotations = route.Annotations
+			return client.Update(ctx, &existingRoute)
+		})
 		if err != nil {
 			return fmt.Errorf("failed to update Route: %w", err)
 		}

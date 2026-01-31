@@ -273,13 +273,15 @@ E2E_DIR ?= ./test/e2e
 KUBECONFIGS_DIR ?= $(shell pwd)/.e2e-kubeconfigs
 CHAINSAW_CONFIG ?= $(E2E_DIR)/config.yaml
 CHAINSAW_VALUES ?= $(E2E_DIR)/values.yaml
+# All 4 clusters: kubelb (manager), tenant1 (multi-node), tenant2 (single-node), standalone (conversion)
 CHAINSAW_CLUSTERS ?= --cluster kubelb=$(KUBECONFIGS_DIR)/kubelb.kubeconfig \
 	--cluster tenant1=$(KUBECONFIGS_DIR)/tenant1.kubeconfig \
-	--cluster tenant2=$(KUBECONFIGS_DIR)/tenant2.kubeconfig
+	--cluster tenant2=$(KUBECONFIGS_DIR)/tenant2.kubeconfig \
+	--cluster standalone=$(KUBECONFIGS_DIR)/standalone.kubeconfig
 CHAINSAW_FLAGS ?= --config $(CHAINSAW_CONFIG) --values $(CHAINSAW_VALUES) $(CHAINSAW_CLUSTERS)
 
 .PHONY: e2e-setup-kind
-e2e-setup-kind: ## Setup Kind clusters for e2e tests
+e2e-setup-kind: ## Setup Kind clusters for e2e tests (kubelb, tenant1, tenant2, standalone)
 	./hack/e2e/setup-kind.sh
 
 .PHONY: e2e-cleanup-kind
@@ -287,7 +289,7 @@ e2e-cleanup-kind: ## Cleanup Kind clusters
 	./hack/e2e/cleanup-kind.sh
 
 .PHONY: e2e-deploy
-e2e-deploy: ## Deploy KubeLB to Kind clusters
+e2e-deploy: ## Deploy KubeLB to all Kind clusters
 	KUBECONFIGS_DIR=$(KUBECONFIGS_DIR) ./hack/e2e/deploy.sh
 
 .PHONY: e2e-reload
@@ -304,7 +306,7 @@ e2e-local: e2e-setup-local e2e
 e2e-setup-local: e2e-cleanup-kind e2e-setup-kind e2e-deploy ## Reset Kind clusters and redeploy
 
 .PHONY: e2e
-e2e: chainsaw ## Run e2e tests (requires KUBECONFIGS_DIR or existing clusters)
+e2e: chainsaw ## Run all e2e tests (requires KUBECONFIGS_DIR or existing clusters)
 	KUBECONFIG=$(KUBECONFIGS_DIR)/tenant1.kubeconfig $(CHAINSAW) test $(E2E_DIR)/tests $(CHAINSAW_FLAGS) --quiet
 
 .PHONY: e2e-select

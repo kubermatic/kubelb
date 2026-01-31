@@ -51,6 +51,34 @@ kubelb:
   # -- disableGRPCRouteController specifies whether to disable the GRPCRoute Controller.
   disableGRPCRouteController: false
 
+  # Ingress-to-Gateway conversion settings
+  ingressConversion:
+    # -- enabled enables automatic Ingress to HTTPRoute conversion
+    enabled: false
+    # -- standaloneMode runs as standalone converter, disabling all other controllers
+    standaloneMode: false
+    # -- gatewayName is the name of the Gateway for converted HTTPRoutes
+    gatewayName: kubelb
+    # -- gatewayNamespace is the namespace for the shared Gateway (required)
+    gatewayNamespace: kubelb
+    # -- gatewayClass is the GatewayClass name for created Gateway
+    gatewayClass: kubelb
+    # -- ingressClass filters Ingresses to convert (empty = convert all)
+    ingressClass: ""
+    # -- domainReplace is the domain suffix to replace in hostnames
+    domainReplace: ""
+    # -- domainSuffix is the replacement domain suffix for hostnames
+    domainSuffix: ""
+    # -- gatewayAnnotations are annotations to add to created Gateway (comma-separated key=value pairs)
+    # Example: "cert-manager.io/cluster-issuer=letsencrypt,external-dns.alpha.kubernetes.io/target=lb.example.com"
+    gatewayAnnotations: ""
+    # -- propagateExternalDnsAnnotations propagates external-dns annotations to Gateway/HTTPRoute
+    propagateExternalDnsAnnotations: true
+    # -- disableEnvoyGatewayFeatures disables creation of Envoy Gateway policies (SecurityPolicy, BackendTrafficPolicy)
+    disableEnvoyGatewayFeatures: false
+    # -- copyTLSSecrets copies TLS secrets from Ingress namespace to Gateway namespace for cross-namespace certificate references
+    copyTLSSecrets: true
+
 resources:
   limits:
     cpu: 500m
