@@ -191,7 +191,6 @@ func deduplicateFilters(filters []gwapiv1.HTTPRouteFilter) []gwapiv1.HTTPRouteFi
 		seen[f.Type] = i
 	}
 
-	// If no duplicates, return as-is
 	if len(seen) == len(filters) {
 		return filters
 	}
@@ -206,7 +205,6 @@ func deduplicateFilters(filters []gwapiv1.HTTPRouteFilter) []gwapiv1.HTTPRouteFi
 	return result
 }
 
-// handleNotSupported generates a warning for unsupported annotations
 func handleNotSupported(key, _ string, _ map[string]string) ([]gwapiv1.HTTPRouteFilter, []string) {
 	return nil, []string{fmt.Sprintf("annotation %q is not supported in Gateway API conversion", key)}
 }

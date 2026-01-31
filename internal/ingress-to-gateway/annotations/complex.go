@@ -161,7 +161,6 @@ func handleBackendProtocol(_, value string, _ map[string]string) ([]gwapiv1.HTTP
 	}
 }
 
-// handleCanaryEnabled handles canary annotation (already exists but enhance it)
 func handleCanaryEnabled(_, value string, annotations map[string]string) ([]gwapiv1.HTTPRouteFilter, []string) {
 	if value != boolTrue {
 		return nil, nil
@@ -213,8 +212,6 @@ func handleCanaryAnnotation(_, _ string, _ map[string]string) ([]gwapiv1.HTTPRou
 }
 
 // handleSSLPassthrough generates warning for ssl-passthrough annotation
-// nginx.ingress.kubernetes.io/ssl-passthrough: "true"
-// SSL passthrough requires TLSRoute instead of HTTPRoute
 func handleSSLPassthrough(_, value string, _ map[string]string) ([]gwapiv1.HTTPRouteFilter, []string) {
 	if value != boolTrue {
 		return nil, nil

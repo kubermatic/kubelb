@@ -41,7 +41,6 @@ type PolicyConversionResult struct {
 }
 
 // ConvertToPolicies converts NGINX Ingress annotations to Envoy Gateway policies.
-// This is called when policy generation is enabled (--conversion-disable-envoy-gateway-features=false).
 func ConvertToPolicies(input PolicyConversionInput) PolicyConversionResult {
 	result := PolicyConversionResult{}
 

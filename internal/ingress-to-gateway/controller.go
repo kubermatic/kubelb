@@ -80,18 +80,15 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 	ingress := &networkingv1.Ingress{}
 	if err := r.Get(ctx, req.NamespacedName, ingress); err != nil {
 		if kerrors.IsNotFound(err) {
-			// Ingress deleted - routes persist for migration
 			return ctrl.Result{}, nil
 		}
 		return ctrl.Result{}, err
 	}
 
-	// If being deleted, skip - routes persist for migration
 	if ingress.DeletionTimestamp != nil {
 		return ctrl.Result{}, nil
 	}
 
-	// Check if we should convert this Ingress
 	decision := r.shouldConvert(ingress)
 	if !decision.shouldConvert {
 		log.V(1).Info("Skipping Ingress conversion", "reason", decision.skipReason)
@@ -118,10 +115,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 }
 
 func (r *Reconciler) reconcile(ctx context.Context, log logr.Logger, ingress *networkingv1.Ingress) (requeue bool, err error) {
-	// Fetch Services for port resolution
 	services := r.fetchServicesForIngress(ctx, log, ingress)
-
-	// Convert Ingress to HTTPRoutes or GRPCRoutes (one per host)
 	result := ConvertIngressWithServices(ConversionInput{
 		Ingress:          ingress,
 		GatewayName:      r.GatewayName,
@@ -215,7 +209,7 @@ func (r *Reconciler) reconcile(ctx context.Context, log logr.Logger, ingress *ne
 		}
 	}
 
-	// Verify route acceptance (staged validation)
+	// Verify route
 	allWarnings := append([]string{}, result.Warnings...)
 	allWarnings = append(allWarnings, policyWarnings...)
 	routeAcceptance := make(map[string]bool)

@@ -144,7 +144,6 @@ func (r *KubeLBServiceReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 			return kubelbClient.Create(ctx, desiredLB)
 		}); err != nil {
 			if kerrors.IsAlreadyExists(err) {
-				// Race condition: re-fetch and fall through to update logic
 				if getErr := kubelbClient.Get(ctx, ctrlclient.ObjectKeyFromObject(desiredLB), &actualLB); getErr != nil {
 					ccmmetrics.ServiceReconcileTotal.WithLabelValues(req.Namespace, metrics.ResultError).Inc()
 					return ctrl.Result{}, fmt.Errorf("failed to get LoadBalancer after conflict: %w", getErr)

@@ -63,7 +63,6 @@ func init() {
 	utilruntime.Must(clientgoscheme.AddToScheme(scheme))
 	utilruntime.Must(kubelbv1alpha1.AddToScheme(scheme))
 	utilruntime.Must(apiextensionsv1.AddToScheme(scheme))
-	utilruntime.Must(egv1alpha1.AddToScheme(scheme))
 
 	// Register CCM metrics
 	ccmmetrics.Register()
@@ -146,6 +145,11 @@ func main() {
 	if opt.conversionOpts.StandaloneMode {
 		// Standalone mode needs Gateway API for HTTPRoute creation
 		utilruntime.Must(gwapiv1.Install(scheme))
+
+		if !opt.conversionOpts.DisableEnvoyGatewayFeatures {
+			utilruntime.Must(egv1alpha1.AddToScheme(scheme))
+		}
+
 		os.Exit(ingressconversion.RunStandalone(ctx, ingressconversion.StandaloneConfig{
 			Scheme:                  scheme,
 			MetricsAddr:             opt.metricsAddr,

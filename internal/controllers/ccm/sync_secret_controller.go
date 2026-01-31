@@ -134,7 +134,6 @@ func CreateOrUpdateSyncSecret(ctx context.Context, client ctrlclient.Client, obj
 		err := client.Create(ctx, obj)
 		if err != nil {
 			if kerrors.IsAlreadyExists(err) {
-				// Race condition: re-fetch and fall through to update logic
 				if getErr := client.Get(ctx, key, existingObj); getErr != nil {
 					return fmt.Errorf("failed to get SyncSecret after conflict: %w", getErr)
 				}

@@ -26,9 +26,9 @@ import (
 
 // PolicySuggestion contains suggested policy configuration for an annotation
 type PolicySuggestion struct {
-	PolicyType string // e.g., "BackendTrafficPolicy", "SecurityPolicy"
-	Field      string // e.g., "spec.timeout.http.requestTimeout"
-	Value      string // The value to set
+	PolicyType string
+	Field      string
+	Value      string
 }
 
 // handleProxyConnectTimeout suggests BackendTrafficPolicy for connect timeout
