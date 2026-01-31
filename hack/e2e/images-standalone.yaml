@@ -23,3 +23,4 @@ images:
   - quay.io/brancz/kube-rbac-proxy:v0.20.1
   - hashicorp/http-echo:1.0
   - ealen/echo-server:0.9.2
+  - docker.io/kong/grpcbin@sha256:6535251b38b0be84c9ba26b1eb00921f5c78a25052b06a117677d302bbc861ce

@@ -154,36 +154,34 @@ spec:
               NS_SECONDARY="tenant-secondary"
               INGRESS_NAME="shared-name"
 
-              for i in $(seq 1 40); do
+              # Use origin-resource-kind label to filter only Ingress routes
+              # (tenant2 has ingress-to-gateway conversion which creates additional HTTPRoute routes)
+              INGRESS_KIND="Ingress.networking.k8s.io"
+
+              for i in $(seq 1 60); do
                 ROUTE_PRIMARY=$(kubectl get routes.kubelb.k8c.io -n "$NS_PRIMARY" \
-                  -l kubelb.k8c.io/origin-name="$INGRESS_NAME" -o name 2>/dev/null | head -1)
+                  -l kubelb.k8c.io/origin-name="$INGRESS_NAME",kubelb.k8c.io/origin-resource-kind="$INGRESS_KIND" \
+                  -o name 2>/dev/null | head -1)
                 ROUTE_SECONDARY=$(kubectl get routes.kubelb.k8c.io -n "$NS_SECONDARY" \
-                  -l kubelb.k8c.io/origin-name="$INGRESS_NAME" -o name 2>/dev/null | head -1)
+                  -l kubelb.k8c.io/origin-name="$INGRESS_NAME",kubelb.k8c.io/origin-resource-kind="$INGRESS_KIND" \
+                  -o name 2>/dev/null | head -1)
 
                 if [ -n "$ROUTE_PRIMARY" ] && [ -n "$ROUTE_SECONDARY" ]; then
-                  echo "SUCCESS: Route CRDs exist in both tenant namespaces"
+                  echo "SUCCESS: Ingress Route CRDs exist in both tenant namespaces"
                   echo "  $NS_PRIMARY: $ROUTE_PRIMARY"
                   echo "  $NS_SECONDARY: $ROUTE_SECONDARY"
-
-                  # Verify labels
-                  KIND_P=$(kubectl get $ROUTE_PRIMARY -n "$NS_PRIMARY" \
-                    -o jsonpath='{.metadata.labels.kubelb\.k8c\.io/origin-resource-kind}')
-                  KIND_S=$(kubectl get $ROUTE_SECONDARY -n "$NS_SECONDARY" \
-                    -o jsonpath='{.metadata.labels.kubelb\.k8c\.io/origin-resource-kind}')
-
-                  if [ "$KIND_P" != "Ingress.networking.k8s.io" ] || [ "$KIND_S" != "Ingress.networking.k8s.io" ]; then
-                    echo "FAILED: Incorrect origin-resource-kind label"
-                    exit 1
-                  fi
-
-                  echo "  Labels verified for both Routes"
                   exit 0
                 fi
-                echo "Attempt $i: waiting for Route CRDs..."
+                echo "Attempt $i: waiting for Ingress Route CRDs..."
                 sleep 3
               done
 
-              echo "FAILED: Route CRDs not found in both namespaces"
+              echo "FAILED: Ingress Route CRDs not found in both namespaces"
+              echo "DEBUG: Routes in $NS_PRIMARY:"
+              kubectl get routes.kubelb.k8c.io -n "$NS_PRIMARY" -o wide 2>/dev/null || echo "  none"
+              echo "DEBUG: Routes in $NS_SECONDARY:"
+              kubectl get routes.kubelb.k8c.io -n "$NS_SECONDARY" -o wide 2>/dev/null || echo "  none"
+              echo "DEBUG: All Routes:"
               kubectl get routes.kubelb.k8c.io -A
               exit 1
             check:

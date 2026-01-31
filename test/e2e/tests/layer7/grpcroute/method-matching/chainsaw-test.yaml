@@ -90,7 +90,7 @@ spec:
                     targetPort: 9000
                     protocol: TCP
         - assert:
-            timeout: 120s
+            timeout: 180s
             resource:
               apiVersion: apps/v1
               kind: Deployment

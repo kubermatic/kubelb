@@ -40,7 +40,7 @@ spec:
   execution:
     failFast: false
     repeatCount: 1
-    parallel: 8
+    parallel: 6
 
   # Discovery settings
   discovery:
