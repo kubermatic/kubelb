@@ -250,7 +250,7 @@ release:
   prerelease: auto
   mode: replace
   header: |
-    ## KubeLB Enterprise Edition {{ .Version }}
+    ## KubeLB Community Edition {{ .Version }}
 
     {{ if or (contains .Tag "rc") (contains .Tag "alpha") (contains .Tag "beta") }}
     ⚠️  This is a **pre-release** and should not be used for any production-grade setup. Things might not be working. Use at your own risk.
