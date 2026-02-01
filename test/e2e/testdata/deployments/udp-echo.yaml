@@ -31,7 +31,8 @@ spec:
     spec:
       containers:
         - name: udp-echoserver
-          image: cilium/echoserver-udp:latest
+          image: cilium/echoserver-udp:v2024.03.07
+          imagePullPolicy: IfNotPresent
           args:
             - --listen
             - :9999

@@ -108,6 +108,60 @@ rules:
   - patch
 {{- end }}
 {{- end }}
+{{- if .Values.kubelb.ingressConversion.enabled }}
+# Ingress conversion controller needs to create/delete gateways and routes
+- apiGroups:
+  - gateway.networking.k8s.io
+  resources:
+  - gateways
+  verbs:
+  - create
+  - delete
+- apiGroups:
+  - gateway.networking.k8s.io
+  resources:
+  - httproutes
+  verbs:
+  - create
+  - delete
+- apiGroups:
+  - gateway.networking.k8s.io
+  resources:
+  - grpcroutes
+  verbs:
+  - create
+  - delete
+{{- if not .Values.kubelb.ingressConversion.disableEnvoyGatewayFeatures }}
+# Envoy Gateway policy resources for ingress conversion
+- apiGroups:
+  - gateway.envoyproxy.io
+  resources:
+  - securitypolicies
+  - backendtrafficpolicies
+  - clienttrafficpolicies
+  verbs:
+  - get
+  - list
+  - watch
+  - create
+  - update
+  - patch
+  - delete
+{{- end }}
+{{- if .Values.kubelb.ingressConversion.copyTLSSecrets }}
+# TLS secret sync for cross-namespace certificate references
+- apiGroups:
+  - ""
+  resources:
+  - secrets
+  verbs:
+  - get
+  - list
+  - watch
+  - create
+  - update
+{{- end }}
+{{- end }}
 {{- if not .Values.kubelb.disableIngressController }}
 - apiGroups:
   - networking.k8s.io

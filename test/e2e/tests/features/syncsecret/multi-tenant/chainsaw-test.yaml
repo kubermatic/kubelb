@@ -23,6 +23,7 @@ metadata:
   name: syncsecret-multi-tenant
   labels:
     all:
+    multi-tenant: "true"
     test: syncsecret-multi-tenant
     resource: syncsecret
 spec:

@@ -33,6 +33,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/tools/events"
+	"k8s.io/client-go/util/retry"
 	ctrl "sigs.k8s.io/controller-runtime"
 	ctrlclient "sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
@@ -132,9 +133,16 @@ func CreateOrUpdateSyncSecret(ctx context.Context, client ctrlclient.Client, obj
 		}
 		err := client.Create(ctx, obj)
 		if err != nil {
-			return fmt.Errorf("failed to create SyncSecret: %w", err)
+			if kerrors.IsAlreadyExists(err) {
+				if getErr := client.Get(ctx, key, existingObj); getErr != nil {
+					return fmt.Errorf("failed to get SyncSecret after conflict: %w", getErr)
+				}
+			} else {
+				return fmt.Errorf("failed to create SyncSecret: %w", err)
+			}
+		} else {
+			return nil
 		}
-		return nil
 	}
 
 	// Update the object if it is different from the existing one.
@@ -146,11 +154,19 @@ func CreateOrUpdateSyncSecret(ctx context.Context, client ctrlclient.Client, obj
 		return nil
 	}
 
-	// Required to update the object.
-	obj.ResourceVersion = existingObj.ResourceVersion
-	obj.UID = existingObj.UID
-
-	if err := client.Update(ctx, obj); err != nil {
+	err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
+		// Re-fetch the latest version before updating
+		if getErr := client.Get(ctx, key, existingObj); getErr != nil {
+			return getErr
+		}
+		existingObj.Data = obj.Data
+		existingObj.StringData = obj.StringData
+		existingObj.Type = obj.Type
+		existingObj.Labels = obj.Labels
+		existingObj.Annotations = obj.Annotations
+		return client.Update(ctx, existingObj)
+	})
+	if err != nil {
 		return fmt.Errorf("failed to update SyncSecret: %w", err)
 	}
 	return nil

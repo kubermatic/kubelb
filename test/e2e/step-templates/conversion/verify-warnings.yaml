@@ -1,0 +1,64 @@
+# Copyright 2026 The KubeLB Authors.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# Step Template: Verify Ingress has conversion-warnings annotation containing expected pattern
+# Required bindings:
+#   - ingress_name: Ingress name
+#   - warning_pattern: grep pattern to match in warnings annotation
+# Note: Namespace is hardcoded to 'default' - see test/e2e/CLAUDE.md for why
+apiVersion: chainsaw.kyverno.io/v1alpha1
+kind: StepTemplate
+metadata:
+  name: verify-warnings
+spec:
+  try:
+    - script:
+        cluster: standalone
+        timeout: 60s
+        env:
+          - name: INGRESS_NAME
+            value: ($ingress_name)
+          - name: WARNING_PATTERN
+            value: ($warning_pattern)
+        content: |
+          set -e
+          NAMESPACE=default
+
+          i=1; while [ "$i" -le 30 ]; do
+            WARNINGS=$(kubectl get ingress "$INGRESS_NAME" -n "$NAMESPACE" \
+              -o jsonpath='{.metadata.annotations.kubelb\.k8c\.io/conversion-warnings}' 2>/dev/null || echo "")
+
+            if [ -n "$WARNINGS" ]; then
+              if echo "$WARNINGS" | grep -qi "$WARNING_PATTERN"; then
+                echo "SUCCESS: Warning pattern found"
+                echo "  Pattern: $WARNING_PATTERN"
+                echo "  Warnings: $WARNINGS"
+                exit 0
+              fi
+            fi
+
+            # Also check that status is 'partial' when we expect warnings
+            STATUS=$(kubectl get ingress "$INGRESS_NAME" -n "$NAMESPACE" \
+              -o jsonpath='{.metadata.annotations.kubelb\.k8c\.io/conversion-status}' 2>/dev/null || echo "")
+
+            echo "Attempt $i: status='$STATUS', warnings='$WARNINGS', looking for '$WARNING_PATTERN'..."
+            sleep 2
+            i=$((i + 1))
+          done
+
+          echo "FAILED: Warning pattern '$WARNING_PATTERN' not found"
+          echo "  Actual warnings: '$WARNINGS'"
+          exit 1
+        check:
+          ($error == null): true

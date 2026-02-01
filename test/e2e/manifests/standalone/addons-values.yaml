@@ -1,0 +1,68 @@
+# Copyright 2026 The KubeLB Authors.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# Helm values for kubelb-addons in conversion e2e tests
+# Deploys: envoy-gateway, ingress-nginx, cert-manager, metallb
+
+metallb:
+  enabled: true
+  speaker:
+    frr:
+      enabled: false  # L2 mode only, FRR not needed
+  controller:
+    resources:
+      requests:
+        cpu: 50m
+        memory: 64Mi
+
+gatewayClass:
+  create: false
+
+ingress-nginx:
+  enabled: true
+  controller:
+    service:
+      externalTrafficPolicy: Local
+    allowSnippetAnnotations: true
+    config:
+      annotations-risk-level: Critical
+
+envoy-gateway:
+  enabled: true
+  deployment:
+    envoyGateway:
+      resources:
+        requests:
+          cpu: 100m
+          memory: 128Mi
+  config:
+    envoyGateway:
+      provider:
+        type: Kubernetes
+        kubernetes:
+          leaderElection:
+            leaseDuration: 30s
+            renewDeadline: 20s
+            retryPeriod: 4s
+
+cert-manager:
+  enabled: true
+  startupapicheck:
+    enabled: false
+  crds:
+    enabled: true
+  config:
+    apiVersion: controller.config.cert-manager.io/v1alpha1
+    kind: ControllerConfiguration
+    enableGatewayAPI: true

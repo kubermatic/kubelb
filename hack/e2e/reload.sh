@@ -35,7 +35,7 @@ HASH_DIR="${KUBECONFIGS_DIR}/.reload-hashes"
 mkdir -p "${HASH_DIR}"
 
 # Verify kubeconfigs exist
-for cluster in kubelb tenant1 tenant2; do
+for cluster in kubelb tenant1 tenant2 standalone; do
   if [[ ! -f "${KUBECONFIGS_DIR}/${cluster}.kubeconfig" ]]; then
     echo "Error: ${KUBECONFIGS_DIR}/${cluster}.kubeconfig not found"
     echo "Run 'make e2e-setup-kind' first"
@@ -69,6 +69,20 @@ store_hash() {
   local hash="$2"
   echo "${hash}" > "${HASH_DIR}/${key}.hash"
 }
+
+# Check if existing binaries have wrong architecture (e.g., darwin/arm64 instead of linux/amd64)
+# If wrong arch, clear stored hashes to force rebuild and reload
+arch_ok=true
+if [[ -f "${BIN_DIR}/kubelb" ]] && ! is_linux_amd64 "${BIN_DIR}/kubelb"; then
+  echodate "WARNING: kubelb binary has wrong architecture, forcing rebuild"
+  rm -f "${HASH_DIR}/kubelb.hash"
+  arch_ok=false
+fi
+if [[ -f "${BIN_DIR}/ccm" ]] && ! is_linux_amd64 "${BIN_DIR}/ccm"; then
+  echodate "WARNING: ccm binary has wrong architecture, forcing rebuild"
+  rm -f "${HASH_DIR}/ccm.hash"
+  arch_ok=false
+fi
 
 # Build binaries with e2e tags (Go cache makes unchanged builds fast)
 # Use fixed BUILD_DATE to ensure reproducible binaries for hash comparison
@@ -127,15 +141,18 @@ if [[ "${ccm_changed}" == "true" ]]; then
   echodate "Building ccm image..."
   docker build -q -t "${CCM_IMAGE}" -f "${ROOT_DIR}/ccm.goreleaser.dockerfile" "${BIN_DIR}/"
 
-  echodate "Loading ccm image into tenant clusters..."
+  echodate "Loading ccm image into tenant and standalone clusters..."
   kind load docker-image --name=tenant1 "${CCM_IMAGE}" &
   kind load docker-image --name=tenant2 "${CCM_IMAGE}" &
+  kind load docker-image --name=standalone "${CCM_IMAGE}" &
   wait
 
   echodate "Restarting CCM deployments..."
   kubectl --kubeconfig="${KUBECONFIGS_DIR}/tenant1.kubeconfig" \
     rollout restart deployment/kubelb-ccm -n kubelb &
   kubectl --kubeconfig="${KUBECONFIGS_DIR}/tenant2.kubeconfig" \
+    rollout restart deployment/kubelb-ccm -n kubelb &
+  kubectl --kubeconfig="${KUBECONFIGS_DIR}/standalone.kubeconfig" \
     rollout restart deployment/kubelb-ccm -n kubelb &
   wait
 

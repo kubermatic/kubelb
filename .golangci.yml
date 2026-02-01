@@ -80,6 +80,8 @@ linters:
         text: cyclomatic complexity 33 of func `CreateOrUpdateHTTPRoute` is high
       - path: (.+)\.go$
         text: cyclomatic complexity \d+ of func `\(\*LoadBalancerReconciler\)\.Reconcile` is high
+      - path: (.+)\.go$
+        text: cyclomatic complexity \d+ of func `\(\*Reconciler\)\.reconcile` is high
     paths:
       - zz_generated.*.go
       - hack

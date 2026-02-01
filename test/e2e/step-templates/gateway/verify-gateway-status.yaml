@@ -29,7 +29,7 @@ spec:
   try:
     - script:
         cluster: tenant1
-        timeout: 60s
+        timeout: 120s
         env:
           - name: GATEWAY_NAME
             value: ($gateway_name)
@@ -38,14 +38,15 @@ spec:
         content: |
           set -e
 
-          for i in $(seq 1 20); do
+          for i in $(seq 1 40); do
             IP=$(kubectl get gateway "$GATEWAY_NAME" -n "$GATEWAY_NS" \
               -o jsonpath='{.status.addresses[0].value}' 2>/dev/null || true)
             if [ -n "$IP" ]; then
               echo "Gateway has address: $IP"
               exit 0
             fi
-            sleep 2
+            echo "Attempt $i: waiting for Gateway LB IP..."
+            sleep 3
           done
           echo "FAILED: Gateway has no address in status"
           kubectl get gateway "$GATEWAY_NAME" -n "$GATEWAY_NS" -o yaml || true

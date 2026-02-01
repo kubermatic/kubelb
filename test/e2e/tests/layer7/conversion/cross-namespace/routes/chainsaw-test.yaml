@@ -1,0 +1,313 @@
+# Copyright 2026 The KubeLB Authors.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+apiVersion: chainsaw.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: conversion-cross-namespace-routes
+  labels:
+    suite: conversion
+    layer: layer7
+    conversion: "true"
+    test: "conversion-cross-namespace-routes"
+    category: cross-namespace
+    parallel: "true"
+spec:
+  description: |
+    Test that HTTPRoutes in a different namespace can attach to the Gateway.
+    This verifies that Gateway listeners have AllowedRoutes.Namespaces.From=All.
+    Without this setting, routes from non-gateway namespaces would be rejected.
+  bindings:
+    - name: name
+      value: conv-xns-routes
+    - name: test_namespace
+      value: conv-xns-test
+    - name: transformed_host
+      value: conv-xns-routes.gateway.local
+  steps:
+    - name: create-namespace
+      cluster: standalone
+      description: Create test namespace
+      try:
+        - apply:
+            resource:
+              apiVersion: v1
+              kind: Namespace
+              metadata:
+                name: conv-xns-test
+
+    - name: create-service
+      cluster: standalone
+      description: Create ClusterIP service in test namespace
+      try:
+        - apply:
+            resource:
+              apiVersion: v1
+              kind: Service
+              metadata:
+                name: conv-xns-routes
+                namespace: conv-xns-test
+              spec:
+                type: ClusterIP
+                selector:
+                  app: echo-xns
+                ports:
+                  - port: 80
+                    targetPort: 5678
+
+    - name: create-echo-pod
+      cluster: standalone
+      description: Create echo pod in test namespace
+      try:
+        - apply:
+            resource:
+              apiVersion: v1
+              kind: Pod
+              metadata:
+                name: echo-xns
+                namespace: conv-xns-test
+                labels:
+                  app: echo-xns
+              spec:
+                containers:
+                  - name: echo
+                    image: hashicorp/http-echo:1.0
+                    args:
+                      - "-text=hello-xns"
+                    ports:
+                      - containerPort: 5678
+        - script:
+            timeout: 60s
+            content: |
+              set -e
+              for i in $(seq 1 30); do
+                STATUS=$(kubectl get pod echo-xns -n conv-xns-test -o jsonpath='{.status.phase}' 2>/dev/null || echo "")
+                if [ "$STATUS" = "Running" ]; then
+                  echo "Pod is running"
+                  exit 0
+                fi
+                sleep 2
+              done
+              echo "Pod not ready"
+              exit 1
+            check:
+              ($error == null): true
+
+    - name: create-ingress
+      cluster: standalone
+      description: Create Ingress in test namespace (different from Gateway namespace 'default')
+      try:
+        - apply:
+            resource:
+              apiVersion: networking.k8s.io/v1
+              kind: Ingress
+              metadata:
+                name: conv-xns-routes
+                namespace: conv-xns-test
+              spec:
+                ingressClassName: nginx
+                rules:
+                  - host: conv-xns-routes.test.local
+                    http:
+                      paths:
+                        - path: /
+                          pathType: Prefix
+                          backend:
+                            service:
+                              name: conv-xns-routes
+                              port:
+                                number: 80
+
+    - name: verify-httproute-created
+      cluster: standalone
+      description: Verify HTTPRoute is created in test namespace
+      try:
+        - script:
+            timeout: 60s
+            content: |
+              set -e
+              for i in $(seq 1 30); do
+                ROUTE=$(kubectl get httproutes.gateway.networking.k8s.io conv-xns-routes \
+                  -n conv-xns-test -o name 2>/dev/null || echo "")
+                if [ -n "$ROUTE" ]; then
+                  echo "SUCCESS: HTTPRoute created in conv-xns-test namespace"
+                  kubectl get httproutes.gateway.networking.k8s.io conv-xns-routes -n conv-xns-test -o yaml
+                  exit 0
+                fi
+                sleep 2
+              done
+              echo "FAILED: HTTPRoute not created"
+              exit 1
+            check:
+              ($error == null): true
+
+    - name: verify-route-accepted
+      cluster: standalone
+      description: |
+        Verify HTTPRoute is ACCEPTED by the Gateway.
+        This is the critical test - without AllowedRoutes.From=All,
+        the route would show "No listeners included by this parent ref allowed this attachment"
+      try:
+        - script:
+            timeout: 90s
+            content: |
+              set -e
+              for i in $(seq 1 45); do
+                # Check if route is accepted
+                ACCEPTED=$(kubectl get httproutes.gateway.networking.k8s.io conv-xns-routes \
+                  -n conv-xns-test \
+                  -o jsonpath='{.status.parents[?(@.parentRef.name=="kubelb")].conditions[?(@.type=="Accepted")].status}' \
+                  2>/dev/null || echo "")
+
+                if [ "$ACCEPTED" = "True" ]; then
+                  echo "SUCCESS: HTTPRoute accepted by Gateway"
+                  echo "Route namespace: conv-xns-test"
+                  echo "Gateway namespace: default"
+                  echo "This confirms AllowedRoutes.Namespaces.From=All is working"
+                  exit 0
+                fi
+
+                # Check for rejection reason
+                REASON=$(kubectl get httproutes.gateway.networking.k8s.io conv-xns-routes \
+                  -n conv-xns-test \
+                  -o jsonpath='{.status.parents[?(@.parentRef.name=="kubelb")].conditions[?(@.type=="Accepted")].reason}' \
+                  2>/dev/null || echo "")
+
+                if [ -n "$REASON" ] && [ "$REASON" != "" ]; then
+                  echo "Current status: Reason=$REASON"
+                  # If explicitly rejected, fail fast
+                  if [ "$REASON" = "NotAllowedByListeners" ]; then
+                    echo "FAILED: Route rejected - AllowedRoutes not configured correctly"
+                    exit 1
+                  fi
+                fi
+
+                sleep 2
+              done
+              echo "FAILED: HTTPRoute not accepted within timeout"
+              kubectl get httproutes.gateway.networking.k8s.io conv-xns-routes -n conv-xns-test -o yaml
+              exit 1
+            check:
+              ($error == null): true
+
+    - name: verify-gateway-allows-all-namespaces
+      cluster: standalone
+      description: Verify Gateway listeners have AllowedRoutes.Namespaces.From=All
+      try:
+        - script:
+            timeout: 30s
+            content: |
+              set -e
+              # Check HTTP listener
+              HTTP_FROM=$(kubectl get gateway.gateway.networking.k8s.io kubelb -n default \
+                -o jsonpath='{.spec.listeners[?(@.name=="http")].allowedRoutes.namespaces.from}' \
+                2>/dev/null || echo "")
+
+              echo "HTTP listener allowedRoutes.namespaces.from: $HTTP_FROM"
+
+              if [ "$HTTP_FROM" != "All" ]; then
+                echo "WARNING: HTTP listener does not have AllowedRoutes.From=All"
+                echo "Expected: All, Got: $HTTP_FROM"
+              else
+                echo "SUCCESS: HTTP listener allows routes from all namespaces"
+              fi
+
+              # Show full listener config
+              echo ""
+              echo "Gateway listeners:"
+              kubectl get gateway.gateway.networking.k8s.io kubelb -n default \
+                -o jsonpath='{range .spec.listeners[*]}{.name}: protocol={.protocol}, allowedRoutes.namespaces.from={.allowedRoutes.namespaces.from}{"\n"}{end}'
+            check:
+              ($error == null): true
+
+    - name: verify-http-traffic
+      cluster: standalone
+      description: Verify HTTP traffic works through Gateway to cross-namespace backend
+      try:
+        - script:
+            timeout: 120s
+            content: |
+              set -e
+              HOST="conv-xns-routes.gateway.local"
+
+              # Get Gateway IP
+              IP=""
+              for i in $(seq 1 30); do
+                IP=$(kubectl get gateway.gateway.networking.k8s.io kubelb -n default \
+                  -o jsonpath='{.status.addresses[0].value}' 2>/dev/null || echo "")
+                if [ -n "$IP" ]; then
+                  break
+                fi
+                sleep 2
+              done
+
+              if [ -z "$IP" ]; then
+                echo "FAILED: Gateway has no IP"
+                exit 1
+              fi
+
+              echo "Gateway IP: $IP"
+
+              # Test HTTP traffic
+              for i in $(seq 1 20); do
+                RESPONSE=$(curl -s --max-time 5 -H "Host: $HOST" "http://${IP}/" 2>/dev/null || echo "")
+                if echo "$RESPONSE" | grep -q "hello-xns"; then
+                  echo "SUCCESS: HTTP traffic works"
+                  echo "  Host: $HOST"
+                  echo "  Backend namespace: conv-xns-test"
+                  echo "  Gateway namespace: default"
+                  echo "  Response: $RESPONSE"
+                  exit 0
+                fi
+                echo "Attempt $i: waiting for route..."
+                sleep 3
+              done
+
+              echo "FAILED: HTTP traffic not working"
+              exit 1
+            check:
+              ($error == null): true
+
+    - name: verify-status
+      cluster: standalone
+      description: Verify conversion status (requires 5s verification delay)
+      try:
+        - script:
+            timeout: 30s
+            content: |
+              set -e
+              # Controller requires two verification passes with 5s delay
+              for i in $(seq 1 15); do
+                STATUS=$(kubectl get ingress conv-xns-routes -n conv-xns-test \
+                  -o jsonpath='{.metadata.annotations.kubelb\.k8c\.io/conversion-status}' 2>/dev/null || echo "")
+                if [ "$STATUS" = "converted" ]; then
+                  echo "SUCCESS: Conversion status is 'converted'"
+                  exit 0
+                fi
+                echo "Attempt $i: status=$STATUS, waiting..."
+                sleep 2
+              done
+              echo "FAILED: Status is '$STATUS' (expected: converted)"
+              exit 1
+            check:
+              ($error == null): true
+
+    - name: cleanup
+      cluster: standalone
+      description: Cleanup resources
+      try:
+        - script:
+            timeout: 30s
+            content: |
+              kubectl delete namespace conv-xns-test --ignore-not-found --wait=false

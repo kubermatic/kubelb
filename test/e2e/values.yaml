@@ -38,3 +38,39 @@ test:
   connectivity_retries: 30
   # Interval between retries (seconds)
   retry_interval: 2
+
+# Conversion test configuration (Ingress-to-Gateway conversion)
+conversion:
+  # Gateway configuration
+  gateway:
+    name: kubelb
+    namespace: default
+    class: eg
+
+  # Domain transformation
+  domain:
+    replace: test.local
+    suffix: gateway.local
+
+  # Annotations
+  annotations:
+    skip_conversion: kubelb.k8c.io/skip-conversion
+    conversion_status: kubelb.k8c.io/conversion-status
+    conversion_warnings: kubelb.k8c.io/conversion-warnings
+    converted_httproute: kubelb.k8c.io/converted-httproute
+
+  # Labels
+  labels:
+    source_ingress: kubelb.k8c.io/source-ingress
+    managed_by: kubelb.k8c.io/managed-by
+
+  # Status values
+  status:
+    converted: converted
+    partial: partial
+
+  # Timeouts (in seconds)
+  timeouts:
+    gateway_ip: 60
+    httproute: 30
+    http_response: 60

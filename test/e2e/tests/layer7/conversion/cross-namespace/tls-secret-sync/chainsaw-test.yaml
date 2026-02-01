@@ -1,0 +1,450 @@
+# Copyright 2026 The KubeLB Authors.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+apiVersion: chainsaw.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: conversion-cross-namespace-tls-secret-sync
+  labels:
+    suite: conversion
+    layer: layer7
+    conversion: "true"
+    test: "conversion-cross-namespace-tls-secret-sync"
+    category: cross-namespace
+    parallel: "true"
+spec:
+  description: |
+    Test that TLS secrets are copied from Ingress namespace to Gateway namespace.
+    When an Ingress in namespace 'app-ns' references a TLS secret 'my-tls',
+    the controller should copy it to the Gateway namespace as 'ingress-app-ns-my-tls'.
+    This is required because Gateway API requires secrets to be in the same namespace as the Gateway.
+  bindings:
+    - name: name
+      value: conv-xns-tls
+    - name: test_namespace
+      value: conv-tls-sync-ns
+    - name: secret_name
+      value: xns-tls-secret
+    - name: transformed_host
+      value: conv-xns-tls.gateway.local
+  steps:
+    - name: create-namespace
+      cluster: standalone
+      description: Create test namespace (different from Gateway namespace 'default')
+      try:
+        - apply:
+            resource:
+              apiVersion: v1
+              kind: Namespace
+              metadata:
+                name: conv-tls-sync-ns
+
+    - name: create-service
+      cluster: standalone
+      description: Create ClusterIP service in test namespace
+      try:
+        - apply:
+            resource:
+              apiVersion: v1
+              kind: Service
+              metadata:
+                name: conv-xns-tls
+                namespace: conv-tls-sync-ns
+              spec:
+                type: ClusterIP
+                selector:
+                  app: echo-tls-sync
+                ports:
+                  - port: 80
+                    targetPort: 5678
+
+    - name: create-echo-pod
+      cluster: standalone
+      description: Create echo pod in test namespace
+      try:
+        - apply:
+            resource:
+              apiVersion: v1
+              kind: Pod
+              metadata:
+                name: echo-tls-sync
+                namespace: conv-tls-sync-ns
+                labels:
+                  app: echo-tls-sync
+              spec:
+                containers:
+                  - name: echo
+                    image: hashicorp/http-echo:1.0
+                    args:
+                      - "-text=hello-tls-sync"
+                    ports:
+                      - containerPort: 5678
+        - script:
+            timeout: 60s
+            content: |
+              set -e
+              for i in $(seq 1 30); do
+                STATUS=$(kubectl get pod echo-tls-sync -n conv-tls-sync-ns -o jsonpath='{.status.phase}' 2>/dev/null || echo "")
+                if [ "$STATUS" = "Running" ]; then
+                  echo "Pod is running"
+                  exit 0
+                fi
+                sleep 2
+              done
+              echo "Pod not ready"
+              exit 1
+            check:
+              ($error == null): true
+
+    - name: create-tls-secret
+      cluster: standalone
+      description: Create TLS secret in test namespace (NOT in Gateway namespace)
+      try:
+        - script:
+            timeout: 30s
+            content: |
+              set -e
+              # Generate self-signed certificate
+              openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
+                -keyout /tmp/tls.key -out /tmp/tls.crt \
+                -subj "/CN=conv-xns-tls.gateway.local" 2>/dev/null
+
+              # Create secret in test namespace
+              kubectl create secret tls xns-tls-secret \
+                --cert=/tmp/tls.crt --key=/tmp/tls.key \
+                -n conv-tls-sync-ns --dry-run=client -o yaml | kubectl apply -f -
+
+              rm -f /tmp/tls.key /tmp/tls.crt
+
+              echo "Created TLS secret 'xns-tls-secret' in namespace 'conv-tls-sync-ns'"
+            check:
+              ($error == null): true
+
+    - name: verify-secret-not-in-gateway-ns
+      cluster: standalone
+      description: Verify secret does NOT exist in Gateway namespace before conversion
+      try:
+        - script:
+            timeout: 10s
+            content: |
+              set -e
+              # The synced secret name will be: ingress-<namespace>-<secretname>
+              SYNCED_NAME="ingress-conv-tls-sync-ns-xns-tls-secret"
+
+              if kubectl get secret "$SYNCED_NAME" -n default >/dev/null 2>&1; then
+                echo "Secret already exists (may be from previous test run)"
+              else
+                echo "Confirmed: Synced secret does not exist yet in Gateway namespace"
+              fi
+            check:
+              ($error == null): true
+
+    - name: create-ingress
+      cluster: standalone
+      description: Create Ingress with TLS in test namespace
+      try:
+        - apply:
+            resource:
+              apiVersion: networking.k8s.io/v1
+              kind: Ingress
+              metadata:
+                name: conv-xns-tls
+                namespace: conv-tls-sync-ns
+              spec:
+                ingressClassName: nginx
+                tls:
+                  - hosts:
+                      - conv-xns-tls.test.local
+                    secretName: xns-tls-secret
+                rules:
+                  - host: conv-xns-tls.test.local
+                    http:
+                      paths:
+                        - path: /
+                          pathType: Prefix
+                          backend:
+                            service:
+                              name: conv-xns-tls
+                              port:
+                                number: 80
+
+    - name: verify-secret-synced
+      cluster: standalone
+      description: |
+        Verify TLS secret is copied to Gateway namespace.
+        Expected secret name: ingress-conv-tls-sync-ns-xns-tls-secret
+      try:
+        - script:
+            timeout: 60s
+            content: |
+              set -e
+              SYNCED_NAME="ingress-conv-tls-sync-ns-xns-tls-secret"
+              GATEWAY_NS="default"
+
+              for i in $(seq 1 30); do
+                if kubectl get secret "$SYNCED_NAME" -n "$GATEWAY_NS" >/dev/null 2>&1; then
+                  echo "SUCCESS: TLS secret synced to Gateway namespace"
+                  echo ""
+                  echo "Source: conv-tls-sync-ns/xns-tls-secret"
+                  echo "Synced: $GATEWAY_NS/$SYNCED_NAME"
+                  echo ""
+                  echo "Secret details:"
+                  kubectl get secret "$SYNCED_NAME" -n "$GATEWAY_NS" -o yaml | grep -E "^  (name|namespace|type|kubelb|tls):|^kind:"
+                  exit 0
+                fi
+                sleep 2
+              done
+
+              echo "FAILED: TLS secret not synced to Gateway namespace"
+              echo "Expected secret: $GATEWAY_NS/$SYNCED_NAME"
+              echo ""
+              echo "Secrets in Gateway namespace:"
+              kubectl get secrets -n "$GATEWAY_NS"
+              exit 1
+            check:
+              ($error == null): true
+
+    - name: verify-secret-has-correct-labels
+      cluster: standalone
+      description: Verify synced secret has managed-by label and source annotation
+      try:
+        - script:
+            timeout: 30s
+            content: |
+              set -e
+              SYNCED_NAME="ingress-conv-tls-sync-ns-xns-tls-secret"
+
+              # Check managed-by label
+              MANAGED_BY=$(kubectl get secret "$SYNCED_NAME" -n default \
+                -o jsonpath='{.metadata.labels.kubelb\.k8c\.io/managed-by}' 2>/dev/null || echo "")
+
+              echo "Managed-by label: $MANAGED_BY"
+
+              # Check source annotation
+              SOURCE=$(kubectl get secret "$SYNCED_NAME" -n default \
+                -o jsonpath='{.metadata.annotations.kubelb\.k8c\.io/source-secret}' 2>/dev/null || echo "")
+
+              echo "Source annotation: $SOURCE"
+
+              if [ "$MANAGED_BY" = "ingress-conversion-controller" ]; then
+                echo "SUCCESS: Secret has correct managed-by label"
+              else
+                echo "WARNING: managed-by label not set correctly"
+              fi
+
+              if [ "$SOURCE" = "conv-tls-sync-ns/xns-tls-secret" ]; then
+                echo "SUCCESS: Secret has correct source annotation"
+              else
+                echo "WARNING: source annotation not set correctly"
+              fi
+            check:
+              ($error == null): true
+
+    - name: verify-gateway-https-listener
+      cluster: standalone
+      description: Verify Gateway has HTTPS listener referencing the synced secret
+      try:
+        - script:
+            timeout: 60s
+            content: |
+              set -e
+              SYNCED_NAME="ingress-conv-tls-sync-ns-xns-tls-secret"
+
+              for i in $(seq 1 30); do
+                # Check if Gateway has HTTPS listener
+                LISTENERS=$(kubectl get gateway.gateway.networking.k8s.io kubelb -n default \
+                  -o jsonpath='{.spec.listeners[*].protocol}' 2>/dev/null || echo "")
+
+                if echo "$LISTENERS" | grep -q "HTTPS"; then
+                  # Check if listener references our synced secret
+                  CERT_REFS=$(kubectl get gateway.gateway.networking.k8s.io kubelb -n default \
+                    -o jsonpath='{range .spec.listeners[*]}{.tls.certificateRefs[*].name}{" "}{end}' 2>/dev/null || echo "")
+
+                  echo "Gateway HTTPS listeners certificate refs: $CERT_REFS"
+
+                  if echo "$CERT_REFS" | grep -q "$SYNCED_NAME"; then
+                    echo "SUCCESS: Gateway HTTPS listener references synced secret"
+                    echo ""
+                    echo "Gateway listeners:"
+                    kubectl get gateway.gateway.networking.k8s.io kubelb -n default \
+                      -o jsonpath='{range .spec.listeners[*]}{.name}: protocol={.protocol}, tls.certificateRefs={.tls.certificateRefs[*].name}{"\n"}{end}'
+                    exit 0
+                  fi
+                fi
+                sleep 2
+              done
+
+              echo "FAILED: Gateway HTTPS listener not referencing synced secret"
+              kubectl get gateway.gateway.networking.k8s.io kubelb -n default -o yaml
+              exit 1
+            check:
+              ($error == null): true
+
+    - name: verify-gateway-listener-resolved
+      cluster: standalone
+      description: Verify Gateway listener has ResolvedRefs=True (secret exists and is valid)
+      try:
+        - script:
+            timeout: 90s
+            content: |
+              set -e
+              for i in $(seq 1 45); do
+                # Get all listener statuses and check for HTTPS listeners with ResolvedRefs=True
+                # Using jq since JSONPath doesn't support regex
+                RESOLVED=$(kubectl get gateway.gateway.networking.k8s.io kubelb -n default -o json 2>/dev/null | \
+                  jq -r '.status.listeners[]? | select(.name | startswith("https")) | .conditions[]? | select(.type=="ResolvedRefs") | .status' 2>/dev/null || echo "")
+
+                # Check if any HTTPS listener has ResolvedRefs=True
+                if echo "$RESOLVED" | grep -q "True"; then
+                  echo "SUCCESS: Gateway HTTPS listener has ResolvedRefs=True"
+                  echo "This confirms the synced TLS secret is valid and accessible"
+                  exit 0
+                fi
+
+                # Check for False status with reason
+                REASON=$(kubectl get gateway.gateway.networking.k8s.io kubelb -n default -o json 2>/dev/null | \
+                  jq -r '.status.listeners[]? | select(.name | startswith("https")) | .conditions[]? | select(.type=="ResolvedRefs") | .reason' 2>/dev/null || echo "")
+
+                if [ -n "$REASON" ] && [ "$REASON" != "" ]; then
+                  echo "Current status: ResolvedRefs reason=$REASON"
+                  if [ "$REASON" = "InvalidCertificateRef" ]; then
+                    echo "FAILED: Certificate reference is invalid - secret may not be synced correctly"
+                    exit 1
+                  fi
+                fi
+
+                sleep 2
+              done
+
+              echo "FAILED: Gateway HTTPS listener ResolvedRefs not True"
+              echo ""
+              echo "Gateway status:"
+              kubectl get gateway.gateway.networking.k8s.io kubelb -n default -o yaml | grep -A 20 "status:"
+              exit 1
+            check:
+              ($error == null): true
+
+    - name: verify-httproute-accepted
+      cluster: standalone
+      description: Verify HTTPRoute is accepted by Gateway
+      try:
+        - script:
+            timeout: 60s
+            content: |
+              set -e
+              for i in $(seq 1 30); do
+                ACCEPTED=$(kubectl get httproutes.gateway.networking.k8s.io conv-xns-tls \
+                  -n conv-tls-sync-ns \
+                  -o jsonpath='{.status.parents[?(@.parentRef.name=="kubelb")].conditions[?(@.type=="Accepted")].status}' \
+                  2>/dev/null || echo "")
+
+                if [ "$ACCEPTED" = "True" ]; then
+                  echo "SUCCESS: HTTPRoute accepted by Gateway"
+                  exit 0
+                fi
+                sleep 2
+              done
+              echo "FAILED: HTTPRoute not accepted"
+              exit 1
+            check:
+              ($error == null): true
+
+    - name: verify-https-traffic
+      cluster: standalone
+      description: Verify HTTPS traffic works with the synced certificate
+      try:
+        - script:
+            timeout: 120s
+            content: |
+              set -e
+              HOST="conv-xns-tls.gateway.local"
+
+              # Get Gateway IP
+              IP=""
+              for i in $(seq 1 30); do
+                IP=$(kubectl get gateway.gateway.networking.k8s.io kubelb -n default \
+                  -o jsonpath='{.status.addresses[0].value}' 2>/dev/null || echo "")
+                if [ -n "$IP" ]; then
+                  break
+                fi
+                sleep 2
+              done
+
+              if [ -z "$IP" ]; then
+                echo "FAILED: Gateway has no IP"
+                exit 1
+              fi
+
+              echo "Gateway IP: $IP"
+
+              # Test HTTPS traffic
+              for i in $(seq 1 20); do
+                RESPONSE=$(curl -s -k --max-time 5 \
+                  --resolve "${HOST}:443:${IP}" \
+                  "https://${HOST}/" 2>/dev/null || echo "")
+
+                if echo "$RESPONSE" | grep -q "hello-tls-sync"; then
+                  echo "SUCCESS: HTTPS traffic works"
+                  echo "  Host: $HOST"
+                  echo "  Backend namespace: conv-tls-sync-ns"
+                  echo "  Gateway namespace: default"
+                  echo "  TLS secret synced from: conv-tls-sync-ns/xns-tls-secret"
+                  echo "  TLS secret in Gateway ns: default/ingress-conv-tls-sync-ns-xns-tls-secret"
+                  echo "  Response: $RESPONSE"
+                  exit 0
+                fi
+                echo "Attempt $i: waiting for HTTPS route..."
+                sleep 3
+              done
+
+              echo "FAILED: HTTPS traffic not working"
+              exit 1
+            check:
+              ($error == null): true
+
+    - name: verify-status
+      cluster: standalone
+      description: Verify conversion status (requires 5s verification delay)
+      try:
+        - script:
+            timeout: 30s
+            content: |
+              set -e
+              # Controller requires two verification passes with 5s delay
+              for i in $(seq 1 15); do
+                STATUS=$(kubectl get ingress conv-xns-tls -n conv-tls-sync-ns \
+                  -o jsonpath='{.metadata.annotations.kubelb\.k8c\.io/conversion-status}' 2>/dev/null || echo "")
+                if [ "$STATUS" = "converted" ]; then
+                  echo "SUCCESS: Conversion status is 'converted'"
+                  exit 0
+                fi
+                echo "Attempt $i: status=$STATUS, waiting..."
+                sleep 2
+              done
+              echo "FAILED: Status is '$STATUS' (expected: converted)"
+              exit 1
+            check:
+              ($error == null): true
+
+    - name: cleanup
+      cluster: standalone
+      description: Cleanup resources
+      try:
+        - script:
+            timeout: 30s
+            content: |
+              # Delete test namespace (will delete all resources in it)
+              kubectl delete namespace conv-tls-sync-ns --ignore-not-found --wait=false
+              # Delete synced secret in Gateway namespace
+              kubectl delete secret ingress-conv-tls-sync-ns-xns-tls-secret -n default --ignore-not-found
