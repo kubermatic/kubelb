@@ -65,8 +65,7 @@ spec:
                   spec:
                     containers:
                       - name: grpcbin
-                        image: docker.io/kong/grpcbin@sha256:6535251b38b0be84c9ba26b1eb00921f5c78a25052b06a117677d302bbc861ce
-                        imagePullPolicy: IfNotPresent
+                        image: docker.io/kong/grpcbin:latest
                         ports:
                           - containerPort: 9000
                             name: grpc
