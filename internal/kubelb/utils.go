@@ -81,6 +81,22 @@ func GenerateName(appendUID bool, uid, name, namespace string) string {
 	return output
 }
 
+// GenerateRouteServiceName generates a unique service name that includes route identifier.
+// Format: namespace-routeName-serviceName[-uid] (truncated to MaxNameLength)
+func GenerateRouteServiceName(appendUID bool, uid, routeName, serviceName, namespace string) string {
+	output := fmt.Sprintf("%s-%s-%s", namespace, routeName, serviceName)
+	uidSuffix := uid[len(uid)-NameSuffixLength:]
+
+	if len(output) >= MaxNameLength || (appendUID && (len(output)+len(uidSuffix)+1) >= MaxNameLength) {
+		output = output[:MaxNameLength-(NameSuffixLength+1)]
+		output = fmt.Sprintf("%s-%s", output, uidSuffix)
+	} else if appendUID {
+		output = fmt.Sprintf("%s-%s", output, uidSuffix)
+	}
+
+	return output
+}
+
 func GetName(obj client.Object) string {
 	name := obj.GetName()
 	if labels := obj.GetLabels(); labels != nil {
