@@ -290,6 +290,10 @@ func (r *RouteReconciler) manageServices(ctx context.Context, log logr.Logger, r
 		}
 		updateServiceStatus(routeStatus, &svc, err)
 	}
+
+	// Cleanup orphaned services from naming change (old: ns-svc, new: ns-route-svc)
+	r.cleanupRenamedServices(ctx, log, route, originalRouteName, r.EnvoyProxyTopology.IsGlobalTopology())
+
 	return r.UpdateRouteStatus(ctx, route, *routeStatus)
 }
 
@@ -356,6 +360,55 @@ func (r *RouteReconciler) cleanupOrphanedServices(ctx context.Context, log logr.
 	return nil
 }
 
+// cleanupRenamedServices deletes orphaned services from naming scheme change.
+// Old scheme: ns-svc[-uid], New scheme: ns-route-svc[-uid]
+func (r *RouteReconciler) cleanupRenamedServices(ctx context.Context, log logr.Logger, route *kubelbv1alpha1.Route, originalRouteName string, globalTopology bool) {
+	if route.Status.Resources.Services == nil || route.Spec.Source.Kubernetes == nil {
+		return
+	}
+
+	for _, service := range route.Spec.Source.Kubernetes.Services {
+		name := serviceHelpers.GetServiceName(service.Service)
+		key := fmt.Sprintf(kubelb.RouteServiceMapKey, service.Namespace, name)
+
+		statusSvc, exists := route.Status.Resources.Services[key]
+		if !exists {
+			continue
+		}
+
+		// Compute expected name with new naming scheme
+		expectedName := kubelb.GenerateRouteServiceName(
+			globalTopology,
+			string(service.UID),
+			originalRouteName,
+			name,
+			service.Namespace,
+		)
+
+		// If GeneratedName differs from expected, it's an orphan from old naming
+		if statusSvc.GeneratedName != expectedName {
+			log.V(4).Info("Deleting orphaned service from naming change",
+				"old", statusSvc.GeneratedName,
+				"new", expectedName)
+
+			svc := corev1.Service{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      statusSvc.GeneratedName,
+					Namespace: route.Namespace,
+				},
+			}
+
+			if globalTopology && statusSvc.Namespace == r.Namespace {
+				svc.Namespace = r.Namespace
+			}
+
+			if err := r.Delete(ctx, &svc); err != nil && !kerrors.IsNotFound(err) {
+				log.Error(err, "failed to delete orphaned service", "name", statusSvc.GeneratedName)
+			}
+		}
+	}
+}
+
 func (r *RouteReconciler) UpdateRouteStatus(ctx context.Context, route *kubelbv1alpha1.Route, status kubelbv1alpha1.RouteStatus) error {
 	key := ctrlruntimeclient.ObjectKeyFromObject(route)
 	return retry.RetryOnConflict(retry.DefaultRetry, func() error {
@@ -399,6 +452,14 @@ func (r *RouteReconciler) manageRoutes(ctx context.Context, log logr.Logger, rou
 	// Set owner reference for the resource.
 	resource.SetOwnerReferences([]metav1.OwnerReference{ownerReference})
 
+	// Get original route name for service naming consistency with port allocation
+	originalRouteName := route.Name
+	if route.Spec.Source.Kubernetes.Route.GetName() != "" {
+		originalRouteName = route.Spec.Source.Kubernetes.Route.GetName()
+	} else if name := route.GetLabels()[kubelb.LabelOriginName]; name != "" {
+		originalRouteName = name
+	}
+
 	// Get the services referenced by the route.
 	var referencedServices []metav1.ObjectMeta
 	for _, service := range route.Spec.Source.Kubernetes.Services {
@@ -416,7 +477,7 @@ func (r *RouteReconciler) manageRoutes(ctx context.Context, log logr.Logger, rou
 	// Determine the type of the resource and call the appropriate method
 	switch v := resource.(type) {
 	case *v1.Ingress: // v1 "k8s.io/api/networking/v1"
-		err = ingressHelpers.CreateOrUpdateIngress(ctx, log, r.Client, v, referencedServices, route.Namespace, config, tenant, annotations)
+		err = ingressHelpers.CreateOrUpdateIngress(ctx, log, r.Client, v, referencedServices, route.Namespace, originalRouteName, config, tenant, annotations)
 		if err == nil {
 			// Retrieve updated object to get the status.
 			key := ctrlruntimeclient.ObjectKey{Namespace: v.Namespace, Name: v.Name}
@@ -444,7 +505,7 @@ func (r *RouteReconciler) manageRoutes(ctx context.Context, log logr.Logger, rou
 		}
 
 	case *gwapiv1.HTTPRoute: // v1 "sigs.k8s.io/gateway-api/apis/v1"
-		err = httprouteHelpers.CreateOrUpdateHTTPRoute(ctx, log, r.Client, v, referencedServices, route.Namespace, tenant, annotations, config.IsGlobalTopology())
+		err = httprouteHelpers.CreateOrUpdateHTTPRoute(ctx, log, r.Client, v, referencedServices, route.Namespace, originalRouteName, tenant, annotations, config.IsGlobalTopology())
 		if err == nil {
 			// Retrieve updated object to get the status.
 			key := ctrlruntimeclient.ObjectKey{Namespace: v.Namespace, Name: v.Name}
@@ -458,7 +519,7 @@ func (r *RouteReconciler) manageRoutes(ctx context.Context, log logr.Logger, rou
 		}
 
 	case *gwapiv1.GRPCRoute: // v1 "sigs.k8s.io/gateway-api/apis/v1"
-		err = grpcrouteHelpers.CreateOrUpdateGRPCRoute(ctx, log, r.Client, v, referencedServices, route.Namespace, tenant, annotations, config.IsGlobalTopology())
+		err = grpcrouteHelpers.CreateOrUpdateGRPCRoute(ctx, log, r.Client, v, referencedServices, route.Namespace, originalRouteName, tenant, annotations, config.IsGlobalTopology())
 		if err == nil {
 			// Retrieve updated object to get the status.
 			key := ctrlruntimeclient.ObjectKey{Namespace: v.Namespace, Name: v.Name}

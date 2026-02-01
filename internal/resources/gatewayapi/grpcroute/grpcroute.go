@@ -37,7 +37,7 @@ import (
 
 // createOrUpdateGRPCRoute creates or updates the GRPCRoute object in the cluster.
 func CreateOrUpdateGRPCRoute(ctx context.Context, log logr.Logger, client ctrlclient.Client, object *gwapiv1.GRPCRoute, referencedServices []metav1.ObjectMeta, namespace string,
-	_ *kubelbv1alpha1.Tenant, annotations kubelbv1alpha1.AnnotationSettings, globalTopology bool) error {
+	routeName string, _ *kubelbv1alpha1.Tenant, annotations kubelbv1alpha1.AnnotationSettings, globalTopology bool) error {
 	// Name of the services referenced by the Object have to be updated to match the services created against the Route in the LB cluster.
 	for i, rule := range object.Spec.Rules {
 		for j, filter := range rule.Filters {
@@ -48,8 +48,7 @@ func CreateOrUpdateGRPCRoute(ctx context.Context, log logr.Logger, client ctrlcl
 						ns := ref.Namespace
 						// Corresponding service found, update the name.
 						if ns == nil || string(*ns) == service.Namespace {
-							object.Spec.Rules[i].Filters[j].RequestMirror.BackendRef.Name = gwapiv1.ObjectName(kubelb.GenerateName(globalTopology, string(service.UID), service.Name, service.Namespace))
-							// Set the namespace to nil since all the services are created in the same namespace as the Route.
+							object.Spec.Rules[i].Filters[j].RequestMirror.BackendRef.Name = gwapiv1.ObjectName(kubelb.GenerateRouteServiceName(globalTopology, string(service.UID), routeName, service.Name, service.Namespace)) // Set the namespace to nil since all the services are created in the same namespace as the Route.
 							object.Spec.Rules[i].Filters[j].RequestMirror.BackendRef.Namespace = nil
 						}
 					}
@@ -64,8 +63,7 @@ func CreateOrUpdateGRPCRoute(ctx context.Context, log logr.Logger, client ctrlcl
 						ns := ref.Namespace
 						// Corresponding service found, update the name.
 						if ns == nil || string(*ns) == service.Namespace {
-							object.Spec.Rules[i].BackendRefs[j].Name = gwapiv1.ObjectName(kubelb.GenerateName(globalTopology, string(service.UID), service.Name, service.Namespace))
-							// Set the namespace to nil since all the services are created in the same namespace as the Route.
+							object.Spec.Rules[i].BackendRefs[j].Name = gwapiv1.ObjectName(kubelb.GenerateRouteServiceName(globalTopology, string(service.UID), routeName, service.Name, service.Namespace)) // Set the namespace to nil since all the services are created in the same namespace as the Route.
 							object.Spec.Rules[i].BackendRefs[j].Namespace = nil
 						}
 					}
@@ -81,8 +79,7 @@ func CreateOrUpdateGRPCRoute(ctx context.Context, log logr.Logger, client ctrlcl
 								ns := ref.Namespace
 								// Corresponding service found, update the name.
 								if ns == nil || string(*ns) == service.Namespace {
-									object.Spec.Rules[i].Filters[j].RequestMirror.BackendRef.Name = gwapiv1.ObjectName(kubelb.GenerateName(globalTopology, string(service.UID), service.Name, service.Namespace))
-									// Set the namespace to nil since all the services are created in the same namespace as the Route.
+									object.Spec.Rules[i].Filters[j].RequestMirror.BackendRef.Name = gwapiv1.ObjectName(kubelb.GenerateRouteServiceName(globalTopology, string(service.UID), routeName, service.Name, service.Namespace)) // Set the namespace to nil since all the services are created in the same namespace as the Route.
 									object.Spec.Rules[i].Filters[j].RequestMirror.BackendRef.Namespace = nil
 								}
 							}

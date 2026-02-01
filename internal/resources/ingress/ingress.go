@@ -36,7 +36,7 @@ import (
 )
 
 // createOrUpdateIngress creates or updates the Ingress object in the cluster.
-func CreateOrUpdateIngress(ctx context.Context, log logr.Logger, client ctrlclient.Client, object *networkingv1.Ingress, referencedServices []metav1.ObjectMeta, namespace string, config *kubelbv1alpha1.Config,
+func CreateOrUpdateIngress(ctx context.Context, log logr.Logger, client ctrlclient.Client, object *networkingv1.Ingress, referencedServices []metav1.ObjectMeta, namespace string, routeName string, config *kubelbv1alpha1.Config,
 	tenant *kubelbv1alpha1.Tenant, annotations kubelbv1alpha1.AnnotationSettings) error {
 	globalTopology := config.IsGlobalTopology()
 	// Transformations to make it compliant with the LB cluster.
@@ -45,7 +45,7 @@ func CreateOrUpdateIngress(ctx context.Context, log logr.Logger, client ctrlclie
 		for j, path := range rule.HTTP.Paths {
 			for _, service := range referencedServices {
 				if path.Backend.Service.Name == service.Name {
-					object.Spec.Rules[i].HTTP.Paths[j].Backend.Service.Name = kubelb.GenerateName(globalTopology, string(service.UID), service.Name, service.Namespace)
+					object.Spec.Rules[i].HTTP.Paths[j].Backend.Service.Name = kubelb.GenerateRouteServiceName(globalTopology, string(service.UID), routeName, service.Name, service.Namespace)
 				}
 			}
 		}
@@ -54,7 +54,7 @@ func CreateOrUpdateIngress(ctx context.Context, log logr.Logger, client ctrlclie
 	if object.Spec.DefaultBackend != nil && object.Spec.DefaultBackend.Service != nil {
 		for _, service := range referencedServices {
 			if object.Spec.DefaultBackend.Service.Name == service.Name {
-				object.Spec.DefaultBackend.Service.Name = kubelb.GenerateName(globalTopology, string(service.UID), service.Name, service.Namespace)
+				object.Spec.DefaultBackend.Service.Name = kubelb.GenerateRouteServiceName(globalTopology, string(service.UID), routeName, service.Name, service.Namespace)
 			}
 		}
 	}

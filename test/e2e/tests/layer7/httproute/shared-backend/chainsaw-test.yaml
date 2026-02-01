@@ -1,0 +1,246 @@
+# Copyright 2026 The KubeLB Authors.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# Shared Backend HTTPRoute Test
+# Verifies:
+# - 2 HTTPRoutes can share the same backend service
+# - Both routes return correct response
+# - Traffic is correctly routed based on hostname
+#
+# This is a baseline test. The related waf-targetref test shows the bug
+# when WAF targeting is added to routes sharing a backend.
+apiVersion: chainsaw.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: httproute-shared-backend
+  labels:
+    all:
+    test: shared-backend
+    resource: httproute
+    layer: layer7
+spec:
+  description: |
+    Test multiple HTTPRoutes sharing same backend.
+    Creates 2 routes pointing to 1 backend service.
+    Verifies both routes work and return correct response.
+  bindings:
+    - name: gateway_name
+      value: shared-backend-gw
+    - name: namespace
+      value: default
+    - name: kubelb_namespace
+      value: tenant-primary
+  steps:
+    # Step 1: Deploy shared backend service
+    - name: deploy-backend
+      description: Deploy single shared echo server
+      cluster: tenant1
+      try:
+        - apply:
+            resource:
+              apiVersion: apps/v1
+              kind: Deployment
+              metadata:
+                name: shared-echo
+                namespace: default
+                labels:
+                  app: shared-echo
+              spec:
+                replicas: 1
+                selector:
+                  matchLabels:
+                    app: shared-echo
+                template:
+                  metadata:
+                    labels:
+                      app: shared-echo
+                  spec:
+                    containers:
+                      - name: echo
+                        image: hashicorp/http-echo:1.0
+                        imagePullPolicy: IfNotPresent
+                        args:
+                          - -text=response-from-shared-backend
+                          - -listen=:8080
+                        ports:
+                          - containerPort: 8080
+        - apply:
+            resource:
+              apiVersion: v1
+              kind: Service
+              metadata:
+                name: shared-echo
+                namespace: default
+              spec:
+                type: ClusterIP
+                selector:
+                  app: shared-echo
+                ports:
+                  - port: 80
+                    targetPort: 8080
+        - assert:
+            timeout: 60s
+            resource:
+              apiVersion: apps/v1
+              kind: Deployment
+              metadata:
+                name: shared-echo
+                namespace: default
+              status:
+                readyReplicas: 1
+
+    # Step 2: Create Gateway
+    - name: create-gateway
+      description: Create Gateway for HTTPRoutes
+      cluster: tenant1
+      try:
+        - apply:
+            resource:
+              apiVersion: gateway.networking.k8s.io/v1
+              kind: Gateway
+              metadata:
+                name: shared-backend-gw
+                namespace: default
+              spec:
+                gatewayClassName: kubelb
+                listeners:
+                  - name: http
+                    protocol: HTTP
+                    port: 80
+                    allowedRoutes:
+                      namespaces:
+                        from: All
+
+    # Step 3: Wait for Gateway
+    - name: wait-gateway-ready
+      description: Wait for Gateway to have address
+      use:
+        template: ../../../../step-templates/common/wait-for-gateway-ip.yaml
+        with:
+          bindings:
+            - name: gateway_name
+              value: ($gateway_name)
+            - name: gateway_namespace
+              value: default
+
+    # Step 4: Create 2 HTTPRoutes pointing to SAME backend
+    - name: create-httproutes
+      description: Create 2 routes sharing same backend
+      cluster: tenant1
+      try:
+        - script:
+            skipCommandOutput: true
+            timeout: 60s
+            env:
+              - name: GATEWAY_NAME
+                value: ($gateway_name)
+            content: |
+              set -e
+              IP=$(kubectl get gateway "$GATEWAY_NAME" -n default \
+                -o jsonpath='{.status.addresses[0].value}')
+              # Route A
+              cat <<EOF | kubectl apply -f -
+              apiVersion: gateway.networking.k8s.io/v1
+              kind: HTTPRoute
+              metadata:
+                name: shared-route-a
+                namespace: default
+              spec:
+                parentRefs:
+                  - name: ${GATEWAY_NAME}
+                hostnames:
+                  - "shared-route-a.${IP}.nip.io"
+                rules:
+                  - backendRefs:
+                      - name: shared-echo
+                        port: 80
+                    matches:
+                      - path:
+                          type: PathPrefix
+                          value: /
+              EOF
+              # Route B (same backend)
+              cat <<EOF | kubectl apply -f -
+              apiVersion: gateway.networking.k8s.io/v1
+              kind: HTTPRoute
+              metadata:
+                name: shared-route-b
+                namespace: default
+              spec:
+                parentRefs:
+                  - name: ${GATEWAY_NAME}
+                hostnames:
+                  - "shared-route-b.${IP}.nip.io"
+                rules:
+                  - backendRefs:
+                      - name: shared-echo
+                        port: 80
+                    matches:
+                      - path:
+                          type: PathPrefix
+                          value: /
+              EOF
+              echo "Created 2 HTTPRoutes sharing same backend"
+            check:
+              ($error == null): true
+
+    # Step 5: Verify both routes work
+    - name: verify-routes
+      description: Verify both routes return correct response
+      try:
+        - script:
+            cluster: tenant1
+            skipCommandOutput: true
+            timeout: 90s
+            env:
+              - name: GATEWAY_NAME
+                value: ($gateway_name)
+            content: |
+              set -e
+              IP=$(kubectl get gateway "$GATEWAY_NAME" -n default \
+                -o jsonpath='{.status.addresses[0].value}')
+              EXPECTED="response-from-shared-backend"
+              for route in a b; do
+                HOST="shared-route-${route}.${IP}.nip.io"
+                for attempt in $(seq 1 15); do
+                  RESPONSE=$(curl -s --max-time 5 -H "Host: ${HOST}" "http://${IP}/" 2>/dev/null || true)
+                  if echo "$RESPONSE" | grep -q "$EXPECTED"; then
+                    echo "SUCCESS: Route ${route} works - got: $EXPECTED"
+                    break
+                  fi
+                  echo "Attempt ${attempt}: Route ${route} waiting..."
+                  sleep 2
+                done
+                if ! echo "$RESPONSE" | grep -q "$EXPECTED"; then
+                  echo "FAILED: Route ${route} expected '$EXPECTED', got '$RESPONSE'"
+                  exit 1
+                fi
+              done
+              echo "SUCCESS: Both routes sharing backend work correctly"
+            check:
+              ($error == null): true
+      finally:
+        - script:
+            skipCommandOutput: true
+            cluster: tenant1
+            timeout: 30s
+            env:
+              - name: GATEWAY_NAME
+                value: ($gateway_name)
+            content: |
+              kubectl delete httproute shared-route-a shared-route-b \
+                -n default --ignore-not-found
+              kubectl delete gateway "$GATEWAY_NAME" -n default --ignore-not-found
+              kubectl delete deployment shared-echo -n default --ignore-not-found
+              kubectl delete service shared-echo -n default --ignore-not-found
