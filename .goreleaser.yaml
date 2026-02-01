@@ -353,7 +353,7 @@ release:
       --certificate-oidc-issuer=https://token.actions.githubusercontent.com
 
     cosign verify quay.io/kubermatic/helm-charts/kubelb-addons:{{ .Env.KUBELB_ADDONS_VERSION }} \
-      --certificate-identity-regexp="^https://github.com/kubermatic/kubelb/.github/workflows/release.yml@refs/tags/v.*" \
+      --certificate-identity-regexp="^https://github.com/kubermatic/kubelb/.github/workflows/release.yml@refs/tags/addons-v.*" \
       --certificate-oidc-issuer=https://token.actions.githubusercontent.com
     ```
 

@@ -22,7 +22,7 @@ All Helm charts are cryptographically signed using [Sigstore Cosign](https://git
 
 ```bash
 cosign verify quay.io/kubermatic/helm-charts/kubelb-addons:v0.3.0 \
-  --certificate-identity-regexp="^https://github.com/kubermatic/kubelb/.github/workflows/release.yml@refs/tags/v.*" \
+  --certificate-identity-regexp="^https://github.com/kubermatic/kubelb/.github/workflows/release.yml@refs/tags/addons-v.*" \
   --certificate-oidc-issuer=https://token.actions.githubusercontent.com
 ```
 
