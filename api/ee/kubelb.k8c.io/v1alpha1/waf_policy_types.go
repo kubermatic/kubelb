@@ -60,20 +60,28 @@ type WAFTargetRef struct {
 }
 
 // WAFPolicySpec defines the desired state of WAFPolicy.
-// Exactly one targeting method must be used: targetRef, targetSelector, or neither (global default).
-// Setting both targetRef and targetSelector is invalid.
+// Exactly one targeting method must be used: targetRef, targetSelector, or global.
+// Setting multiple targeting methods is invalid. Policies without any targeting are ignored.
 // Feature stage: Alpha
 // +kubebuilder:validation:XValidation:rule="!(has(self.targetRef) && has(self.targetSelector))",message="targetRef and targetSelector are mutually exclusive"
+// +kubebuilder:validation:XValidation:rule="!((has(self.global) && self.global) && has(self.targetRef))",message="global and targetRef are mutually exclusive"
+// +kubebuilder:validation:XValidation:rule="!((has(self.global) && self.global) && has(self.targetSelector))",message="global and targetSelector are mutually exclusive"
 type WAFPolicySpec struct {
+	// Global when set to true applies this policy to all routes for all tenants within a KubeLB installation.
+	// Mutually exclusive with TargetRef and TargetSelector.
+	// Policies without global, targetRef, or targetSelector are ignored.
+	// +optional
+	Global bool `json:"global,omitempty"`
+
 	// TargetRef identifies a specific route by name and optionally namespace.
-	// Mutually exclusive with TargetSelector.
+	// Mutually exclusive with Global and TargetSelector.
 	// +optional
 	TargetRef *WAFTargetRef `json:"targetRef,omitempty"`
 
 	// TargetSelector selects routes or HTTPRoute/GRPCRoute resources by label.
 	// It checks whether the route has the labels or the labels of the HTTPRoute/GRPCRoute resource. In case of a
 	// conflict, the labels of the Route resource takes precedence.
-	// Mutually exclusive with TargetRef.
+	// Mutually exclusive with Global and TargetRef.
 	// +optional
 	TargetSelector *metav1.LabelSelector `json:"targetSelector,omitempty"`
 
