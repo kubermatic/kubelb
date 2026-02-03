@@ -1,7 +1,7 @@
 # kubelb-manager
 
 Helm chart for KubeLB Manager. This is used to deploy the KubeLB CCM to a Kubernetes cluster. The CCM is responsible for propagating the load balancer configurations to the management cluster.
-![Version: v1.2.0](https://img.shields.io/badge/Version-v1.2.0-informational?style=flat-square) ![Type: application](https://img.shields.io/badge/Type-application-informational?style=flat-square) ![AppVersion: v1.2.0](https://img.shields.io/badge/AppVersion-v1.2.0-informational?style=flat-square)
+![Version: v1.2.2](https://img.shields.io/badge/Version-v1.2.2-informational?style=flat-square) ![Type: application](https://img.shields.io/badge/Type-application-informational?style=flat-square) ![AppVersion: v1.2.2](https://img.shields.io/badge/AppVersion-v1.2.2-informational?style=flat-square)
 
 ## Installing the chart
 
@@ -14,7 +14,7 @@ Helm chart for KubeLB Manager. This is used to deploy the KubeLB CCM to a Kubern
 Now, we can install the helm chart:
 
 ```sh
-helm pull oci://quay.io/kubermatic/helm-charts/kubelb-manager --version=v1.2.0 --untardir "." --untar
+helm pull oci://quay.io/kubermatic/helm-charts/kubelb-manager --version=v1.2.2 --untardir "." --untar
 ## Apply CRDs
 kubectl apply -f kubelb-manager/crds/
 ## Create and update values.yaml with the required values.
@@ -25,7 +25,7 @@ helm install kubelb-manager kubelb-manager/ --namespace kubelb -f values.yaml --
 
 | Repository | Name | Version |
 |------------|------|---------|
-| oci://quay.io/kubermatic/helm-charts | kubelb-addons | v0.2.0 |
+| oci://quay.io/kubermatic/helm-charts | kubelb-addons | v0.2.1 |
 
 ## Values
 
@@ -40,12 +40,9 @@ helm install kubelb-manager kubelb-manager/ --namespace kubelb -f values.yaml --
 | fullnameOverride | string | `""` |  |
 | image.pullPolicy | string | `"IfNotPresent"` |  |
 | image.repository | string | `"quay.io/kubermatic/kubelb-manager"` |  |
-| image.tag | string | `"v1.2.0"` |  |
+| image.tag | string | `"v1.2.2"` |  |
 | imagePullSecrets | list | `[]` |  |
 | kkpintegration.rbac | bool | `false` | Create RBAC for KKP integration. |
-| kubeRbacProxy.image.pullPolicy | string | `"IfNotPresent"` |  |
-| kubeRbacProxy.image.repository | string | `"quay.io/brancz/kube-rbac-proxy"` |  |
-| kubeRbacProxy.image.tag | string | `"v0.20.1"` |  |
 | kubelb.debug | bool | `true` |  |
 | kubelb.enableGatewayAPI | bool | `false` | enableGatewayAPI specifies whether to enable the Gateway API and Gateway Controllers. By default Gateway API is disabled since without Gateway APIs installed the controller cannot start. |
 | kubelb.enableLeaderElection | bool | `true` |  |

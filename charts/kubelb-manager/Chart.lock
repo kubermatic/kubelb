@@ -1,6 +1,6 @@
 dependencies:
 - name: kubelb-addons
   repository: oci://quay.io/kubermatic/helm-charts
-  version: v0.2.0
-digest: sha256:ac13bd59459796b112cbb348ae59dd91c7fa469ac5b0f8bd78f70f3510b3d527
-generated: "2025-11-10T12:24:37.381234+05:00"
+  version: v0.2.1
+digest: sha256:af550c46e5fcf720706fef531fdf39b24c608ff5bcbef9ad05a3ffe298817787
+generated: "2026-02-03T12:58:48.256992+05:00"
