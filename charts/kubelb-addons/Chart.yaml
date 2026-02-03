@@ -7,22 +7,22 @@ maintainers:
   - name: Kubermatic
     email: support@kubermatic.com
     url: https://kubermatic.com
-version: v0.2.0
-appVersion: v0.2.0
+version: v0.2.1
+appVersion: v0.2.1
 dependencies:
   - name: ingress-nginx
     repository: https://kubernetes.github.io/ingress-nginx
     condition: ingress-nginx.enabled
-    version: 4.13.0
+    version: 4.13.3
   - name: gateway-helm
     repository: oci://docker.io/envoyproxy
     condition: envoy-gateway.enabled
-    version: 1.5.4
+    version: 1.5.8
     alias: envoy-gateway
   - name: cert-manager
     repository: https://charts.jetstack.io
     condition: cert-manager.enabled
-    version: 1.18.2
+    version: 1.18.5
   - name: external-dns
     repository: https://kubernetes-sigs.github.io/external-dns
     condition: external-dns.enabled

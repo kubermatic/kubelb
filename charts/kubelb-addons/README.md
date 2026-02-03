@@ -2,12 +2,12 @@
 
 Helm chart for deploying optional addons to enhance KubeLB functionality.
 
-![Version: v0.2.0](https://img.shields.io/badge/Version-v0.2.0-informational?style=flat-square) ![Type: application](https://img.shields.io/badge/Type-application-informational?style=flat-square) ![AppVersion: v0.2.0](https://img.shields.io/badge/AppVersion-v0.2.0-informational?style=flat-square)
+![Version: v0.2.1](https://img.shields.io/badge/Version-v0.2.1-informational?style=flat-square) ![Type: application](https://img.shields.io/badge/Type-application-informational?style=flat-square) ![AppVersion: v0.2.1](https://img.shields.io/badge/AppVersion-v0.2.1-informational?style=flat-square)
 
 ## Installing the chart
 
 ```sh
-helm pull oci://quay.io/kubermatic/helm-charts/kubelb-addons --version=v0.2.0 --untardir "." --untar
+helm pull oci://quay.io/kubermatic/helm-charts/kubelb-addons --version=v0.2.1 --untardir "." --untar
 ## Create and update values.yaml with the required values.
 helm install kubelb-addons kubelb-addons --namespace kubelb -f values.yaml --create-namespace
 ```
@@ -73,13 +73,13 @@ These are the default values to use when Gateway API is disabled for KubeLB in f
 
 | Repository | Name | Version |
 |------------|------|---------|
-| https://charts.jetstack.io | cert-manager | 1.18.2 |
+| https://charts.jetstack.io | cert-manager | 1.18.5 |
 | https://kubernetes-sigs.github.io/external-dns | external-dns | 1.18.0 |
-| https://kubernetes.github.io/ingress-nginx | ingress-nginx | 4.13.0 |
+| https://kubernetes.github.io/ingress-nginx | ingress-nginx | 4.13.3 |
 | https://metallb.github.io/metallb | metallb | 0.15.2 |
 | oci://cr.kgateway.dev/kgateway-dev/charts | kgateway | v2.0.4 |
 | oci://cr.kgateway.dev/kgateway-dev/charts | kgateway-crds | v2.0.4 |
-| oci://docker.io/envoyproxy | envoy-gateway(gateway-helm) | 1.5.4 |
+| oci://docker.io/envoyproxy | envoy-gateway(gateway-helm) | 1.5.8 |
 
 ## Values
 
