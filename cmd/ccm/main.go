@@ -34,6 +34,7 @@ import (
 	"k8c.io/kubelb/internal/controllers/ccm"
 	ingressconversion "k8c.io/kubelb/internal/ingress-to-gateway"
 	ccmmetrics "k8c.io/kubelb/internal/metrics/ccm"
+	"k8c.io/kubelb/pkg/conversion"
 
 	corev1 "k8s.io/api/core/v1"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
@@ -93,7 +94,7 @@ type options struct {
 	gatewayAPICRDsChannel      string
 
 	// Ingress-to-Gateway conversion
-	conversionOpts ingressconversion.Options
+	conversionOpts conversion.Options
 }
 
 func main() {
@@ -438,7 +439,7 @@ func setupControllers(mgr, kubeLBMgr ctrl.Manager, setupLog logr.Logger, opt *op
 			return err
 		}
 		if err := ingressconversion.SetupReconciler(mgr, opt.conversionOpts); err != nil {
-			setupLog.Error(err, "unable to create controller", "controller", ingressconversion.ControllerName)
+			setupLog.Error(err, "unable to create controller", "controller", conversion.ControllerName)
 			return err
 		}
 	}

@@ -23,32 +23,23 @@ import (
 
 	"github.com/go-logr/logr"
 
+	"k8c.io/kubelb/pkg/conversion"
+
 	networkingv1 "k8s.io/api/networking/v1"
 	kerrors "k8s.io/apimachinery/pkg/api/errors"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/utils/ptr"
 	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
 )
 
-// GatewayConfig holds configuration for Gateway reconciliation
-type GatewayConfig struct {
-	Name         string
-	Namespace    string
-	ClassName    string
-	TLSListeners []TLSListener
-	Annotations  map[string]string
-}
-
 // reconcileGateway ensures the Gateway exists and has required listeners
-func (r *Reconciler) reconcileGateway(ctx context.Context, log logr.Logger, ingress *networkingv1.Ingress, tlsListeners []TLSListener) error {
+func (r *Reconciler) reconcileGateway(ctx context.Context, log logr.Logger, ingress *networkingv1.Ingress, tlsListeners []conversion.TLSListener) error {
 	gatewayNs := r.GatewayNamespace
 	if gatewayNs == "" {
 		gatewayNs = ingress.Namespace
 	}
 
 	// Build desired Gateway config
-	config := GatewayConfig{
+	config := conversion.GatewayConfig{
 		Name:         r.GatewayName,
 		Namespace:    gatewayNs,
 		ClassName:    r.GatewayClassName,
@@ -62,7 +53,7 @@ func (r *Reconciler) reconcileGateway(ctx context.Context, log logr.Logger, ingr
 	if err != nil {
 		if kerrors.IsNotFound(err) {
 			// Create new Gateway
-			gateway := buildGateway(config)
+			gateway := conversion.BuildGateway(config)
 			log.Info("Creating Gateway", "name", gateway.Name, "namespace", gateway.Namespace)
 			return r.Create(ctx, gateway)
 		}
@@ -73,7 +64,7 @@ func (r *Reconciler) reconcileGateway(ctx context.Context, log logr.Logger, ingr
 	updated := false
 
 	// Merge listeners
-	newListeners := mergeListeners(existing.Spec.Listeners, buildListeners(config.TLSListeners))
+	newListeners := conversion.MergeListeners(existing.Spec.Listeners, conversion.BuildListeners(config.TLSListeners))
 	if !listenersEqual(existing.Spec.Listeners, newListeners) {
 		existing.Spec.Listeners = newListeners
 		updated = true
@@ -109,8 +100,8 @@ func (r *Reconciler) extractGatewayAnnotations(ingress *networkingv1.Ingress) ma
 
 	// external-dns target annotation (only target goes to Gateway)
 	if r.PropagateExternalDNS && ingress.Annotations != nil {
-		if target, ok := ingress.Annotations[ExternalDNSTarget]; ok {
-			result[ExternalDNSTarget] = target
+		if target, ok := ingress.Annotations[conversion.ExternalDNSTarget]; ok {
+			result[conversion.ExternalDNSTarget] = target
 		}
 	}
 
@@ -125,127 +116,8 @@ func (r *Reconciler) extractHTTPRouteAnnotations(ingress *networkingv1.Ingress) 
 	}
 
 	for k, v := range ingress.Annotations {
-		if strings.HasPrefix(k, ExternalDNSAnnotationPrefix) && k != ExternalDNSTarget {
+		if strings.HasPrefix(k, conversion.ExternalDNSAnnotationPrefix) && k != conversion.ExternalDNSTarget {
 			result[k] = v
-		}
-	}
-
-	return result
-}
-
-// buildGateway creates a new Gateway resource
-func buildGateway(config GatewayConfig) *gwapiv1.Gateway {
-	gateway := &gwapiv1.Gateway{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      config.Name,
-			Namespace: config.Namespace,
-			Labels: map[string]string{
-				LabelManagedBy: ControllerName,
-			},
-			Annotations: config.Annotations,
-		},
-		Spec: gwapiv1.GatewaySpec{
-			GatewayClassName: gwapiv1.ObjectName(config.ClassName),
-			Listeners:        buildListeners(config.TLSListeners),
-		},
-	}
-
-	return gateway
-}
-
-// buildListeners creates Gateway listeners from TLS config
-func buildListeners(tlsListeners []TLSListener) []gwapiv1.Listener {
-	listeners := []gwapiv1.Listener{
-		// Always include HTTP listener
-		{
-			Name:     "http",
-			Port:     80,
-			Protocol: gwapiv1.HTTPProtocolType,
-			AllowedRoutes: &gwapiv1.AllowedRoutes{
-				Namespaces: &gwapiv1.RouteNamespaces{
-					From: ptr.To(gwapiv1.NamespacesFromAll),
-				},
-			},
-		},
-	}
-
-	// Add HTTPS listeners for each TLS host
-	seen := make(map[string]bool)
-	for _, tls := range tlsListeners {
-		hostname := string(tls.Hostname)
-		// Dedupe by hostname
-		if seen[hostname] {
-			continue
-		}
-		seen[hostname] = true
-
-		listenerName := listenerNameFromHostname(hostname)
-		listener := gwapiv1.Listener{
-			Name:     gwapiv1.SectionName(listenerName),
-			Hostname: ptr.To(tls.Hostname),
-			Port:     443,
-			Protocol: gwapiv1.HTTPSProtocolType,
-			AllowedRoutes: &gwapiv1.AllowedRoutes{
-				Namespaces: &gwapiv1.RouteNamespaces{
-					From: ptr.To(gwapiv1.NamespacesFromAll),
-				},
-			},
-			TLS: &gwapiv1.ListenerTLSConfig{
-				Mode: ptr.To(gwapiv1.TLSModeTerminate),
-				CertificateRefs: []gwapiv1.SecretObjectReference{
-					{
-						Name: gwapiv1.ObjectName(tls.SecretName),
-					},
-				},
-			},
-		}
-
-		listeners = append(listeners, listener)
-	}
-
-	return listeners
-}
-
-// listenerNameFromHostname generates a listener name from hostname
-func listenerNameFromHostname(hostname string) string {
-	if hostname == "*" {
-		return "https-wildcard"
-	}
-	// Replace dots and wildcards with dashes
-	name := strings.ReplaceAll(hostname, ".", "-")
-	name = strings.ReplaceAll(name, "*", "wildcard")
-	return "https-" + name
-}
-
-// mergeListeners merges desired listeners into existing.
-// - Adds new listeners from desired set
-// - Updates existing listeners if their config differs (e.g., TLS secret changed)
-// - Note: Stale listener removal requires separate cleanup logic since Gateway is shared
-func mergeListeners(existing, desired []gwapiv1.Listener) []gwapiv1.Listener {
-	// Build map of desired listeners by name
-	desiredByName := make(map[gwapiv1.SectionName]gwapiv1.Listener)
-	for _, l := range desired {
-		desiredByName[l.Name] = l
-	}
-
-	result := make([]gwapiv1.Listener, 0, len(existing)+len(desired))
-
-	// Process existing listeners - update if in desired set, keep otherwise
-	for _, existing := range existing {
-		if desiredListener, found := desiredByName[existing.Name]; found {
-			// Update existing listener with desired config
-			result = append(result, desiredListener)
-			delete(desiredByName, existing.Name)
-		} else {
-			// Keep existing listener (may belong to another Ingress)
-			result = append(result, existing)
-		}
-	}
-
-	// Add any remaining desired listeners (new ones)
-	for _, l := range desired {
-		if _, stillNeeded := desiredByName[l.Name]; stillNeeded {
-			result = append(result, l)
 		}
 	}
 

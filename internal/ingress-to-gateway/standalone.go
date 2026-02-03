@@ -19,6 +19,8 @@ package ingressconversion
 import (
 	"context"
 
+	"k8c.io/kubelb/pkg/conversion"
+
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
@@ -35,7 +37,7 @@ type StandaloneConfig struct {
 }
 
 // RunStandalone starts the converter as a standalone controller without LB cluster
-func RunStandalone(ctx context.Context, cfg StandaloneConfig, opts Options) int {
+func RunStandalone(ctx context.Context, cfg StandaloneConfig, opts conversion.Options) int {
 	setupLog := ctrl.Log.WithName("setup")
 
 	if err := opts.Validate(); err != nil {
@@ -59,7 +61,7 @@ func RunStandalone(ctx context.Context, cfg StandaloneConfig, opts Options) int 
 	}
 
 	if err := SetupReconciler(mgr, opts); err != nil {
-		setupLog.Error(err, "unable to create controller", "controller", ControllerName)
+		setupLog.Error(err, "unable to create controller", "controller", conversion.ControllerName)
 		return 1
 	}
 
@@ -80,12 +82,12 @@ func RunStandalone(ctx context.Context, cfg StandaloneConfig, opts Options) int 
 }
 
 // SetupReconciler creates and registers the Reconciler with the manager
-func SetupReconciler(mgr ctrl.Manager, opts Options) error {
+func SetupReconciler(mgr ctrl.Manager, opts conversion.Options) error {
 	return (&Reconciler{
 		Client:                      mgr.GetClient(),
-		Log:                         ctrl.Log.WithName("controllers").WithName(ControllerName),
+		Log:                         ctrl.Log.WithName("controllers").WithName(conversion.ControllerName),
 		Scheme:                      mgr.GetScheme(),
-		Recorder:                    mgr.GetEventRecorder(ControllerName),
+		Recorder:                    mgr.GetEventRecorder(conversion.ControllerName),
 		GatewayName:                 opts.GatewayName,
 		GatewayNamespace:            opts.GatewayNamespace,
 		GatewayClassName:            opts.GatewayClassName,

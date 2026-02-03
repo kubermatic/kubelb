@@ -19,6 +19,8 @@ package ingressconversion
 import (
 	"testing"
 
+	"k8c.io/kubelb/pkg/conversion"
+
 	networkingv1 "k8s.io/api/networking/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
@@ -27,11 +29,11 @@ import (
 const testIssuerLetsencrypt = "letsencrypt"
 
 func TestBuildGateway(t *testing.T) {
-	config := GatewayConfig{
+	config := conversion.GatewayConfig{
 		Name:      "test-gateway",
 		Namespace: "default",
 		ClassName: "kubelb",
-		TLSListeners: []TLSListener{
+		TLSListeners: []conversion.TLSListener{
 			{Hostname: "app.example.com", SecretName: "app-tls"},
 		},
 		Annotations: map[string]string{
@@ -39,7 +41,7 @@ func TestBuildGateway(t *testing.T) {
 		},
 	}
 
-	gateway := buildGateway(config)
+	gateway := conversion.BuildGateway(config)
 
 	if gateway.Name != "test-gateway" {
 		t.Errorf("expected name test-gateway, got %s", gateway.Name)
@@ -50,7 +52,7 @@ func TestBuildGateway(t *testing.T) {
 	if string(gateway.Spec.GatewayClassName) != "kubelb" {
 		t.Errorf("expected class kubelb, got %s", gateway.Spec.GatewayClassName)
 	}
-	if gateway.Labels[LabelManagedBy] != ControllerName {
+	if gateway.Labels[conversion.LabelManagedBy] != conversion.ControllerName {
 		t.Errorf("expected managed-by label, got %v", gateway.Labels)
 	}
 	if gateway.Annotations["cert-manager.io/cluster-issuer"] != testIssuerLetsencrypt {
@@ -66,7 +68,7 @@ func TestBuildGateway(t *testing.T) {
 func TestBuildListeners(t *testing.T) {
 	tests := []struct {
 		name         string
-		tlsListeners []TLSListener
+		tlsListeners []conversion.TLSListener
 		wantCount    int
 		wantHTTPS    bool
 	}{
@@ -78,7 +80,7 @@ func TestBuildListeners(t *testing.T) {
 		},
 		{
 			name: "single TLS",
-			tlsListeners: []TLSListener{
+			tlsListeners: []conversion.TLSListener{
 				{Hostname: "app.example.com", SecretName: "app-tls"},
 			},
 			wantCount: 2, // HTTP + HTTPS
@@ -86,7 +88,7 @@ func TestBuildListeners(t *testing.T) {
 		},
 		{
 			name: "multiple TLS",
-			tlsListeners: []TLSListener{
+			tlsListeners: []conversion.TLSListener{
 				{Hostname: "app.example.com", SecretName: "app-tls"},
 				{Hostname: "api.example.com", SecretName: "api-tls"},
 			},
@@ -95,7 +97,7 @@ func TestBuildListeners(t *testing.T) {
 		},
 		{
 			name: "duplicate hostnames",
-			tlsListeners: []TLSListener{
+			tlsListeners: []conversion.TLSListener{
 				{Hostname: "app.example.com", SecretName: "app-tls"},
 				{Hostname: "app.example.com", SecretName: "app-tls-2"}, // Duplicate
 			},
@@ -106,7 +108,7 @@ func TestBuildListeners(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			listeners := buildListeners(tt.tlsListeners)
+			listeners := conversion.BuildListeners(tt.tlsListeners)
 
 			if len(listeners) != tt.wantCount {
 				t.Errorf("expected %d listeners, got %d", tt.wantCount, len(listeners))
@@ -145,7 +147,7 @@ func TestMergeListeners(t *testing.T) {
 		{Name: "https-new", Port: 443, Protocol: gwapiv1.HTTPSProtocolType},
 	}
 
-	result := mergeListeners(existing, desired)
+	result := conversion.MergeListeners(existing, desired)
 
 	if len(result) != 3 {
 		t.Errorf("expected 3 listeners, got %d", len(result))
@@ -174,9 +176,9 @@ func TestListenerNameFromHostname(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.hostname, func(t *testing.T) {
-			got := listenerNameFromHostname(tt.hostname)
+			got := conversion.ListenerNameFromHostname(tt.hostname)
 			if got != tt.expected {
-				t.Errorf("listenerNameFromHostname(%q) = %q, want %q", tt.hostname, got, tt.expected)
+				t.Errorf("ListenerNameFromHostname(%q) = %q, want %q", tt.hostname, got, tt.expected)
 			}
 		})
 	}

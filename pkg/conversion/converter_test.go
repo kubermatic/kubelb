@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package ingressconversion
+package conversion
 
 import (
 	"testing"
@@ -26,6 +26,15 @@ import (
 	"k8s.io/utils/ptr"
 	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
 )
+
+// convertIngress is a test helper that wraps ConvertIngressWithServices for simpler test cases
+func convertIngress(ingress *networkingv1.Ingress, gatewayName, gatewayNamespace string) Result {
+	return ConvertIngressWithServices(Input{
+		Ingress:          ingress,
+		GatewayName:      gatewayName,
+		GatewayNamespace: gatewayNamespace,
+	})
+}
 
 func TestConvertIngress_SingleHost(t *testing.T) {
 	ingress := &networkingv1.Ingress{
@@ -58,7 +67,7 @@ func TestConvertIngress_SingleHost(t *testing.T) {
 		},
 	}
 
-	result := ConvertIngress(ingress, "my-gateway", "gateway-ns")
+	result := convertIngress(ingress, "my-gateway", "gateway-ns")
 
 	if len(result.HTTPRoutes) != 1 {
 		t.Fatalf("expected 1 HTTPRoute, got %d", len(result.HTTPRoutes))
@@ -133,7 +142,7 @@ func TestConvertIngress_MultipleHosts(t *testing.T) {
 		},
 	}
 
-	result := ConvertIngress(ingress, "gw", "")
+	result := convertIngress(ingress, "gw", "")
 
 	if len(result.HTTPRoutes) != 2 {
 		t.Fatalf("expected 2 HTTPRoutes (one per host), got %d", len(result.HTTPRoutes))
@@ -184,7 +193,7 @@ func TestConvertIngress_NoHost(t *testing.T) {
 		},
 	}
 
-	result := ConvertIngress(ingress, "gw", "")
+	result := convertIngress(ingress, "gw", "")
 
 	if len(result.HTTPRoutes) != 1 {
 		t.Fatalf("expected 1 HTTPRoute, got %d", len(result.HTTPRoutes))
@@ -215,7 +224,7 @@ func TestConvertIngress_DefaultBackend(t *testing.T) {
 		},
 	}
 
-	result := ConvertIngress(ingress, "gw", "")
+	result := convertIngress(ingress, "gw", "")
 
 	if len(result.HTTPRoutes) != 1 {
 		t.Fatalf("expected 1 HTTPRoute, got %d", len(result.HTTPRoutes))
@@ -270,7 +279,7 @@ func TestConvertIngress_TLSListeners(t *testing.T) {
 		},
 	}
 
-	result := ConvertIngress(ingress, "gw", "")
+	result := convertIngress(ingress, "gw", "")
 
 	// Should generate TLS listener config
 	if len(result.TLSListeners) != 1 {
@@ -328,7 +337,7 @@ func TestConvertIngress_TLSMultipleHosts(t *testing.T) {
 		},
 	}
 
-	result := ConvertIngress(ingress, "gw", "")
+	result := convertIngress(ingress, "gw", "")
 
 	// Should generate 3 TLS listener configs (2 from first TLS, 1 from second)
 	if len(result.TLSListeners) != 3 {
@@ -383,7 +392,7 @@ func TestConvertIngress_NamedPortWarning(t *testing.T) {
 		},
 	}
 
-	result := ConvertIngress(ingress, "gw", "")
+	result := convertIngress(ingress, "gw", "")
 
 	if len(result.Warnings) == 0 {
 		t.Fatal("expected named port warning, got none")
@@ -433,7 +442,7 @@ func TestConvertIngress_ResourceBackendWarning(t *testing.T) {
 		},
 	}
 
-	result := ConvertIngress(ingress, "gw", "")
+	result := convertIngress(ingress, "gw", "")
 
 	if len(result.Warnings) == 0 {
 		t.Fatal("expected resource backend warning, got none")
@@ -506,7 +515,7 @@ func TestConvertIngress_PathTypes(t *testing.T) {
 				},
 			}
 
-			result := ConvertIngress(ingress, "gw", "")
+			result := convertIngress(ingress, "gw", "")
 
 			if len(result.HTTPRoutes) != 1 || len(result.HTTPRoutes[0].Spec.Rules) != 1 {
 				t.Fatal("unexpected route/rule count")
@@ -558,7 +567,7 @@ func TestConvertIngress_LabelsPreserved(t *testing.T) {
 		},
 	}
 
-	result := ConvertIngress(ingress, "gw", "")
+	result := convertIngress(ingress, "gw", "")
 
 	route := result.HTTPRoutes[0]
 	if route.Labels["app"] != "myapp" || route.Labels["version"] != "v1" {
@@ -591,7 +600,7 @@ func TestConvertIngress_ParentRefNamespace(t *testing.T) {
 	}
 
 	// Gateway in different namespace
-	result := ConvertIngress(ingress, "gw", "gateway-ns")
+	result := convertIngress(ingress, "gw", "gateway-ns")
 	route := result.HTTPRoutes[0]
 
 	if route.Spec.ParentRefs[0].Namespace == nil {
@@ -602,7 +611,7 @@ func TestConvertIngress_ParentRefNamespace(t *testing.T) {
 	}
 
 	// Gateway in same namespace
-	result2 := ConvertIngress(ingress, "gw", "app-ns")
+	result2 := convertIngress(ingress, "gw", "app-ns")
 	route2 := result2.HTTPRoutes[0]
 
 	if route2.Spec.ParentRefs[0].Namespace != nil {
@@ -675,9 +684,9 @@ func TestConvertIngress_DeterministicOrdering(t *testing.T) {
 	}
 
 	// Run conversion multiple times and verify consistent ordering
-	var firstResult ConversionResult
+	var firstResult Result
 	for i := 0; i < 10; i++ {
-		result := ConvertIngress(ingress, "gw", "")
+		result := convertIngress(ingress, "gw", "")
 
 		if len(result.HTTPRoutes) != 3 {
 			t.Fatalf("iteration %d: expected 3 HTTPRoutes, got %d", i, len(result.HTTPRoutes))
@@ -755,7 +764,7 @@ func TestConvertIngress_NamedPortResolution(t *testing.T) {
 		},
 	}
 
-	result := ConvertIngressWithServices(ConversionInput{
+	result := ConvertIngressWithServices(Input{
 		Ingress:          ingress,
 		GatewayName:      "gw",
 		GatewayNamespace: "",
@@ -821,7 +830,7 @@ func TestConvertIngress_SinglePortAutoDetect(t *testing.T) {
 		},
 	}
 
-	result := ConvertIngressWithServices(ConversionInput{
+	result := ConvertIngressWithServices(Input{
 		Ingress:          ingress,
 		GatewayName:      "gw",
 		GatewayNamespace: "",
@@ -888,7 +897,7 @@ func TestConvertIngress_MultiPortServiceWarning(t *testing.T) {
 		},
 	}
 
-	result := ConvertIngressWithServices(ConversionInput{
+	result := ConvertIngressWithServices(Input{
 		Ingress:          ingress,
 		GatewayName:      "gw",
 		GatewayNamespace: "",
@@ -942,7 +951,7 @@ func TestConvertIngress_ServiceNotFound(t *testing.T) {
 	// Empty services map - Service not found
 	services := map[types.NamespacedName]*corev1.Service{}
 
-	result := ConvertIngressWithServices(ConversionInput{
+	result := ConvertIngressWithServices(Input{
 		Ingress:          ingress,
 		GatewayName:      "gw",
 		GatewayNamespace: "",
@@ -997,7 +1006,7 @@ func TestConvertIngress_WithAnnotations(t *testing.T) {
 		},
 	}
 
-	result := ConvertIngress(ingress, "gateway", "default")
+	result := convertIngress(ingress, "gateway", "default")
 
 	if len(result.HTTPRoutes) != 1 {
 		t.Fatalf("expected 1 HTTPRoute, got %d", len(result.HTTPRoutes))
@@ -1117,7 +1126,7 @@ func TestConvertIngress_DomainTransformation(t *testing.T) {
 		},
 	}
 
-	result := ConvertIngressWithServices(ConversionInput{
+	result := ConvertIngressWithServices(Input{
 		Ingress:          ingress,
 		GatewayName:      "gw",
 		GatewayNamespace: "",
@@ -1199,7 +1208,7 @@ func TestConvertIngress_WithPolicyAnnotations(t *testing.T) {
 		},
 	}
 
-	result := ConvertIngress(ingress, "gateway", "default")
+	result := convertIngress(ingress, "gateway", "default")
 
 	// Policy annotations don't create filters, they create warnings
 	route := result.HTTPRoutes[0]
@@ -1315,7 +1324,7 @@ func TestConvertIngress_GRPCRoute(t *testing.T) {
 		},
 	}
 
-	result := ConvertIngressWithServices(ConversionInput{
+	result := ConvertIngressWithServices(Input{
 		Ingress:          ingress,
 		GatewayName:      "gateway",
 		GatewayNamespace: "default",
@@ -1413,7 +1422,7 @@ func TestConvertIngress_GRPCRoute_MultipleHosts(t *testing.T) {
 		},
 	}
 
-	result := ConvertIngressWithServices(ConversionInput{
+	result := ConvertIngressWithServices(Input{
 		Ingress:          ingress,
 		GatewayName:      "gw",
 		GatewayNamespace: "",
@@ -1476,7 +1485,7 @@ func TestConvertIngress_UseRegex(t *testing.T) {
 		},
 	}
 
-	result := ConvertIngress(ingress, "gateway", "default")
+	result := convertIngress(ingress, "gateway", "default")
 
 	if len(result.HTTPRoutes) != 1 {
 		t.Fatalf("expected 1 HTTPRoute, got %d", len(result.HTTPRoutes))
@@ -1549,7 +1558,7 @@ func TestConvertIngress_UseRegexFalse(t *testing.T) {
 		},
 	}
 
-	result := ConvertIngress(ingress, "gateway", "default")
+	result := convertIngress(ingress, "gateway", "default")
 
 	if len(result.HTTPRoutes) != 1 {
 		t.Fatalf("expected 1 HTTPRoute, got %d", len(result.HTTPRoutes))

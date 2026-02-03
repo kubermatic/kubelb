@@ -20,6 +20,8 @@ import (
 	"testing"
 	"time"
 
+	"k8c.io/kubelb/pkg/conversion"
+
 	networkingv1 "k8s.io/api/networking/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/utils/ptr"
@@ -51,7 +53,7 @@ func TestIsAlreadyConverted(t *testing.T) {
 			ingress: &networkingv1.Ingress{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:        "test",
-					Annotations: map[string]string{AnnotationConversionStatus: ConversionStatusConverted},
+					Annotations: map[string]string{conversion.AnnotationConversionStatus: conversion.ConversionStatusConverted},
 				},
 			},
 			want: true,
@@ -61,7 +63,7 @@ func TestIsAlreadyConverted(t *testing.T) {
 			ingress: &networkingv1.Ingress{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:        "test",
-					Annotations: map[string]string{AnnotationConversionStatus: ConversionStatusPartial},
+					Annotations: map[string]string{conversion.AnnotationConversionStatus: conversion.ConversionStatusPartial},
 				},
 			},
 			want: true,
@@ -71,7 +73,7 @@ func TestIsAlreadyConverted(t *testing.T) {
 			ingress: &networkingv1.Ingress{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:        "test",
-					Annotations: map[string]string{AnnotationConversionStatus: ConversionStatusPending},
+					Annotations: map[string]string{conversion.AnnotationConversionStatus: conversion.ConversionStatusPending},
 				},
 			},
 			want: false,
@@ -81,7 +83,7 @@ func TestIsAlreadyConverted(t *testing.T) {
 			ingress: &networkingv1.Ingress{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:        "test",
-					Annotations: map[string]string{AnnotationConversionStatus: ConversionStatusSkipped},
+					Annotations: map[string]string{conversion.AnnotationConversionStatus: conversion.ConversionStatusSkipped},
 				},
 			},
 			want: false,
@@ -147,7 +149,7 @@ func TestShouldConvert(t *testing.T) {
 				ObjectMeta: metav1.ObjectMeta{
 					Name: "test",
 					Annotations: map[string]string{
-						AnnotationSkipConversion: "true",
+						conversion.AnnotationSkipConversion: "true",
 					},
 				},
 			},
@@ -160,7 +162,7 @@ func TestShouldConvert(t *testing.T) {
 				ObjectMeta: metav1.ObjectMeta{
 					Name: "test",
 					Annotations: map[string]string{
-						NginxCanary: "true",
+						conversion.NginxCanary: "true",
 					},
 				},
 			},
@@ -195,7 +197,7 @@ func TestShouldConvert(t *testing.T) {
 				ObjectMeta: metav1.ObjectMeta{
 					Name: "test",
 					Annotations: map[string]string{
-						AnnotationIngressClass: "nginx",
+						conversion.AnnotationIngressClass: "nginx",
 					},
 				},
 			},
@@ -208,7 +210,7 @@ func TestShouldConvert(t *testing.T) {
 				ObjectMeta: metav1.ObjectMeta{
 					Name: "test",
 					Annotations: map[string]string{
-						AnnotationIngressClass: "traefik",
+						conversion.AnnotationIngressClass: "traefik",
 					},
 				},
 			},
@@ -229,7 +231,7 @@ func TestShouldConvert(t *testing.T) {
 				ObjectMeta: metav1.ObjectMeta{
 					Name: "test",
 					Annotations: map[string]string{
-						AnnotationIngressClass: "traefik",
+						conversion.AnnotationIngressClass: "traefik",
 					},
 				},
 				Spec: networkingv1.IngressSpec{
@@ -245,7 +247,7 @@ func TestShouldConvert(t *testing.T) {
 				ObjectMeta: metav1.ObjectMeta{
 					Name: "test",
 					Annotations: map[string]string{
-						AnnotationConversionStatus: ConversionStatusConverted,
+						conversion.AnnotationConversionStatus: conversion.ConversionStatusConverted,
 					},
 				},
 			},
@@ -258,7 +260,7 @@ func TestShouldConvert(t *testing.T) {
 				ObjectMeta: metav1.ObjectMeta{
 					Name: "test",
 					Annotations: map[string]string{
-						AnnotationConversionStatus: ConversionStatusPartial,
+						conversion.AnnotationConversionStatus: conversion.ConversionStatusPartial,
 					},
 				},
 			},
@@ -271,7 +273,7 @@ func TestShouldConvert(t *testing.T) {
 				ObjectMeta: metav1.ObjectMeta{
 					Name: "test",
 					Annotations: map[string]string{
-						AnnotationConversionStatus: ConversionStatusPending,
+						conversion.AnnotationConversionStatus: conversion.ConversionStatusPending,
 					},
 				},
 			},
@@ -312,7 +314,7 @@ func TestDetermineConversionStatus(t *testing.T) {
 			routeAcceptance: map[string]bool{"route1": true},
 			warnings:        nil,
 			hasTimeout:      true,
-			wantStatus:      ConversionStatusPending,
+			wantStatus:      conversion.ConversionStatusPending,
 			wantRequeue:     true,
 			wantClearVerify: true,
 		},
@@ -322,7 +324,7 @@ func TestDetermineConversionStatus(t *testing.T) {
 			routeAcceptance: map[string]bool{"route1": false},
 			warnings:        nil,
 			hasTimeout:      false,
-			wantStatus:      ConversionStatusPartial,
+			wantStatus:      conversion.ConversionStatusPartial,
 			wantRequeue:     false,
 			wantClearVerify: true,
 		},
@@ -332,55 +334,55 @@ func TestDetermineConversionStatus(t *testing.T) {
 			routeAcceptance: map[string]bool{"route1": true},
 			warnings:        nil,
 			hasTimeout:      false,
-			wantStatus:      ConversionStatusPending,
+			wantStatus:      conversion.ConversionStatusPending,
 			wantRequeue:     true,
 			wantClearVerify: false,
 		},
 		{
 			name: "second verification - timestamp too recent, returns pending",
 			annotations: map[string]string{
-				AnnotationVerificationTimestamp: time.Now().Format(time.RFC3339),
+				conversion.AnnotationVerificationTimestamp: time.Now().Format(time.RFC3339),
 			},
 			routeAcceptance: map[string]bool{"route1": true},
 			warnings:        nil,
 			hasTimeout:      false,
-			wantStatus:      ConversionStatusPending,
+			wantStatus:      conversion.ConversionStatusPending,
 			wantRequeue:     true,
 			wantClearVerify: false,
 		},
 		{
 			name: "second verification - timestamp old enough, no warnings - converted",
 			annotations: map[string]string{
-				AnnotationVerificationTimestamp: time.Now().Add(-6 * time.Second).Format(time.RFC3339),
+				conversion.AnnotationVerificationTimestamp: time.Now().Add(-6 * time.Second).Format(time.RFC3339),
 			},
 			routeAcceptance: map[string]bool{"route1": true},
 			warnings:        nil,
 			hasTimeout:      false,
-			wantStatus:      ConversionStatusConverted,
+			wantStatus:      conversion.ConversionStatusConverted,
 			wantRequeue:     false,
 			wantClearVerify: true,
 		},
 		{
 			name: "second verification - timestamp old enough, has warnings - partial",
 			annotations: map[string]string{
-				AnnotationVerificationTimestamp: time.Now().Add(-6 * time.Second).Format(time.RFC3339),
+				conversion.AnnotationVerificationTimestamp: time.Now().Add(-6 * time.Second).Format(time.RFC3339),
 			},
 			routeAcceptance: map[string]bool{"route1": true},
 			warnings:        []string{"some warning"},
 			hasTimeout:      false,
-			wantStatus:      ConversionStatusPartial,
+			wantStatus:      conversion.ConversionStatusPartial,
 			wantRequeue:     false,
 			wantClearVerify: true,
 		},
 		{
 			name: "invalid timestamp - treat as first pass",
 			annotations: map[string]string{
-				AnnotationVerificationTimestamp: "invalid-timestamp",
+				conversion.AnnotationVerificationTimestamp: "invalid-timestamp",
 			},
 			routeAcceptance: map[string]bool{"route1": true},
 			warnings:        nil,
 			hasTimeout:      false,
-			wantStatus:      ConversionStatusPending,
+			wantStatus:      conversion.ConversionStatusPending,
 			wantRequeue:     true,
 			wantClearVerify: false,
 		},
@@ -390,7 +392,7 @@ func TestDetermineConversionStatus(t *testing.T) {
 			routeAcceptance: map[string]bool{"route1": true, "route2": false},
 			warnings:        nil,
 			hasTimeout:      false,
-			wantStatus:      ConversionStatusPartial,
+			wantStatus:      conversion.ConversionStatusPartial,
 			wantRequeue:     false,
 			wantClearVerify: true,
 		},
