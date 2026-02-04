@@ -19,7 +19,7 @@ package annotations
 import (
 	egv1alpha1 "github.com/envoyproxy/gateway/api/v1alpha1"
 
-	"k8c.io/kubelb/internal/ingress-to-gateway/policies"
+	"k8c.io/kubelb/pkg/conversion/policies"
 )
 
 // PolicyConversionInput holds the input for policy conversion.

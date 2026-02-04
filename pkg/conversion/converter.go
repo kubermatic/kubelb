@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package ingressconversion
+package conversion
 
 import (
 	"crypto/sha256"
@@ -24,7 +24,7 @@ import (
 	"sort"
 	"strings"
 
-	"k8c.io/kubelb/internal/ingress-to-gateway/annotations"
+	"k8c.io/kubelb/pkg/conversion/annotations"
 
 	corev1 "k8s.io/api/core/v1"
 	networkingv1 "k8s.io/api/networking/v1"
@@ -33,8 +33,8 @@ import (
 	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
 )
 
-// ConversionInput holds input data for conversion including Services for port resolution
-type ConversionInput struct {
+// Input holds input data for conversion including Services for port resolution
+type Input struct {
 	Ingress          *networkingv1.Ingress
 	GatewayName      string
 	GatewayNamespace string
@@ -60,8 +60,8 @@ type TLSListener struct {
 	SourceSecretName string
 }
 
-// ConversionResult holds the converted HTTPRoutes, Gateway configs, and any warnings
-type ConversionResult struct {
+// Result holds the converted HTTPRoutes, Gateway configs, and any warnings
+type Result struct {
 	// HTTPRoutes contains converted routes (consolidated by rule signature when possible)
 	HTTPRoutes []*gwapiv1.HTTPRoute
 	// GRPCRoutes contains GRPCRoutes for backends with backend-protocol: GRPC/GRPCS
@@ -85,22 +85,10 @@ func hasRedirectFilter(filters []gwapiv1.HTTPRouteFilter) bool {
 	return false
 }
 
-// ConvertIngress converts a Kubernetes Ingress to Gateway API HTTPRoutes.
-//
-// Deprecated: Use ConvertIngressWithServices for better port resolution.
-func ConvertIngress(ingress *networkingv1.Ingress, gatewayName, gatewayNamespace string) ConversionResult {
-	return ConvertIngressWithServices(ConversionInput{
-		Ingress:          ingress,
-		GatewayName:      gatewayName,
-		GatewayNamespace: gatewayNamespace,
-		Services:         nil,
-	})
-}
-
 // ConvertIngressWithServices converts an Ingress with Service lookup for port resolution.
-func ConvertIngressWithServices(input ConversionInput) ConversionResult {
+func ConvertIngressWithServices(input Input) Result {
 	ingress := input.Ingress
-	result := ConversionResult{
+	result := Result{
 		Warnings: []string{},
 	}
 
@@ -159,7 +147,7 @@ type hostRuleGroup struct {
 
 // convertToHTTPRoutes generates HTTPRoutes from Ingress rules.
 // Hosts with identical rules are consolidated into a single HTTPRoute.
-func convertToHTTPRoutes(input ConversionInput, parentRef gwapiv1.ParentReference, filters []gwapiv1.HTTPRouteFilter, warnings []string) ([]*gwapiv1.HTTPRoute, []string) {
+func convertToHTTPRoutes(input Input, parentRef gwapiv1.ParentReference, filters []gwapiv1.HTTPRouteFilter, warnings []string) ([]*gwapiv1.HTTPRoute, []string) {
 	ingress := input.Ingress
 	var httpRoutes []*gwapiv1.HTTPRoute
 
@@ -374,7 +362,7 @@ type grpcHostRuleGroup struct {
 }
 
 // convertToGRPCRoutes generates GRPCRoutes from Ingress rules
-func convertToGRPCRoutes(input ConversionInput, parentRef gwapiv1.ParentReference, warnings []string) ([]*gwapiv1.GRPCRoute, []string) {
+func convertToGRPCRoutes(input Input, parentRef gwapiv1.ParentReference, warnings []string) ([]*gwapiv1.GRPCRoute, []string) {
 	ingress := input.Ingress
 	var grpcRoutes []*gwapiv1.GRPCRoute
 

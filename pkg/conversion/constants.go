@@ -14,13 +14,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package ingressconversion
+package conversion
 
 const (
 	ControllerName = "ingress-conversion-controller"
 
 	// Common string constants
-	boolTrue = "true"
+	BoolTrue = "true"
 
 	// Annotations
 	AnnotationSkipConversion     = "kubelb.k8c.io/skip-conversion"

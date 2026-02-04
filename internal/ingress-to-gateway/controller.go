@@ -25,8 +25,9 @@ import (
 	egv1alpha1 "github.com/envoyproxy/gateway/api/v1alpha1"
 	"github.com/go-logr/logr"
 
-	"k8c.io/kubelb/internal/ingress-to-gateway/annotations"
-	"k8c.io/kubelb/internal/ingress-to-gateway/policies"
+	"k8c.io/kubelb/pkg/conversion"
+	"k8c.io/kubelb/pkg/conversion/annotations"
+	"k8c.io/kubelb/pkg/conversion/policies"
 
 	corev1 "k8s.io/api/core/v1"
 	networkingv1 "k8s.io/api/networking/v1"
@@ -118,7 +119,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 
 func (r *Reconciler) reconcile(ctx context.Context, log logr.Logger, ingress *networkingv1.Ingress) (requeue bool, err error) {
 	services := r.fetchServicesForIngress(ctx, log, ingress)
-	result := ConvertIngressWithServices(ConversionInput{
+	result := conversion.ConvertIngressWithServices(conversion.Input{
 		Ingress:            ingress,
 		GatewayName:        r.GatewayName,
 		GatewayNamespace:   r.GatewayNamespace,
@@ -292,40 +293,40 @@ func (r *Reconciler) determineConversionStatus(current *networkingv1.Ingress, ro
 
 	// If routes timed out or aren't accepted, stay pending or partial
 	if hasTimeout {
-		return statusDecision{status: ConversionStatusPending, requeue: true, clearVerifyTime: true}
+		return statusDecision{status: conversion.ConversionStatusPending, requeue: true, clearVerifyTime: true}
 	}
 
 	if !allAccepted {
-		return statusDecision{status: ConversionStatusPartial, requeue: false, clearVerifyTime: true}
+		return statusDecision{status: conversion.ConversionStatusPartial, requeue: false, clearVerifyTime: true}
 	}
 
 	// Routes are accepted - check if this is first or second verification pass
-	verifyTime := current.Annotations[AnnotationVerificationTimestamp]
+	verifyTime := current.Annotations[conversion.AnnotationVerificationTimestamp]
 	if verifyTime == "" {
 		// First pass: routes look accepted, but need verification pass
 		// Mark pending and requeue
-		return statusDecision{status: ConversionStatusPending, requeue: true, clearVerifyTime: false}
+		return statusDecision{status: conversion.ConversionStatusPending, requeue: true, clearVerifyTime: false}
 	}
 
 	// Second pass: parse verification timestamp
 	ts, err := time.Parse(time.RFC3339, verifyTime)
 	if err != nil {
 		// Invalid timestamp, treat as first pass
-		return statusDecision{status: ConversionStatusPending, requeue: true, clearVerifyTime: false}
+		return statusDecision{status: conversion.ConversionStatusPending, requeue: true, clearVerifyTime: false}
 	}
 
 	// Require 5s between first verification and final status
 	verifyDelay := 5 * time.Second
 	if time.Since(ts) < verifyDelay {
 		// Not enough time elapsed, requeue
-		return statusDecision{status: ConversionStatusPending, requeue: true, clearVerifyTime: false}
+		return statusDecision{status: conversion.ConversionStatusPending, requeue: true, clearVerifyTime: false}
 	}
 
 	// Verified! Routes still accepted after delay
 	if len(warnings) > 0 {
-		return statusDecision{status: ConversionStatusPartial, requeue: false, clearVerifyTime: true}
+		return statusDecision{status: conversion.ConversionStatusPartial, requeue: false, clearVerifyTime: true}
 	}
-	return statusDecision{status: ConversionStatusConverted, requeue: false, clearVerifyTime: true}
+	return statusDecision{status: conversion.ConversionStatusConverted, requeue: false, clearVerifyTime: true}
 }
 
 func (r *Reconciler) updateIngressStatusStaged(ctx context.Context, ingress *networkingv1.Ingress, warnings, httpRouteNames, grpcRouteNames []string, routeAcceptance map[string]bool, hasTimeout bool) (bool, error) {
@@ -343,30 +344,30 @@ func (r *Reconciler) updateIngressStatusStaged(ctx context.Context, ingress *net
 
 	// Set or clear verification timestamp
 	if decision.clearVerifyTime {
-		delete(current.Annotations, AnnotationVerificationTimestamp)
-	} else if current.Annotations[AnnotationVerificationTimestamp] == "" {
+		delete(current.Annotations, conversion.AnnotationVerificationTimestamp)
+	} else if current.Annotations[conversion.AnnotationVerificationTimestamp] == "" {
 		// First verification pass - set timestamp
-		current.Annotations[AnnotationVerificationTimestamp] = time.Now().Format(time.RFC3339)
+		current.Annotations[conversion.AnnotationVerificationTimestamp] = time.Now().Format(time.RFC3339)
 	}
 
 	if len(warnings) > 0 {
-		current.Annotations[AnnotationConversionWarnings] = strings.Join(warnings, "; ")
+		current.Annotations[conversion.AnnotationConversionWarnings] = strings.Join(warnings, "; ")
 	} else {
-		delete(current.Annotations, AnnotationConversionWarnings)
+		delete(current.Annotations, conversion.AnnotationConversionWarnings)
 	}
 
-	current.Annotations[AnnotationConversionStatus] = decision.status
+	current.Annotations[conversion.AnnotationConversionStatus] = decision.status
 
 	if len(httpRouteNames) > 0 {
-		current.Annotations[AnnotationConvertedHTTPRoute] = strings.Join(httpRouteNames, ",")
+		current.Annotations[conversion.AnnotationConvertedHTTPRoute] = strings.Join(httpRouteNames, ",")
 	} else {
-		delete(current.Annotations, AnnotationConvertedHTTPRoute)
+		delete(current.Annotations, conversion.AnnotationConvertedHTTPRoute)
 	}
 
 	if len(grpcRouteNames) > 0 {
-		current.Annotations[AnnotationConvertedGRPCRoute] = strings.Join(grpcRouteNames, ",")
+		current.Annotations[conversion.AnnotationConvertedGRPCRoute] = strings.Join(grpcRouteNames, ",")
 	} else {
-		delete(current.Annotations, AnnotationConvertedGRPCRoute)
+		delete(current.Annotations, conversion.AnnotationConvertedGRPCRoute)
 	}
 
 	return decision.requeue, r.Update(ctx, current)
@@ -522,23 +523,23 @@ func (r *Reconciler) shouldConvert(ingress *networkingv1.Ingress) conversionDeci
 	annotations := ingress.GetAnnotations()
 
 	// Explicit skip - don't annotate
-	if annotations != nil && annotations[AnnotationSkipConversion] == boolTrue {
+	if annotations != nil && annotations[conversion.AnnotationSkipConversion] == conversion.BoolTrue {
 		return conversionDecision{shouldConvert: false, annotate: false}
 	}
 
 	// Already converted (full or partial) - skip unless user removes annotation
 	if annotations != nil {
-		status := annotations[AnnotationConversionStatus]
-		if status == ConversionStatusConverted || status == ConversionStatusPartial {
+		status := annotations[conversion.AnnotationConversionStatus]
+		if status == conversion.ConversionStatusConverted || status == conversion.ConversionStatusPartial {
 			return conversionDecision{shouldConvert: false, annotate: false}
 		}
 	}
 
 	// Canary - skip WITH annotation
-	if annotations != nil && annotations[NginxCanary] == boolTrue {
+	if annotations != nil && annotations[conversion.NginxCanary] == conversion.BoolTrue {
 		return conversionDecision{
 			shouldConvert: false,
-			skipReason:    SkipReasonCanary,
+			skipReason:    conversion.SkipReasonCanary,
 			annotate:      true,
 		}
 	}
@@ -550,7 +551,7 @@ func (r *Reconciler) shouldConvert(ingress *networkingv1.Ingress) conversionDeci
 		case ingress.Spec.IngressClassName != nil:
 			ingressClass = *ingress.Spec.IngressClassName
 		case annotations != nil:
-			ingressClass = annotations[AnnotationIngressClass]
+			ingressClass = annotations[conversion.AnnotationIngressClass]
 		}
 		if ingressClass != r.IngressClass {
 			return conversionDecision{shouldConvert: false, annotate: false}
@@ -569,16 +570,16 @@ func (r *Reconciler) annotateSkipped(ctx context.Context, ingress *networkingv1.
 
 	// Idempotency check
 	if current.Annotations != nil &&
-		current.Annotations[AnnotationConversionStatus] == ConversionStatusSkipped &&
-		current.Annotations[AnnotationConversionSkipReason] == reason {
+		current.Annotations[conversion.AnnotationConversionStatus] == conversion.ConversionStatusSkipped &&
+		current.Annotations[conversion.AnnotationConversionSkipReason] == reason {
 		return nil
 	}
 
 	if current.Annotations == nil {
 		current.Annotations = make(map[string]string)
 	}
-	current.Annotations[AnnotationConversionStatus] = ConversionStatusSkipped
-	current.Annotations[AnnotationConversionSkipReason] = reason
+	current.Annotations[conversion.AnnotationConversionStatus] = conversion.ConversionStatusSkipped
+	current.Annotations[conversion.AnnotationConversionSkipReason] = reason
 
 	return r.Update(ctx, current)
 }
@@ -632,12 +633,12 @@ func (r *Reconciler) fetchService(ctx context.Context, log logr.Logger, key type
 
 // syncTLSSecrets copies TLS secrets from source namespaces to the Gateway namespace.
 // Returns the updated TLSListeners with synced secret names.
-func (r *Reconciler) syncTLSSecrets(ctx context.Context, log logr.Logger, tlsListeners []TLSListener) ([]TLSListener, error) {
+func (r *Reconciler) syncTLSSecrets(ctx context.Context, log logr.Logger, tlsListeners []conversion.TLSListener) ([]conversion.TLSListener, error) {
 	if !r.CopyTLSSecrets {
 		return tlsListeners, nil
 	}
 
-	result := make([]TLSListener, len(tlsListeners))
+	result := make([]conversion.TLSListener, len(tlsListeners))
 	copy(result, tlsListeners)
 
 	seen := make(map[string]bool)
@@ -688,7 +689,7 @@ func (r *Reconciler) syncTLSSecrets(ctx context.Context, log logr.Logger, tlsLis
 						Name:      syncedName,
 						Namespace: r.GatewayNamespace,
 						Labels: map[string]string{
-							LabelManagedBy: ControllerName,
+							conversion.LabelManagedBy: conversion.ControllerName,
 						},
 						Annotations: map[string]string{
 							"kubelb.k8c.io/source-secret": sourceKey,
@@ -856,8 +857,8 @@ func isAlreadyConverted(obj *networkingv1.Ingress) bool {
 	if ann == nil {
 		return false
 	}
-	status := ann[AnnotationConversionStatus]
-	return status == ConversionStatusConverted || status == ConversionStatusPartial
+	status := ann[conversion.AnnotationConversionStatus]
+	return status == conversion.ConversionStatusConverted || status == conversion.ConversionStatusPartial
 }
 
 func (r *Reconciler) resourceFilter() predicate.Predicate {
@@ -908,7 +909,7 @@ func (r *Reconciler) resourceFilter() predicate.Predicate {
 
 func (r *Reconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
-		Named(ControllerName).
+		Named(conversion.ControllerName).
 		For(&networkingv1.Ingress{}, builder.WithPredicates(r.resourceFilter())).
 		WithOptions(controller.Options{MaxConcurrentReconciles: 10}).
 		Complete(r)
