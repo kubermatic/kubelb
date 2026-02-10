@@ -303,8 +303,7 @@ func getReadinessProbeListener() *envoyListener.Listener {
 		Address: &envoyCore.Address{
 			Address: &envoyCore.Address_SocketAddress{
 				SocketAddress: &envoyCore.SocketAddress{
-					Address:    "::",
-					Ipv4Compat: true,
+					Address: "0.0.0.0",
 					PortSpecifier: &envoyCore.SocketAddress_PortValue{
 						PortValue: EnvoyReadinessPort,
 					},
@@ -367,8 +366,7 @@ func getStatsListener() *envoyListener.Listener {
 		Address: &envoyCore.Address{
 			Address: &envoyCore.Address_SocketAddress{
 				SocketAddress: &envoyCore.SocketAddress{
-					Address:    "::",
-					Ipv4Compat: true,
+					Address: "0.0.0.0",
 					PortSpecifier: &envoyCore.SocketAddress_PortValue{
 						PortValue: EnvoyStatsPort,
 					},
