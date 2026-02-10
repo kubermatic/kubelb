@@ -109,7 +109,7 @@ func main() {
 	flag.BoolVar(&opt.enableLeaderElection, "enable-leader-election", true, "Enable leader election for controller ccm. Enabling this will ensure there is only one active controller ccm.")
 	flag.StringVar(&opt.leaderElectionNamespace, "leader-election-namespace", "", "Optionally configure leader election namespace.")
 
-	flag.StringVar(&opt.endpointAddressTypeString, "node-address-type", string(corev1.NodeExternalIP), "The default address type used as an endpoint address for the LoadBalancer service. Valid values are ExternalIP or InternalIP, default is ExternalIP.")
+	flag.StringVar(&opt.endpointAddressTypeString, "node-address-type", string(corev1.NodeExternalIP), "The default address type used as an endpoint address for the LoadBalancer service. Valid values are ExternalIP, InternalIP, or Hostname, default is ExternalIP.")
 	flag.StringVar(&opt.clusterName, "cluster-name", "", "Cluster name where the ccm is running. Resources inside the KubeLb cluster will get deployed to the namespace named by cluster name, must be unique.")
 	flag.StringVar(&opt.kubeLbKubeconf, "kubelb-kubeconfig", defaultKubeLbConf, "The path to the kubelb cluster kubeconfig.")
 	flag.BoolVar(&opt.enableCloudController, "enable-cloud-provider", true, "Enables cloud controller like behavior. This will set the status of LoadBalancer")
@@ -192,8 +192,10 @@ func main() {
 		endpointAddressType = corev1.NodeInternalIP
 	case string(corev1.NodeExternalIP):
 		endpointAddressType = corev1.NodeExternalIP
+	case string(corev1.NodeHostName):
+		endpointAddressType = corev1.NodeHostName
 	default:
-		setupLog.Error(errors.New("invalid node address type"), fmt.Sprintf("Expected: %s or %s, got: %s", corev1.NodeInternalIP, corev1.NodeExternalIP, opt.endpointAddressTypeString))
+		setupLog.Error(errors.New("invalid node address type"), fmt.Sprintf("Expected: %s, %s, or %s, got: %s", corev1.NodeInternalIP, corev1.NodeExternalIP, corev1.NodeHostName, opt.endpointAddressTypeString))
 		os.Exit(1)
 	}
 

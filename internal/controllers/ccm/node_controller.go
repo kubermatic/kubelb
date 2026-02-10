@@ -17,8 +17,10 @@ limitations under the License.
 package ccm
 
 import (
+	"bytes"
 	"context"
 	"fmt"
+	"net"
 	"reflect"
 	"sort"
 	"time"
@@ -133,24 +135,34 @@ func (r *KubeLBNodeReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 func (r *KubeLBNodeReconciler) GenerateAddresses(nodes *corev1.NodeList) (*kubelbiov1alpha1.Addresses, error) {
 	endpoints := r.getEndpoints(nodes)
 	var addresses []kubelbiov1alpha1.EndpointAddress
-	validAddressFound := false
 	for _, endpoint := range endpoints {
-		if endpoint == "" {
-			// Skip nodes that don't have an IP address.
+		if net.ParseIP(endpoint) != nil {
+			addresses = append(addresses, kubelbiov1alpha1.EndpointAddress{IP: endpoint})
 			continue
 		}
-		validAddressFound = true
-		addresses = append(addresses, kubelbiov1alpha1.EndpointAddress{
-			IP: endpoint,
-		})
+		// When using NodeHostName, non-IP values are valid hostnames.
+		if r.EndpointAddressType == corev1.NodeHostName {
+			addresses = append(addresses, kubelbiov1alpha1.EndpointAddress{Hostname: endpoint})
+			continue
+		}
+		r.Log.V(6).Info("skipping invalid IP", "address", endpoint)
 	}
 
-	if !validAddressFound {
+	if len(addresses) == 0 {
 		return nil, fmt.Errorf("no valid addresses found")
 	}
 
 	sort.Slice(addresses, func(i, j int) bool {
-		return addresses[i].IP < addresses[j].IP
+		ipI := net.ParseIP(addresses[i].IP)
+		ipJ := net.ParseIP(addresses[j].IP)
+		if ipI != nil && ipJ != nil {
+			return bytes.Compare(ipI, ipJ) < 0
+		}
+		// IPs before hostnames, then lexicographic for hostnames
+		if addresses[i].IP != addresses[j].IP {
+			return addresses[i].IP > addresses[j].IP // non-empty IP sorts first
+		}
+		return addresses[i].Hostname < addresses[j].Hostname
 	})
 
 	return &kubelbiov1alpha1.Addresses{
@@ -165,9 +177,10 @@ func (r *KubeLBNodeReconciler) GenerateAddresses(nodes *corev1.NodeList) (*kubel
 }
 
 func (r *KubeLBNodeReconciler) getEndpoints(nodes *corev1.NodeList) []string {
+	seen := make(map[string]struct{})
 	var clusterEndpoints []string
 	for _, node := range nodes.Items {
-		// Only process nodes that are ready and have an IP address.
+		// Only process nodes that are ready.
 		isReady := false
 		for _, condition := range node.Status.Conditions {
 			if condition.Type == corev1.NodeReady && condition.Status == corev1.ConditionTrue {
@@ -179,13 +192,14 @@ func (r *KubeLBNodeReconciler) getEndpoints(nodes *corev1.NodeList) []string {
 			continue
 		}
 
-		var internalIP string
 		for _, address := range node.Status.Addresses {
 			if address.Type == r.EndpointAddressType {
-				internalIP = address.Address
+				if _, ok := seen[address.Address]; !ok {
+					seen[address.Address] = struct{}{}
+					clusterEndpoints = append(clusterEndpoints, address.Address)
+				}
 			}
 		}
-		clusterEndpoints = append(clusterEndpoints, internalIP)
 	}
 	return clusterEndpoints
 }

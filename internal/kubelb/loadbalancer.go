@@ -34,7 +34,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/intstr"
 )
 
-func MapLoadBalancer(userService *corev1.Service, clusterEndpoints []string, useAddressesReference bool, clusterName string) *kubelbiov1alpha1.LoadBalancer {
+func MapLoadBalancer(userService *corev1.Service, clusterEndpoints []kubelbiov1alpha1.EndpointAddress, useAddressesReference bool, clusterName string) *kubelbiov1alpha1.LoadBalancer {
 	var lbServicePorts []kubelbiov1alpha1.LoadBalancerPort
 	var lbEndpointSubsets []kubelbiov1alpha1.LoadBalancerEndpoints
 	var lbEndpointPorts []kubelbiov1alpha1.EndpointPort
@@ -69,13 +69,7 @@ func MapLoadBalancer(userService *corev1.Service, clusterEndpoints []string, use
 			Name: kubelbiov1alpha1.DefaultAddressName,
 		}
 	} else {
-		var endpointAddresses []kubelbiov1alpha1.EndpointAddress
-		for _, endpoint := range clusterEndpoints {
-			endpointAddresses = append(endpointAddresses, kubelbiov1alpha1.EndpointAddress{
-				IP: endpoint,
-			})
-		}
-		lbEndpoints.Addresses = endpointAddresses
+		lbEndpoints.Addresses = clusterEndpoints
 	}
 
 	lbEndpointSubsets = append(lbEndpointSubsets, lbEndpoints)
