@@ -63,6 +63,34 @@ Controllers:
 - `internal/controllers/kubelb/` - Manager controllers (route, sync_secret)
 - `internal/controllers/ccm/` - CCM controllers (service, ingress, gateway routes, nodes)
 
+### L7 Traffic Flow (Ingress/HTTPRoute)
+
+```
+Client → Envoy Gateway LB or Ingress LB -> Envoy Gateway Service → KubeLB Envoy Proxy(talks to XDS server) → Tenant cluster node:NodePort → Backend Pod
+```
+
+- **Envoy Gateway Service**: LoadBalancer service created by Envoy Gateway (not KubeLB manager)
+- **KubeLB Envoy Proxy**: Configured via xDS server, routes traffic to tenant clusters
+- **NodePort**: Traffic enters tenant cluster via NodePort service
+
+### L4 Traffic Flow (LoadBalancer Service)
+
+```
+Client → LoadBalancer Service → KubeLB Envoy Proxy → Tenant cluster node:NodePort → Backend Pod
+```
+
+Key API resources (`api/ee/kubelb.k8c.io/v1alpha1/`):
+
+- **LoadBalancer** - Layer 4 service config
+- **Route** - Layer 7 routing (Ingress/Gateway API)
+- **Tenant** - Multi-tenant isolation (cluster-scoped)
+- **Config** - Global settings
+
+Controllers:
+
+- `internal/controllers/kubelb/` - Manager controllers (route, tunnel, sync_secret, envoy_cp)
+- `internal/controllers/ccm/` - CCM controllers (service, ingress, gateway routes, nodes)
+
 ## Code Generation
 
 Run `make update-codegen` after:
