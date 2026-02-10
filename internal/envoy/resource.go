@@ -238,7 +238,7 @@ func makeCluster(clusterName string, lbEndpoints []*envoyEndpoint.LbEndpoint, pr
 				LbEndpoints: lbEndpoints,
 			}},
 		},
-		DnsLookupFamily:               envoyCluster.Cluster_V4_ONLY,
+		DnsLookupFamily:               envoyCluster.Cluster_AUTO,
 		HealthChecks:                  defaultHealthCheck,
 		PerConnectionBufferLimitBytes: wrapperspb.UInt32(32768), // 32KB buffer limit
 		CommonLbConfig: &envoyCluster.Cluster_CommonLbConfig{
@@ -325,8 +325,9 @@ func makeTCPListener(clusterName string, listenerName string, listenerPort uint3
 		Address: &envoyCore.Address{
 			Address: &envoyCore.Address_SocketAddress{
 				SocketAddress: &envoyCore.SocketAddress{
-					Protocol: envoyCore.SocketAddress_TCP,
-					Address:  "0.0.0.0",
+					Protocol:   envoyCore.SocketAddress_TCP,
+					Address:    "::",
+					Ipv4Compat: true,
 					PortSpecifier: &envoyCore.SocketAddress_PortValue{
 						PortValue: listenerPort,
 					},
@@ -359,8 +360,9 @@ func makeUDPListener(clusterName string, listenerName string, listenerPort uint3
 		Address: &envoyCore.Address{
 			Address: &envoyCore.Address_SocketAddress{
 				SocketAddress: &envoyCore.SocketAddress{
-					Protocol: envoyCore.SocketAddress_UDP,
-					Address:  "0.0.0.0",
+					Protocol:   envoyCore.SocketAddress_UDP,
+					Address:    "::",
+					Ipv4Compat: true,
 					PortSpecifier: &envoyCore.SocketAddress_PortValue{
 						PortValue: listenerPort,
 					},
@@ -467,8 +469,9 @@ func makeHTTPListener(listenerName string, clusterName string, listenerPort uint
 		Address: &envoyCore.Address{
 			Address: &envoyCore.Address_SocketAddress{
 				SocketAddress: &envoyCore.SocketAddress{
-					Protocol: envoyCore.SocketAddress_TCP,
-					Address:  "0.0.0.0",
+					Protocol:   envoyCore.SocketAddress_TCP,
+					Address:    "::",
+					Ipv4Compat: true,
 					PortSpecifier: &envoyCore.SocketAddress_PortValue{
 						PortValue: listenerPort,
 					},
