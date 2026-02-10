@@ -238,7 +238,7 @@ func makeCluster(clusterName string, lbEndpoints []*envoyEndpoint.LbEndpoint, pr
 				LbEndpoints: lbEndpoints,
 			}},
 		},
-		DnsLookupFamily:               envoyCluster.Cluster_V4_ONLY,
+		DnsLookupFamily:               envoyCluster.Cluster_AUTO,
 		HealthChecks:                  defaultHealthCheck,
 		PerConnectionBufferLimitBytes: wrapperspb.UInt32(32768), // 32KB buffer limit
 		CommonLbConfig: &envoyCluster.Cluster_CommonLbConfig{
