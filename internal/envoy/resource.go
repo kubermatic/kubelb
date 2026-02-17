@@ -64,6 +64,10 @@ const (
 
 	// Envoy extension type URL for HTTP protocol options
 	envoyHTTPProtocolOptionsTypeURL = "envoy.extensions.upstreams.http.v3.HttpProtocolOptions"
+
+	// accessLogFormat uses %DOWNSTREAM_REMOTE_ADDRESS% instead of %REQ(X-FORWARDED-FOR)%
+	// since KubeLB only creates TcpProxy/UdpProxy which never set X-Forwarded-For.
+	accessLogFormat = "[%START_TIME%] \"%REQ(:METHOD)% %REQ(X-ENVOY-ORIGINAL-PATH?:PATH)% %PROTOCOL%\" %RESPONSE_CODE% %RESPONSE_FLAGS% %BYTES_RECEIVED% %BYTES_SENT% %DURATION% %RESP(X-ENVOY-UPSTREAM-SERVICE-TIME)% \"%DOWNSTREAM_REMOTE_ADDRESS%\" \"%REQ(USER-AGENT)%\" \"%REQ(X-REQUEST-ID)%\" \"%REQ(:AUTHORITY)%\" \"%UPSTREAM_HOST%\"\n"
 )
 
 func MapSnapshot(ctx context.Context, client ctrlclient.Client, loadBalancers []kubelbv1alpha1.LoadBalancer, routes []kubelbv1alpha1.Route, portAllocator *portlookup.PortAllocator) (*envoycache.Snapshot, error) {
@@ -298,12 +302,21 @@ func makeEndpoint(address string, port uint32) *envoyEndpoint.LbEndpoint {
 	}
 }
 
-func makeTCPListener(clusterName string, listenerName string, listenerPort uint32) *envoyListener.Listener {
-	tcpProxyAccessLog := &envoyFileAccessLog.FileAccessLog{
+func makeFileAccessLog() *envoyFileAccessLog.FileAccessLog {
+	return &envoyFileAccessLog.FileAccessLog{
 		Path: "/dev/stdout",
+		AccessLogFormat: &envoyFileAccessLog.FileAccessLog_LogFormat{
+			LogFormat: &envoyCore.SubstitutionFormatString{
+				Format: &envoyCore.SubstitutionFormatString_TextFormat{
+					TextFormat: accessLogFormat,
+				},
+			},
+		},
 	}
-	tcpProxyAccessLogAny := marshalAny(tcpProxyAccessLog)
+}
 
+func makeTCPListener(clusterName string, listenerName string, listenerPort uint32) *envoyListener.Listener {
+	tcpProxyAccessLogAny := marshalAny(makeFileAccessLog())
 	tcpProxy := &envoyTcpProxy.TcpProxy{
 		StatPrefix: listenerName,
 		ClusterSpecifier: &envoyTcpProxy.TcpProxy_Cluster{
@@ -345,10 +358,19 @@ func makeTCPListener(clusterName string, listenerName string, listenerPort uint3
 }
 
 func makeUDPListener(clusterName string, listenerName string, listenerPort uint32) *envoyListener.Listener {
+	udpAccessLogAny := marshalAny(makeFileAccessLog())
 	udpProxy := &envoyUdpProxy.UdpProxyConfig{
 		StatPrefix: listenerName,
 		RouteSpecifier: &envoyUdpProxy.UdpProxyConfig_Cluster{
 			Cluster: clusterName,
+		},
+		AccessLog: []*envoyAccessLog.AccessLog{
+			{
+				Name: "envoy.file_access_log",
+				ConfigType: &envoyAccessLog.AccessLog_TypedConfig{
+					TypedConfig: udpAccessLogAny,
+				},
+			},
 		},
 	}
 
@@ -412,10 +434,7 @@ func makeHTTPListener(listenerName string, clusterName string, listenerPort uint
 		}},
 	}
 
-	accessLog := &envoyFileAccessLog.FileAccessLog{
-		Path: "/dev/stdout",
-	}
-	accessLogAny, err := anypb.New(accessLog)
+	accessLogAny, err := anypb.New(makeFileAccessLog())
 	if err != nil {
 		panic(err)
 	}
