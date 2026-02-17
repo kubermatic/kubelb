@@ -43,7 +43,7 @@ permissions: {}
 
 env:
   REGISTRY: quay.io
-  GO_VERSION: "1.25.6"
+  GO_VERSION: "1.25.7"
 
 jobs:
   release:
