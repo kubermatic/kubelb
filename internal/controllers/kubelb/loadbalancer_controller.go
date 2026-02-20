@@ -304,6 +304,10 @@ func (r *LoadBalancerReconciler) reconcileService(ctx context.Context, loadBalan
 		},
 	}
 
+	if loadBalancer.Spec.ExternalTrafficPolicy != "" {
+		desiredService.Spec.ExternalTrafficPolicy = loadBalancer.Spec.ExternalTrafficPolicy
+	}
+
 	if className != nil {
 		desiredService.Spec.LoadBalancerClass = className
 	}
@@ -336,6 +340,7 @@ func (r *LoadBalancerReconciler) reconcileService(ctx context.Context, loadBalan
 		if !equality.Semantic.DeepEqual(existingService.Spec.Ports, desiredService.Spec.Ports) ||
 			!equality.Semantic.DeepEqual(existingService.Spec.Selector, desiredService.Spec.Selector) ||
 			!equality.Semantic.DeepEqual(existingService.Spec.Type, desiredService.Spec.Type) ||
+			!equality.Semantic.DeepEqual(existingService.Spec.ExternalTrafficPolicy, desiredService.Spec.ExternalTrafficPolicy) ||
 			!equality.Semantic.DeepEqual(existingService.Spec.LoadBalancerClass, desiredService.Spec.LoadBalancerClass) ||
 			!equality.Semantic.DeepEqual(existingService.Labels, desiredService.Labels) ||
 			!k8sutils.CompareAnnotations(existingService.Annotations, desiredService.Annotations) {

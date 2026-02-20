@@ -92,15 +92,20 @@ func MapLoadBalancer(userService *corev1.Service, clusterEndpoints []kubelbiov1a
 			Annotations: annotations,
 		},
 		Spec: kubelbiov1alpha1.LoadBalancerSpec{
-			Ports:     lbServicePorts,
-			Endpoints: lbEndpointSubsets,
-			Type:      userService.Spec.Type,
+			Ports:                 lbServicePorts,
+			Endpoints:             lbEndpointSubsets,
+			Type:                  userService.Spec.Type,
+			ExternalTrafficPolicy: userService.Spec.ExternalTrafficPolicy,
 		},
 	}
 }
 
 func LoadBalancerIsDesiredState(actual, desired *kubelbiov1alpha1.LoadBalancer) bool {
 	if actual.Spec.Type != desired.Spec.Type {
+		return false
+	}
+
+	if actual.Spec.ExternalTrafficPolicy != desired.Spec.ExternalTrafficPolicy {
 		return false
 	}
 
