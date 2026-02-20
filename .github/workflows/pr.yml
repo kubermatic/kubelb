@@ -28,7 +28,7 @@ jobs:
           govulncheck ./...
 
       - name: Dependency Review
-        uses: actions/dependency-review-action@3c4e3dcb1aa7874d2c16be7d79418e9b7efd6261 # v4.8.2
+        uses: actions/dependency-review-action@05fe4576374b728f0c523d6a13d64c25081e0803 # v4.8.3
         with:
           fail-on-severity: high
           comment-summary-in-pr: on-failure
@@ -53,7 +53,7 @@ jobs:
         uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
 
       - name: Build ${{ matrix.image.name }}
-        uses: docker/build-push-action@263435318d21b8e681c14492fe198d362a7d2c83 # v6.18.0
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6.19.2
         with:
           context: .
           file: ${{ matrix.image.dockerfile }}
@@ -64,7 +64,7 @@ jobs:
           cache-to: type=gha,mode=min,scope=${{ matrix.image.name }}
 
       - name: Scan ${{ matrix.image.name }}
-        uses: aquasecurity/trivy-action@b6643a29fecd7f34b3597bc6acb0a98b03d33ff8 # v0.28.0
+        uses: aquasecurity/trivy-action@c1824fd6edce30d7ab345a9989de00bbd46ef284 # v0.28.0
         with:
           image-ref: ${{ matrix.image.name }}:pr-scan
           exit-code: "1"
@@ -74,7 +74,7 @@ jobs:
           output: "trivy-${{ matrix.image.name }}.sarif"
 
       - name: Upload ${{ matrix.image.name }} scan results
-        uses: github/codeql-action/upload-sarif@19b2f06db2b6f5108140aeb04014ef02b648f789 # v4.31.11
+        uses: github/codeql-action/upload-sarif@9e907b5e64f6b83e7804b09294d44122997950d6 # v4.32.3
         if: always()
         with:
           sarif_file: trivy-${{ matrix.image.name }}.sarif
