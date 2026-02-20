@@ -4,7 +4,7 @@ dependencies:
   version: 4.14.3
 - name: gateway-helm
   repository: oci://docker.io/envoyproxy
-  version: 1.6.3
+  version: 1.7.0
 - name: cert-manager
   repository: https://charts.jetstack.io
   version: v1.19.3
@@ -20,5 +20,5 @@ dependencies:
 - name: kgateway
   repository: oci://cr.kgateway.dev/kgateway-dev/charts
   version: v2.1.2
-digest: sha256:cfb89d8ef31b942c52f695696bb05d1e0c606ef33a110e43d3403328b4cac85d
-generated: "2026-02-03T11:20:56.317805+05:00"
+digest: sha256:af0ddf04e08e15316d1563d1b5f026a2d4a0b86f8e40f40f96e80571e16ca9b2
+generated: "2026-02-20T07:55:20.003482106Z"
