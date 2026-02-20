@@ -33,6 +33,8 @@ import (
 	envoyHttpManager "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/network/http_connection_manager/v3"
 	envoyTcpProxy "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/network/tcp_proxy/v3"
 	envoyUdpProxy "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/udp/udp_proxy/v3"
+	envoyProxyProtocol "github.com/envoyproxy/go-control-plane/envoy/extensions/transport_sockets/proxy_protocol/v3"
+	envoyRawBuffer "github.com/envoyproxy/go-control-plane/envoy/extensions/transport_sockets/raw_buffer/v3"
 	envoyUpstreams "github.com/envoyproxy/go-control-plane/envoy/extensions/upstreams/http/v3"
 	envoytypev3 "github.com/envoyproxy/go-control-plane/envoy/type/v3"
 	"github.com/envoyproxy/go-control-plane/pkg/cache/types"
@@ -119,7 +121,8 @@ func MapSnapshot(ctx context.Context, client ctrlclient.Client, loadBalancers []
 				case corev1.ProtocolUDP:
 					listener = append(listener, makeUDPListener(key, key, port))
 				}
-				cluster = append(cluster, makeCluster(key, lbEndpoints, lbEndpointPort.Protocol, ""))
+				proxyProtocol := lbEndpointPort.Protocol == corev1.ProtocolTCP && lb.Annotations[kubelb.AnnotationProxyProtocol] == "v2"
+				cluster = append(cluster, makeCluster(key, lbEndpoints, lbEndpointPort.Protocol, "", proxyProtocol))
 			}
 		}
 	}
@@ -181,7 +184,7 @@ func MapSnapshot(ctx context.Context, client ctrlclient.Client, loadBalancers []
 				case corev1.ProtocolUDP:
 					listener = append(listener, makeUDPListener(key, key, listenerPort))
 				}
-				cluster = append(cluster, makeCluster(key, lbEndpoints, port.Protocol, routeKind))
+				cluster = append(cluster, makeCluster(key, lbEndpoints, port.Protocol, routeKind, false))
 			}
 		}
 	}
@@ -208,7 +211,7 @@ func MapSnapshot(ctx context.Context, client ctrlclient.Client, loadBalancers []
 	)
 }
 
-func makeCluster(clusterName string, lbEndpoints []*envoyEndpoint.LbEndpoint, protocol corev1.Protocol, routeKind string) *envoyCluster.Cluster {
+func makeCluster(clusterName string, lbEndpoints []*envoyEndpoint.LbEndpoint, protocol corev1.Protocol, routeKind string, proxyProtocol bool) *envoyCluster.Cluster {
 	defaultHealthCheck := []*envoyCore.HealthCheck{
 		{
 			Timeout:            &durationpb.Duration{Seconds: defaultHealthCheckTimeoutSeconds},
@@ -276,6 +279,26 @@ func makeCluster(clusterName string, lbEndpoints []*envoyEndpoint.LbEndpoint, pr
 		}
 		cluster.TypedExtensionProtocolOptions = map[string]*anypb.Any{
 			envoyHTTPProtocolOptionsTypeURL: MustMarshalAny(httpOpts),
+		}
+	}
+
+	if proxyProtocol {
+		ppConfig := &envoyProxyProtocol.ProxyProtocolUpstreamTransport{
+			Config: &envoyCore.ProxyProtocolConfig{
+				Version: envoyCore.ProxyProtocolConfig_V2,
+			},
+			TransportSocket: &envoyCore.TransportSocket{
+				Name: wellknown.TransportSocketRawBuffer,
+				ConfigType: &envoyCore.TransportSocket_TypedConfig{
+					TypedConfig: MustMarshalAny(&envoyRawBuffer.RawBuffer{}),
+				},
+			},
+		}
+		cluster.TransportSocket = &envoyCore.TransportSocket{
+			Name: "envoy.transport_sockets.upstream_proxy_protocol",
+			ConfigType: &envoyCore.TransportSocket_TypedConfig{
+				TypedConfig: MustMarshalAny(ppConfig),
+			},
 		}
 	}
 
