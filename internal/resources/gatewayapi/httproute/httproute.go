@@ -38,7 +38,7 @@ import (
 
 // createOrUpdateHTTPRoute creates or updates the HTTPRoute object in the cluster.
 func CreateOrUpdateHTTPRoute(ctx context.Context, log logr.Logger, client ctrlclient.Client, object *gwapiv1.HTTPRoute, referencedServices []metav1.ObjectMeta, namespace string,
-	routeName string, _ *kubelbv1alpha1.Tenant, annotations kubelbv1alpha1.AnnotationSettings, globalTopology bool) error {
+	routeName string, _ *kubelbv1alpha1.Tenant, annotations kubelbv1alpha1.AnnotationSettings) error {
 	// Name of the services referenced by the Object have to be updated to match the services created against the Route in the LB cluster.
 	for i, rule := range object.Spec.Rules {
 		for j, filter := range rule.Filters {
@@ -49,7 +49,7 @@ func CreateOrUpdateHTTPRoute(ctx context.Context, log logr.Logger, client ctrlcl
 						ns := ref.Namespace
 						// Corresponding service found, update the name.
 						if ns == nil || string(*ns) == service.Namespace {
-							object.Spec.Rules[i].Filters[j].RequestMirror.BackendRef.Name = gwapiv1.ObjectName(kubelb.GenerateRouteServiceName(globalTopology, string(service.UID), routeName, service.Name, service.Namespace))
+							object.Spec.Rules[i].Filters[j].RequestMirror.BackendRef.Name = gwapiv1.ObjectName(kubelb.GenerateRouteServiceName(routeName, service.Name, service.Namespace))
 							// Set the namespace to nil since all the services are created in the same namespace as the Route.
 							object.Spec.Rules[i].Filters[j].RequestMirror.BackendRef.Namespace = nil
 						}
@@ -65,7 +65,7 @@ func CreateOrUpdateHTTPRoute(ctx context.Context, log logr.Logger, client ctrlcl
 						ns := ref.Namespace
 						// Corresponding service found, update the name.
 						if ns == nil || string(*ns) == service.Namespace {
-							object.Spec.Rules[i].BackendRefs[j].Name = gwapiv1.ObjectName(kubelb.GenerateRouteServiceName(globalTopology, string(service.UID), routeName, service.Name, service.Namespace))
+							object.Spec.Rules[i].BackendRefs[j].Name = gwapiv1.ObjectName(kubelb.GenerateRouteServiceName(routeName, service.Name, service.Namespace))
 							// Set the namespace to nil since all the services are created in the same namespace as the Route.
 							object.Spec.Rules[i].BackendRefs[j].Namespace = nil
 						}
@@ -82,7 +82,7 @@ func CreateOrUpdateHTTPRoute(ctx context.Context, log logr.Logger, client ctrlcl
 								ns := ref.Namespace
 								// Corresponding service found, update the name.
 								if ns == nil || string(*ns) == service.Namespace {
-									object.Spec.Rules[i].Filters[j].RequestMirror.BackendRef.Name = gwapiv1.ObjectName(kubelb.GenerateRouteServiceName(globalTopology, string(service.UID), routeName, service.Name, service.Namespace))
+									object.Spec.Rules[i].Filters[j].RequestMirror.BackendRef.Name = gwapiv1.ObjectName(kubelb.GenerateRouteServiceName(routeName, service.Name, service.Namespace))
 									// Set the namespace to nil since all the services are created in the same namespace as the Route.
 									object.Spec.Rules[i].Filters[j].RequestMirror.BackendRef.Namespace = nil
 								}
@@ -103,7 +103,7 @@ func CreateOrUpdateHTTPRoute(ctx context.Context, log logr.Logger, client ctrlcl
 	// Process labels
 	object.Labels = kubelb.AddKubeLBLabels(object.Labels, object.Name, object.Namespace, "")
 
-	object.Name = kubelb.GenerateName(globalTopology, string(object.UID), object.Name, object.Namespace)
+	object.Name = kubelb.GenerateName(object.Name, object.Namespace)
 	object.Namespace = namespace
 	object.SetUID("") // Reset UID to generate a new UID for the object
 

@@ -46,11 +46,10 @@ const (
 // SyncSecretReconciler reconciles an Ingress Object
 type SyncSecretReconciler struct {
 	ctrlclient.Client
-	Namespace          string
-	EnvoyProxyTopology EnvoyProxyTopology
-	Log                logr.Logger
-	Scheme             *runtime.Scheme
-	Recorder           events.EventRecorder
+	Namespace string
+	Log       logr.Logger
+	Scheme    *runtime.Scheme
+	Recorder  events.EventRecorder
 }
 
 // +kubebuilder:rbac:groups=kubelb.k8c.io,resources=syncsecrets,verbs=get;list;watch;create;update;patch;delete

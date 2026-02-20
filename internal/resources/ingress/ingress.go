@@ -38,14 +38,13 @@ import (
 // createOrUpdateIngress creates or updates the Ingress object in the cluster.
 func CreateOrUpdateIngress(ctx context.Context, log logr.Logger, client ctrlclient.Client, object *networkingv1.Ingress, referencedServices []metav1.ObjectMeta, namespace string, routeName string, config *kubelbv1alpha1.Config,
 	tenant *kubelbv1alpha1.Tenant, annotations kubelbv1alpha1.AnnotationSettings) error {
-	globalTopology := config.IsGlobalTopology()
 	// Transformations to make it compliant with the LB cluster.
 	// Name of the services referenced by the Ingress have to be updated to match the services created against the Route in the LB cluster.
 	for i, rule := range object.Spec.Rules {
 		for j, path := range rule.HTTP.Paths {
 			for _, service := range referencedServices {
 				if path.Backend.Service.Name == service.Name {
-					object.Spec.Rules[i].HTTP.Paths[j].Backend.Service.Name = kubelb.GenerateRouteServiceName(globalTopology, string(service.UID), routeName, service.Name, service.Namespace)
+					object.Spec.Rules[i].HTTP.Paths[j].Backend.Service.Name = kubelb.GenerateRouteServiceName(routeName, service.Name, service.Namespace)
 				}
 			}
 		}
@@ -54,7 +53,7 @@ func CreateOrUpdateIngress(ctx context.Context, log logr.Logger, client ctrlclie
 	if object.Spec.DefaultBackend != nil && object.Spec.DefaultBackend.Service != nil {
 		for _, service := range referencedServices {
 			if object.Spec.DefaultBackend.Service.Name == service.Name {
-				object.Spec.DefaultBackend.Service.Name = kubelb.GenerateRouteServiceName(globalTopology, string(service.UID), routeName, service.Name, service.Namespace)
+				object.Spec.DefaultBackend.Service.Name = kubelb.GenerateRouteServiceName(routeName, service.Name, service.Namespace)
 			}
 		}
 	}
@@ -83,7 +82,7 @@ func CreateOrUpdateIngress(ctx context.Context, log logr.Logger, client ctrlclie
 	object.Labels = kubelb.AddKubeLBLabels(object.Labels, object.Name, object.Namespace, "")
 
 	// Update name and other fields before creating/updating the object.
-	object.Name = kubelb.GenerateName(globalTopology, string(object.UID), object.Name, object.Namespace)
+	object.Name = kubelb.GenerateName(object.Name, object.Namespace)
 	object.Namespace = namespace
 	object.SetUID("") // Reset UID to generate a new UID for the object
 

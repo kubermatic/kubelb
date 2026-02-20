@@ -80,7 +80,7 @@ cosign verify quay.io/kubermatic/kubelb-manager:v1.3.1 \
 | kubelb.envoyProxy.resources | object | `{}` |  |
 | kubelb.envoyProxy.singlePodPerNode | bool | `true` | Deploy single pod per node. |
 | kubelb.envoyProxy.tolerations | list | `[]` |  |
-| kubelb.envoyProxy.topology | string | `"shared"` | Topology defines the deployment topology for Envoy Proxy. Valid values are: shared and global. |
+| kubelb.envoyProxy.topology | string | `"shared"` | Topology defines the deployment topology for Envoy Proxy. Only "shared" is supported. "dedicated" and "global" are deprecated and will default to shared. |
 | kubelb.envoyProxy.useDaemonset | bool | `false` | Use DaemonSet for Envoy Proxy deployment instead of Deployment. |
 | kubelb.logLevel | string | `"info"` | To configure the verbosity of logging. Can be one of 'debug', 'info', 'error', 'panic' or any integer value > 0 which corresponds to custom debug levels of increasing verbosity. |
 | kubelb.propagateAllAnnotations | bool | `false` | Propagate all annotations from the LB resource to the LB service. |

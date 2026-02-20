@@ -33,7 +33,7 @@ import (
 )
 
 func CreateOrUpdateGateway(ctx context.Context, log logr.Logger, client ctrlclient.Client, object *gwapiv1.Gateway, namespace string, config *kubelbv1alpha1.Config, tenant *kubelbv1alpha1.Tenant,
-	annotations kubelbv1alpha1.AnnotationSettings, _ bool) error {
+	annotations kubelbv1alpha1.AnnotationSettings) error {
 	// Transformations to make it compliant with the LB cluster.
 	// Update the GatewayClass name to match the GatewayClass object in the LB cluster.
 	var gatewayClassName *string

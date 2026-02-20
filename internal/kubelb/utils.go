@@ -17,6 +17,8 @@ limitations under the License.
 package kubelb
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"strings"
 
@@ -66,16 +68,13 @@ const MaxNameLength = 60
 
 const AnnotationRequestWildcardDomain = "kubelb.k8c.io/request-wildcard-domain"
 
-func GenerateName(appendUID bool, uid, name, namespace string) string {
+func GenerateName(name, namespace string) string {
 	output := fmt.Sprintf("%s-%s", namespace, name)
-	uidSuffix := uid[len(uid)-NameSuffixLength:]
 
-	// If the output is longer than 60 characters, truncate the name and append a suffix
-	if len(output) >= MaxNameLength || (appendUID && (len(output)+len(uidSuffix)+1) >= MaxNameLength) {
-		output = output[:MaxNameLength-(NameSuffixLength+1)]
-		output = fmt.Sprintf("%s-%s", output, uidSuffix)
-	} else if appendUID {
-		output = fmt.Sprintf("%s-%s", output, uidSuffix)
+	if len(output) >= MaxNameLength {
+		hash := sha256.Sum256([]byte(output))
+		suffix := hex.EncodeToString(hash[:])[:NameSuffixLength]
+		output = fmt.Sprintf("%s-%s", output[:MaxNameLength-(NameSuffixLength+1)], suffix)
 	}
 
 	return output
@@ -83,15 +82,13 @@ func GenerateName(appendUID bool, uid, name, namespace string) string {
 
 // GenerateRouteServiceName generates a unique service name that includes route identifier.
 // Format: namespace-routeName-serviceName[-uid] (truncated to MaxNameLength)
-func GenerateRouteServiceName(appendUID bool, uid, routeName, serviceName, namespace string) string {
+func GenerateRouteServiceName(routeName, serviceName, namespace string) string {
 	output := fmt.Sprintf("%s-%s-%s", namespace, routeName, serviceName)
-	uidSuffix := uid[len(uid)-NameSuffixLength:]
 
-	if len(output) >= MaxNameLength || (appendUID && (len(output)+len(uidSuffix)+1) >= MaxNameLength) {
-		output = output[:MaxNameLength-(NameSuffixLength+1)]
-		output = fmt.Sprintf("%s-%s", output, uidSuffix)
-	} else if appendUID {
-		output = fmt.Sprintf("%s-%s", output, uidSuffix)
+	if len(output) >= MaxNameLength {
+		hash := sha256.Sum256([]byte(output))
+		suffix := hex.EncodeToString(hash[:])[:NameSuffixLength]
+		output = fmt.Sprintf("%s-%s", output[:MaxNameLength-(NameSuffixLength+1)], suffix)
 	}
 
 	return output

@@ -56,28 +56,14 @@ import (
 )
 
 const (
-	envoyImage                        = "envoyproxy/envoy:distroless-v1.36.4"
-	envoyProxyContainerName           = "envoy-proxy"
-	shutdownManagerContainerName      = "shutdown-manager"
-	envoyResourcePattern              = "envoy-%s"
-	envoyGlobalTopologyServicePattern = "envoy-%s-%s"
-	envoyProxyCleanupFinalizer        = "kubelb.k8c.io/cleanup-envoy-proxy"
-	hostnameCleanupFinalizer          = "kubelb.k8c.io/cleanup-hostname"
-	EnvoyGlobalCache                  = "global"
-	LoadBalancerControllerName        = "loadbalancer-controller"
+	envoyImage                   = "envoyproxy/envoy:distroless-v1.36.4"
+	envoyProxyContainerName      = "envoy-proxy"
+	shutdownManagerContainerName = "shutdown-manager"
+	envoyResourcePattern         = "envoy-%s"
+	envoyProxyCleanupFinalizer   = "kubelb.k8c.io/cleanup-envoy-proxy"
+	hostnameCleanupFinalizer     = "kubelb.k8c.io/cleanup-hostname"
+	LoadBalancerControllerName   = "loadbalancer-controller"
 )
-
-type EnvoyProxyTopology string
-
-const (
-	EnvoyProxyTopologyShared    EnvoyProxyTopology = "shared"
-	EnvoyProxyTopologyDedicated EnvoyProxyTopology = "dedicated"
-	EnvoyProxyTopologyGlobal    EnvoyProxyTopology = "global"
-)
-
-func (e EnvoyProxyTopology) IsGlobalTopology() bool {
-	return e == EnvoyProxyTopologyGlobal
-}
 
 // LoadBalancerReconciler reconciles a LoadBalancer object
 type LoadBalancerReconciler struct {
@@ -86,8 +72,7 @@ type LoadBalancerReconciler struct {
 	Cache     cache.Cache
 	Namespace string
 
-	PortAllocator      *portlookup.PortAllocator
-	EnvoyProxyTopology EnvoyProxyTopology
+	PortAllocator *portlookup.PortAllocator
 }
 
 // +kubebuilder:rbac:groups=kubelb.k8c.io,resources=loadbalancers,verbs=get;list;watch;create;update;patch;delete
@@ -132,32 +117,15 @@ func (r *LoadBalancerReconciler) Reconcile(ctx context.Context, req ctrl.Request
 		return ctrl.Result{}, nil
 	}
 
-	// In case of shared envoy proxy topology, we need to fetch all load balancers. Otherwise, we only need to fetch the current one.
-	// To keep things generic, we always propagate a list of load balancers here.
-	var (
-		loadBalancers     kubelbv1alpha1.LoadBalancerList
-		resourceNamespace string
-	)
-
-	switch r.EnvoyProxyTopology {
-	case EnvoyProxyTopologyShared:
-		err = r.List(ctx, &loadBalancers, ctrlruntimeclient.InNamespace(req.Namespace))
-		if err != nil {
-			log.Error(err, "unable to fetch LoadBalancer list")
-			managermetrics.LoadBalancerReconcileTotal.WithLabelValues(req.Namespace, metrics.ResultError).Inc()
-			return ctrl.Result{}, err
-		}
-		resourceNamespace = req.Namespace
-	case EnvoyProxyTopologyGlobal:
-		// List all loadbalancers. We don't care about the namespace here.
-		err = r.List(ctx, &loadBalancers)
-		if err != nil {
-			log.Error(err, "unable to fetch LoadBalancer list")
-			managermetrics.LoadBalancerReconcileTotal.WithLabelValues(req.Namespace, metrics.ResultError).Inc()
-			return ctrl.Result{}, err
-		}
-		resourceNamespace = r.Namespace
+	// Fetch all load balancers in the namespace for shared topology.
+	var loadBalancers kubelbv1alpha1.LoadBalancerList
+	err = r.List(ctx, &loadBalancers, ctrlruntimeclient.InNamespace(req.Namespace))
+	if err != nil {
+		log.Error(err, "unable to fetch LoadBalancer list")
+		managermetrics.LoadBalancerReconcileTotal.WithLabelValues(req.Namespace, metrics.ResultError).Inc()
+		return ctrl.Result{}, err
 	}
+	resourceNamespace := req.Namespace
 	// Resource is marked for deletion.
 	if loadBalancer.DeletionTimestamp != nil {
 		if controllerutil.ContainsFinalizer(&loadBalancer, envoyProxyCleanupFinalizer) ||
@@ -225,11 +193,8 @@ func (r *LoadBalancerReconciler) Reconcile(ctx context.Context, req ctrl.Request
 	}
 
 	// Generate the service name and app name.
-	_, appName := envoySnapshotAndAppName(r.EnvoyProxyTopology, req)
+	appName := req.Namespace
 	svcName := fmt.Sprintf(envoyResourcePattern, loadBalancer.Name)
-	if r.EnvoyProxyTopology == EnvoyProxyTopologyGlobal {
-		svcName = fmt.Sprintf(envoyGlobalTopologyServicePattern, loadBalancer.Namespace, loadBalancer.Name)
-	}
 
 	err = r.reconcileService(ctx, &loadBalancer, svcName, appName, resourceNamespace, r.PortAllocator, className, annotations)
 	if err != nil {
@@ -271,7 +236,7 @@ func (r *LoadBalancerReconciler) Reconcile(ctx context.Context, req ctrl.Request
 	}
 
 	// Update LB count gauge per namespace
-	managermetrics.LoadBalancersTotal.WithLabelValues(req.Namespace, RemoveTenantPrefix(req.Namespace), string(r.EnvoyProxyTopology)).Set(float64(len(loadBalancers.Items)))
+	managermetrics.LoadBalancersTotal.WithLabelValues(req.Namespace, RemoveTenantPrefix(req.Namespace), "shared").Set(float64(len(loadBalancers.Items)))
 
 	managermetrics.LoadBalancerReconcileTotal.WithLabelValues(req.Namespace, metrics.ResultSuccess).Inc()
 	return ctrl.Result{}, nil
@@ -513,9 +478,6 @@ func (r *LoadBalancerReconciler) cleanup(ctx context.Context, lb kubelbv1alpha1.
 
 	// Remove corresponding service.
 	svcName := fmt.Sprintf(envoyResourcePattern, lb.Name)
-	if r.EnvoyProxyTopology == EnvoyProxyTopologyGlobal {
-		svcName = fmt.Sprintf(envoyGlobalTopologyServicePattern, lb.Namespace, lb.Name)
-	}
 
 	svc := &corev1.Service{
 		ObjectMeta: v1.ObjectMeta{

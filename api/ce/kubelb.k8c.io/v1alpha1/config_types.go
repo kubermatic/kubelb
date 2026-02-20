@@ -70,10 +70,10 @@ type ConfigDNSSettings struct {
 type EnvoyProxy struct {
 	// +kubebuilder:validation:Enum=shared;dedicated;global
 	// +kubebuilder:default=shared
-	// +kubebuilder:validation:XValidation:rule="self == oldSelf || (self != oldSelf && oldSelf == 'dedicated')",message="Value is immutable and only allowed change is from dedicated(deprecated) to shared/global"
+	// +kubebuilder:validation:XValidation:rule="self == oldSelf || (self != oldSelf && (oldSelf == 'dedicated' || oldSelf == 'global'))",message="Value is immutable and only allowed change is from dedicated(deprecated) or global(deprecated) to shared"
 
-	// Topology defines the deployment topology for Envoy Proxy. Valid values are: shared and global.
-	// DEPRECATION NOTICE: The value "dedicated" is deprecated and will be removed in a future release. Dedicated topology will now default to shared topology.
+	// Topology defines the deployment topology for Envoy Proxy. The only supported value is: shared.
+	// DEPRECATION NOTICE: The values "dedicated" and "global" are deprecated and will be removed in a future release. Both will now default to shared topology.
 	// +optional
 	Topology EnvoyProxyTopology `json:"topology,omitempty"`
 
@@ -181,10 +181,6 @@ type Config struct {
 
 func (c *Config) GetEnvoyProxyTopology() EnvoyProxyTopology {
 	return c.Spec.EnvoyProxy.Topology
-}
-
-func (c *Config) IsGlobalTopology() bool {
-	return c.Spec.EnvoyProxy.Topology == EnvoyProxyTopologyGlobal
 }
 
 // +kubebuilder:object:root=true
