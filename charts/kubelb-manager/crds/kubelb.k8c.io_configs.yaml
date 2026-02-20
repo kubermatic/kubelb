@@ -1186,8 +1186,8 @@ spec:
                   topology:
                     default: shared
                     description: |-
-                      Topology defines the deployment topology for Envoy Proxy. Valid values are: shared and global.
-                      DEPRECATION NOTICE: The value "dedicated" is deprecated and will be removed in a future release. Dedicated topology will now default to shared topology.
+                      Topology defines the deployment topology for Envoy Proxy. The only supported value is: shared.
+                      DEPRECATION NOTICE: The values "dedicated" and "global" are deprecated and will be removed in a future release. Both will now default to shared topology.
                     enum:
                     - shared
                     - dedicated
@@ -1195,8 +1195,9 @@ spec:
                     type: string
                     x-kubernetes-validations:
                     - message: Value is immutable and only allowed change is from
-                        dedicated(deprecated) to shared/global
-                      rule: self == oldSelf || (self != oldSelf && oldSelf == 'dedicated')
+                        dedicated(deprecated) or global(deprecated) to shared
+                      rule: self == oldSelf || (self != oldSelf && (oldSelf == 'dedicated'
+                        || oldSelf == 'global'))
                   useDaemonset:
                     description: |-
                       UseDaemonset defines whether Envoy Proxy will run as daemonset. By default, Envoy Proxy will run as deployment.

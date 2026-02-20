@@ -108,13 +108,13 @@ func NormalizeAndReplicateServices(ctx context.Context, log logr.Logger, client 
 	return services, nil
 }
 
-func GenerateServiceForLBCluster(service corev1.Service, appName, namespace, routeName string, portAllocator *portlookup.PortAllocator, globalTopology bool, annotations kubelbv1alpha1.AnnotationSettings) corev1.Service {
+func GenerateServiceForLBCluster(service corev1.Service, appName, namespace, routeName string, portAllocator *portlookup.PortAllocator, annotations kubelbv1alpha1.AnnotationSettings) corev1.Service {
 	// routeName is the route identifier for port allocation key.
 	// For L4 LoadBalancer services, pass service.Name (no separate route object).
 	// For L7 routes, pass the original HTTPRoute/GRPCRoute/etc name.
 	endpointKey := fmt.Sprintf(kubelb.EnvoyEndpointRoutePattern, namespace, service.Namespace, service.Name, routeName)
 
-	service.Name = kubelb.GenerateRouteServiceName(globalTopology, string(service.UID), routeName, GetServiceName(service), service.Namespace)
+	service.Name = kubelb.GenerateRouteServiceName(routeName, GetServiceName(service), service.Namespace)
 	service.Namespace = namespace
 	service.UID = ""
 	if service.Spec.Type == corev1.ServiceTypeNodePort {
@@ -135,56 +135,11 @@ func GenerateServiceForLBCluster(service corev1.Service, appName, namespace, rou
 	}
 
 	// Replace the selector with the envoy proxy selector.
-	if globalTopology {
-		service.Spec.Selector = nil
-	} else {
-		// Replace the selector with the envoy proxy selector.
-		service.Spec.Selector = map[string]string{
-			kubelb.LabelAppKubernetesName: appName,
-		}
+	service.Spec.Selector = map[string]string{
+		kubelb.LabelAppKubernetesName: appName,
 	}
 	service.Annotations = kubelb.PropagateAnnotations(service.Annotations, annotations, kubelbv1alpha1.AnnotatedResourceService)
 	return service
-}
-
-// GenerateBridgeService creates a service that is used to forward traffic from the tenant namespace to the controller namespace. Controller namespace hosts
-// Envoy Proxy instance in case if Global topology is used. What other options were assessed for this:
-// 1. ExternalName service that forwards traffic to `service-name.controller-namespace.svc.cluster.local`. Dropped this idea since ExternalName services are not supported in Gateway API
-// 2. EndpointSlice with FQDN `service-name.controller-namespace.svc.cluster.local` as endpoint. FQDN is deprecated https://github.com/kubernetes/kubernetes/pull/114677
-// 3. Place all resources in controller namespace - this is possible but is poor from a security and isolation standpoint since we lose the ability of 1-1 mapping of resources to namespaces. Also
-// resources are not unique anymore and someone might end up attaching their services/httproutes to Ingresses/Gateways for another tenant. Complete NO GO for Layer 7.
-// Decision: Use a bridge service in controller namespace that simply forwards traffic to envoy on the correct target port. Use Service without Selector in tenant namespace and EndpointSlices to
-// forward traffic from tenant namespace to the envoy proxy in controller namespace.
-func GenerateBridgeService(service corev1.Service, appName, controllerNamespace string) corev1.Service {
-	bridgeService := corev1.Service{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      service.Name,
-			Namespace: controllerNamespace,
-		},
-	}
-
-	for _, port := range service.Spec.Ports {
-		bridgePort := corev1.ServicePort{
-			Name:       port.Name,
-			Protocol:   port.Protocol,
-			Port:       port.TargetPort.IntVal,
-			TargetPort: port.TargetPort,
-		}
-		bridgeService.Spec.Ports = append(bridgeService.Spec.Ports, bridgePort)
-	}
-
-	if bridgeService.Labels == nil {
-		bridgeService.Labels = make(map[string]string)
-	}
-
-	bridgeService.Labels = kubelb.AddKubeLBLabels(bridgeService.Labels, service.Name, service.Namespace, "")
-	bridgeService.Labels[kubelb.LabelAppKubernetesType] = kubelb.LabelBridgeService
-
-	bridgeService.Spec.Selector = map[string]string{
-		kubelb.LabelAppKubernetesName: appName,
-	}
-	bridgeService.Spec.Type = corev1.ServiceTypeClusterIP
-	return bridgeService
 }
 
 func CreateOrUpdateService(ctx context.Context, client ctrlclient.Client, obj *corev1.Service) error {

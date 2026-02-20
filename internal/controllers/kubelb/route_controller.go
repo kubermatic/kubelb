@@ -68,10 +68,9 @@ type RouteReconciler struct {
 	Scheme   *runtime.Scheme
 	Recorder events.EventRecorder
 
-	Namespace          string
-	PortAllocator      *portlookup.PortAllocator
-	EnvoyProxyTopology EnvoyProxyTopology
-	DisableGatewayAPI  bool
+	Namespace         string
+	PortAllocator     *portlookup.PortAllocator
+	DisableGatewayAPI bool
 }
 
 // +kubebuilder:rbac:groups=kubelb.k8c.io,resources=routes,verbs=get;list;watch;create;update;patch;delete
@@ -211,12 +210,6 @@ func (r *RouteReconciler) cleanup(ctx context.Context, route *kubelbv1alpha1.Rou
 			},
 		}
 
-		if r.EnvoyProxyTopology.IsGlobalTopology() {
-			// Bridge services exist in the controller namespace.
-			if value.Namespace == r.Namespace {
-				svc.Namespace = r.Namespace
-			}
-		}
 		log.V(1).Info("Deleting service", "name", value.GeneratedName, "namespace", value.Namespace)
 
 		if err := r.Delete(ctx, &svc); err != nil {
@@ -245,7 +238,7 @@ func (r *RouteReconciler) manageServices(ctx context.Context, log logr.Logger, r
 	}
 
 	// Before creating/updating services, ensure that the orphaned services are cleaned up.
-	err := r.cleanupOrphanedServices(ctx, log, route, r.EnvoyProxyTopology.IsGlobalTopology())
+	err := r.cleanupOrphanedServices(ctx, log, route)
 	if err != nil {
 		return fmt.Errorf("failed to cleanup orphaned services: %w", err)
 	}
@@ -263,18 +256,11 @@ func (r *RouteReconciler) manageServices(ctx context.Context, log logr.Logger, r
 		originalRouteName = name
 	}
 
-	appName := envoyApplicationName(r.EnvoyProxyTopology, route.Namespace)
+	appName := route.Namespace
 	services := []corev1.Service{}
 	for _, service := range route.Spec.Source.Kubernetes.Services {
 		// Transform the service into desired state.
-		svc := serviceHelpers.GenerateServiceForLBCluster(service.Service, appName, route.Namespace, originalRouteName, r.PortAllocator, r.EnvoyProxyTopology.IsGlobalTopology(), annotations)
-
-		// We need a bridge service in the controller namespace.
-		if r.EnvoyProxyTopology.IsGlobalTopology() {
-			bridgeService := serviceHelpers.GenerateBridgeService(svc, appName, r.Namespace)
-			services = append(services, bridgeService)
-		}
-
+		svc := serviceHelpers.GenerateServiceForLBCluster(service.Service, appName, route.Namespace, originalRouteName, r.PortAllocator, annotations)
 		services = append(services, svc)
 	}
 
@@ -292,12 +278,12 @@ func (r *RouteReconciler) manageServices(ctx context.Context, log logr.Logger, r
 	}
 
 	// Cleanup orphaned services from naming change (old: ns-svc, new: ns-route-svc)
-	r.cleanupRenamedServices(ctx, log, route, originalRouteName, r.EnvoyProxyTopology.IsGlobalTopology())
+	r.cleanupRenamedServices(ctx, log, route, originalRouteName)
 
 	return r.UpdateRouteStatus(ctx, route, *routeStatus)
 }
 
-func (r *RouteReconciler) cleanupOrphanedServices(ctx context.Context, log logr.Logger, route *kubelbv1alpha1.Route, globalTopology bool) error {
+func (r *RouteReconciler) cleanupOrphanedServices(ctx context.Context, log logr.Logger, route *kubelbv1alpha1.Route) error {
 	// Get all the services based on route.
 	desiredServices := map[string]bool{}
 	for _, service := range route.Spec.Source.Kubernetes.Services {
@@ -311,30 +297,13 @@ func (r *RouteReconciler) cleanupOrphanedServices(ctx context.Context, log logr.
 	}
 
 	for key, value := range route.Status.Resources.Services {
-		ns := route.Namespace
 		if _, ok := desiredServices[key]; !ok {
-			found := false
-			if globalTopology && value.Namespace == r.Namespace {
-				// Bridged services don't have any references in the spec.
-				for _, statusService := range route.Status.Resources.Services {
-					if statusService.GeneratedName == value.GeneratedName && statusService.Namespace != value.Namespace {
-						found = true
-						break
-					}
-				}
-				if found {
-					continue
-				}
-
-				ns = r.Namespace
-			}
-
 			// Service is not desired, so delete it.
 			log.V(4).Info("Deleting orphaned service", "name", value.GeneratedName, "namespace", route.Namespace)
 			svc := corev1.Service{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      value.GeneratedName,
-					Namespace: ns,
+					Namespace: route.Namespace,
 				},
 			}
 			if err := r.Delete(ctx, &svc); err != nil {
@@ -362,7 +331,7 @@ func (r *RouteReconciler) cleanupOrphanedServices(ctx context.Context, log logr.
 
 // cleanupRenamedServices deletes orphaned services from naming scheme change.
 // Old scheme: ns-svc[-uid], New scheme: ns-route-svc[-uid]
-func (r *RouteReconciler) cleanupRenamedServices(ctx context.Context, log logr.Logger, route *kubelbv1alpha1.Route, originalRouteName string, globalTopology bool) {
+func (r *RouteReconciler) cleanupRenamedServices(ctx context.Context, log logr.Logger, route *kubelbv1alpha1.Route, originalRouteName string) {
 	if route.Status.Resources.Services == nil || route.Spec.Source.Kubernetes == nil {
 		return
 	}
@@ -378,8 +347,6 @@ func (r *RouteReconciler) cleanupRenamedServices(ctx context.Context, log logr.L
 
 		// Compute expected name with new naming scheme
 		expectedName := kubelb.GenerateRouteServiceName(
-			globalTopology,
-			string(service.UID),
 			originalRouteName,
 			name,
 			service.Namespace,
@@ -396,10 +363,6 @@ func (r *RouteReconciler) cleanupRenamedServices(ctx context.Context, log logr.L
 					Name:      statusSvc.GeneratedName,
 					Namespace: route.Namespace,
 				},
-			}
-
-			if globalTopology && statusSvc.Namespace == r.Namespace {
-				svc.Namespace = r.Namespace
 			}
 
 			if err := r.Delete(ctx, &svc); err != nil && !kerrors.IsNotFound(err) {
@@ -491,7 +454,7 @@ func (r *RouteReconciler) manageRoutes(ctx context.Context, log logr.Logger, rou
 		}
 
 	case *gwapiv1.Gateway: // v1 "sigs.k8s.io/gateway-api/apis/v1"
-		err = gatewayHelpers.CreateOrUpdateGateway(ctx, log, r.Client, v, route.Namespace, config, tenant, annotations, config.IsGlobalTopology())
+		err = gatewayHelpers.CreateOrUpdateGateway(ctx, log, r.Client, v, route.Namespace, config, tenant, annotations)
 		if err == nil {
 			// Retrieve updated object to get the status.
 			key := ctrlruntimeclient.ObjectKey{Namespace: v.Namespace, Name: v.Name}
@@ -505,7 +468,7 @@ func (r *RouteReconciler) manageRoutes(ctx context.Context, log logr.Logger, rou
 		}
 
 	case *gwapiv1.HTTPRoute: // v1 "sigs.k8s.io/gateway-api/apis/v1"
-		err = httprouteHelpers.CreateOrUpdateHTTPRoute(ctx, log, r.Client, v, referencedServices, route.Namespace, originalRouteName, tenant, annotations, config.IsGlobalTopology())
+		err = httprouteHelpers.CreateOrUpdateHTTPRoute(ctx, log, r.Client, v, referencedServices, route.Namespace, originalRouteName, tenant, annotations)
 		if err == nil {
 			// Retrieve updated object to get the status.
 			key := ctrlruntimeclient.ObjectKey{Namespace: v.Namespace, Name: v.Name}
@@ -519,7 +482,7 @@ func (r *RouteReconciler) manageRoutes(ctx context.Context, log logr.Logger, rou
 		}
 
 	case *gwapiv1.GRPCRoute: // v1 "sigs.k8s.io/gateway-api/apis/v1"
-		err = grpcrouteHelpers.CreateOrUpdateGRPCRoute(ctx, log, r.Client, v, referencedServices, route.Namespace, originalRouteName, tenant, annotations, config.IsGlobalTopology())
+		err = grpcrouteHelpers.CreateOrUpdateGRPCRoute(ctx, log, r.Client, v, referencedServices, route.Namespace, originalRouteName, tenant, annotations)
 		if err == nil {
 			// Retrieve updated object to get the status.
 			key := ctrlruntimeclient.ObjectKey{Namespace: v.Namespace, Name: v.Name}
@@ -613,10 +576,6 @@ func updateServiceStatus(routeStatus *kubelbv1alpha1.RouteStatus, svc *corev1.Se
 	originalName := serviceHelpers.GetServiceName(*svc)
 	originalNamespace := serviceHelpers.GetServiceNamespace(*svc)
 
-	if val, ok := svc.Labels[kubelb.LabelAppKubernetesType]; ok && val == kubelb.LabelBridgeService {
-		originalNamespace = svc.Namespace
-	}
-
 	status := kubelbv1alpha1.RouteServiceStatus{
 		ResourceState: kubelbv1alpha1.ResourceState{
 			GeneratedName: svc.GetName(),
@@ -700,16 +659,6 @@ func generateConditions(err error) []metav1.Condition {
 			Message: conditionMessage,
 		},
 	}
-}
-
-func envoyApplicationName(topology EnvoyProxyTopology, namespace string) string {
-	switch topology {
-	case EnvoyProxyTopologyShared:
-		return namespace
-	case EnvoyProxyTopologyGlobal:
-		return EnvoyGlobalCache
-	}
-	return ""
 }
 
 func (r *RouteReconciler) SetupWithManager(mgr ctrl.Manager) error {

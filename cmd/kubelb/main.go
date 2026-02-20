@@ -163,12 +163,11 @@ func main() {
 	}
 
 	if err = (&kubelb.LoadBalancerReconciler{
-		Client:             mgr.GetClient(),
-		Cache:              mgr.GetCache(),
-		Scheme:             mgr.GetScheme(),
-		Namespace:          opt.namespace,
-		EnvoyProxyTopology: kubelb.EnvoyProxyTopology(conf.GetEnvoyProxyTopology()),
-		PortAllocator:      portAllocator,
+		Client:        mgr.GetClient(),
+		Cache:         mgr.GetCache(),
+		Scheme:        mgr.GetScheme(),
+		Namespace:     opt.namespace,
+		PortAllocator: portAllocator,
 	}).SetupWithManager(ctx, mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "LoadBalancer")
 		os.Exit(1)
@@ -184,39 +183,36 @@ func main() {
 	}
 
 	if err = (&kubelb.EnvoyCPReconciler{
-		Client:             envoyMgr.GetClient(),
-		EnvoyCache:         envoyServer.Cache,
-		EnvoyProxyTopology: kubelb.EnvoyProxyTopology(conf.GetEnvoyProxyTopology()),
-		PortAllocator:      portAllocator,
-		Namespace:          opt.namespace,
-		EnvoyServer:        envoyServer,
-		DisableGatewayAPI:  disableGatewayAPI,
+		Client:            envoyMgr.GetClient(),
+		EnvoyCache:        envoyServer.Cache,
+		PortAllocator:     portAllocator,
+		Namespace:         opt.namespace,
+		EnvoyServer:       envoyServer,
+		DisableGatewayAPI: disableGatewayAPI,
 	}).SetupWithManager(ctx, envoyMgr); err != nil {
 		setupLog.Error(err, "unable to create envoy control-plane controller", "controller", "LoadBalancer")
 		os.Exit(1)
 	}
 
 	if err = (&kubelb.RouteReconciler{
-		Client:             mgr.GetClient(),
-		Scheme:             mgr.GetScheme(),
-		Log:                ctrl.Log.WithName("controllers").WithName(kubelb.RouteControllerName),
-		Recorder:           mgr.GetEventRecorder(kubelb.RouteControllerName),
-		EnvoyProxyTopology: kubelb.EnvoyProxyTopology(conf.GetEnvoyProxyTopology()),
-		PortAllocator:      portAllocator,
-		Namespace:          opt.namespace,
-		DisableGatewayAPI:  disableGatewayAPI,
+		Client:            mgr.GetClient(),
+		Scheme:            mgr.GetScheme(),
+		Log:               ctrl.Log.WithName("controllers").WithName(kubelb.RouteControllerName),
+		Recorder:          mgr.GetEventRecorder(kubelb.RouteControllerName),
+		PortAllocator:     portAllocator,
+		Namespace:         opt.namespace,
+		DisableGatewayAPI: disableGatewayAPI,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", kubelb.RouteControllerName)
 		os.Exit(1)
 	}
 
 	if err = (&kubelb.SyncSecretReconciler{
-		Client:             mgr.GetClient(),
-		Scheme:             mgr.GetScheme(),
-		Log:                ctrl.Log.WithName("controllers").WithName(kubelb.SyncSecretControllerName),
-		Recorder:           mgr.GetEventRecorder(kubelb.SyncSecretControllerName),
-		EnvoyProxyTopology: kubelb.EnvoyProxyTopology(conf.GetEnvoyProxyTopology()),
-		Namespace:          opt.namespace,
+		Client:    mgr.GetClient(),
+		Scheme:    mgr.GetScheme(),
+		Log:       ctrl.Log.WithName("controllers").WithName(kubelb.SyncSecretControllerName),
+		Recorder:  mgr.GetEventRecorder(kubelb.SyncSecretControllerName),
+		Namespace: opt.namespace,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", kubelb.SyncSecretControllerName)
 		os.Exit(1)
@@ -232,19 +228,6 @@ func main() {
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", kubelb.RouteControllerName)
 		os.Exit(1)
-	}
-
-	// This is only required when using global topology.
-	if conf.IsGlobalTopology() {
-		if err = (&kubelb.BridgeServiceReconciler{
-			Client:   mgr.GetClient(),
-			Scheme:   mgr.GetScheme(),
-			Log:      ctrl.Log.WithName("controllers").WithName(kubelb.BridgeServiceControllerName),
-			Recorder: mgr.GetEventRecorder(kubelb.BridgeServiceControllerName),
-		}).SetupWithManager(mgr); err != nil {
-			setupLog.Error(err, "unable to create controller", "controller", kubelb.BridgeServiceControllerName)
-			os.Exit(1)
-		}
 	}
 
 	go func() {

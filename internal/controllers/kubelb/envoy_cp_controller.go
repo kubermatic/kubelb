@@ -59,13 +59,12 @@ const (
 
 type EnvoyCPReconciler struct {
 	ctrlruntimeclient.Client
-	EnvoyCache         envoycachev3.SnapshotCache
-	EnvoyProxyTopology EnvoyProxyTopology
-	PortAllocator      *portlookup.PortAllocator
-	Namespace          string
-	EnvoyServer        *envoycp.Server
-	DisableGatewayAPI  bool
-	Config             *kubelbv1alpha1.Config
+	EnvoyCache        envoycachev3.SnapshotCache
+	PortAllocator     *portlookup.PortAllocator
+	Namespace         string
+	EnvoyServer       *envoycp.Server
+	DisableGatewayAPI bool
+	Config            *kubelbv1alpha1.Config
 }
 
 // +kubebuilder:rbac:groups=kubelb.k8c.io,resources=loadbalancers,verbs=get;list;watch
@@ -101,7 +100,7 @@ func (r *EnvoyCPReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 }
 
 func (r *EnvoyCPReconciler) reconcile(ctx context.Context, req ctrl.Request) error {
-	snapshotName, appName := envoySnapshotAndAppName(r.EnvoyProxyTopology, req)
+	snapshotName, appName := req.Namespace, req.Namespace
 
 	lbs, routes, err := r.ListLoadBalancersAndRoutes(ctx, req)
 	if err != nil {
@@ -109,9 +108,6 @@ func (r *EnvoyCPReconciler) reconcile(ctx context.Context, req ctrl.Request) err
 	}
 
 	namespace := req.Namespace
-	if r.EnvoyProxyTopology.IsGlobalTopology() {
-		namespace = r.Namespace
-	}
 
 	if len(lbs) == 0 && len(routes) == 0 {
 		r.EnvoyCache.ClearSnapshot(snapshotName)
@@ -122,8 +118,8 @@ func (r *EnvoyCPReconciler) reconcile(ctx context.Context, req ctrl.Request) err
 	if err := r.ensureEnvoyProxy(ctx, namespace, appName, snapshotName); err != nil {
 		return fmt.Errorf("failed to update Envoy proxy: %w", err)
 	}
-	managermetrics.EnvoyProxiesTotal.WithLabelValues(namespace, string(r.EnvoyProxyTopology)).Set(1)
-	envoycpmetrics.EnvoyProxiesTotal.WithLabelValues(namespace, string(r.EnvoyProxyTopology)).Set(1)
+	managermetrics.EnvoyProxiesTotal.WithLabelValues(namespace, "shared").Set(1)
+	envoycpmetrics.EnvoyProxiesTotal.WithLabelValues(namespace, "shared").Set(1)
 
 	lbList := kubelbv1alpha1.LoadBalancerList{
 		Items: lbs,
@@ -210,27 +206,14 @@ func (r *EnvoyCPReconciler) ListLoadBalancersAndRoutes(ctx context.Context, req 
 	routes := kubelbv1alpha1.RouteList{}
 	var err error
 
-	switch r.EnvoyProxyTopology {
-	case EnvoyProxyTopologyShared:
-		err = r.List(ctx, &loadBalancers, ctrlruntimeclient.InNamespace(req.Namespace))
-		if err != nil {
-			return nil, nil, err
-		}
+	err = r.List(ctx, &loadBalancers, ctrlruntimeclient.InNamespace(req.Namespace))
+	if err != nil {
+		return nil, nil, err
+	}
 
-		err = r.List(ctx, &routes, ctrlruntimeclient.InNamespace(req.Namespace))
-		if err != nil {
-			return nil, nil, err
-		}
-	case EnvoyProxyTopologyGlobal:
-		err = r.List(ctx, &loadBalancers)
-		if err != nil {
-			return nil, nil, err
-		}
-
-		err = r.List(ctx, &routes)
-		if err != nil {
-			return nil, nil, err
-		}
+	err = r.List(ctx, &routes, ctrlruntimeclient.InNamespace(req.Namespace))
+	if err != nil {
+		return nil, nil, err
 	}
 
 	lbs := make([]kubelbv1alpha1.LoadBalancer, 0, len(loadBalancers.Items))
@@ -606,16 +589,6 @@ func podTemplateSpecNeedsUpdate(original, desired corev1.PodTemplateSpec) bool {
 	}
 
 	return false
-}
-
-func envoySnapshotAndAppName(topology EnvoyProxyTopology, req ctrl.Request) (string, string) {
-	switch topology {
-	case EnvoyProxyTopologyShared:
-		return req.Namespace, req.Namespace
-	case EnvoyProxyTopologyGlobal:
-		return EnvoyGlobalCache, EnvoyGlobalCache
-	}
-	return "", ""
 }
 
 // enqueueLoadBalancers is a handler.MapFunc to be used to enqueue requests for reconciliation

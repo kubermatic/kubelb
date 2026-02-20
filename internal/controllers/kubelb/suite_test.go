@@ -133,23 +133,21 @@ var _ = BeforeSuite(func() {
 	Expect(err).ToNot(HaveOccurred())
 
 	lbr = &LoadBalancerReconciler{
-		Client:             k8sManager.GetClient(),
-		Cache:              k8sManager.GetCache(),
-		Scheme:             k8sManager.GetScheme(),
-		EnvoyProxyTopology: EnvoyProxyTopologyShared,
-		Namespace:          LBNamespace,
-		PortAllocator:      portAllocator,
+		Client:        k8sManager.GetClient(),
+		Cache:         k8sManager.GetCache(),
+		Scheme:        k8sManager.GetScheme(),
+		Namespace:     LBNamespace,
+		PortAllocator: portAllocator,
 	}
 	err = lbr.SetupWithManager(ctx, k8sManager)
 	Expect(err).ToNot(HaveOccurred())
 
 	ecpr = &EnvoyCPReconciler{
-		Client:             k8sManager.GetClient(),
-		EnvoyCache:         envoyServer.Cache,
-		EnvoyProxyTopology: EnvoyProxyTopologyShared,
-		EnvoyServer:        envoyServer,
-		Namespace:          LBNamespace,
-		PortAllocator:      portAllocator,
+		Client:        k8sManager.GetClient(),
+		EnvoyCache:    envoyServer.Cache,
+		EnvoyServer:   envoyServer,
+		Namespace:     LBNamespace,
+		PortAllocator: portAllocator,
 	}
 	err = ecpr.SetupWithManager(ctx, k8sManager)
 	Expect(err).ToNot(HaveOccurred())

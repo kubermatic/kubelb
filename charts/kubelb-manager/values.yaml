@@ -23,7 +23,7 @@ kubelb:
   # -- enableGatewayAPI specifies whether to enable the Gateway API and Gateway Controllers. By default Gateway API is disabled since without Gateway APIs installed the controller cannot start.
   enableGatewayAPI: false
   envoyProxy:
-    # -- Topology defines the deployment topology for Envoy Proxy. Valid values are: shared and global.
+    # -- Topology defines the deployment topology for Envoy Proxy. Only "shared" is supported. "dedicated" and "global" are deprecated and will default to shared.
     topology: shared
     # -- The number of replicas for the Envoy Proxy deployment.
     replicas: 2

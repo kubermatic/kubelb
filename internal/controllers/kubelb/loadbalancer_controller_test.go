@@ -37,13 +37,13 @@ import (
 )
 
 var testMatrix = []struct {
-	topology                 EnvoyProxyTopology
+	topology                 string
 	envoyProxyDeploymentName func(lb types.NamespacedName) types.NamespacedName
 	envoyProxyServiceName    func(lb types.NamespacedName) types.NamespacedName
 	envoySnapshotName        func(lb types.NamespacedName) string
 }{
 	{
-		topology: EnvoyProxyTopologyShared,
+		topology: "shared",
 		envoyProxyDeploymentName: func(lb types.NamespacedName) types.NamespacedName {
 			return types.NamespacedName{Name: fmt.Sprintf(envoyResourcePattern, lb.Namespace), Namespace: LBNamespace}
 		},
@@ -51,16 +51,6 @@ var testMatrix = []struct {
 			return types.NamespacedName{Name: fmt.Sprintf(envoyResourcePattern, lb.Name), Namespace: LBNamespace}
 		},
 		envoySnapshotName: func(lb types.NamespacedName) string { return lb.Namespace },
-	},
-	{
-		topology: EnvoyProxyTopologyGlobal,
-		envoyProxyDeploymentName: func(lb types.NamespacedName) types.NamespacedName {
-			return types.NamespacedName{Name: "envoy-global", Namespace: LBNamespace}
-		},
-		envoyProxyServiceName: func(lb types.NamespacedName) types.NamespacedName {
-			return types.NamespacedName{Name: fmt.Sprintf(envoyGlobalTopologyServicePattern, lb.Namespace, lb.Name), Namespace: LBNamespace}
-		},
-		envoySnapshotName: func(lb types.NamespacedName) string { return "global" },
 	},
 }
 
@@ -86,8 +76,6 @@ var _ = Describe("Lb deployment and service creation", func() {
 		Context(fmt.Sprintf("When creating a LoadBalancer with %v topology", t.topology), func() {
 			lb := GetDefaultLoadBalancer(lbName, lbNamespace)
 			It("Configures the reconcilers", func() {
-				lbr.EnvoyProxyTopology = t.topology
-				ecpr.EnvoyProxyTopology = t.topology
 				deploymentLookupKey = t.envoyProxyDeploymentName(lbLookupKey)
 				serviceLookupKey = t.envoyProxyServiceName(lbLookupKey)
 				snapshotName = t.envoySnapshotName(lbLookupKey)
