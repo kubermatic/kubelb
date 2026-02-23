@@ -57,7 +57,7 @@ presubmits:
       preset-goproxy: "true"
     spec:
       containers:
-        - image: quay.io/kubermatic/build:go-1.25-node-22-kind-0.30-6
+        - image: quay.io/kubermatic/build:go-1.25-node-22-kind-0.30-7
           command:
             - make
           args:
@@ -72,7 +72,7 @@ presubmits:
     clone_uri: "ssh://git@github.com/kubermatic/kubelb.git"
     spec:
       containers:
-        - image: quay.io/kubermatic/build:go-1.25-node-22-kind-0.30-6
+        - image: quay.io/kubermatic/build:go-1.25-node-22-kind-0.30-7
           command:
             - make
           args:
@@ -84,7 +84,7 @@ presubmits:
     clone_uri: "ssh://git@github.com/kubermatic/kubelb.git"
     spec:
       containers:
-        - image: quay.io/kubermatic/build:go-1.25-node-22-kind-0.30-6
+        - image: quay.io/kubermatic/build:go-1.25-node-22-kind-0.30-7
           command:
             - make
           args:
@@ -142,7 +142,7 @@ presubmits:
       preset-goproxy: "true"
     spec:
       containers:
-        - image: quay.io/kubermatic/build:go-1.25-node-22-kind-0.30-6
+        - image: quay.io/kubermatic/build:go-1.25-node-22-kind-0.30-7
           securityContext:
             privileged: true
           env:
@@ -176,7 +176,7 @@ presubmits:
     clone_uri: "ssh://git@github.com/kubermatic/kubelb.git"
     spec:
       containers:
-        - image: quay.io/kubermatic/build:go-1.25-node-22-kind-0.30-6
+        - image: quay.io/kubermatic/build:go-1.25-node-22-kind-0.30-7
           command:
             - shfmt
           args:
@@ -206,7 +206,7 @@ presubmits:
       preset-goproxy: "true"
     spec:
       containers:
-        - image: quay.io/kubermatic/build:go-1.25-node-22-kind-0.30-6
+        - image: quay.io/kubermatic/build:go-1.25-node-22-kind-0.30-7
           command:
             - ./hack/verify-licenses.sh
           resources:
@@ -222,7 +222,7 @@ presubmits:
       preset-goproxy: "true"
     spec:
       containers:
-        - image: quay.io/kubermatic/build:go-1.25-node-22-kind-0.30-6
+        - image: quay.io/kubermatic/build:go-1.25-node-22-kind-0.30-7
           command:
             - goreleaser
           args:
