@@ -1,0 +1,529 @@
+# Copyright 2026 The KubeLB Authors.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# Proxy Protocol v2 IP Preservation Test
+# Verifies:
+# - Without proxy protocol: backend sees envoy node IP (SNAT#2), not the real client IP
+# - With proxy protocol v2: backend receives real client IP via PP header
+# - externalTrafficPolicy propagates from tenant service → LB CRD → envoy service
+apiVersion: chainsaw.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: proxy-protocol-ip-preservation
+  labels:
+    all:
+    test: proxy-protocol
+    resource: service
+    layer: layer4
+    type: ip-preservation
+spec:
+  description: |
+    Test IP preservation with Proxy Protocol v2.
+    Scenario 1 (negative): ETP:Local without PP — backend sees envoy node IP, not client IP.
+    Scenario 2 (positive): ETP:Local with PP v2 — backend receives real client IP in PP header.
+    Also verifies ETP propagation through the full chain.
+  bindings:
+    - name: kubelb_namespace
+      value: tenant-primary
+    - name: neg_service_name
+      value: echo-pp-neg
+    - name: pos_service_name
+      value: nginx-pp-test
+  steps:
+    ##########################################################################
+    # Scenario 1 (Negative): ETP:Local, no Proxy Protocol
+    ##########################################################################
+
+    # Step 1: Create LB service with ETP:Local, no PP
+    - name: create-negative-service
+      description: Create LB service with ETP:Local but no proxy protocol
+      cluster: tenant1
+      try:
+        - apply:
+            resource:
+              apiVersion: v1
+              kind: Service
+              metadata:
+                name: ($neg_service_name)
+                namespace: default
+              spec:
+                type: LoadBalancer
+                externalTrafficPolicy: Local
+                selector:
+                  app: echo-headers
+                ports:
+                  - port: 8080
+                    targetPort: 80
+        - assert:
+            timeout: 60s
+            resource:
+              apiVersion: v1
+              kind: Service
+              metadata:
+                name: ($neg_service_name)
+                namespace: default
+              status:
+                loadBalancer:
+                  ingress:
+                    - {}
+
+    # Step 2: Verify ETP propagated to LB CRD
+    - name: verify-etp-on-crd
+      description: Verify externalTrafficPolicy=Local on LB CRD in kubelb cluster
+      cluster: kubelb
+      try:
+        - script:
+            timeout: 60s
+            env:
+              - name: LB_NS
+                value: ($kubelb_namespace)
+              - name: SERVICE_NAME
+                value: ($neg_service_name)
+            content: |
+              set -e
+              for i in $(seq 1 15); do
+                LB=$(kubectl get loadbalancers.kubelb.k8c.io -n "$LB_NS" \
+                  -l kubelb.k8c.io/origin-name="$SERVICE_NAME" -o name 2>/dev/null | head -1)
+                if [ -n "$LB" ]; then
+                  ETP=$(kubectl get $LB -n "$LB_NS" -o jsonpath='{.spec.externalTrafficPolicy}')
+                  if [ "$ETP" = "Local" ]; then
+                    echo "SUCCESS: LB CRD has externalTrafficPolicy=Local"
+                    exit 0
+                  fi
+                  echo "FAILED: Expected ETP=Local, got '$ETP'"
+                  exit 1
+                fi
+                echo "Attempt $i: waiting for LB CRD..."
+                sleep 2
+              done
+              echo "FAILED: LB CRD not found"
+              exit 1
+            check:
+              ($error == null): true
+
+    # Step 3: Verify ETP propagated to envoy service
+    - name: verify-etp-on-envoy-svc
+      description: Verify externalTrafficPolicy=Local on envoy service in kubelb cluster
+      cluster: kubelb
+      try:
+        - script:
+            timeout: 60s
+            env:
+              - name: LB_NS
+                value: ($kubelb_namespace)
+              - name: SERVICE_NAME
+                value: ($neg_service_name)
+            content: |
+              set -e
+              for i in $(seq 1 15); do
+                LB=$(kubectl get loadbalancers.kubelb.k8c.io -n "$LB_NS" \
+                  -l kubelb.k8c.io/origin-name="$SERVICE_NAME" -o name 2>/dev/null | head -1)
+                if [ -z "$LB" ]; then
+                  echo "Attempt $i: waiting for LB CRD..."
+                  sleep 2
+                  continue
+                fi
+                LB_NAME=$(echo "$LB" | sed 's|loadbalancer.kubelb.k8c.io/||')
+                SVC_NAME="envoy-${LB_NAME}"
+                ETP=$(kubectl get svc "$SVC_NAME" -n "$LB_NS" -o jsonpath='{.spec.externalTrafficPolicy}' 2>/dev/null || true)
+                if [ "$ETP" = "Local" ]; then
+                  echo "SUCCESS: Envoy service has externalTrafficPolicy=Local"
+                  exit 0
+                fi
+                echo "Attempt $i: waiting for ETP on envoy svc... (got: '$ETP')"
+                sleep 2
+              done
+              echo "FAILED: Envoy service does not have ETP=Local"
+              exit 1
+            check:
+              ($error == null): true
+
+    # Step 4: Verify backend does NOT see the real client IP (SNAT expected)
+    - name: verify-no-client-ip-without-pp
+      description: Without PP, backend should see an internal IP, not the client IP
+      try:
+        - script:
+            timeout: 120s
+            env:
+              - name: SERVICE_NAME
+                value: ($neg_service_name)
+            content: |
+              set -e
+              ROOT_DIR="$(git rev-parse --show-toplevel)"
+              KUBECONFIGS_DIR="${ROOT_DIR}/.e2e-kubeconfigs"
+
+              # Get LB IP from tenant service
+              IP=$(KUBECONFIG="${KUBECONFIGS_DIR}/tenant1.kubeconfig" \
+                kubectl get svc "$SERVICE_NAME" -n default \
+                -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+
+              # Get the client IP — Docker host's IP on the kind network.
+              EXPECTED_CLIENT_IP=$(docker exec kubelb-control-plane ip -4 route \
+                | awk '/default/ {print $3}')
+              if [ -z "$EXPECTED_CLIENT_IP" ]; then
+                EXPECTED_CLIENT_IP=$(docker network inspect kind \
+                  -f '{{range .IPAM.Config}}{{if .Gateway}}{{.Gateway}} {{end}}{{end}}' \
+                  | tr ' ' '\n' | grep -v ':' | head -1)
+              fi
+              if [ -z "$EXPECTED_CLIENT_IP" ]; then
+                echo "FAILED: Could not determine client IP"
+                exit 1
+              fi
+              echo "Client IP (Kind gateway): $EXPECTED_CLIENT_IP"
+
+              # Phase 1: Wait for service to become reachable (xDS propagation)
+              echo "Waiting for service to become reachable..."
+              for i in $(seq 1 30); do
+                RESPONSE=$(curl -s --max-time 5 "http://${IP}:8080/" || true)
+                if [ -n "$RESPONSE" ]; then
+                  echo "Service reachable after $i attempts"
+                  break
+                fi
+                echo "Warmup attempt $i: no response yet..."
+                sleep 3
+              done
+              if [ -z "$RESPONSE" ]; then
+                echo "FAILED: Service never became reachable"
+                exit 1
+              fi
+
+              # Phase 2: Verify IP behavior (service is already responding)
+              for i in $(seq 1 5); do
+                RESPONSE=$(curl -s --max-time 5 "http://${IP}:8080/" || true)
+                if [ -z "$RESPONSE" ]; then
+                  echo "IP check attempt $i: no response"
+                  sleep 2
+                  continue
+                fi
+
+                SEEN_IP=$(echo "$RESPONSE" | jq -r '.host.ip' 2>/dev/null || true)
+                SEEN_IP=$(echo "$SEEN_IP" | sed 's/^::ffff://')
+
+                if [ -z "$SEEN_IP" ] || [ "$SEEN_IP" = "null" ]; then
+                  echo "IP check attempt $i: could not parse IP from response"
+                  sleep 2
+                  continue
+                fi
+
+                # Without proxy protocol, client IP must NOT be preserved
+                if [ "$SEEN_IP" = "$EXPECTED_CLIENT_IP" ]; then
+                  echo "FAILED: Backend sees real client IP ($SEEN_IP) — should be SNAT'd without PP"
+                  exit 1
+                fi
+
+                echo "SUCCESS: Backend sees internal IP ($SEEN_IP), not client IP ($EXPECTED_CLIENT_IP) — SNAT working"
+                exit 0
+              done
+
+              echo "FAILED: Could not verify IP behavior"
+              exit 1
+            check:
+              ($error == null): true
+
+    ##########################################################################
+    # Scenario 2 (Positive): ETP:Local + Proxy Protocol v2
+    ##########################################################################
+
+    # Step 5: Deploy nginx with proxy protocol support
+    - name: deploy-nginx-pp-backend
+      description: Deploy nginx configured to parse proxy protocol v2 headers
+      cluster: tenant1
+      try:
+        - apply:
+            resource:
+              apiVersion: v1
+              kind: ConfigMap
+              metadata:
+                name: nginx-pp-test
+                namespace: default
+              data:
+                default.conf: |
+                  server {
+                      listen 80 proxy_protocol;
+
+                      location / {
+                          default_type text/plain;
+                          return 200 "tcp_source_ip=$remote_addr\nproxy_protocol_ip=$proxy_protocol_addr\n";
+                      }
+                  }
+        - apply:
+            resource:
+              apiVersion: apps/v1
+              kind: Deployment
+              metadata:
+                name: nginx-pp-test
+                namespace: default
+                labels:
+                  app: nginx-pp-test
+              spec:
+                replicas: 1
+                selector:
+                  matchLabels:
+                    app: nginx-pp-test
+                template:
+                  metadata:
+                    labels:
+                      app: nginx-pp-test
+                  spec:
+                    containers:
+                      - name: nginx
+                        image: nginx:1.27
+                        ports:
+                          - containerPort: 80
+                        volumeMounts:
+                          - name: config
+                            mountPath: /etc/nginx/conf.d
+                        readinessProbe:
+                          tcpSocket:
+                            port: 80
+                          initialDelaySeconds: 2
+                          periodSeconds: 5
+                    volumes:
+                      - name: config
+                        configMap:
+                          name: nginx-pp-test
+        - assert:
+            timeout: 60s
+            resource:
+              apiVersion: apps/v1
+              kind: Deployment
+              metadata:
+                name: nginx-pp-test
+                namespace: default
+              status:
+                readyReplicas: 1
+
+    # Step 6: Create LB service with ETP:Local + PP v2
+    - name: create-positive-service
+      description: Create LB service with ETP:Local and proxy protocol v2 annotation
+      cluster: tenant1
+      try:
+        - apply:
+            resource:
+              apiVersion: v1
+              kind: Service
+              metadata:
+                name: ($pos_service_name)
+                namespace: default
+                annotations:
+                  kubelb.k8c.io/proxy-protocol: "v2"
+              spec:
+                type: LoadBalancer
+                externalTrafficPolicy: Local
+                selector:
+                  app: nginx-pp-test
+                ports:
+                  - port: 9090
+                    targetPort: 80
+        - assert:
+            timeout: 60s
+            resource:
+              apiVersion: v1
+              kind: Service
+              metadata:
+                name: ($pos_service_name)
+                namespace: default
+              status:
+                loadBalancer:
+                  ingress:
+                    - {}
+
+    # Step 7: Verify PP annotation propagated to LB CRD
+    - name: verify-pp-annotation-on-crd
+      description: Verify proxy-protocol annotation on LB CRD in kubelb cluster
+      cluster: kubelb
+      try:
+        - script:
+            timeout: 60s
+            env:
+              - name: LB_NS
+                value: ($kubelb_namespace)
+              - name: SERVICE_NAME
+                value: ($pos_service_name)
+            content: |
+              set -e
+              for i in $(seq 1 15); do
+                LB=$(kubectl get loadbalancers.kubelb.k8c.io -n "$LB_NS" \
+                  -l kubelb.k8c.io/origin-name="$SERVICE_NAME" -o name 2>/dev/null | head -1)
+                if [ -n "$LB" ]; then
+                  PP=$(kubectl get $LB -n "$LB_NS" \
+                    -o jsonpath='{.metadata.annotations.kubelb\.k8c\.io/proxy-protocol}')
+                  if [ "$PP" = "v2" ]; then
+                    echo "SUCCESS: LB CRD has proxy-protocol=v2 annotation"
+                    exit 0
+                  fi
+                  echo "FAILED: Expected proxy-protocol=v2, got '$PP'"
+                  exit 1
+                fi
+                echo "Attempt $i: waiting for LB CRD..."
+                sleep 2
+              done
+              echo "FAILED: LB CRD not found"
+              exit 1
+            check:
+              ($error == null): true
+
+    # Step 8: Verify client IP is preserved via proxy protocol
+    - name: verify-client-ip-with-pp
+      description: With PP v2, proxy_protocol_ip should differ from tcp_source_ip (real client IP preserved)
+      try:
+        - script:
+            timeout: 120s
+            env:
+              - name: SERVICE_NAME
+                value: ($pos_service_name)
+            content: |
+              set -e
+              ROOT_DIR="$(git rev-parse --show-toplevel)"
+              KUBECONFIGS_DIR="${ROOT_DIR}/.e2e-kubeconfigs"
+
+              # Get LB IP from tenant service
+              IP=$(KUBECONFIG="${KUBECONFIGS_DIR}/tenant1.kubeconfig" \
+                kubectl get svc "$SERVICE_NAME" -n default \
+                -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+
+              # Get the client IP — Docker host's IP on the kind network.
+              EXPECTED_CLIENT_IP=$(docker exec kubelb-control-plane ip -4 route \
+                | awk '/default/ {print $3}')
+              if [ -z "$EXPECTED_CLIENT_IP" ]; then
+                EXPECTED_CLIENT_IP=$(docker network inspect kind \
+                  -f '{{range .IPAM.Config}}{{if .Gateway}}{{.Gateway}} {{end}}{{end}}' \
+                  | tr ' ' '\n' | grep -v ':' | head -1)
+              fi
+              if [ -z "$EXPECTED_CLIENT_IP" ]; then
+                echo "FAILED: Could not determine Kind network gateway IP"
+                exit 1
+              fi
+              echo "Expected client IP (Kind gateway): $EXPECTED_CLIENT_IP"
+
+              # Phase 1: Wait for service to become reachable (xDS propagation)
+              echo "Waiting for service to become reachable..."
+              RESPONSE=""
+              for i in $(seq 1 30); do
+                RESPONSE=$(curl -s --max-time 5 "http://${IP}:9090/" || true)
+                if [ -n "$RESPONSE" ]; then
+                  echo "Service reachable after $i attempts"
+                  break
+                fi
+                echo "Warmup attempt $i: no response yet..."
+                sleep 3
+              done
+              if [ -z "$RESPONSE" ]; then
+                echo "FAILED: Service never became reachable"
+                exit 1
+              fi
+
+              # Phase 2: Verify proxy protocol IP behavior
+              for i in $(seq 1 5); do
+                RESPONSE=$(curl -s --max-time 5 "http://${IP}:9090/" || true)
+                if [ -z "$RESPONSE" ]; then
+                  echo "IP check attempt $i: no response"
+                  sleep 2
+                  continue
+                fi
+
+                TCP_IP=$(echo "$RESPONSE" | grep '^tcp_source_ip=' | cut -d= -f2 | tr -d '[:space:]')
+                PP_IP=$(echo "$RESPONSE" | grep '^proxy_protocol_ip=' | cut -d= -f2 | tr -d '[:space:]')
+
+                if [ -z "$TCP_IP" ] || [ -z "$PP_IP" ]; then
+                  echo "IP check attempt $i: could not parse IPs from response: $RESPONSE"
+                  sleep 2
+                  continue
+                fi
+
+                if [ "$PP_IP" != "$EXPECTED_CLIENT_IP" ]; then
+                  echo "FAILED: proxy_protocol_ip ($PP_IP) != expected client IP ($EXPECTED_CLIENT_IP)"
+                  echo "  tcp_source_ip=$TCP_IP"
+                  exit 1
+                fi
+
+                if [ "$PP_IP" = "$TCP_IP" ]; then
+                  echo "FAILED: proxy_protocol_ip equals tcp_source_ip ($TCP_IP) — PP not carrying original client"
+                  exit 1
+                fi
+
+                echo "SUCCESS: Proxy Protocol preserved client IP"
+                echo "  tcp_source_ip=$TCP_IP (envoy node — SNAT#2)"
+                echo "  proxy_protocol_ip=$PP_IP (real client IP from PP header)"
+                echo "  expected_client_ip=$EXPECTED_CLIENT_IP"
+                exit 0
+              done
+
+              echo "FAILED: Could not verify proxy protocol IP behavior"
+              exit 1
+            check:
+              ($error == null): true
+
+    ##########################################################################
+    # Cleanup
+    ##########################################################################
+
+    # Step 9: Delete negative test service
+    - name: delete-negative-service
+      description: Delete negative test service
+      cluster: tenant1
+      try:
+        - delete:
+            ref:
+              apiVersion: v1
+              kind: Service
+              name: ($neg_service_name)
+              namespace: default
+
+    # Step 10: Delete positive test service
+    - name: delete-positive-service
+      description: Delete positive test service and backend
+      cluster: tenant1
+      try:
+        - delete:
+            ref:
+              apiVersion: v1
+              kind: Service
+              name: ($pos_service_name)
+              namespace: default
+        - delete:
+            ref:
+              apiVersion: apps/v1
+              kind: Deployment
+              name: nginx-pp-test
+              namespace: default
+        - delete:
+            ref:
+              apiVersion: v1
+              kind: ConfigMap
+              name: nginx-pp-test
+              namespace: default
+
+    # Step 11: Verify LB CRDs removed
+    - name: verify-negative-crd-removed
+      description: Verify negative test LB CRD removed
+      use:
+        template: ../../../../step-templates/layer4/verify-lb-cleanup.yaml
+        with:
+          bindings:
+            - name: service_name
+              value: ($neg_service_name)
+            - name: kubelb_namespace
+              value: ($kubelb_namespace)
+
+    - name: verify-positive-crd-removed
+      description: Verify positive test LB CRD removed
+      use:
+        template: ../../../../step-templates/layer4/verify-lb-cleanup.yaml
+        with:
+          bindings:
+            - name: service_name
+              value: ($pos_service_name)
+            - name: kubelb_namespace
+              value: ($kubelb_namespace)

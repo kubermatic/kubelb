@@ -37,7 +37,7 @@ spec:
     - name: name
       value: hr-headers
     - name: backend
-      value: echo-headers
+      value: echo-hr-headers
     - name: kubelb_namespace
       value: tenant-primary
   steps:
@@ -122,7 +122,7 @@ spec:
                   - "${HOST}"
                 rules:
                   - backendRefs:
-                      - name: echo-headers
+                      - name: echo-hr-headers
                         port: 80
                     matches:
                       - path:
@@ -182,8 +182,8 @@ spec:
             content: |
               kubectl delete httproute hr-headers -n default --ignore-not-found
               kubectl delete gateway headers-gw -n default --ignore-not-found
-              kubectl delete deployment echo-headers -n default --ignore-not-found
-              kubectl delete service echo-headers -n default --ignore-not-found
+              kubectl delete deployment echo-hr-headers -n default --ignore-not-found
+              kubectl delete service echo-hr-headers -n default --ignore-not-found
 
     - name: verify-cleanup
       description: Verify Route CRD removed

@@ -120,6 +120,14 @@ type LoadBalancerSpec struct {
 	// +optional
 	// +kubebuilder:default=ClusterIP
 	Type corev1.ServiceType `json:"type,omitempty" protobuf:"bytes,4,opt,name=type,casttype=ServiceType"`
+
+	// externalTrafficPolicy denotes if this Service desires to route external traffic to
+	// node-local or cluster-wide endpoints. "Local" preserves the client source IP and avoids
+	// a second hop for LoadBalancer and Nodeport type services, but risks potentially imbalanced
+	// traffic spreading. "Cluster" obscures the client source IP and may cause a second hop to
+	// another node, but should have good overall load-spreading.
+	// +optional
+	ExternalTrafficPolicy corev1.ServiceExternalTrafficPolicy `json:"externalTrafficPolicy,omitempty"`
 }
 
 // +kubebuilder:object:root=true

@@ -1,0 +1,297 @@
+# Copyright 2026 The KubeLB Authors.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# XFF Client IP Preservation Test (HTTPRoute)
+# Verifies:
+# - X-Forwarded-For first entry is the actual client IP (Kind Docker gateway)
+# - x-envoy-external-address matches the client IP
+apiVersion: chainsaw.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: xff-client-ip-httproute
+  labels:
+    all:
+    test: xff-client-ip-httproute
+    resource: httproute
+    layer: layer7
+    type: ip-preservation
+spec:
+  description: |
+    Test that X-Forwarded-For contains the real client IP through KubeLB HTTPRoute.
+    Deploys echo-server, creates Gateway + HTTPRoute, verifies the first XFF entry
+    is the actual client IP and not an internal node/proxy IP.
+  bindings:
+    - name: name
+      value: xff-httproute
+    - name: backend
+      value: echo-xff-hr
+    - name: gateway_name
+      value: xff-gw
+    - name: kubelb_namespace
+      value: tenant-primary
+  steps:
+    # Step 1: Deploy echo-server backend
+    - name: deploy-backend
+      description: Deploy echo-server that returns headers as JSON
+      cluster: tenant1
+      bindings:
+        - name: name
+          value: ($backend)
+      try:
+        - apply:
+            file: ../../../../testdata/deployments/echo-json-server.yaml
+        - apply:
+            file: ../../../../testdata/services/echo-json-clusterip.yaml
+        - assert:
+            timeout: 60s
+            resource:
+              apiVersion: apps/v1
+              kind: Deployment
+              metadata:
+                name: ($backend)
+                namespace: default
+              status:
+                readyReplicas: 1
+
+    # Step 2: Create Gateway
+    - name: create-gateway
+      description: Create Gateway for HTTPRoute
+      cluster: tenant1
+      try:
+        - apply:
+            resource:
+              apiVersion: gateway.networking.k8s.io/v1
+              kind: Gateway
+              metadata:
+                name: ($gateway_name)
+                namespace: default
+              spec:
+                gatewayClassName: kubelb
+                listeners:
+                  - name: http
+                    protocol: HTTP
+                    port: 80
+                    allowedRoutes:
+                      namespaces:
+                        from: All
+
+    # Step 3: Wait for Gateway address
+    - name: wait-gateway-ready
+      description: Wait for Gateway to have address
+      cluster: tenant1
+      try:
+        - script:
+            skipCommandOutput: true
+            timeout: 120s
+            content: |
+              set -e
+              GATEWAY_NAME="xff-gw"
+              GATEWAY_NS="default"
+              for i in $(seq 1 40); do
+                IP=$(kubectl get gateway "$GATEWAY_NAME" -n "$GATEWAY_NS" \
+                  -o jsonpath='{.status.addresses[0].value}' 2>/dev/null || true)
+                if [ -n "$IP" ]; then
+                  echo "Gateway has address: $IP"
+                  exit 0
+                fi
+                echo "Attempt $i: waiting for Gateway LB IP..."
+                sleep 3
+              done
+              echo "FAILED: Gateway has no address in status"
+              kubectl get gateway "$GATEWAY_NAME" -n "$GATEWAY_NS" -o yaml || true
+              exit 1
+            check:
+              ($error == null): true
+
+    # Step 4: Create HTTPRoute
+    - name: create-httproute
+      description: Create HTTPRoute referencing Gateway
+      cluster: tenant1
+      try:
+        - script:
+            skipCommandOutput: true
+            timeout: 30s
+            env:
+              - name: GATEWAY_NAME
+                value: ($gateway_name)
+              - name: ROUTE_NAME
+                value: ($name)
+              - name: BACKEND_NAME
+                value: ($backend)
+            content: |
+              set -e
+              IP=$(kubectl get gateway "$GATEWAY_NAME" -n default \
+                -o jsonpath='{.status.addresses[0].value}')
+              HOST="${ROUTE_NAME}.${IP}.nip.io"
+              cat <<EOF | kubectl apply -f -
+              apiVersion: gateway.networking.k8s.io/v1
+              kind: HTTPRoute
+              metadata:
+                name: ${ROUTE_NAME}
+                namespace: default
+              spec:
+                parentRefs:
+                  - name: ${GATEWAY_NAME}
+                hostnames:
+                  - "${HOST}"
+                rules:
+                  - backendRefs:
+                      - name: ${BACKEND_NAME}
+                        port: 80
+                    matches:
+                      - path:
+                          type: PathPrefix
+                          value: /
+              EOF
+              echo "Created HTTPRoute with host: $HOST"
+            check:
+              ($error == null): true
+
+    # Step 5: Verify Route CRD
+    - name: verify-route-crd
+      description: Verify Route CRD exists with correct labels
+      use:
+        template: ../../../../step-templates/common/verify-route-crd.yaml
+        with:
+          bindings:
+            - name: resource_name
+              value: ($name)
+            - name: expected_kind
+              value: HTTPRoute.gateway.networking.k8s.io
+            - name: kubelb_namespace
+              value: ($kubelb_namespace)
+
+    # Step 6: Verify XFF contains real client IP
+    - name: verify-xff-client-ip
+      description: Verify X-Forwarded-For first entry is the real client IP
+      try:
+        - script:
+            timeout: 120s
+            env:
+              - name: GATEWAY_NAME
+                value: ($gateway_name)
+              - name: ROUTE_NAME
+                value: ($name)
+            content: |
+              set -e
+              ROOT_DIR="$(git rev-parse --show-toplevel)"
+              KUBECONFIGS_DIR="${ROOT_DIR}/.e2e-kubeconfigs"
+
+              # Get Gateway IP and construct host
+              IP=$(KUBECONFIG="${KUBECONFIGS_DIR}/tenant1.kubeconfig" \
+                kubectl get gateway "$GATEWAY_NAME" -n default \
+                -o jsonpath='{.status.addresses[0].value}')
+              HOST="${ROUTE_NAME}.${IP}.nip.io"
+
+              # Get the client IP — Docker host's IP on the kind network.
+              # Use default gateway from inside a Kind node (reliable in DinD).
+              EXPECTED_CLIENT_IP=$(docker exec kubelb-control-plane ip -4 route \
+                | awk '/default/ {print $3}')
+              # Fallback to docker network inspect IPAM config
+              if [ -z "$EXPECTED_CLIENT_IP" ]; then
+                EXPECTED_CLIENT_IP=$(docker network inspect kind \
+                  -f '{{range .IPAM.Config}}{{if .Gateway}}{{.Gateway}} {{end}}{{end}}' \
+                  | tr ' ' '\n' | grep -v ':' | head -1)
+              fi
+              if [ -z "$EXPECTED_CLIENT_IP" ]; then
+                echo "FAILED: Could not determine Kind network gateway IP"
+                exit 1
+              fi
+              echo "Expected client IP (Kind gateway): $EXPECTED_CLIENT_IP"
+
+              for i in $(seq 1 30); do
+                RESPONSE=$(curl -s --max-time 5 -H "Host: ${HOST}" "http://${IP}/" || true)
+                if [ -z "$RESPONSE" ]; then
+                  echo "Attempt $i: no response"
+                  sleep 3
+                  continue
+                fi
+
+                # Parse XFF — first entry is the original client
+                XFF=$(echo "$RESPONSE" | jq -r '.request.headers["x-forwarded-for"] // empty' 2>/dev/null || true)
+                if [ -z "$XFF" ]; then
+                  echo "Attempt $i: x-forwarded-for missing"
+                  sleep 3
+                  continue
+                fi
+
+                CLIENT_IP=$(echo "$XFF" | cut -d',' -f1 | tr -d ' ')
+
+                if [ "$CLIENT_IP" != "$EXPECTED_CLIENT_IP" ]; then
+                  echo "FAILED: XFF first entry ($CLIENT_IP) != expected client IP ($EXPECTED_CLIENT_IP)"
+                  echo "  x-forwarded-for: $XFF"
+                  exit 1
+                fi
+
+                # Also check x-envoy-external-address if present
+                ENVOY_EXT=$(echo "$RESPONSE" | jq -r '.request.headers["x-envoy-external-address"] // empty' 2>/dev/null || true)
+                if [ -n "$ENVOY_EXT" ] && [ "$ENVOY_EXT" != "$EXPECTED_CLIENT_IP" ]; then
+                  echo "FAILED: x-envoy-external-address ($ENVOY_EXT) != expected client IP ($EXPECTED_CLIENT_IP)"
+                  exit 1
+                fi
+
+                echo "SUCCESS: Client IP preserved correctly"
+                echo "  x-forwarded-for: $XFF"
+                echo "  client_ip (first XFF entry): $CLIENT_IP"
+                echo "  expected_client_ip: $EXPECTED_CLIENT_IP"
+                if [ -n "$ENVOY_EXT" ]; then
+                  echo "  x-envoy-external-address: $ENVOY_EXT"
+                fi
+                exit 0
+              done
+
+              echo "FAILED: Could not get response"
+              exit 1
+            check:
+              ($error == null): true
+
+    # Step 7: Cleanup
+    - name: cleanup
+      description: Delete resources
+      cluster: tenant1
+      try:
+        - script:
+            skipCommandOutput: true
+            timeout: 60s
+            env:
+              - name: ROUTE_NAME
+                value: ($name)
+              - name: GATEWAY_NAME
+                value: ($gateway_name)
+            content: |
+              kubectl delete httproute "$ROUTE_NAME" -n default --wait=false
+              echo "HTTPRoute deletion initiated"
+            check:
+              ($error == null): true
+      finally:
+        - script:
+            skipCommandOutput: true
+            cluster: tenant1
+            timeout: 60s
+            content: |
+              kubectl delete httproute xff-httproute -n default --ignore-not-found
+              kubectl delete gateway xff-gw -n default --ignore-not-found
+              kubectl delete deployment echo-xff-hr -n default --ignore-not-found
+              kubectl delete service echo-xff-hr -n default --ignore-not-found
+
+    - name: verify-cleanup
+      description: Verify Route CRD removed
+      use:
+        template: ../../../../step-templates/common/verify-route-cleanup.yaml
+        with:
+          bindings:
+            - name: resource_name
+              value: ($name)
+            - name: kubelb_namespace
+              value: ($kubelb_namespace)

@@ -87,6 +87,39 @@ spec:
           SERVICE_NAME="${SERVICE_NAME:-$INGRESS_NAME}"
 ```
 
+## use.with.bindings — Pass Hardcoded Values
+
+**CRITICAL**: When calling a StepTemplate via `use.with.bindings`, always pass **hardcoded values**, NOT JMESPath references to test-level bindings. The binding expression may silently resolve to empty.
+
+```yaml
+# WRONG - ($gateway_name) may resolve to empty string
+- name: wait-gateway-ready
+  use:
+    template: ../../../../step-templates/gateway/verify-gateway-status.yaml
+    with:
+      bindings:
+        - name: gateway_name
+          value: ($gateway_name)  # SILENTLY EMPTY!
+
+# CORRECT - hardcoded value
+- name: wait-gateway-ready
+  use:
+    template: ../../../../step-templates/gateway/verify-gateway-status.yaml
+    with:
+      bindings:
+        - name: gateway_name
+          value: headers-gw
+
+# ALSO CORRECT - inline the script instead of using a template
+- name: wait-gateway-ready
+  cluster: tenant1
+  try:
+    - script:
+        content: |
+          GATEWAY_NAME="xff-gw"
+          # ...
+```
+
 ## JMESPath Limitations
 
 Chainsaw's JMESPath does NOT support:
