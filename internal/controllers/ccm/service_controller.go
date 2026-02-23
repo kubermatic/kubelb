@@ -285,17 +285,19 @@ func (r *KubeLBServiceReconciler) enqueueLoadBalancer() handler.TypedMapFunc[*ku
 	})
 }
 
-func (r *KubeLBServiceReconciler) getEndpoints(service *corev1.Service) ([]string, bool) {
-	var clusterEndpoints []string
+func (r *KubeLBServiceReconciler) getEndpoints(service *corev1.Service) ([]kubelbv1alpha1.EndpointAddress, bool) {
+	var clusterEndpoints []kubelbv1alpha1.EndpointAddress
 
 	// Use LB Endpoint if there is any non KubeLb load balancer implementation
 	if service.Spec.Type == corev1.ServiceTypeLoadBalancer && !r.CloudController {
 		for _, lbIngress := range service.Status.LoadBalancer.Ingress {
+			addr := kubelbv1alpha1.EndpointAddress{}
 			if lbIngress.IP != "" {
-				clusterEndpoints = append(clusterEndpoints, lbIngress.IP)
+				addr.IP = lbIngress.IP
 			} else {
-				clusterEndpoints = append(clusterEndpoints, lbIngress.Hostname)
+				addr.Hostname = lbIngress.Hostname
 			}
+			clusterEndpoints = append(clusterEndpoints, addr)
 		}
 	} else {
 		return nil, true
