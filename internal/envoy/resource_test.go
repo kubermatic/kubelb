@@ -21,9 +21,9 @@ import (
 
 	envoyEndpoint "github.com/envoyproxy/go-control-plane/envoy/config/endpoint/v3"
 
-	corev1 "k8s.io/api/core/v1"
-
 	kubelbv1alpha1 "k8c.io/kubelb/api/ce/kubelb.k8c.io/v1alpha1"
+
+	corev1 "k8s.io/api/core/v1"
 )
 
 func TestMakeCluster_ProxyProtocol(t *testing.T) {
