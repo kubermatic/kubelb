@@ -24,8 +24,8 @@ import (
 	"github.com/go-logr/logr"
 
 	kubelbv1alpha1 "k8c.io/kubelb/api/ce/kubelb.k8c.io/v1alpha1"
-	"k8c.io/kubelb/internal/metrics"
-	managermetrics "k8c.io/kubelb/internal/metrics/manager"
+	"k8c.io/kubelb/internal/metricsutil"
+	managermetrics "k8c.io/kubelb/internal/metricsutil/manager"
 
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/equality"
@@ -97,11 +97,11 @@ func (r *SyncSecretReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 
 	if err != nil {
 		log.Error(err, "reconciling failed")
-		managermetrics.SyncSecretReconcileTotal.WithLabelValues(req.Namespace, metrics.ResultError).Inc()
+		managermetrics.SyncSecretReconcileTotal.WithLabelValues(req.Namespace, metricsutil.ResultError).Inc()
 		return reconcile.Result{}, err
 	}
 
-	managermetrics.SyncSecretReconcileTotal.WithLabelValues(req.Namespace, metrics.ResultSuccess).Inc()
+	managermetrics.SyncSecretReconcileTotal.WithLabelValues(req.Namespace, metricsutil.ResultSuccess).Inc()
 	return reconcile.Result{}, nil
 }
 

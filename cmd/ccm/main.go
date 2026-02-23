@@ -33,7 +33,7 @@ import (
 	kubelbv1alpha1 "k8c.io/kubelb/api/ce/kubelb.k8c.io/v1alpha1"
 	"k8c.io/kubelb/internal/controllers/ccm"
 	ingressconversion "k8c.io/kubelb/internal/ingress-to-gateway"
-	ccmmetrics "k8c.io/kubelb/internal/metrics/ccm"
+	ccmmetrics "k8c.io/kubelb/internal/metricsutil/ccm"
 	"k8c.io/kubelb/pkg/conversion"
 
 	corev1 "k8s.io/api/core/v1"

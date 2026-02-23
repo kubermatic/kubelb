@@ -20,11 +20,11 @@ package manager
 import (
 	"github.com/prometheus/client_golang/prometheus"
 
-	"k8c.io/kubelb/internal/metrics"
+	"k8c.io/kubelb/internal/metricsutil"
 )
 
 // factory creates metrics and captures their descriptions for documentation.
-var factory = metrics.NewFactory(metrics.SubsystemManager, metrics.ComponentManager)
+var factory = metricsutil.NewFactory(metricsutil.SubsystemManager, metricsutil.ComponentManager)
 
 // Reconciliation counters - track the number and outcome of reconciliation attempts.
 var (
@@ -32,35 +32,35 @@ var (
 	LoadBalancerReconcileTotal = factory.NewCounterVec(
 		"loadbalancer_reconcile_total",
 		"Total number of LoadBalancer reconciliation attempts",
-		[]string{metrics.LabelNamespace, metrics.LabelResult},
+		[]string{metricsutil.LabelNamespace, metricsutil.LabelResult},
 	)
 
 	// RouteReconcileTotal counts the total number of Route reconciliation attempts.
 	RouteReconcileTotal = factory.NewCounterVec(
 		"route_reconcile_total",
 		"Total number of Route reconciliation attempts",
-		[]string{metrics.LabelNamespace, metrics.LabelRouteType, metrics.LabelResult},
+		[]string{metricsutil.LabelNamespace, metricsutil.LabelRouteType, metricsutil.LabelResult},
 	)
 
 	// TenantReconcileTotal counts the total number of Tenant reconciliation attempts.
 	TenantReconcileTotal = factory.NewCounterVec(
 		"tenant_reconcile_total",
 		"Total number of Tenant reconciliation attempts",
-		[]string{metrics.LabelResult},
+		[]string{metricsutil.LabelResult},
 	)
 
 	// EnvoyCPReconcileTotal counts the total number of EnvoyCP reconciliation attempts.
 	EnvoyCPReconcileTotal = factory.NewCounterVec(
 		"envoycp_reconcile_total",
 		"Total number of Envoy control plane reconciliation attempts",
-		[]string{metrics.LabelResult},
+		[]string{metricsutil.LabelResult},
 	)
 
 	// SyncSecretReconcileTotal counts the total number of SyncSecret reconciliation attempts.
 	SyncSecretReconcileTotal = factory.NewCounterVec(
 		"sync_secret_reconcile_total",
 		"Total number of SyncSecret reconciliation attempts",
-		[]string{metrics.LabelNamespace, metrics.LabelResult},
+		[]string{metricsutil.LabelNamespace, metricsutil.LabelResult},
 	)
 )
 
@@ -70,7 +70,7 @@ var (
 	LoadBalancerReconcileDuration = factory.NewHistogramVec(
 		"loadbalancer_reconcile_duration_seconds",
 		"Duration of LoadBalancer reconciliations in seconds",
-		[]string{metrics.LabelNamespace},
+		[]string{metricsutil.LabelNamespace},
 		nil,
 	)
 
@@ -78,7 +78,7 @@ var (
 	RouteReconcileDuration = factory.NewHistogramVec(
 		"route_reconcile_duration_seconds",
 		"Duration of Route reconciliations in seconds",
-		[]string{metrics.LabelNamespace},
+		[]string{metricsutil.LabelNamespace},
 		nil,
 	)
 
@@ -102,7 +102,7 @@ var (
 	SyncSecretReconcileDuration = factory.NewHistogramVec(
 		"sync_secret_reconcile_duration_seconds",
 		"Duration of SyncSecret reconciliations in seconds",
-		[]string{metrics.LabelNamespace},
+		[]string{metricsutil.LabelNamespace},
 		nil,
 	)
 )
@@ -113,14 +113,14 @@ var (
 	LoadBalancersTotal = factory.NewGaugeVec(
 		"loadbalancers",
 		"Current number of LoadBalancer resources",
-		[]string{metrics.LabelNamespace, metrics.LabelTenant, metrics.LabelTopology},
+		[]string{metricsutil.LabelNamespace, metricsutil.LabelTenant, metricsutil.LabelTopology},
 	)
 
 	// RoutesTotal tracks the total number of Route resources.
 	RoutesTotal = factory.NewGaugeVec(
 		"routes",
 		"Current number of Route resources",
-		[]string{metrics.LabelNamespace, metrics.LabelTenant, metrics.LabelRouteType},
+		[]string{metricsutil.LabelNamespace, metricsutil.LabelTenant, metricsutil.LabelRouteType},
 	)
 
 	// TenantsTotal tracks the total number of Tenant resources.
@@ -133,7 +133,7 @@ var (
 	EnvoyProxiesTotal = factory.NewGaugeVec(
 		"envoy_proxies",
 		"Current number of Envoy proxy deployments",
-		[]string{metrics.LabelNamespace, metrics.LabelTopology},
+		[]string{metricsutil.LabelNamespace, metricsutil.LabelTopology},
 	)
 )
 
@@ -216,10 +216,10 @@ func allCollectors() []prometheus.Collector {
 
 // Register registers all Manager metrics with the controller-runtime metrics registry.
 func Register() {
-	metrics.MustRegister(allCollectors()...)
+	metricsutil.MustRegister(allCollectors()...)
 }
 
 // ListMetrics returns descriptions of all Manager metrics for documentation generation.
-func ListMetrics() []metrics.MetricDescription {
+func ListMetrics() []metricsutil.MetricDescription {
 	return factory.Descriptions()
 }

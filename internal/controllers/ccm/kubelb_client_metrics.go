@@ -19,8 +19,8 @@ package ccm
 import (
 	"time"
 
-	"k8c.io/kubelb/internal/metrics"
-	ccmmetrics "k8c.io/kubelb/internal/metrics/ccm"
+	"k8c.io/kubelb/internal/metricsutil"
+	ccmmetrics "k8c.io/kubelb/internal/metricsutil/ccm"
 )
 
 // recordKubeLBOperation wraps a KubeLB cluster operation with metrics tracking.
@@ -33,12 +33,12 @@ func recordKubeLBOperation(operation string, fn func() error) error {
 	ccmmetrics.KubeLBClusterLatency.WithLabelValues(operation).Observe(duration)
 
 	if err != nil {
-		ccmmetrics.KubeLBClusterOperationsTotal.WithLabelValues(operation, metrics.ResultError).Inc()
+		ccmmetrics.KubeLBClusterOperationsTotal.WithLabelValues(operation, metricsutil.ResultError).Inc()
 		ccmmetrics.KubeLBClusterConnected.Set(0)
 		return err
 	}
 
-	ccmmetrics.KubeLBClusterOperationsTotal.WithLabelValues(operation, metrics.ResultSuccess).Inc()
+	ccmmetrics.KubeLBClusterOperationsTotal.WithLabelValues(operation, metricsutil.ResultSuccess).Inc()
 	ccmmetrics.KubeLBClusterConnected.Set(1)
 	return nil
 }

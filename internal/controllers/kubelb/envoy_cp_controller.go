@@ -29,9 +29,9 @@ import (
 	utils "k8c.io/kubelb/internal/controllers"
 	envoycp "k8c.io/kubelb/internal/envoy"
 	"k8c.io/kubelb/internal/kubelb"
-	"k8c.io/kubelb/internal/metrics"
-	envoycpmetrics "k8c.io/kubelb/internal/metrics/envoycp"
-	managermetrics "k8c.io/kubelb/internal/metrics/manager"
+	"k8c.io/kubelb/internal/metricsutil"
+	envoycpmetrics "k8c.io/kubelb/internal/metricsutil/envoycp"
+	managermetrics "k8c.io/kubelb/internal/metricsutil/manager"
 	portlookup "k8c.io/kubelb/internal/port-lookup"
 
 	appsv1 "k8s.io/api/apps/v1"
@@ -83,7 +83,7 @@ func (r *EnvoyCPReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 	// Retrieve updated config.
 	config, err := GetConfig(ctx, r.Client, r.Namespace)
 	if err != nil {
-		managermetrics.EnvoyCPReconcileTotal.WithLabelValues(metrics.ResultError).Inc()
+		managermetrics.EnvoyCPReconcileTotal.WithLabelValues(metricsutil.ResultError).Inc()
 		return ctrl.Result{}, fmt.Errorf("failed to retrieve config: %w", err)
 	}
 	r.Config = config
@@ -91,11 +91,11 @@ func (r *EnvoyCPReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 	r.EnvoyServer.UpdateConfig(config)
 
 	if err := r.reconcile(ctx, req); err != nil {
-		managermetrics.EnvoyCPReconcileTotal.WithLabelValues(metrics.ResultError).Inc()
+		managermetrics.EnvoyCPReconcileTotal.WithLabelValues(metricsutil.ResultError).Inc()
 		return ctrl.Result{}, err
 	}
 
-	managermetrics.EnvoyCPReconcileTotal.WithLabelValues(metrics.ResultSuccess).Inc()
+	managermetrics.EnvoyCPReconcileTotal.WithLabelValues(metricsutil.ResultSuccess).Inc()
 	return ctrl.Result{}, nil
 }
 

@@ -15,7 +15,7 @@ limitations under the License.
 */
 
 // Package metrics provides Prometheus metrics for KubeLB components.
-package metrics
+package metricsutil
 
 import (
 	"github.com/prometheus/client_golang/prometheus"

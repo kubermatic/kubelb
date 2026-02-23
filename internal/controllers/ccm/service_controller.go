@@ -26,8 +26,8 @@ import (
 
 	kubelbv1alpha1 "k8c.io/kubelb/api/ce/kubelb.k8c.io/v1alpha1"
 	"k8c.io/kubelb/internal/kubelb"
-	"k8c.io/kubelb/internal/metrics"
-	ccmmetrics "k8c.io/kubelb/internal/metrics/ccm"
+	"k8c.io/kubelb/internal/metricsutil"
+	ccmmetrics "k8c.io/kubelb/internal/metricsutil/ccm"
 
 	corev1 "k8s.io/api/core/v1"
 	kerrors "k8s.io/apimachinery/pkg/api/errors"
@@ -81,7 +81,7 @@ func (r *KubeLBServiceReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 	if err != nil {
 		if ctrlclient.IgnoreNotFound(err) != nil {
 			log.Error(err, "unable to fetch service")
-			ccmmetrics.ServiceReconcileTotal.WithLabelValues(req.Namespace, metrics.ResultError).Inc()
+			ccmmetrics.ServiceReconcileTotal.WithLabelValues(req.Namespace, metricsutil.ResultError).Inc()
 		}
 		log.V(3).Info("service not found")
 
@@ -98,7 +98,7 @@ func (r *KubeLBServiceReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 	}
 
 	if !r.shouldReconcile(service) {
-		ccmmetrics.ServiceReconcileTotal.WithLabelValues(req.Namespace, metrics.ResultSkipped).Inc()
+		ccmmetrics.ServiceReconcileTotal.WithLabelValues(req.Namespace, metricsutil.ResultSkipped).Inc()
 		return ctrl.Result{}, nil
 	}
 
@@ -113,7 +113,7 @@ func (r *KubeLBServiceReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 		controllerutil.RemoveFinalizer(&service, LBFinalizerName)
 
 		if err := r.Update(ctx, &service); err != nil {
-			ccmmetrics.ServiceReconcileTotal.WithLabelValues(req.Namespace, metrics.ResultError).Inc()
+			ccmmetrics.ServiceReconcileTotal.WithLabelValues(req.Namespace, metricsutil.ResultError).Inc()
 			return reconcile.Result{}, fmt.Errorf("failed to add finalizer: %w", err)
 		}
 	}
@@ -135,7 +135,7 @@ func (r *KubeLBServiceReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 
 	if err != nil {
 		if !kerrors.IsNotFound(err) {
-			ccmmetrics.ServiceReconcileTotal.WithLabelValues(req.Namespace, metrics.ResultError).Inc()
+			ccmmetrics.ServiceReconcileTotal.WithLabelValues(req.Namespace, metricsutil.ResultError).Inc()
 			return ctrl.Result{}, err
 		}
 		log.V(1).Info("creating LoadBalancer", "name", desiredLB.Name, "namespace", desiredLB.Namespace)
@@ -145,16 +145,16 @@ func (r *KubeLBServiceReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 		}); err != nil {
 			if kerrors.IsAlreadyExists(err) {
 				if getErr := kubelbClient.Get(ctx, ctrlclient.ObjectKeyFromObject(desiredLB), &actualLB); getErr != nil {
-					ccmmetrics.ServiceReconcileTotal.WithLabelValues(req.Namespace, metrics.ResultError).Inc()
+					ccmmetrics.ServiceReconcileTotal.WithLabelValues(req.Namespace, metricsutil.ResultError).Inc()
 					return ctrl.Result{}, fmt.Errorf("failed to get LoadBalancer after conflict: %w", getErr)
 				}
 			} else {
-				ccmmetrics.ServiceReconcileTotal.WithLabelValues(req.Namespace, metrics.ResultError).Inc()
+				ccmmetrics.ServiceReconcileTotal.WithLabelValues(req.Namespace, metricsutil.ResultError).Inc()
 				return ctrl.Result{}, err
 			}
 		} else {
 			r.updateManagedServicesGauge(ctx, req.Namespace)
-			ccmmetrics.ServiceReconcileTotal.WithLabelValues(req.Namespace, metrics.ResultSuccess).Inc()
+			ccmmetrics.ServiceReconcileTotal.WithLabelValues(req.Namespace, metricsutil.ResultSuccess).Inc()
 			return ctrl.Result{}, nil
 		}
 	}
@@ -178,7 +178,7 @@ func (r *KubeLBServiceReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 		})
 
 		if retErr != nil {
-			ccmmetrics.ServiceReconcileTotal.WithLabelValues(req.Namespace, metrics.ResultError).Inc()
+			ccmmetrics.ServiceReconcileTotal.WithLabelValues(req.Namespace, metricsutil.ResultError).Inc()
 			return ctrl.Result{}, fmt.Errorf("failed to update status %s: %w", service.Name, retErr)
 		}
 	}
@@ -186,7 +186,7 @@ func (r *KubeLBServiceReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 	if kubelb.LoadBalancerIsDesiredState(&actualLB, desiredLB) {
 		log.V(2).Info("LoadBalancer is in desired state")
 		r.updateManagedServicesGauge(ctx, req.Namespace)
-		ccmmetrics.ServiceReconcileTotal.WithLabelValues(req.Namespace, metrics.ResultSuccess).Inc()
+		ccmmetrics.ServiceReconcileTotal.WithLabelValues(req.Namespace, metricsutil.ResultSuccess).Inc()
 		return ctrl.Result{}, nil
 	}
 
@@ -202,12 +202,12 @@ func (r *KubeLBServiceReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 		return kubelbClient.Update(ctx, &actualLB)
 	})
 	if err != nil {
-		ccmmetrics.ServiceReconcileTotal.WithLabelValues(req.Namespace, metrics.ResultError).Inc()
+		ccmmetrics.ServiceReconcileTotal.WithLabelValues(req.Namespace, metricsutil.ResultError).Inc()
 		return ctrl.Result{}, err
 	}
 
 	r.updateManagedServicesGauge(ctx, req.Namespace)
-	ccmmetrics.ServiceReconcileTotal.WithLabelValues(req.Namespace, metrics.ResultSuccess).Inc()
+	ccmmetrics.ServiceReconcileTotal.WithLabelValues(req.Namespace, metricsutil.ResultSuccess).Inc()
 	return ctrl.Result{}, nil
 }
 

@@ -27,8 +27,8 @@ import (
 
 	kubelbv1alpha1 "k8c.io/kubelb/api/ce/kubelb.k8c.io/v1alpha1"
 	"k8c.io/kubelb/internal/kubelb"
-	"k8c.io/kubelb/internal/metrics"
-	ccmmetrics "k8c.io/kubelb/internal/metrics/ccm"
+	"k8c.io/kubelb/internal/metricsutil"
+	ccmmetrics "k8c.io/kubelb/internal/metricsutil/ccm"
 	ingressHelpers "k8c.io/kubelb/internal/resources/ingress"
 	serviceHelpers "k8c.io/kubelb/internal/resources/service"
 
@@ -92,7 +92,7 @@ func (r *IngressReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		if kerrors.IsNotFound(err) {
 			return reconcile.Result{}, nil
 		}
-		ccmmetrics.IngressReconcileTotal.WithLabelValues(req.Namespace, metrics.ResultError).Inc()
+		ccmmetrics.IngressReconcileTotal.WithLabelValues(req.Namespace, metricsutil.ResultError).Inc()
 		return reconcile.Result{}, err
 	}
 
@@ -106,7 +106,7 @@ func (r *IngressReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 	}
 
 	if !r.shouldReconcile(resource) {
-		ccmmetrics.IngressReconcileTotal.WithLabelValues(req.Namespace, metrics.ResultSkipped).Inc()
+		ccmmetrics.IngressReconcileTotal.WithLabelValues(req.Namespace, metricsutil.ResultSkipped).Inc()
 		return reconcile.Result{}, nil
 	}
 
@@ -118,7 +118,7 @@ func (r *IngressReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		}
 
 		if err := r.Update(ctx, resource); err != nil {
-			ccmmetrics.IngressReconcileTotal.WithLabelValues(req.Namespace, metrics.ResultError).Inc()
+			ccmmetrics.IngressReconcileTotal.WithLabelValues(req.Namespace, metricsutil.ResultError).Inc()
 			return reconcile.Result{}, fmt.Errorf("failed to add finalizer: %w", err)
 		}
 	}
@@ -126,7 +126,7 @@ func (r *IngressReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 	err := r.reconcile(ctx, log, resource)
 	if err != nil {
 		log.Error(err, "reconciling failed")
-		ccmmetrics.IngressReconcileTotal.WithLabelValues(req.Namespace, metrics.ResultError).Inc()
+		ccmmetrics.IngressReconcileTotal.WithLabelValues(req.Namespace, metricsutil.ResultError).Inc()
 		return reconcile.Result{}, err
 	}
 
@@ -142,7 +142,7 @@ func (r *IngressReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		ccmmetrics.ManagedIngressesTotal.WithLabelValues(req.Namespace).Set(float64(count))
 	}
 
-	ccmmetrics.IngressReconcileTotal.WithLabelValues(req.Namespace, metrics.ResultSuccess).Inc()
+	ccmmetrics.IngressReconcileTotal.WithLabelValues(req.Namespace, metricsutil.ResultSuccess).Inc()
 	return reconcile.Result{}, nil
 }
 

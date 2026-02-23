@@ -25,7 +25,7 @@ import (
 
 	kubelbv1alpha1 "k8c.io/kubelb/api/ce/kubelb.k8c.io/v1alpha1"
 	"k8c.io/kubelb/internal/kubelb"
-	managermetrics "k8c.io/kubelb/internal/metrics/manager"
+	managermetrics "k8c.io/kubelb/internal/metricsutil/manager"
 
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )

@@ -26,8 +26,8 @@ import (
 	"k8c.io/kubelb/internal/config"
 	"k8c.io/kubelb/internal/controllers/kubelb"
 	"k8c.io/kubelb/internal/envoy"
-	envoycpmetrics "k8c.io/kubelb/internal/metrics/envoycp"
-	managermetrics "k8c.io/kubelb/internal/metrics/manager"
+	envoycpmetrics "k8c.io/kubelb/internal/metricsutil/envoycp"
+	managermetrics "k8c.io/kubelb/internal/metricsutil/manager"
 	portlookup "k8c.io/kubelb/internal/port-lookup"
 
 	"k8s.io/apimachinery/pkg/runtime"

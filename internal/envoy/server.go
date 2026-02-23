@@ -36,7 +36,7 @@ import (
 	"google.golang.org/grpc"
 
 	"k8c.io/kubelb/api/ce/kubelb.k8c.io/v1alpha1"
-	envoycpmetrics "k8c.io/kubelb/internal/metrics/envoycp"
+	envoycpmetrics "k8c.io/kubelb/internal/metricsutil/envoycp"
 )
 
 const (

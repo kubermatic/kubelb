@@ -32,9 +32,9 @@ import (
 
 	kubelbv1alpha1 "k8c.io/kubelb/api/ce/kubelb.k8c.io/v1alpha1"
 	tenantresources "k8c.io/kubelb/internal/controllers/kubelb/resources/tenant"
-	"k8c.io/kubelb/internal/metrics"
-	managermetrics "k8c.io/kubelb/internal/metrics/manager"
-	"k8c.io/kubelb/internal/version"
+	"k8c.io/kubelb/internal/metricsutil"
+	managermetrics "k8c.io/kubelb/internal/metricsutil/manager"
+	"k8c.io/kubelb/internal/versioninfo"
 	"k8c.io/reconciler/pkg/reconciling"
 
 	corev1 "k8s.io/api/core/v1"
@@ -125,7 +125,7 @@ func (r *TenantReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 		if kerrors.IsNotFound(err) {
 			return reconcile.Result{}, nil
 		}
-		managermetrics.TenantReconcileTotal.WithLabelValues(metrics.ResultError).Inc()
+		managermetrics.TenantReconcileTotal.WithLabelValues(metricsutil.ResultError).Inc()
 		return reconcile.Result{}, err
 	}
 
@@ -145,7 +145,7 @@ func (r *TenantReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 			return ctrl.Result{Requeue: true}, nil
 		}
 		if err := r.Update(ctx, resource); err != nil {
-			managermetrics.TenantReconcileTotal.WithLabelValues(metrics.ResultError).Inc()
+			managermetrics.TenantReconcileTotal.WithLabelValues(metricsutil.ResultError).Inc()
 			return reconcile.Result{}, fmt.Errorf("failed to add finalizer: %w", err)
 		}
 	}
@@ -153,7 +153,7 @@ func (r *TenantReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 	err := r.reconcile(ctx, log, resource)
 	if err != nil {
 		log.Error(err, "reconciling failed")
-		managermetrics.TenantReconcileTotal.WithLabelValues(metrics.ResultError).Inc()
+		managermetrics.TenantReconcileTotal.WithLabelValues(metricsutil.ResultError).Inc()
 		return reconcile.Result{}, err
 	}
 
@@ -163,7 +163,7 @@ func (r *TenantReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 		managermetrics.TenantsTotal.Set(float64(len(tenantList.Items)))
 	}
 
-	managermetrics.TenantReconcileTotal.WithLabelValues(metrics.ResultSuccess).Inc()
+	managermetrics.TenantReconcileTotal.WithLabelValues(metricsutil.ResultSuccess).Inc()
 	return reconcile.Result{}, nil
 }
 
@@ -463,7 +463,7 @@ func (r *TenantReconciler) reconcileTenantState(ctx context.Context, tenant *kub
 	}
 
 	// Generate updated status
-	newStatus := r.buildTenantState(ctx, tenant, version.GetVersion(), tenantState.Status.Conditions)
+	newStatus := r.buildTenantState(ctx, tenant, versioninfo.GetVersion(), tenantState.Status.Conditions)
 
 	// Update status if required.
 	if r.shouldUpdateStatus(tenantState.Status, newStatus) {

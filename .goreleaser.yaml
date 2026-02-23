@@ -37,9 +37,9 @@ builds:
       - arm64
     ldflags:
       - -s -w
-      - -X 'k8c.io/kubelb/internal/version.GitVersion={{ .Version }}'
-      - -X 'k8c.io/kubelb/internal/version.GitCommit={{ .Commit }}'
-      - -X 'k8c.io/kubelb/internal/version.BuildDate={{ .Date }}'
+      - -X 'k8c.io/kubelb/internal/versioninfo.GitVersion={{ .Version }}'
+      - -X 'k8c.io/kubelb/internal/versioninfo.GitCommit={{ .Commit }}'
+      - -X 'k8c.io/kubelb/internal/versioninfo.BuildDate={{ .Date }}'
     mod_timestamp: "{{ .CommitTimestamp }}"
     flags:
       - -trimpath
@@ -55,9 +55,9 @@ builds:
       - arm64
     ldflags:
       - -s -w
-      - -X 'k8c.io/kubelb/internal/version.GitVersion={{ .Version }}'
-      - -X 'k8c.io/kubelb/internal/version.GitCommit={{ .Commit }}'
-      - -X 'k8c.io/kubelb/internal/version.BuildDate={{ .Date }}'
+      - -X 'k8c.io/kubelb/internal/versioninfo.GitVersion={{ .Version }}'
+      - -X 'k8c.io/kubelb/internal/versioninfo.GitCommit={{ .Commit }}'
+      - -X 'k8c.io/kubelb/internal/versioninfo.BuildDate={{ .Date }}'
     mod_timestamp: "{{ .CommitTimestamp }}"
     flags:
       - -trimpath

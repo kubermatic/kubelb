@@ -20,11 +20,11 @@ package ccm
 import (
 	"github.com/prometheus/client_golang/prometheus"
 
-	"k8c.io/kubelb/internal/metrics"
+	"k8c.io/kubelb/internal/metricsutil"
 )
 
 // factory creates metrics and captures their descriptions for documentation.
-var factory = metrics.NewFactory(metrics.SubsystemCCM, metrics.ComponentCCM)
+var factory = metricsutil.NewFactory(metricsutil.SubsystemCCM, metricsutil.ComponentCCM)
 
 // Reconciliation counters - track the number and outcome of reconciliation attempts.
 var (
@@ -32,49 +32,49 @@ var (
 	ServiceReconcileTotal = factory.NewCounterVec(
 		"service_reconcile_total",
 		"Total number of Service reconciliation attempts",
-		[]string{metrics.LabelNamespace, metrics.LabelResult},
+		[]string{metricsutil.LabelNamespace, metricsutil.LabelResult},
 	)
 
 	// IngressReconcileTotal counts the total number of Ingress reconciliation attempts.
 	IngressReconcileTotal = factory.NewCounterVec(
 		"ingress_reconcile_total",
 		"Total number of Ingress reconciliation attempts",
-		[]string{metrics.LabelNamespace, metrics.LabelResult},
+		[]string{metricsutil.LabelNamespace, metricsutil.LabelResult},
 	)
 
 	// GatewayReconcileTotal counts the total number of Gateway reconciliation attempts.
 	GatewayReconcileTotal = factory.NewCounterVec(
 		"gateway_reconcile_total",
 		"Total number of Gateway reconciliation attempts",
-		[]string{metrics.LabelNamespace, metrics.LabelResult},
+		[]string{metricsutil.LabelNamespace, metricsutil.LabelResult},
 	)
 
 	// HTTPRouteReconcileTotal counts the total number of HTTPRoute reconciliation attempts.
 	HTTPRouteReconcileTotal = factory.NewCounterVec(
 		"httproute_reconcile_total",
 		"Total number of HTTPRoute reconciliation attempts",
-		[]string{metrics.LabelNamespace, metrics.LabelResult},
+		[]string{metricsutil.LabelNamespace, metricsutil.LabelResult},
 	)
 
 	// GRPCRouteReconcileTotal counts the total number of GRPCRoute reconciliation attempts.
 	GRPCRouteReconcileTotal = factory.NewCounterVec(
 		"grpcroute_reconcile_total",
 		"Total number of GRPCRoute reconciliation attempts",
-		[]string{metrics.LabelNamespace, metrics.LabelResult},
+		[]string{metricsutil.LabelNamespace, metricsutil.LabelResult},
 	)
 
 	// NodeReconcileTotal counts the total number of Node reconciliation attempts.
 	NodeReconcileTotal = factory.NewCounterVec(
 		"node_reconcile_total",
 		"Total number of Node reconciliation attempts",
-		[]string{metrics.LabelResult},
+		[]string{metricsutil.LabelResult},
 	)
 
 	// SyncSecretReconcileTotal counts the total number of SyncSecret reconciliation attempts.
 	SyncSecretReconcileTotal = factory.NewCounterVec(
 		"sync_secret_reconcile_total",
 		"Total number of SyncSecret reconciliation attempts",
-		[]string{metrics.LabelNamespace, metrics.LabelResult},
+		[]string{metricsutil.LabelNamespace, metricsutil.LabelResult},
 	)
 )
 
@@ -84,7 +84,7 @@ var (
 	ServiceReconcileDuration = factory.NewHistogramVec(
 		"service_reconcile_duration_seconds",
 		"Duration of Service reconciliations in seconds",
-		[]string{metrics.LabelNamespace},
+		[]string{metricsutil.LabelNamespace},
 		nil,
 	)
 
@@ -92,7 +92,7 @@ var (
 	IngressReconcileDuration = factory.NewHistogramVec(
 		"ingress_reconcile_duration_seconds",
 		"Duration of Ingress reconciliations in seconds",
-		[]string{metrics.LabelNamespace},
+		[]string{metricsutil.LabelNamespace},
 		nil,
 	)
 
@@ -100,7 +100,7 @@ var (
 	GatewayReconcileDuration = factory.NewHistogramVec(
 		"gateway_reconcile_duration_seconds",
 		"Duration of Gateway reconciliations in seconds",
-		[]string{metrics.LabelNamespace},
+		[]string{metricsutil.LabelNamespace},
 		nil,
 	)
 
@@ -108,7 +108,7 @@ var (
 	HTTPRouteReconcileDuration = factory.NewHistogramVec(
 		"httproute_reconcile_duration_seconds",
 		"Duration of HTTPRoute reconciliations in seconds",
-		[]string{metrics.LabelNamespace},
+		[]string{metricsutil.LabelNamespace},
 		nil,
 	)
 
@@ -116,7 +116,7 @@ var (
 	GRPCRouteReconcileDuration = factory.NewHistogramVec(
 		"grpcroute_reconcile_duration_seconds",
 		"Duration of GRPCRoute reconciliations in seconds",
-		[]string{metrics.LabelNamespace},
+		[]string{metricsutil.LabelNamespace},
 		nil,
 	)
 
@@ -132,7 +132,7 @@ var (
 	SyncSecretReconcileDuration = factory.NewHistogramVec(
 		"sync_secret_reconcile_duration_seconds",
 		"Duration of SyncSecret reconciliations in seconds",
-		[]string{metrics.LabelNamespace},
+		[]string{metricsutil.LabelNamespace},
 		nil,
 	)
 )
@@ -143,35 +143,35 @@ var (
 	ManagedServicesTotal = factory.NewGaugeVec(
 		"managed_services",
 		"Current number of LoadBalancer services managed by CCM",
-		[]string{metrics.LabelNamespace},
+		[]string{metricsutil.LabelNamespace},
 	)
 
 	// ManagedIngressesTotal tracks the total number of Ingresses managed by CCM.
 	ManagedIngressesTotal = factory.NewGaugeVec(
 		"managed_ingresses",
 		"Current number of Ingresses managed by CCM",
-		[]string{metrics.LabelNamespace},
+		[]string{metricsutil.LabelNamespace},
 	)
 
 	// ManagedGatewaysTotal tracks the total number of Gateways managed by CCM.
 	ManagedGatewaysTotal = factory.NewGaugeVec(
 		"managed_gateways",
 		"Current number of Gateways managed by CCM",
-		[]string{metrics.LabelNamespace},
+		[]string{metricsutil.LabelNamespace},
 	)
 
 	// ManagedHTTPRoutesTotal tracks the total number of HTTPRoutes managed by CCM.
 	ManagedHTTPRoutesTotal = factory.NewGaugeVec(
 		"managed_httproutes",
 		"Current number of HTTPRoutes managed by CCM",
-		[]string{metrics.LabelNamespace},
+		[]string{metricsutil.LabelNamespace},
 	)
 
 	// ManagedGRPCRoutesTotal tracks the total number of GRPCRoutes managed by CCM.
 	ManagedGRPCRoutesTotal = factory.NewGaugeVec(
 		"managed_grpcroutes",
 		"Current number of GRPCRoutes managed by CCM",
-		[]string{metrics.LabelNamespace},
+		[]string{metricsutil.LabelNamespace},
 	)
 
 	// NodesTotal tracks the total number of nodes in the cluster.
@@ -194,14 +194,14 @@ var (
 	KubeLBClusterOperationsTotal = factory.NewCounterVec(
 		"kubelb_cluster_operations_total",
 		"Total number of operations performed on the KubeLB cluster",
-		[]string{metrics.LabelOperation, metrics.LabelResult},
+		[]string{metricsutil.LabelOperation, metricsutil.LabelResult},
 	)
 
 	// KubeLBClusterLatency tracks the latency of operations to the KubeLB cluster.
 	KubeLBClusterLatency = factory.NewHistogramVec(
 		"kubelb_cluster_latency_seconds",
 		"Latency of operations to the KubeLB cluster in seconds",
-		[]string{metrics.LabelOperation},
+		[]string{metricsutil.LabelOperation},
 		nil,
 	)
 )
@@ -241,10 +241,10 @@ func allCollectors() []prometheus.Collector {
 
 // Register registers all CCM metrics with the controller-runtime metrics registry.
 func Register() {
-	metrics.MustRegister(allCollectors()...)
+	metricsutil.MustRegister(allCollectors()...)
 }
 
 // ListMetrics returns descriptions of all CCM metrics for documentation generation.
-func ListMetrics() []metrics.MetricDescription {
+func ListMetrics() []metricsutil.MetricDescription {
 	return factory.Descriptions()
 }

@@ -32,9 +32,9 @@ GIT_VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo 
 GIT_COMMIT ?= $(shell git rev-parse HEAD 2>/dev/null || echo "unknown")
 BUILD_DATE ?= $(shell date -u +"%Y-%m-%dT%H:%M:%SZ")
 
-LDFLAGS := -X 'k8c.io/kubelb/internal/version.GitVersion=$(GIT_VERSION)' \
-	-X 'k8c.io/kubelb/internal/version.GitCommit=$(GIT_COMMIT)' \
-	-X 'k8c.io/kubelb/internal/version.BuildDate=$(BUILD_DATE)'
+LDFLAGS := -X 'k8c.io/kubelb/internal/versioninfo.GitVersion=$(GIT_VERSION)' \
+	-X 'k8c.io/kubelb/internal/versioninfo.GitCommit=$(GIT_COMMIT)' \
+	-X 'k8c.io/kubelb/internal/versioninfo.BuildDate=$(BUILD_DATE)'
 
 IMAGE_TAG = \
 		$(shell echo $$(git rev-parse HEAD 2>/dev/null && if [[ -n $$(git status --porcelain 2>/dev/null) ]]; then echo '-dirty'; fi)|tr -d ' ')
@@ -362,7 +362,7 @@ generate-crd-docs: crd-ref-docs ## Generate API reference documentation.
 .PHONY: generate-metricsdocs
 generate-metricsdocs: ## Generate metrics reference documentation.
 	mkdir -p $(shell pwd)/docs
-	go run ./internal/metrics/metricsdocs > docs/metrics.md
+	go run ./internal/metricsutil/metricsdocs > docs/metrics.md
 
 .PHONY: update-gateway-api-crds
 update-gateway-api-crds:

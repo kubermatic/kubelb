@@ -27,8 +27,8 @@ import (
 
 	kubelbv1alpha1 "k8c.io/kubelb/api/ce/kubelb.k8c.io/v1alpha1"
 	"k8c.io/kubelb/internal/kubelb"
-	"k8c.io/kubelb/internal/metrics"
-	ccmmetrics "k8c.io/kubelb/internal/metrics/ccm"
+	"k8c.io/kubelb/internal/metricsutil"
+	ccmmetrics "k8c.io/kubelb/internal/metricsutil/ccm"
 	gatewayhelper "k8c.io/kubelb/internal/resources/gatewayapi/gateway"
 	grpcrouteHelpers "k8c.io/kubelb/internal/resources/gatewayapi/grpcroute"
 	serviceHelpers "k8c.io/kubelb/internal/resources/service"
@@ -91,7 +91,7 @@ func (r *GRPCRouteReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		if kerrors.IsNotFound(err) {
 			return reconcile.Result{}, nil
 		}
-		ccmmetrics.GRPCRouteReconcileTotal.WithLabelValues(req.Namespace, metrics.ResultError).Inc()
+		ccmmetrics.GRPCRouteReconcileTotal.WithLabelValues(req.Namespace, metricsutil.ResultError).Inc()
 		return reconcile.Result{}, err
 	}
 
@@ -105,7 +105,7 @@ func (r *GRPCRouteReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	}
 
 	if !r.shouldReconcile(resource) {
-		ccmmetrics.GRPCRouteReconcileTotal.WithLabelValues(req.Namespace, metrics.ResultSkipped).Inc()
+		ccmmetrics.GRPCRouteReconcileTotal.WithLabelValues(req.Namespace, metricsutil.ResultSkipped).Inc()
 		return reconcile.Result{}, nil
 	}
 
@@ -113,7 +113,7 @@ func (r *GRPCRouteReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	if !controllerutil.ContainsFinalizer(resource, CleanupFinalizer) {
 		controllerutil.AddFinalizer(resource, CleanupFinalizer)
 		if err := r.Update(ctx, resource); err != nil {
-			ccmmetrics.GRPCRouteReconcileTotal.WithLabelValues(req.Namespace, metrics.ResultError).Inc()
+			ccmmetrics.GRPCRouteReconcileTotal.WithLabelValues(req.Namespace, metricsutil.ResultError).Inc()
 			return reconcile.Result{}, fmt.Errorf("failed to add finalizer: %w", err)
 		}
 	}
@@ -121,7 +121,7 @@ func (r *GRPCRouteReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	err := r.reconcile(ctx, log, resource)
 	if err != nil {
 		log.Error(err, "reconciling failed")
-		ccmmetrics.GRPCRouteReconcileTotal.WithLabelValues(req.Namespace, metrics.ResultError).Inc()
+		ccmmetrics.GRPCRouteReconcileTotal.WithLabelValues(req.Namespace, metricsutil.ResultError).Inc()
 		return reconcile.Result{}, err
 	}
 
@@ -137,7 +137,7 @@ func (r *GRPCRouteReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		ccmmetrics.ManagedGRPCRoutesTotal.WithLabelValues(req.Namespace).Set(float64(count))
 	}
 
-	ccmmetrics.GRPCRouteReconcileTotal.WithLabelValues(req.Namespace, metrics.ResultSuccess).Inc()
+	ccmmetrics.GRPCRouteReconcileTotal.WithLabelValues(req.Namespace, metricsutil.ResultSuccess).Inc()
 	return reconcile.Result{}, nil
 }
 

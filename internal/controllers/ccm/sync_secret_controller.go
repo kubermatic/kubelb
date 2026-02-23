@@ -25,8 +25,8 @@ import (
 
 	kubelbv1alpha1 "k8c.io/kubelb/api/ce/kubelb.k8c.io/v1alpha1"
 	"k8c.io/kubelb/internal/kubelb"
-	"k8c.io/kubelb/internal/metrics"
-	ccmmetrics "k8c.io/kubelb/internal/metrics/ccm"
+	"k8c.io/kubelb/internal/metricsutil"
+	ccmmetrics "k8c.io/kubelb/internal/metricsutil/ccm"
 
 	"k8s.io/apimachinery/pkg/api/equality"
 	kerrors "k8s.io/apimachinery/pkg/api/errors"
@@ -100,11 +100,11 @@ func (r *SyncSecretReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 
 	if err != nil {
 		log.Error(err, "reconciling failed")
-		ccmmetrics.SyncSecretReconcileTotal.WithLabelValues(req.Namespace, metrics.ResultError).Inc()
+		ccmmetrics.SyncSecretReconcileTotal.WithLabelValues(req.Namespace, metricsutil.ResultError).Inc()
 		return reconcile.Result{}, err
 	}
 
-	ccmmetrics.SyncSecretReconcileTotal.WithLabelValues(req.Namespace, metrics.ResultSuccess).Inc()
+	ccmmetrics.SyncSecretReconcileTotal.WithLabelValues(req.Namespace, metricsutil.ResultSuccess).Inc()
 	return reconcile.Result{}, nil
 }
 

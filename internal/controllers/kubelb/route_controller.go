@@ -27,8 +27,8 @@ import (
 
 	kubelbv1alpha1 "k8c.io/kubelb/api/ce/kubelb.k8c.io/v1alpha1"
 	"k8c.io/kubelb/internal/kubelb"
-	"k8c.io/kubelb/internal/metrics"
-	managermetrics "k8c.io/kubelb/internal/metrics/manager"
+	"k8c.io/kubelb/internal/metricsutil"
+	managermetrics "k8c.io/kubelb/internal/metricsutil/manager"
 	portlookup "k8c.io/kubelb/internal/port-lookup"
 	gatewayHelpers "k8c.io/kubelb/internal/resources/gatewayapi/gateway"
 	grpcrouteHelpers "k8c.io/kubelb/internal/resources/gatewayapi/grpcroute"
@@ -89,7 +89,7 @@ func (r *RouteReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 	startTime := time.Now()
 
 	// Determine route type for metrics - will be updated once we fetch the resource
-	routeType := metrics.RouteTypeIngress
+	routeType := metricsutil.RouteTypeIngress
 
 	// Track reconciliation duration
 	defer func() {
@@ -103,7 +103,7 @@ func (r *RouteReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 		if kerrors.IsNotFound(err) {
 			return reconcile.Result{}, nil
 		}
-		managermetrics.RouteReconcileTotal.WithLabelValues(req.Namespace, routeType, metrics.ResultError).Inc()
+		managermetrics.RouteReconcileTotal.WithLabelValues(req.Namespace, routeType, metricsutil.ResultError).Inc()
 		return reconcile.Result{}, err
 	}
 
@@ -114,7 +114,7 @@ func (r *RouteReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 	tenant, config, err := GetTenantAndConfig(ctx, r.Client, r.Namespace, RemoveTenantPrefix(resource.Namespace))
 	if err != nil {
 		log.Error(err, "unable to fetch Tenant and Config, cannot proceed")
-		managermetrics.RouteReconcileTotal.WithLabelValues(req.Namespace, routeType, metrics.ResultError).Inc()
+		managermetrics.RouteReconcileTotal.WithLabelValues(req.Namespace, routeType, metricsutil.ResultError).Inc()
 		return reconcile.Result{}, err
 	}
 
@@ -130,7 +130,7 @@ func (r *RouteReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 	shouldReconcile, disabled, err := r.shouldReconcile(ctx, resource, tenant, config)
 	if err != nil {
 		log.Error(err, "unable to determine if the Route should be reconciled")
-		managermetrics.RouteReconcileTotal.WithLabelValues(req.Namespace, routeType, metrics.ResultError).Inc()
+		managermetrics.RouteReconcileTotal.WithLabelValues(req.Namespace, routeType, metricsutil.ResultError).Inc()
 		return reconcile.Result{}, err
 	}
 
@@ -140,7 +140,7 @@ func (r *RouteReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 	}
 
 	if !shouldReconcile {
-		managermetrics.RouteReconcileTotal.WithLabelValues(req.Namespace, routeType, metrics.ResultSkipped).Inc()
+		managermetrics.RouteReconcileTotal.WithLabelValues(req.Namespace, routeType, metricsutil.ResultSkipped).Inc()
 		return reconcile.Result{}, nil
 	}
 
@@ -151,7 +151,7 @@ func (r *RouteReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 			return ctrl.Result{Requeue: true}, nil
 		}
 		if err := r.Update(ctx, resource); err != nil {
-			managermetrics.RouteReconcileTotal.WithLabelValues(req.Namespace, routeType, metrics.ResultError).Inc()
+			managermetrics.RouteReconcileTotal.WithLabelValues(req.Namespace, routeType, metricsutil.ResultError).Inc()
 			return reconcile.Result{}, fmt.Errorf("failed to add finalizer: %w", err)
 		}
 	}
@@ -159,7 +159,7 @@ func (r *RouteReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 	err = r.reconcile(ctx, log, resource, config, tenant)
 	if err != nil {
 		log.Error(err, "reconciling failed")
-		managermetrics.RouteReconcileTotal.WithLabelValues(req.Namespace, routeType, metrics.ResultError).Inc()
+		managermetrics.RouteReconcileTotal.WithLabelValues(req.Namespace, routeType, metricsutil.ResultError).Inc()
 		return reconcile.Result{}, err
 	}
 
@@ -176,7 +176,7 @@ func (r *RouteReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 		}
 	}
 
-	managermetrics.RouteReconcileTotal.WithLabelValues(req.Namespace, routeType, metrics.ResultSuccess).Inc()
+	managermetrics.RouteReconcileTotal.WithLabelValues(req.Namespace, routeType, metricsutil.ResultSuccess).Inc()
 	return reconcile.Result{}, nil
 }
 
@@ -740,19 +740,19 @@ func (r *RouteReconciler) enqueueRoutesForTenant() handler.MapFunc {
 // getRouteType determines the route type from the Route resource for metrics labeling.
 func getRouteType(route *kubelbv1alpha1.Route) string {
 	if route.Spec.Source.Kubernetes == nil {
-		return metrics.RouteTypeIngress
+		return metricsutil.RouteTypeIngress
 	}
 
 	// Get kind from the embedded unstructured Route resource
 	kind := route.Spec.Source.Kubernetes.Route.GetKind()
 	switch kind {
 	case "Gateway":
-		return metrics.RouteTypeGateway
+		return metricsutil.RouteTypeGateway
 	case "HTTPRoute":
-		return metrics.RouteTypeHTTPRoute
+		return metricsutil.RouteTypeHTTPRoute
 	case "GRPCRoute":
-		return metrics.RouteTypeGRPCRoute
+		return metricsutil.RouteTypeGRPCRoute
 	default:
-		return metrics.RouteTypeIngress
+		return metricsutil.RouteTypeIngress
 	}
 }

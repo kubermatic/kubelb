@@ -19,7 +19,7 @@ limitations under the License.
 //
 // Usage:
 //
-//	go run ./internal/metrics/metricsdocs > docs/metrics.md
+//	go run ./internal/metricsutil/metricsdocs > docs/metrics.md
 package main
 
 import (
@@ -30,10 +30,10 @@ import (
 	"strings"
 	"text/template"
 
-	"k8c.io/kubelb/internal/metrics"
-	"k8c.io/kubelb/internal/metrics/ccm"
-	"k8c.io/kubelb/internal/metrics/envoycp"
-	"k8c.io/kubelb/internal/metrics/manager"
+	"k8c.io/kubelb/internal/metricsutil"
+	"k8c.io/kubelb/internal/metricsutil/ccm"
+	"k8c.io/kubelb/internal/metricsutil/envoycp"
+	"k8c.io/kubelb/internal/metricsutil/manager"
 )
 
 const docTemplate = `# KubeLB Metrics Reference
@@ -104,9 +104,9 @@ Common labels used across KubeLB metrics:
 `
 
 type templateData struct {
-	Manager []metrics.MetricDescription
-	CCM     []metrics.MetricDescription
-	EnvoyCP []metrics.MetricDescription
+	Manager []metricsutil.MetricDescription
+	CCM     []metricsutil.MetricDescription
+	EnvoyCP []metricsutil.MetricDescription
 }
 
 func main() {

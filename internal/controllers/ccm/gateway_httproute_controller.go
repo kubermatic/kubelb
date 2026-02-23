@@ -27,8 +27,8 @@ import (
 
 	kubelbv1alpha1 "k8c.io/kubelb/api/ce/kubelb.k8c.io/v1alpha1"
 	"k8c.io/kubelb/internal/kubelb"
-	"k8c.io/kubelb/internal/metrics"
-	ccmmetrics "k8c.io/kubelb/internal/metrics/ccm"
+	"k8c.io/kubelb/internal/metricsutil"
+	ccmmetrics "k8c.io/kubelb/internal/metricsutil/ccm"
 	gatewayhelper "k8c.io/kubelb/internal/resources/gatewayapi/gateway"
 	httprouteHelpers "k8c.io/kubelb/internal/resources/gatewayapi/httproute"
 	serviceHelpers "k8c.io/kubelb/internal/resources/service"
@@ -91,7 +91,7 @@ func (r *HTTPRouteReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		if kerrors.IsNotFound(err) {
 			return reconcile.Result{}, nil
 		}
-		ccmmetrics.HTTPRouteReconcileTotal.WithLabelValues(req.Namespace, metrics.ResultError).Inc()
+		ccmmetrics.HTTPRouteReconcileTotal.WithLabelValues(req.Namespace, metricsutil.ResultError).Inc()
 		return reconcile.Result{}, err
 	}
 
@@ -105,7 +105,7 @@ func (r *HTTPRouteReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	}
 
 	if !r.shouldReconcile(resource) {
-		ccmmetrics.HTTPRouteReconcileTotal.WithLabelValues(req.Namespace, metrics.ResultSkipped).Inc()
+		ccmmetrics.HTTPRouteReconcileTotal.WithLabelValues(req.Namespace, metricsutil.ResultSkipped).Inc()
 		return reconcile.Result{}, nil
 	}
 
@@ -117,7 +117,7 @@ func (r *HTTPRouteReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		}
 
 		if err := r.Update(ctx, resource); err != nil {
-			ccmmetrics.HTTPRouteReconcileTotal.WithLabelValues(req.Namespace, metrics.ResultError).Inc()
+			ccmmetrics.HTTPRouteReconcileTotal.WithLabelValues(req.Namespace, metricsutil.ResultError).Inc()
 			return reconcile.Result{}, fmt.Errorf("failed to add finalizer: %w", err)
 		}
 	}
@@ -125,7 +125,7 @@ func (r *HTTPRouteReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	err := r.reconcile(ctx, log, resource)
 	if err != nil {
 		log.Error(err, "reconciling failed")
-		ccmmetrics.HTTPRouteReconcileTotal.WithLabelValues(req.Namespace, metrics.ResultError).Inc()
+		ccmmetrics.HTTPRouteReconcileTotal.WithLabelValues(req.Namespace, metricsutil.ResultError).Inc()
 		return reconcile.Result{}, err
 	}
 
@@ -141,7 +141,7 @@ func (r *HTTPRouteReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		ccmmetrics.ManagedHTTPRoutesTotal.WithLabelValues(req.Namespace).Set(float64(count))
 	}
 
-	ccmmetrics.HTTPRouteReconcileTotal.WithLabelValues(req.Namespace, metrics.ResultSuccess).Inc()
+	ccmmetrics.HTTPRouteReconcileTotal.WithLabelValues(req.Namespace, metricsutil.ResultSuccess).Inc()
 	return reconcile.Result{}, nil
 }
 

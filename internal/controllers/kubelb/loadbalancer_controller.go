@@ -28,8 +28,8 @@ import (
 	kubelbv1alpha1 "k8c.io/kubelb/api/ce/kubelb.k8c.io/v1alpha1"
 	utils "k8c.io/kubelb/internal/controllers"
 	"k8c.io/kubelb/internal/kubelb"
-	"k8c.io/kubelb/internal/metrics"
-	managermetrics "k8c.io/kubelb/internal/metrics/manager"
+	"k8c.io/kubelb/internal/metricsutil"
+	managermetrics "k8c.io/kubelb/internal/metricsutil/manager"
 	portlookup "k8c.io/kubelb/internal/port-lookup"
 	"k8c.io/kubelb/internal/resources/gatewayapi/httproute"
 	ingress "k8c.io/kubelb/internal/resources/ingress"
@@ -102,7 +102,7 @@ func (r *LoadBalancerReconciler) Reconcile(ctx context.Context, req ctrl.Request
 	if err != nil {
 		if ctrlruntimeclient.IgnoreNotFound(err) != nil {
 			log.Error(err, "unable to fetch LoadBalancer")
-			managermetrics.LoadBalancerReconcileTotal.WithLabelValues(req.Namespace, metrics.ResultError).Inc()
+			managermetrics.LoadBalancerReconcileTotal.WithLabelValues(req.Namespace, metricsutil.ResultError).Inc()
 		}
 		log.V(3).Info("LoadBalancer not found")
 		return ctrl.Result{}, nil
@@ -113,7 +113,7 @@ func (r *LoadBalancerReconciler) Reconcile(ctx context.Context, req ctrl.Request
 	// Todo: check validation webhook - ports must equal endpoint ports as well
 	if len(loadBalancer.Spec.Endpoints) == 0 {
 		log.Error(fmt.Errorf("invalid Spec"), "No Endpoints set")
-		managermetrics.LoadBalancerReconcileTotal.WithLabelValues(req.Namespace, metrics.ResultError).Inc()
+		managermetrics.LoadBalancerReconcileTotal.WithLabelValues(req.Namespace, metricsutil.ResultError).Inc()
 		return ctrl.Result{}, nil
 	}
 
@@ -122,7 +122,7 @@ func (r *LoadBalancerReconciler) Reconcile(ctx context.Context, req ctrl.Request
 	err = r.List(ctx, &loadBalancers, ctrlruntimeclient.InNamespace(req.Namespace))
 	if err != nil {
 		log.Error(err, "unable to fetch LoadBalancer list")
-		managermetrics.LoadBalancerReconcileTotal.WithLabelValues(req.Namespace, metrics.ResultError).Inc()
+		managermetrics.LoadBalancerReconcileTotal.WithLabelValues(req.Namespace, metricsutil.ResultError).Inc()
 		return ctrl.Result{}, err
 	}
 	resourceNamespace := req.Namespace
@@ -141,14 +141,14 @@ func (r *LoadBalancerReconciler) Reconcile(ctx context.Context, req ctrl.Request
 	tenant, config, err := GetTenantAndConfig(ctx, r.Client, r.Namespace, RemoveTenantPrefix(loadBalancer.Namespace))
 	if err != nil {
 		log.Error(err, "unable to fetch Tenant and Config, cannot proceed")
-		managermetrics.LoadBalancerReconcileTotal.WithLabelValues(req.Namespace, metrics.ResultError).Inc()
+		managermetrics.LoadBalancerReconcileTotal.WithLabelValues(req.Namespace, metricsutil.ResultError).Inc()
 		return reconcile.Result{}, err
 	}
 
 	shouldReconcile, disabled, err := r.shouldReconcile(ctx, &loadBalancer, tenant, config)
 	if err != nil {
 		log.Error(err, "unable to determine if the LoadBalancer should be reconciled")
-		managermetrics.LoadBalancerReconcileTotal.WithLabelValues(req.Namespace, metrics.ResultError).Inc()
+		managermetrics.LoadBalancerReconcileTotal.WithLabelValues(req.Namespace, metricsutil.ResultError).Inc()
 		return reconcile.Result{}, err
 	}
 
@@ -159,7 +159,7 @@ func (r *LoadBalancerReconciler) Reconcile(ctx context.Context, req ctrl.Request
 	}
 
 	if !shouldReconcile {
-		managermetrics.LoadBalancerReconcileTotal.WithLabelValues(req.Namespace, metrics.ResultSkipped).Inc()
+		managermetrics.LoadBalancerReconcileTotal.WithLabelValues(req.Namespace, metricsutil.ResultSkipped).Inc()
 		return reconcile.Result{}, nil
 	}
 
@@ -188,7 +188,7 @@ func (r *LoadBalancerReconciler) Reconcile(ctx context.Context, req ctrl.Request
 	}
 
 	if err := r.PortAllocator.AllocatePortsForLoadBalancers(loadBalancers); err != nil {
-		managermetrics.LoadBalancerReconcileTotal.WithLabelValues(req.Namespace, metrics.ResultError).Inc()
+		managermetrics.LoadBalancerReconcileTotal.WithLabelValues(req.Namespace, metricsutil.ResultError).Inc()
 		return ctrl.Result{}, err
 	}
 
@@ -199,7 +199,7 @@ func (r *LoadBalancerReconciler) Reconcile(ctx context.Context, req ctrl.Request
 	err = r.reconcileService(ctx, &loadBalancer, svcName, appName, resourceNamespace, r.PortAllocator, className, annotations)
 	if err != nil {
 		log.Error(err, "Unable to reconcile service")
-		managermetrics.LoadBalancerReconcileTotal.WithLabelValues(req.Namespace, metrics.ResultError).Inc()
+		managermetrics.LoadBalancerReconcileTotal.WithLabelValues(req.Namespace, metricsutil.ResultError).Inc()
 		return ctrl.Result{}, err
 	}
 
@@ -212,7 +212,7 @@ func (r *LoadBalancerReconciler) Reconcile(ctx context.Context, req ctrl.Request
 	}, existingService)
 	if err != nil {
 		log.Error(err, "Unable to get service for status update")
-		managermetrics.LoadBalancerReconcileTotal.WithLabelValues(req.Namespace, metrics.ResultError).Inc()
+		managermetrics.LoadBalancerReconcileTotal.WithLabelValues(req.Namespace, metricsutil.ResultError).Inc()
 		return ctrl.Result{}, err
 	}
 
@@ -223,7 +223,7 @@ func (r *LoadBalancerReconciler) Reconcile(ctx context.Context, req ctrl.Request
 		hostname, err = r.configureHostname(ctx, &loadBalancer, svcName, tenant, config, annotations)
 		if err != nil {
 			log.Error(err, "Unable to configure hostname")
-			managermetrics.LoadBalancerReconcileTotal.WithLabelValues(req.Namespace, metrics.ResultError).Inc()
+			managermetrics.LoadBalancerReconcileTotal.WithLabelValues(req.Namespace, metricsutil.ResultError).Inc()
 			return ctrl.Result{}, err
 		}
 	}
@@ -231,14 +231,14 @@ func (r *LoadBalancerReconciler) Reconcile(ctx context.Context, req ctrl.Request
 	// Update LoadBalancer status (including hostname if configured)
 	if err := r.updateLoadBalancerStatus(ctx, &loadBalancer, existingService, hostname); err != nil {
 		log.Error(err, "Unable to update LoadBalancer status")
-		managermetrics.LoadBalancerReconcileTotal.WithLabelValues(req.Namespace, metrics.ResultError).Inc()
+		managermetrics.LoadBalancerReconcileTotal.WithLabelValues(req.Namespace, metricsutil.ResultError).Inc()
 		return ctrl.Result{}, err
 	}
 
 	// Update LB count gauge per namespace
 	managermetrics.LoadBalancersTotal.WithLabelValues(req.Namespace, RemoveTenantPrefix(req.Namespace), "shared").Set(float64(len(loadBalancers.Items)))
 
-	managermetrics.LoadBalancerReconcileTotal.WithLabelValues(req.Namespace, metrics.ResultSuccess).Inc()
+	managermetrics.LoadBalancerReconcileTotal.WithLabelValues(req.Namespace, metricsutil.ResultSuccess).Inc()
 	return ctrl.Result{}, nil
 }
 

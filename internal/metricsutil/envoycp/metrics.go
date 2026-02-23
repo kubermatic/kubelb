@@ -20,11 +20,11 @@ package envoycp
 import (
 	"github.com/prometheus/client_golang/prometheus"
 
-	"k8c.io/kubelb/internal/metrics"
+	"k8c.io/kubelb/internal/metricsutil"
 )
 
 // factory creates metrics and captures their descriptions for documentation.
-var factory = metrics.NewFactory(metrics.SubsystemEnvoyCP, metrics.ComponentEnvoyCP)
+var factory = metricsutil.NewFactory(metricsutil.SubsystemEnvoyCP, metricsutil.ComponentEnvoyCP)
 
 // Snapshot metrics - track Envoy xDS snapshot state.
 var (
@@ -141,21 +141,21 @@ var (
 	EnvoyProxiesTotal = factory.NewGaugeVec(
 		"envoy_proxies",
 		"Current number of Envoy proxy deployments",
-		[]string{metrics.LabelNamespace, metrics.LabelTopology},
+		[]string{metricsutil.LabelNamespace, metricsutil.LabelTopology},
 	)
 
 	// EnvoyProxyCreateTotal counts the total number of Envoy proxy creations.
 	EnvoyProxyCreateTotal = factory.NewCounterVec(
 		"envoy_proxy_create_total",
 		"Total number of Envoy proxy deployments created",
-		[]string{metrics.LabelNamespace},
+		[]string{metricsutil.LabelNamespace},
 	)
 
 	// EnvoyProxyDeleteTotal counts the total number of Envoy proxy deletions.
 	EnvoyProxyDeleteTotal = factory.NewCounterVec(
 		"envoy_proxy_delete_total",
 		"Total number of Envoy proxy deployments deleted",
-		[]string{metrics.LabelNamespace},
+		[]string{metricsutil.LabelNamespace},
 	)
 )
 
@@ -189,10 +189,10 @@ func allCollectors() []prometheus.Collector {
 
 // Register registers all EnvoyCP metrics with the controller-runtime metrics registry.
 func Register() {
-	metrics.MustRegister(allCollectors()...)
+	metricsutil.MustRegister(allCollectors()...)
 }
 
 // ListMetrics returns descriptions of all EnvoyCP metrics for documentation generation.
-func ListMetrics() []metrics.MetricDescription {
+func ListMetrics() []metricsutil.MetricDescription {
 	return factory.Descriptions()
 }

@@ -88,10 +88,10 @@ fi
 # Use fixed BUILD_DATE to ensure reproducible binaries for hash comparison
 echodate "Building binaries..."
 GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -v -tags e2e \
-  -ldflags "-X 'k8c.io/kubelb/internal/version.BuildDate=e2e'" \
+  -ldflags "-X 'k8c.io/kubelb/internal/versioninfo.BuildDate=e2e'" \
   -o "${BIN_DIR}/kubelb" "${ROOT_DIR}/cmd/kubelb/main.go" &
 GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -v -tags e2e \
-  -ldflags "-X 'k8c.io/kubelb/internal/version.BuildDate=e2e'" \
+  -ldflags "-X 'k8c.io/kubelb/internal/versioninfo.BuildDate=e2e'" \
   -o "${BIN_DIR}/ccm" "${ROOT_DIR}/cmd/ccm/main.go" &
 wait
 
