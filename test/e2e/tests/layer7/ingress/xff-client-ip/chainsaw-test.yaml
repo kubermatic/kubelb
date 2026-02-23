@@ -134,10 +134,16 @@ spec:
                 kubectl get ingress "$INGRESS_NAME" -n default \
                 -o jsonpath='{.spec.rules[0].host}')
 
-              # Get the actual client IP — the Kind Docker network gateway
-              EXPECTED_CLIENT_IP=$(docker network inspect kind \
-                -f '{{range .IPAM.Config}}{{if .Gateway}}{{.Gateway}} {{end}}{{end}}' \
-                | tr ' ' '\n' | grep -v ':' | head -1)
+              # Get the client IP — Docker host's IP on the kind network.
+              # Use default gateway from inside a Kind node (reliable in DinD).
+              EXPECTED_CLIENT_IP=$(docker exec kubelb-control-plane ip -4 route \
+                | awk '/default/ {print $3}')
+              # Fallback to docker network inspect IPAM config
+              if [ -z "$EXPECTED_CLIENT_IP" ]; then
+                EXPECTED_CLIENT_IP=$(docker network inspect kind \
+                  -f '{{range .IPAM.Config}}{{if .Gateway}}{{.Gateway}} {{end}}{{end}}' \
+                  | tr ' ' '\n' | grep -v ':' | head -1)
+              fi
               if [ -z "$EXPECTED_CLIENT_IP" ]; then
                 echo "FAILED: Could not determine Kind network gateway IP"
                 exit 1

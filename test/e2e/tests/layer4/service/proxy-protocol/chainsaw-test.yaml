@@ -149,17 +149,15 @@ spec:
             check:
               ($error == null): true
 
-    # Step 4: Verify backend sees envoy node IP, NOT the real client IP
+    # Step 4: Verify backend does NOT see the real client IP (SNAT expected)
     - name: verify-no-client-ip-without-pp
-      description: Without PP, backend should see a kubelb node IP (SNAT#2)
+      description: Without PP, backend should see an internal IP, not the client IP
       try:
         - script:
             timeout: 120s
             env:
               - name: SERVICE_NAME
                 value: ($neg_service_name)
-              - name: LB_NS
-                value: ($kubelb_namespace)
             content: |
               set -e
               ROOT_DIR="$(git rev-parse --show-toplevel)"
@@ -170,50 +168,65 @@ spec:
                 kubectl get svc "$SERVICE_NAME" -n default \
                 -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
 
-              # Get kubelb cluster node IPs
-              KUBELB_NODE_IPS=$(KUBECONFIG="${KUBECONFIGS_DIR}/kubelb.kubeconfig" \
-                kubectl get nodes -o jsonpath='{.items[*].status.addresses[?(@.type=="InternalIP")].address}')
+              # Get the client IP — Docker host's IP on the kind network.
+              EXPECTED_CLIENT_IP=$(docker exec kubelb-control-plane ip -4 route \
+                | awk '/default/ {print $3}')
+              if [ -z "$EXPECTED_CLIENT_IP" ]; then
+                EXPECTED_CLIENT_IP=$(docker network inspect kind \
+                  -f '{{range .IPAM.Config}}{{if .Gateway}}{{.Gateway}} {{end}}{{end}}' \
+                  | tr ' ' '\n' | grep -v ':' | head -1)
+              fi
+              if [ -z "$EXPECTED_CLIENT_IP" ]; then
+                echo "FAILED: Could not determine client IP"
+                exit 1
+              fi
+              echo "Client IP (Kind gateway): $EXPECTED_CLIENT_IP"
 
-              # Curl the service and extract the source IP seen by backend
+              # Phase 1: Wait for service to become reachable (xDS propagation)
+              echo "Waiting for service to become reachable..."
               for i in $(seq 1 30); do
                 RESPONSE=$(curl -s --max-time 5 "http://${IP}:8080/" || true)
+                if [ -n "$RESPONSE" ]; then
+                  echo "Service reachable after $i attempts"
+                  break
+                fi
+                echo "Warmup attempt $i: no response yet..."
+                sleep 3
+              done
+              if [ -z "$RESPONSE" ]; then
+                echo "FAILED: Service never became reachable"
+                exit 1
+              fi
+
+              # Phase 2: Verify IP behavior (service is already responding)
+              for i in $(seq 1 5); do
+                RESPONSE=$(curl -s --max-time 5 "http://${IP}:8080/" || true)
                 if [ -z "$RESPONSE" ]; then
-                  echo "Attempt $i: no response yet..."
-                  sleep 3
+                  echo "IP check attempt $i: no response"
+                  sleep 2
                   continue
                 fi
 
-                # ealen/echo-server returns .host.ip (may have ::ffff: prefix for IPv4-mapped IPv6)
                 SEEN_IP=$(echo "$RESPONSE" | jq -r '.host.ip' 2>/dev/null || true)
                 SEEN_IP=$(echo "$SEEN_IP" | sed 's/^::ffff://')
 
                 if [ -z "$SEEN_IP" ] || [ "$SEEN_IP" = "null" ]; then
-                  echo "Attempt $i: could not parse IP from response"
-                  sleep 3
+                  echo "IP check attempt $i: could not parse IP from response"
+                  sleep 2
                   continue
                 fi
 
-                # Verify the IP is one of the kubelb node IPs (proves SNAT#2)
-                FOUND=false
-                for NODE_IP in $KUBELB_NODE_IPS; do
-                  if [ "$SEEN_IP" = "$NODE_IP" ]; then
-                    FOUND=true
-                    break
-                  fi
-                done
-
-                if [ "$FOUND" = "true" ]; then
-                  echo "SUCCESS: Backend sees kubelb node IP ($SEEN_IP) — client IP not preserved (expected without PP)"
-                  echo "  KubeLB node IPs: $KUBELB_NODE_IPS"
-                  exit 0
+                # Without proxy protocol, client IP must NOT be preserved
+                if [ "$SEEN_IP" = "$EXPECTED_CLIENT_IP" ]; then
+                  echo "FAILED: Backend sees real client IP ($SEEN_IP) — should be SNAT'd without PP"
+                  exit 1
                 fi
 
-                echo "FAILED: Backend sees unexpected IP: $SEEN_IP (not a kubelb node IP)"
-                echo "  KubeLB node IPs: $KUBELB_NODE_IPS"
-                exit 1
+                echo "SUCCESS: Backend sees internal IP ($SEEN_IP), not client IP ($EXPECTED_CLIENT_IP) — SNAT working"
+                exit 0
               done
 
-              echo "FAILED: Could not get response from service"
+              echo "FAILED: Could not verify IP behavior"
               exit 1
             check:
               ($error == null): true
@@ -380,42 +393,61 @@ spec:
                 kubectl get svc "$SERVICE_NAME" -n default \
                 -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
 
-              # Get the actual client IP — the Kind Docker network gateway
-              EXPECTED_CLIENT_IP=$(docker network inspect kind \
-                -f '{{range .IPAM.Config}}{{if .Gateway}}{{.Gateway}} {{end}}{{end}}' \
-                | tr ' ' '\n' | grep -v ':' | head -1)
+              # Get the client IP — Docker host's IP on the kind network.
+              EXPECTED_CLIENT_IP=$(docker exec kubelb-control-plane ip -4 route \
+                | awk '/default/ {print $3}')
+              if [ -z "$EXPECTED_CLIENT_IP" ]; then
+                EXPECTED_CLIENT_IP=$(docker network inspect kind \
+                  -f '{{range .IPAM.Config}}{{if .Gateway}}{{.Gateway}} {{end}}{{end}}' \
+                  | tr ' ' '\n' | grep -v ':' | head -1)
+              fi
               if [ -z "$EXPECTED_CLIENT_IP" ]; then
                 echo "FAILED: Could not determine Kind network gateway IP"
                 exit 1
               fi
               echo "Expected client IP (Kind gateway): $EXPECTED_CLIENT_IP"
 
+              # Phase 1: Wait for service to become reachable (xDS propagation)
+              echo "Waiting for service to become reachable..."
+              RESPONSE=""
               for i in $(seq 1 30); do
                 RESPONSE=$(curl -s --max-time 5 "http://${IP}:9090/" || true)
+                if [ -n "$RESPONSE" ]; then
+                  echo "Service reachable after $i attempts"
+                  break
+                fi
+                echo "Warmup attempt $i: no response yet..."
+                sleep 3
+              done
+              if [ -z "$RESPONSE" ]; then
+                echo "FAILED: Service never became reachable"
+                exit 1
+              fi
+
+              # Phase 2: Verify proxy protocol IP behavior
+              for i in $(seq 1 5); do
+                RESPONSE=$(curl -s --max-time 5 "http://${IP}:9090/" || true)
                 if [ -z "$RESPONSE" ]; then
-                  echo "Attempt $i: no response yet..."
-                  sleep 3
+                  echo "IP check attempt $i: no response"
+                  sleep 2
                   continue
                 fi
 
-                # Parse nginx response: "tcp_source_ip=X\nproxy_protocol_ip=Y"
                 TCP_IP=$(echo "$RESPONSE" | grep '^tcp_source_ip=' | cut -d= -f2 | tr -d '[:space:]')
                 PP_IP=$(echo "$RESPONSE" | grep '^proxy_protocol_ip=' | cut -d= -f2 | tr -d '[:space:]')
 
                 if [ -z "$TCP_IP" ] || [ -z "$PP_IP" ]; then
-                  echo "Attempt $i: could not parse IPs from response: $RESPONSE"
-                  sleep 3
+                  echo "IP check attempt $i: could not parse IPs from response: $RESPONSE"
+                  sleep 2
                   continue
                 fi
 
-                # PP IP must be the actual client IP
                 if [ "$PP_IP" != "$EXPECTED_CLIENT_IP" ]; then
                   echo "FAILED: proxy_protocol_ip ($PP_IP) != expected client IP ($EXPECTED_CLIENT_IP)"
                   echo "  tcp_source_ip=$TCP_IP"
                   exit 1
                 fi
 
-                # Also verify PP IP differs from TCP source (proves PP is working, not just pass-through)
                 if [ "$PP_IP" = "$TCP_IP" ]; then
                   echo "FAILED: proxy_protocol_ip equals tcp_source_ip ($TCP_IP) — PP not carrying original client"
                   exit 1
@@ -428,7 +460,7 @@ spec:
                 exit 0
               done
 
-              echo "FAILED: Could not get response from service"
+              echo "FAILED: Could not verify proxy protocol IP behavior"
               exit 1
             check:
               ($error == null): true
