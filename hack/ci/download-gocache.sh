@@ -30,8 +30,8 @@ set -euo pipefail
 # receives a SIGINT
 set -o monitor
 
-# The gocache needs a matching go version to work, so append that to the name
-GO_VERSION="$(go version | awk '{ print $3 }' | sed 's/go//g')"
+# Use major.minor Go version for cache key so patch bumps don't invalidate caches
+GO_VERSION="$(go version | awk '{ print $3 }' | sed 's/go//g' | cut -d. -f1,2)"
 GOARCH="$(go env GOARCH)"
 
 # Make sure we never error, this is always best-effort only
@@ -77,22 +77,25 @@ GIT_BRANCH="$(echo "$GIT_BRANCH" | sed 's#/#-#g')"
 ARCHIVE_NAME="${CACHE_VERSION}-${GO_VERSION}-${GOARCH}.tar"
 URL="${GOCACHE_MINIO_ADDRESS}/kubelb/${GIT_BRANCH}/${ARCHIVE_NAME}"
 
-# Do not go through the retry loop when there is nothing, but do try the
-# first parent if no cache was found. This is helpful for retests happening
-# quickly after something got merged to main and no gocache for the most
-# recent commit exists yet. In this case, taking the previous commit's
-# cache is better than nothing.
-if ! curl --head --silent --fail "${URL}" > /dev/null; then
-  echodate "Remote has no gocache ${ARCHIVE_NAME}, trying previous commit as a fallback..."
-
-  CACHE_VERSION="$(git rev-parse ${CACHE_VERSION}~1)"
+# Walk back up to 5 parent commits to find a usable cache. This handles
+# cases where the upload postsubmit failed or was delayed for recent merges.
+FOUND=false
+for i in $(seq 0 4); do
   ARCHIVE_NAME="${CACHE_VERSION}-${GO_VERSION}-${GOARCH}.tar"
   URL="${GOCACHE_MINIO_ADDRESS}/kubelb/${GIT_BRANCH}/${ARCHIVE_NAME}"
 
-  if ! curl --head --silent --fail "${URL}" > /dev/null; then
-    echodate "Remote has no gocache ${ARCHIVE_NAME}, giving up."
-    exit 0
+  if curl --head --silent --fail "${URL}" > /dev/null; then
+    FOUND=true
+    break
   fi
+
+  echodate "Remote has no gocache ${ARCHIVE_NAME}, trying parent commit..."
+  CACHE_VERSION="$(git rev-parse ${CACHE_VERSION}~1 2> /dev/null)" || break
+done
+
+if [ "${FOUND}" != "true" ]; then
+  echodate "No gocache found after checking 5 ancestors, giving up."
+  exit 0
 fi
 
 echodate "Downloading and extracting gocache"

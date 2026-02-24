@@ -33,8 +33,8 @@ if [ -z "${GOCACHE_MINIO_ADDRESS:-}" ]; then
   exit 1
 fi
 
-# The gocache needs a matching go version to work, so append that to the name
-GO_VERSION="$(go version | awk '{ print $3 }' | sed 's/go//g')"
+# Use major.minor Go version for cache key so patch bumps don't invalidate caches
+GO_VERSION="$(go version | awk '{ print $3 }' | sed 's/go//g' | cut -d. -f1,2)"
 GOARCH="$(go env GOARCH)"
 
 GOCACHE_DIR="$(mktemp -d)"
