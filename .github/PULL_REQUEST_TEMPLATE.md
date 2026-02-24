@@ -31,7 +31,7 @@ Write your release note:
 2. If no release note is required, just write "NONE".
 -->
 ```release-note
-
+NONE
 ```
 
 **Documentation**:
@@ -44,5 +44,5 @@ Please do one of the following options:
   - NONE (no documentation needed for this PR)
 -->
 ```documentation
-
+NONE
 ```
