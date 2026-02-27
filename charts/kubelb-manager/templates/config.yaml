@@ -3,6 +3,7 @@ apiVersion: kubelb.k8c.io/v1alpha1
 kind: Config
 metadata:
   name: default
+  namespace: {{ .Release.Namespace }}
 spec:
   envoyProxy:
     replicas: {{ .Values.kubelb.envoyProxy.replicas }}
