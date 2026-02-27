@@ -166,9 +166,6 @@ presubmits:
             requests:
               memory: 16Gi
               cpu: 4
-            limits:
-              memory: 16Gi
-              cpu: 4
 
   - name: pull-kubelb-verify-shfmt
     run_if_changed: "^hack/"

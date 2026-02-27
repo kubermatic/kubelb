@@ -93,15 +93,19 @@ build_images() {
   local build_start=$(nowms)
   local build_log="${LOGS_DIR}/build.log"
 
-  # Use centralized make targets with cross-compile for linux/amd64
-  # BUILD_DATE=e2e ensures reproducible builds (matches reload.sh)
-  if ! GOOS=linux GOARCH=amd64 make e2e-image-kubelb e2e-image-ccm \
-    GIT_VERSION="${GIT_VERSION}" \
-    GIT_COMMIT="${GIT_COMMIT}" \
-    BUILD_DATE=e2e \
-    &> "${build_log}"; then
-    echodate "FAILED: image build (see ${build_log})"
-    cat "${build_log}"
+  # Build both images in parallel (different output binaries, no conflicts)
+  local build_args="GIT_VERSION=${GIT_VERSION} GIT_COMMIT=${GIT_COMMIT} BUILD_DATE=e2e"
+  GOOS=linux GOARCH=amd64 make e2e-image-kubelb ${build_args} &> "${LOGS_DIR}/build-kubelb.log" &
+  local kubelb_pid=$!
+  GOOS=linux GOARCH=amd64 make e2e-image-ccm ${build_args} &> "${LOGS_DIR}/build-ccm.log" &
+  local ccm_pid=$!
+
+  local failed=()
+  wait ${kubelb_pid} || failed+=("kubelb")
+  wait ${ccm_pid} || failed+=("ccm")
+  if [[ ${#failed[@]} -gt 0 ]]; then
+    echodate "FAILED: image build for ${failed[*]}"
+    cat "${LOGS_DIR}/build-kubelb.log" "${LOGS_DIR}/build-ccm.log"
     exit 1
   fi
 
@@ -221,9 +225,9 @@ EOF
   if [[ ! -f "${temp_chart_dir}/.helm-deps-${chart_hash}" ]]; then
     ensure_helm_repos_once
     echodate "Building kubelb-addons dependencies..."
-    helm dependency build "${temp_chart_dir}/kubelb-addons"
+    helm dependency build --skip-refresh "${temp_chart_dir}/kubelb-addons"
     echodate "Updating kubelb-manager dependencies..."
-    helm dependency update "${temp_chart_dir}/kubelb-manager"
+    helm dependency update --skip-refresh "${temp_chart_dir}/kubelb-manager"
     touch "${temp_chart_dir}/.helm-deps-${chart_hash}"
   else
     echodate "Helm dependencies unchanged, skipping update"
@@ -522,7 +526,7 @@ deploy_standalone_addons() {
   if [[ ! -f "${addons_cache_marker}" ]]; then
     ensure_helm_repos_once
     echodate "Building kubelb-addons dependencies..."
-    helm dependency build "${CHARTS_DIR}/kubelb-addons" &> /dev/null
+    helm dependency build --skip-refresh "${CHARTS_DIR}/kubelb-addons" &> /dev/null
     touch "${addons_cache_marker}"
   else
     echodate "Addons dependencies unchanged, skipping build"
