@@ -71,11 +71,28 @@ gomod:
   proxy: false
 
 archives:
-  - id: binaries
+  - id: kubelb-archive
+    builds:
+      - kubelb
     formats:
       - tar.gz
     name_template: >-
-      {{ .ProjectName }}_
+      kubelb_
+      {{- .Version }}_
+      {{- .Os }}_
+      {{- .Arch }}
+    files:
+      - LICENSE*
+      - README*
+      - SBOM.md
+
+  - id: ccm-archive
+    builds:
+      - ccm
+    formats:
+      - tar.gz
+    name_template: >-
+      ccm_
       {{- .Version }}_
       {{- .Os }}_
       {{- .Arch }}
