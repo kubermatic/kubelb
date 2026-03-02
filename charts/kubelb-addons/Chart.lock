@@ -7,7 +7,7 @@ dependencies:
   version: 1.6.3
 - name: cert-manager
   repository: https://charts.jetstack.io
-  version: v1.19.3
+  version: v1.19.4
 - name: external-dns
   repository: https://kubernetes-sigs.github.io/external-dns
   version: 1.20.0
@@ -20,5 +20,5 @@ dependencies:
 - name: kgateway
   repository: oci://cr.kgateway.dev/kgateway-dev/charts
   version: v2.1.2
-digest: sha256:cfb89d8ef31b942c52f695696bb05d1e0c606ef33a110e43d3403328b4cac85d
-generated: "2026-02-03T11:20:56.317805+05:00"
+digest: sha256:3bad7f2699f1df7a10437b0ae8232bc50b1285a8bde1df319dd8ab288c17aec1
+generated: "2026-03-02T01:18:03.06444591Z"

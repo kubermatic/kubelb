@@ -22,7 +22,7 @@ dependencies:
   - name: cert-manager
     repository: https://charts.jetstack.io
     condition: cert-manager.enabled
-    version: 1.19.3
+    version: 1.19.4
   - name: external-dns
     repository: https://kubernetes-sigs.github.io/external-dns
     condition: external-dns.enabled
