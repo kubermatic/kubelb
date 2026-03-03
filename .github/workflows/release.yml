@@ -135,8 +135,9 @@ jobs:
 
       - name: Install Trivy
         if: ${{ !inputs.skip_vulnerability_scans }}
+        # v0.69.2
         run: |
-          curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/refs/tags/v0.69.2/contrib/install.sh | sh -s -- -b /usr/local/bin v0.69.2
+          curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/cfa322ed23f2e33ef1632ae3a5a8c7172f06a5c3/contrib/install.sh | sh -s -- -b /usr/local/bin v0.69.2
 
       - name: Scan images for vulnerabilities
         if: ${{ !inputs.skip_vulnerability_scans }}
