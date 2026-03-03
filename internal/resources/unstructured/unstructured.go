@@ -65,11 +65,11 @@ func ConvertUnstructuredToObject(unstruct *unstructured.Unstructured) (client.Ob
 		object = &networkingv1.Ingress{}
 	case corev1.SchemeGroupVersion.WithKind("Service"):
 		object = &corev1.Service{}
-	case gwapiv1.SchemeGroupVersion.WithKind("Gateway"):
+	case gwapiv1.GroupVersion.WithKind("Gateway"):
 		object = &gwapiv1.Gateway{}
-	case gwapiv1.SchemeGroupVersion.WithKind("HTTPRoute"):
+	case gwapiv1.GroupVersion.WithKind("HTTPRoute"):
 		object = &gwapiv1.HTTPRoute{}
-	case gwapiv1.SchemeGroupVersion.WithKind("GRPCRoute"):
+	case gwapiv1.GroupVersion.WithKind("GRPCRoute"):
 		object = &gwapiv1.GRPCRoute{}
 
 	default:
