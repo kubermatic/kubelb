@@ -24,7 +24,7 @@ jobs:
 
       - name: Run govulncheck
         run: |
-          go install golang.org/x/vuln/cmd/govulncheck@latest
+          go install golang.org/x/vuln/cmd/govulncheck@v1.1.4
           govulncheck ./...
 
       - name: Dependency Review
@@ -64,7 +64,7 @@ jobs:
           cache-to: type=gha,mode=min,scope=${{ matrix.image.name }}
 
       - name: Scan ${{ matrix.image.name }}
-        uses: aquasecurity/trivy-action@b6643a29fecd7f34b3597bc6acb0a98b03d33ff8 # v0.28.0
+        uses: aquasecurity/trivy-action@97e0b3872f55f89b95b2f65b3dbab56962816478 # v0.34.2
         with:
           image-ref: ${{ matrix.image.name }}:pr-scan
           exit-code: "1"
