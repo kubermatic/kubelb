@@ -137,6 +137,10 @@ Three charts in `charts/`:
 
 Run `make generate-helm-docs` after chart changes.
 
+## GitHub Templates
+
+PRs and issues must use the templates in `.github/`. For PRs, use `.github/PULL_REQUEST_TEMPLATE.md` — fill in all sections (description, kind, release note, documentation).
+
 ## Documentation
 
 Official documentation for KubeLB is available at <https://docs.kubermatic.com/kubelb>. Please refer to this documentation for the latest information about the project. If and when you find gaps in the documentation, please prompt the user to update the documentation.
