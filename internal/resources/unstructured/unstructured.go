@@ -23,6 +23,7 @@ import (
 	networkingv1 "k8s.io/api/networking/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
 )
@@ -65,11 +66,11 @@ func ConvertUnstructuredToObject(unstruct *unstructured.Unstructured) (client.Ob
 		object = &networkingv1.Ingress{}
 	case corev1.SchemeGroupVersion.WithKind("Service"):
 		object = &corev1.Service{}
-	case gwapiv1.GroupVersion.WithKind("Gateway"):
+	case schema.GroupVersion(gwapiv1.GroupVersion).WithKind("Gateway"):
 		object = &gwapiv1.Gateway{}
-	case gwapiv1.GroupVersion.WithKind("HTTPRoute"):
+	case schema.GroupVersion(gwapiv1.GroupVersion).WithKind("HTTPRoute"):
 		object = &gwapiv1.HTTPRoute{}
-	case gwapiv1.GroupVersion.WithKind("GRPCRoute"):
+	case schema.GroupVersion(gwapiv1.GroupVersion).WithKind("GRPCRoute"):
 		object = &gwapiv1.GRPCRoute{}
 
 	default:
