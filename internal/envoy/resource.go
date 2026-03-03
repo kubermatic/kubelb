@@ -122,7 +122,7 @@ func MapSnapshot(ctx context.Context, client ctrlclient.Client, loadBalancers []
 					listener = append(listener, makeUDPListener(key, key, port))
 				}
 				proxyProtocol := lbEndpointPort.Protocol == corev1.ProtocolTCP && lb.Annotations[kubelb.AnnotationProxyProtocol] == "v2"
-				cluster = append(cluster, makeCluster(key, lbEndpoints, lbEndpointPort.Protocol, "", proxyProtocol))
+				cluster = append(cluster, makeCluster(key, lbEndpointPort.Protocol, "", proxyProtocol))
 			}
 		}
 	}
@@ -184,7 +184,7 @@ func MapSnapshot(ctx context.Context, client ctrlclient.Client, loadBalancers []
 				case corev1.ProtocolUDP:
 					listener = append(listener, makeUDPListener(key, key, listenerPort))
 				}
-				cluster = append(cluster, makeCluster(key, lbEndpoints, port.Protocol, routeKind, false))
+				cluster = append(cluster, makeCluster(key, port.Protocol, routeKind, false))
 			}
 		}
 	}
@@ -211,7 +211,7 @@ func MapSnapshot(ctx context.Context, client ctrlclient.Client, loadBalancers []
 	)
 }
 
-func makeCluster(clusterName string, lbEndpoints []*envoyEndpoint.LbEndpoint, protocol corev1.Protocol, routeKind string, proxyProtocol bool) *envoyCluster.Cluster {
+func makeCluster(clusterName string, protocol corev1.Protocol, routeKind string, proxyProtocol bool) *envoyCluster.Cluster {
 	defaultHealthCheck := []*envoyCore.HealthCheck{
 		{
 			Timeout:            &durationpb.Duration{Seconds: defaultHealthCheckTimeoutSeconds},
@@ -237,13 +237,26 @@ func makeCluster(clusterName string, lbEndpoints []*envoyEndpoint.LbEndpoint, pr
 	cluster := &envoyCluster.Cluster{
 		Name:                 clusterName,
 		ConnectTimeout:       durationpb.New(5 * time.Second),
-		ClusterDiscoveryType: &envoyCluster.Cluster_Type{Type: envoyCluster.Cluster_STRICT_DNS},
+		ClusterDiscoveryType: &envoyCluster.Cluster_Type{Type: envoyCluster.Cluster_EDS},
 		LbPolicy:             envoyCluster.Cluster_ROUND_ROBIN,
-		LoadAssignment: &envoyEndpoint.ClusterLoadAssignment{
-			ClusterName: clusterName,
-			Endpoints: []*envoyEndpoint.LocalityLbEndpoints{{
-				LbEndpoints: lbEndpoints,
-			}},
+		EdsClusterConfig: &envoyCluster.Cluster_EdsClusterConfig{
+			ServiceName: clusterName,
+			EdsConfig: &envoyCore.ConfigSource{
+				ResourceApiVersion: envoyCore.ApiVersion_V3,
+				ConfigSourceSpecifier: &envoyCore.ConfigSource_ApiConfigSource{
+					ApiConfigSource: &envoyCore.ApiConfigSource{
+						ApiType:             envoyCore.ApiConfigSource_GRPC,
+						TransportApiVersion: envoyCore.ApiVersion_V3,
+						GrpcServices: []*envoyCore.GrpcService{{
+							TargetSpecifier: &envoyCore.GrpcService_EnvoyGrpc_{
+								EnvoyGrpc: &envoyCore.GrpcService_EnvoyGrpc{
+									ClusterName: xdsClusterName,
+								},
+							},
+						}},
+					},
+				},
+			},
 		},
 		DnsLookupFamily:               envoyCluster.Cluster_AUTO,
 		HealthChecks:                  defaultHealthCheck,
