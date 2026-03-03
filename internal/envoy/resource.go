@@ -75,6 +75,7 @@ const (
 func MapSnapshot(ctx context.Context, client ctrlclient.Client, loadBalancers []kubelbv1alpha1.LoadBalancer, routes []kubelbv1alpha1.Route, portAllocator *portlookup.PortAllocator) (*envoycache.Snapshot, error) {
 	var listener []types.Resource
 	var cluster []types.Resource
+	var endpoints []types.Resource
 
 	addressesMap := make(map[string][]kubelbv1alpha1.EndpointAddress)
 	for _, lb := range loadBalancers {
@@ -122,7 +123,8 @@ func MapSnapshot(ctx context.Context, client ctrlclient.Client, loadBalancers []
 					listener = append(listener, makeUDPListener(key, key, port))
 				}
 				proxyProtocol := lbEndpointPort.Protocol == corev1.ProtocolTCP && lb.Annotations[kubelb.AnnotationProxyProtocol] == "v2"
-				cluster = append(cluster, makeCluster(key, lbEndpoints, lbEndpointPort.Protocol, "", proxyProtocol))
+				endpoints = append(endpoints, makeClusterLoadAssignment(key, lbEndpoints))
+				cluster = append(cluster, makeCluster(key, lbEndpointPort.Protocol, "", proxyProtocol))
 			}
 		}
 	}
@@ -184,7 +186,8 @@ func MapSnapshot(ctx context.Context, client ctrlclient.Client, loadBalancers []
 				case corev1.ProtocolUDP:
 					listener = append(listener, makeUDPListener(key, key, listenerPort))
 				}
-				cluster = append(cluster, makeCluster(key, lbEndpoints, port.Protocol, routeKind, false))
+				endpoints = append(endpoints, makeClusterLoadAssignment(key, lbEndpoints))
+				cluster = append(cluster, makeCluster(key, port.Protocol, routeKind, false))
 			}
 		}
 	}
@@ -193,6 +196,7 @@ func MapSnapshot(ctx context.Context, client ctrlclient.Client, loadBalancers []
 	var resources []types.Resource
 	resources = append(resources, cluster...)
 	resources = append(resources, listener...)
+	resources = append(resources, endpoints...)
 	for _, r := range resources {
 		mr, err := envoycache.MarshalResource(r)
 		if err != nil {
@@ -207,11 +211,12 @@ func MapSnapshot(ctx context.Context, client ctrlclient.Client, loadBalancers []
 		map[resource.Type][]types.Resource{
 			resource.ClusterType:  cluster,
 			resource.ListenerType: listener,
+			resource.EndpointType: endpoints,
 		},
 	)
 }
 
-func makeCluster(clusterName string, lbEndpoints []*envoyEndpoint.LbEndpoint, protocol corev1.Protocol, routeKind string, proxyProtocol bool) *envoyCluster.Cluster {
+func makeCluster(clusterName string, protocol corev1.Protocol, routeKind string, proxyProtocol bool) *envoyCluster.Cluster {
 	defaultHealthCheck := []*envoyCore.HealthCheck{
 		{
 			Timeout:            &durationpb.Duration{Seconds: defaultHealthCheckTimeoutSeconds},
@@ -237,13 +242,26 @@ func makeCluster(clusterName string, lbEndpoints []*envoyEndpoint.LbEndpoint, pr
 	cluster := &envoyCluster.Cluster{
 		Name:                 clusterName,
 		ConnectTimeout:       durationpb.New(5 * time.Second),
-		ClusterDiscoveryType: &envoyCluster.Cluster_Type{Type: envoyCluster.Cluster_STRICT_DNS},
+		ClusterDiscoveryType: &envoyCluster.Cluster_Type{Type: envoyCluster.Cluster_EDS},
 		LbPolicy:             envoyCluster.Cluster_ROUND_ROBIN,
-		LoadAssignment: &envoyEndpoint.ClusterLoadAssignment{
-			ClusterName: clusterName,
-			Endpoints: []*envoyEndpoint.LocalityLbEndpoints{{
-				LbEndpoints: lbEndpoints,
-			}},
+		EdsClusterConfig: &envoyCluster.Cluster_EdsClusterConfig{
+			ServiceName: clusterName,
+			EdsConfig: &envoyCore.ConfigSource{
+				ResourceApiVersion: envoyCore.ApiVersion_V3,
+				ConfigSourceSpecifier: &envoyCore.ConfigSource_ApiConfigSource{
+					ApiConfigSource: &envoyCore.ApiConfigSource{
+						ApiType:             envoyCore.ApiConfigSource_GRPC,
+						TransportApiVersion: envoyCore.ApiVersion_V3,
+						GrpcServices: []*envoyCore.GrpcService{{
+							TargetSpecifier: &envoyCore.GrpcService_EnvoyGrpc_{
+								EnvoyGrpc: &envoyCore.GrpcService_EnvoyGrpc{
+									ClusterName: xdsClusterName,
+								},
+							},
+						}},
+					},
+				},
+			},
 		},
 		DnsLookupFamily:               envoyCluster.Cluster_AUTO,
 		HealthChecks:                  defaultHealthCheck,
@@ -303,6 +321,15 @@ func makeCluster(clusterName string, lbEndpoints []*envoyEndpoint.LbEndpoint, pr
 	}
 
 	return cluster
+}
+
+func makeClusterLoadAssignment(clusterName string, lbEndpoints []*envoyEndpoint.LbEndpoint) *envoyEndpoint.ClusterLoadAssignment {
+	return &envoyEndpoint.ClusterLoadAssignment{
+		ClusterName: clusterName,
+		Endpoints: []*envoyEndpoint.LocalityLbEndpoints{{
+			LbEndpoints: lbEndpoints,
+		}},
+	}
 }
 
 func makeEndpoint(addr kubelbv1alpha1.EndpointAddress, port uint32) *envoyEndpoint.LbEndpoint {
