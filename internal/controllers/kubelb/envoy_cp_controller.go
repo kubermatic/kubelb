@@ -374,6 +374,11 @@ func (r *EnvoyCPReconciler) getEnvoyProxyPodSpec(namespace, appName, snapshotNam
 				Protocol:      corev1.ProtocolTCP,
 			},
 			{
+				Name:          "healthcheck",
+				ContainerPort: envoycp.EnvoyHealthCheckPort,
+				Protocol:      corev1.ProtocolTCP,
+			},
+			{
 				Name:          "metrics",
 				ContainerPort: envoycp.EnvoyStatsPort,
 				Protocol:      corev1.ProtocolTCP,
@@ -395,8 +400,8 @@ func (r *EnvoyCPReconciler) getEnvoyProxyPodSpec(namespace, appName, snapshotNam
 		ReadinessProbe: &corev1.Probe{
 			ProbeHandler: corev1.ProbeHandler{
 				HTTPGet: &corev1.HTTPGetAction{
-					Path:   envoycp.EnvoyReadinessPath,
-					Port:   intstr.IntOrString{Type: intstr.Int, IntVal: envoycp.EnvoyReadinessPort},
+					Path:   envoycp.EnvoyHealthCheckPath,
+					Port:   intstr.IntOrString{Type: intstr.Int, IntVal: envoycp.EnvoyHealthCheckPort},
 					Scheme: corev1.URISchemeHTTP,
 				},
 			},
@@ -408,8 +413,8 @@ func (r *EnvoyCPReconciler) getEnvoyProxyPodSpec(namespace, appName, snapshotNam
 		LivenessProbe: &corev1.Probe{
 			ProbeHandler: corev1.ProbeHandler{
 				HTTPGet: &corev1.HTTPGetAction{
-					Path:   envoycp.EnvoyReadinessPath,
-					Port:   intstr.IntOrString{Type: intstr.Int, IntVal: envoycp.EnvoyReadinessPort},
+					Path:   envoycp.EnvoyHealthCheckPath,
+					Port:   intstr.IntOrString{Type: intstr.Int, IntVal: envoycp.EnvoyHealthCheckPort},
 					Scheme: corev1.URISchemeHTTP,
 				},
 			},

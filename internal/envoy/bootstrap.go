@@ -26,6 +26,7 @@ import (
 	envoyListener "github.com/envoyproxy/go-control-plane/envoy/config/listener/v3"
 	envoyConfigOverloadV3 "github.com/envoyproxy/go-control-plane/envoy/config/overload/v3"
 	envoyRoute "github.com/envoyproxy/go-control-plane/envoy/config/route/v3"
+	envoyFiltersHealthCheckV3 "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/http/health_check/v3"
 	envoyFiltersRouterV3 "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/http/router/v3"
 	envoyFiltersHcmV3 "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/network/http_connection_manager/v3"
 	envoyDownstreamConnections "github.com/envoyproxy/go-control-plane/envoy/extensions/resource_monitors/downstream_connections/v3"
@@ -50,6 +51,9 @@ const EnvoyStatsPath = "/stats/prometheus"
 
 const EnvoyReadinessPort = 19003
 const EnvoyReadinessPath = "/ready"
+
+const EnvoyHealthCheckPort = 19004
+const EnvoyHealthCheckPath = "/healthz"
 
 // Shutdown manager constants
 const ShutdownManagerPort = 19002
@@ -140,6 +144,7 @@ func (s *Server) GenerateBootstrap() string {
 		StaticResources: &envoyBootstrap.Bootstrap_StaticResources{
 			Listeners: []*envoyListener.Listener{
 				getReadinessProbeListener(),
+				getHealthCheckListener(),
 				getStatsListener(),
 			},
 			Clusters: []*envoyCluster.Cluster{
@@ -306,6 +311,76 @@ func getReadinessProbeListener() *envoyListener.Listener {
 					Address: "0.0.0.0",
 					PortSpecifier: &envoyCore.SocketAddress_PortValue{
 						PortValue: EnvoyReadinessPort,
+					},
+				},
+			},
+		},
+		FilterChains: []*envoyListener.FilterChain{{
+			Filters: []*envoyListener.Filter{{
+				Name:       wellknown.HTTPConnectionManager,
+				ConfigType: &envoyListener.Filter_TypedConfig{TypedConfig: typedConfig},
+			}},
+		}},
+	}
+}
+
+func getHealthCheckListener() *envoyListener.Listener {
+	healthCheckFilter := marshalAny(&envoyFiltersHealthCheckV3.HealthCheck{
+		PassThroughMode: &wrapperspb.BoolValue{Value: false},
+		Headers: []*envoyRoute.HeaderMatcher{{
+			Name: ":path",
+			HeaderMatchSpecifier: &envoyRoute.HeaderMatcher_ExactMatch{
+				ExactMatch: EnvoyHealthCheckPath,
+			},
+		}},
+	})
+	typedRouterFilterConfig := marshalAny(&envoyFiltersRouterV3.Router{})
+
+	hcm := &envoyFiltersHcmV3.HttpConnectionManager{
+		StatPrefix: "health_check",
+		HttpFilters: []*envoyFiltersHcmV3.HttpFilter{
+			{
+				Name:       wellknown.HealthCheck,
+				ConfigType: &envoyFiltersHcmV3.HttpFilter_TypedConfig{TypedConfig: healthCheckFilter},
+			},
+			{
+				Name:       wellknown.Router,
+				ConfigType: &envoyFiltersHcmV3.HttpFilter_TypedConfig{TypedConfig: typedRouterFilterConfig},
+			},
+		},
+		RouteSpecifier: &envoyFiltersHcmV3.HttpConnectionManager_RouteConfig{
+			RouteConfig: &envoyRoute.RouteConfiguration{
+				Name: "local_health_check",
+				VirtualHosts: []*envoyRoute.VirtualHost{{
+					Name:    "health_check_service",
+					Domains: []string{"*"},
+					Routes: []*envoyRoute.Route{{
+						Match: &envoyRoute.RouteMatch{
+							PathSpecifier: &envoyRoute.RouteMatch_Prefix{
+								Prefix: "/",
+							},
+						},
+						Action: &envoyRoute.Route_DirectResponse{
+							DirectResponse: &envoyRoute.DirectResponseAction{
+								Status: 404,
+							},
+						},
+					}},
+				}},
+			},
+		},
+	}
+
+	typedConfig := marshalAny(hcm)
+
+	return &envoyListener.Listener{
+		Name: "health_check_listener",
+		Address: &envoyCore.Address{
+			Address: &envoyCore.Address_SocketAddress{
+				SocketAddress: &envoyCore.SocketAddress{
+					Address: "0.0.0.0",
+					PortSpecifier: &envoyCore.SocketAddress_PortValue{
+						PortValue: EnvoyHealthCheckPort,
 					},
 				},
 			},
