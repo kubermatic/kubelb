@@ -7,12 +7,12 @@ KUBELB_CCM_IMG ?= quay.io/kubermatic/kubelb-ccm
 ## Tool Versions
 # ENVTEST_K8S_VERSION refers to the version of kubebuilder assets to be downloaded by envtest binary.
 ENVTEST_K8S_VERSION ?= $(shell go list -m -f "{{ .Version }}" k8s.io/api | awk -F'[v.]' '{printf "1.%d", $$3}')
-KUSTOMIZE_VERSION ?= v5.8.0
-CONTROLLER_TOOLS_VERSION ?= v0.20.0
+KUSTOMIZE_VERSION ?= v5.8.1
+CONTROLLER_TOOLS_VERSION ?= v0.20.1
 GO_VERSION = 1.25.7
 HELM_DOCS_VERSION ?= v1.14.2
-CRD_REF_DOCS_VERSION ?= v0.2.0
-CHAINSAW_VERSION ?= v0.2.13
+CRD_REF_DOCS_VERSION ?= v0.3.0
+CHAINSAW_VERSION ?= v0.2.14
 
 CRD_CODE_GEN_PATH = "./api/ce/..."
 RECONCILE_HELPER_PATH = "internal/resources/reconciling/zz_generated_reconcile.go"
