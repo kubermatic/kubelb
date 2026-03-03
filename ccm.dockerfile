@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-FROM docker.io/golang:1.25.7 AS builder
+FROM docker.io/golang:1.25.7@sha256:fb4095b65a7bb89f039def7e33d7b90095d2c25f34597748758a6f209eead7ff AS builder
 
 ARG GIT_VERSION
 ARG GIT_COMMIT
@@ -40,7 +40,7 @@ RUN GIT_VERSION="${GIT_VERSION}" \
     BUILD_DATE="${BUILD_DATE}" \
     make build-ccm
 
-FROM gcr.io/distroless/static:nonroot
+FROM gcr.io/distroless/static:nonroot@sha256:88a46f645e304fc0dcfbdacdfa338ce02d9890df5f936872243d553278deae92
 WORKDIR /
 COPY --from=builder /workspace/bin/ccm .
 USER 65532:65532

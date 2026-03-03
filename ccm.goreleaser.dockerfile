@@ -14,7 +14,7 @@
 
 # Simplified Dockerfile for GoReleaser
 # Binary is pre-built by GoReleaser and copied in
-FROM gcr.io/distroless/static:nonroot
+FROM gcr.io/distroless/static:nonroot@sha256:88a46f645e304fc0dcfbdacdfa338ce02d9890df5f936872243d553278deae92
 
 WORKDIR /
 COPY ccm /ccm
