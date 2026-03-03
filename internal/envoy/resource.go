@@ -305,6 +305,15 @@ func makeCluster(clusterName string, lbEndpoints []*envoyEndpoint.LbEndpoint, pr
 	return cluster
 }
 
+func makeClusterLoadAssignment(clusterName string, lbEndpoints []*envoyEndpoint.LbEndpoint) *envoyEndpoint.ClusterLoadAssignment {
+	return &envoyEndpoint.ClusterLoadAssignment{
+		ClusterName: clusterName,
+		Endpoints: []*envoyEndpoint.LocalityLbEndpoints{{
+			LbEndpoints: lbEndpoints,
+		}},
+	}
+}
+
 func makeEndpoint(addr kubelbv1alpha1.EndpointAddress, port uint32) *envoyEndpoint.LbEndpoint {
 	address := addr.IP
 	if address == "" {
