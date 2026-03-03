@@ -19,18 +19,10 @@ package envoy
 import (
 	"testing"
 
-	envoyEndpoint "github.com/envoyproxy/go-control-plane/envoy/config/endpoint/v3"
-
-	kubelbv1alpha1 "k8c.io/kubelb/api/ce/kubelb.k8c.io/v1alpha1"
-
 	corev1 "k8s.io/api/core/v1"
 )
 
 func TestMakeCluster_ProxyProtocol(t *testing.T) {
-	endpoints := []*envoyEndpoint.LbEndpoint{
-		makeEndpoint(kubelbv1alpha1.EndpointAddress{IP: "10.0.0.1"}, 8080),
-	}
-
 	tests := []struct {
 		name          string
 		proxyProtocol bool
@@ -50,7 +42,7 @@ func TestMakeCluster_ProxyProtocol(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			cluster := makeCluster("test-cluster", endpoints, corev1.ProtocolTCP, "", tt.proxyProtocol)
+			cluster := makeCluster("test-cluster", corev1.ProtocolTCP, "", tt.proxyProtocol)
 
 			if tt.wantTransport && cluster.TransportSocket == nil {
 				t.Error("expected TransportSocket to be set for proxy protocol v2")

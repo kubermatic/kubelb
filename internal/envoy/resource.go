@@ -75,6 +75,7 @@ const (
 func MapSnapshot(ctx context.Context, client ctrlclient.Client, loadBalancers []kubelbv1alpha1.LoadBalancer, routes []kubelbv1alpha1.Route, portAllocator *portlookup.PortAllocator) (*envoycache.Snapshot, error) {
 	var listener []types.Resource
 	var cluster []types.Resource
+	var endpoints []types.Resource
 
 	addressesMap := make(map[string][]kubelbv1alpha1.EndpointAddress)
 	for _, lb := range loadBalancers {
@@ -122,6 +123,7 @@ func MapSnapshot(ctx context.Context, client ctrlclient.Client, loadBalancers []
 					listener = append(listener, makeUDPListener(key, key, port))
 				}
 				proxyProtocol := lbEndpointPort.Protocol == corev1.ProtocolTCP && lb.Annotations[kubelb.AnnotationProxyProtocol] == "v2"
+				endpoints = append(endpoints, makeClusterLoadAssignment(key, lbEndpoints))
 				cluster = append(cluster, makeCluster(key, lbEndpointPort.Protocol, "", proxyProtocol))
 			}
 		}
@@ -184,6 +186,7 @@ func MapSnapshot(ctx context.Context, client ctrlclient.Client, loadBalancers []
 				case corev1.ProtocolUDP:
 					listener = append(listener, makeUDPListener(key, key, listenerPort))
 				}
+				endpoints = append(endpoints, makeClusterLoadAssignment(key, lbEndpoints))
 				cluster = append(cluster, makeCluster(key, port.Protocol, routeKind, false))
 			}
 		}
@@ -193,6 +196,7 @@ func MapSnapshot(ctx context.Context, client ctrlclient.Client, loadBalancers []
 	var resources []types.Resource
 	resources = append(resources, cluster...)
 	resources = append(resources, listener...)
+	resources = append(resources, endpoints...)
 	for _, r := range resources {
 		mr, err := envoycache.MarshalResource(r)
 		if err != nil {
@@ -207,6 +211,7 @@ func MapSnapshot(ctx context.Context, client ctrlclient.Client, loadBalancers []
 		map[resource.Type][]types.Resource{
 			resource.ClusterType:  cluster,
 			resource.ListenerType: listener,
+			resource.EndpointType: endpoints,
 		},
 	)
 }
