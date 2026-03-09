@@ -32,6 +32,8 @@ import (
 
 	kubelbv1alpha1 "k8c.io/kubelb/api/ce/kubelb.k8c.io/v1alpha1"
 	tenantresources "k8c.io/kubelb/internal/controllers/kubelb/resources/tenant"
+	envoycp "k8c.io/kubelb/internal/envoy"
+	"k8c.io/kubelb/internal/kubelb"
 	"k8c.io/kubelb/internal/metricsutil"
 	managermetrics "k8c.io/kubelb/internal/metricsutil/manager"
 	"k8c.io/kubelb/internal/versioninfo"
@@ -42,7 +44,9 @@ import (
 	"k8s.io/apimachinery/pkg/api/equality"
 	kerrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
@@ -62,6 +66,7 @@ const (
 	securePortName          = "https"
 	requeueAfter            = 10 * time.Second
 	TenantStateName         = "default"
+	podMonitorName          = "envoy-proxy"
 )
 
 const kubeconfigTemplate = `apiVersion: v1
@@ -101,6 +106,7 @@ type TenantReconciler struct {
 // +kubebuilder:rbac:groups="",resources=configmaps,verbs=get;list;watch
 // +kubebuilder:rbac:groups="rbac.authorization.k8s.io",resources=roles,verbs=get;list;watch;create;update;patch;delete;bind;escalate
 // +kubebuilder:rbac:groups="rbac.authorization.k8s.io",resources=rolebindings,verbs=get;list;watch;create;update;patch;delete;bind;escalate
+// +kubebuilder:rbac:groups=monitoring.coreos.com,resources=podmonitors,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=kubelb.k8c.io,resources=tenants,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=kubelb.k8c.io,resources=tenants/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=kubelb.k8c.io,resources=routes,verbs=get;list;deletecollection
@@ -240,6 +246,10 @@ func (r *TenantReconciler) reconcile(ctx context.Context, log logr.Logger, tenan
 		return fmt.Errorf("failed to reconcile TenantState: %w", err)
 	}
 
+	if err := r.reconcilePodMonitor(ctx, namespace); err != nil {
+		return fmt.Errorf("failed to reconcile PodMonitor: %w", err)
+	}
+
 	return nil
 }
 
@@ -367,8 +377,84 @@ func buildKubeconfigFromEndpoint(ctx context.Context, client ctrlruntimeclient.C
 	}, nil
 }
 
+func (r *TenantReconciler) reconcilePodMonitor(ctx context.Context, namespace string) error {
+	config, err := GetConfig(ctx, r.Client, r.Namespace)
+	if err != nil {
+		return fmt.Errorf("failed to retrieve config: %w", err)
+	}
+
+	if config.Spec.EnvoyProxy.PodMonitor == nil || !config.Spec.EnvoyProxy.PodMonitor.Enabled {
+		return r.deletePodMonitor(ctx, namespace)
+	}
+
+	desired := &unstructured.Unstructured{
+		Object: map[string]interface{}{
+			"apiVersion": "monitoring.coreos.com/v1",
+			"kind":       "PodMonitor",
+			"metadata": map[string]interface{}{
+				"name":      podMonitorName,
+				"namespace": namespace,
+				"labels": map[string]interface{}{
+					kubelb.LabelAppKubernetesName:      "kubelb-envoy-proxy",
+					kubelb.LabelAppKubernetesManagedBy: "kubelb",
+				},
+			},
+			"spec": map[string]interface{}{
+				"selector": map[string]interface{}{
+					"matchLabels": map[string]interface{}{
+						kubelb.LabelAppKubernetesName: "kubelb-envoy-proxy",
+					},
+				},
+				"podMetricsEndpoints": []interface{}{
+					map[string]interface{}{
+						"port": "metrics",
+						"path": envoycp.EnvoyStatsPath,
+					},
+				},
+			},
+		},
+	}
+
+	existing := &unstructured.Unstructured{}
+	existing.SetGroupVersionKind(desired.GroupVersionKind())
+	err = r.Get(ctx, types.NamespacedName{Name: podMonitorName, Namespace: namespace}, existing)
+	if kerrors.IsNotFound(err) {
+		return r.Create(ctx, desired)
+	}
+	if err != nil {
+		return err
+	}
+
+	existing.Object["spec"] = desired.Object["spec"]
+	existing.SetLabels(desired.GetLabels())
+	return r.Update(ctx, existing)
+}
+
+func (r *TenantReconciler) deletePodMonitor(ctx context.Context, namespace string) error {
+	obj := &unstructured.Unstructured{}
+	obj.SetGroupVersionKind(podMonitorGVK())
+	obj.SetName(podMonitorName)
+	obj.SetNamespace(namespace)
+	if err := r.Delete(ctx, obj); err != nil && !kerrors.IsNotFound(err) {
+		return err
+	}
+	return nil
+}
+
+func podMonitorGVK() schema.GroupVersionKind {
+	return schema.GroupVersionKind{
+		Group:   "monitoring.coreos.com",
+		Version: "v1",
+		Kind:    "PodMonitor",
+	}
+}
+
 func (r *TenantReconciler) cleanup(ctx context.Context, tenant *kubelbv1alpha1.Tenant) (ctrl.Result, error) {
 	namespace := fmt.Sprintf(tenantNamespacePattern, tenant.Name)
+
+	if err := r.deletePodMonitor(ctx, namespace); err != nil {
+		return reconcile.Result{}, fmt.Errorf("failed to delete PodMonitor: %w", err)
+	}
 
 	result, err := r.cleanupResources(ctx, namespace)
 	if err != nil {

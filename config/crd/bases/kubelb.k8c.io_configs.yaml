@@ -1070,6 +1070,16 @@ spec:
                         format: int64
                         type: integer
                     type: object
+                  podMonitor:
+                    description: |-
+                      PodMonitor enables creation of PodMonitor resources for Envoy Proxy pods
+                      to enable metrics scraping by Prometheus Operator.
+                    properties:
+                      enabled:
+                        description: Enabled controls whether a PodMonitor is created
+                          for Envoy Proxy pods.
+                        type: boolean
+                    type: object
                   replicas:
                     default: 3
                     description: Replicas defines the number of replicas for Envoy

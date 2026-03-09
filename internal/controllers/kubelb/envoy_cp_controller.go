@@ -513,11 +513,7 @@ func (r *EnvoyCPReconciler) getEnvoyProxyPodSpec(namespace, appName, snapshotNam
 				kubelb.LabelAppKubernetesName:      appName,
 				kubelb.LabelAppKubernetesManagedBy: "kubelb",
 			},
-			Annotations: map[string]string{
-				"prometheus.io/scrape": "true",
-				"prometheus.io/port":   fmt.Sprintf("%d", envoycp.EnvoyStatsPort),
-				"prometheus.io/path":   "/stats/prometheus",
-			},
+			Annotations: r.envoyProxyAnnotations(),
 		},
 		Spec: corev1.PodSpec{
 			TerminationGracePeriodSeconds: ptr.To(terminationGracePeriod),
@@ -554,6 +550,17 @@ func (r *EnvoyCPReconciler) getEnvoyProxyPodSpec(namespace, appName, snapshotNam
 		}
 	}
 	return template
+}
+
+func (r *EnvoyCPReconciler) envoyProxyAnnotations() map[string]string {
+	if r.Config.Spec.EnvoyProxy.PodMonitor != nil && r.Config.Spec.EnvoyProxy.PodMonitor.Enabled {
+		return nil
+	}
+	return map[string]string{
+		"prometheus.io/scrape": "true",
+		"prometheus.io/port":   fmt.Sprintf("%d", envoycp.EnvoyStatsPort),
+		"prometheus.io/path":   "/stats/prometheus",
+	}
 }
 
 // podTemplateSpecNeedsUpdate compares the relevant fields of two PodTemplateSpecs

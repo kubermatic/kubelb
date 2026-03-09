@@ -76,6 +76,7 @@ cosign verify quay.io/kubermatic/kubelb-manager:v1.3.1 \
 | kubelb.envoyProxy.affinity | object | `{}` |  |
 | kubelb.envoyProxy.gracefulShutdown.disabled | bool | `false` | Disable graceful shutdown (default: false) |
 | kubelb.envoyProxy.nodeSelector | object | `{}` |  |
+| kubelb.envoyProxy.podMonitor.enabled | bool | `false` | Create PodMonitor resources for Envoy Proxy pods to enable Prometheus Operator scraping. |
 | kubelb.envoyProxy.replicas | int | `2` | The number of replicas for the Envoy Proxy deployment. |
 | kubelb.envoyProxy.resources | object | `{}` |  |
 | kubelb.envoyProxy.singlePodPerNode | bool | `true` | Deploy single pod per node. |
