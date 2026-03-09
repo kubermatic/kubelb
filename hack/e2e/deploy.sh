@@ -242,6 +242,10 @@ EOF
     --set image.pullPolicy="${pull_policy}" \
     --set imagePullSecrets=
 
+  # Install PodMonitor CRD (required for envoy proxy metrics monitoring)
+  echodate "Installing PodMonitor CRD..."
+  kubectl apply --server-side -f "https://raw.githubusercontent.com/prometheus-operator/prometheus-operator/v0.82.2/example/prometheus-operator-crd/monitoring.coreos.com_podmonitors.yaml"
+
   # Apply Config CR (required for kubelb-manager when skipConfigGeneration=true)
   echodate "Applying Config CR..."
   kubectl apply -f "${E2E_MANIFESTS_DIR}/kubelb-manager/config.yaml"

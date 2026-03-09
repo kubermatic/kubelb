@@ -25,6 +25,8 @@ spec:
   envoyProxy:
     replicas: 1
     topology: shared
+    podMonitor:
+      enabled: true
   ingress:
     class: "nginx"
   gatewayAPI:
