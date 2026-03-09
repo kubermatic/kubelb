@@ -119,6 +119,18 @@ type EnvoyProxy struct {
 	// OverloadManager defines the overload manager configuration for Envoy XDS.
 	// +optional
 	OverloadManager *EnvoyProxyOverloadManager `json:"overloadManager,omitempty"`
+
+	// PodMonitor enables creation of PodMonitor resources for Envoy Proxy pods
+	// to enable metrics scraping by Prometheus Operator.
+	// +optional
+	PodMonitor *EnvoyProxyPodMonitor `json:"podMonitor,omitempty"`
+}
+
+// EnvoyProxyPodMonitor defines the PodMonitor configuration for Envoy Proxy
+type EnvoyProxyPodMonitor struct {
+	// Enabled controls whether a PodMonitor is created for Envoy Proxy pods.
+	// +optional
+	Enabled bool `json:"enabled,omitempty"`
 }
 
 // EnvoyProxyOverloadManager defines the overload manager configuration for Envoy XDS
