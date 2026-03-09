@@ -30,6 +30,10 @@ spec:
     gracefulShutdown:
       disabled: {{ .disabled }}
     {{- end }}
+    {{- if .Values.kubelb.envoyProxy.podMonitor.enabled }}
+    podMonitor:
+      enabled: true
+    {{- end }}
   {{- with .Values.kubelb.propagatedAnnotations }}
   propagatedAnnotations:
   {{- toYaml . | nindent 4 }}
