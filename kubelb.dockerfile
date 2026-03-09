@@ -40,7 +40,7 @@ RUN GIT_VERSION="${GIT_VERSION}" \
     BUILD_DATE="${BUILD_DATE}" \
     make build-kubelb
 
-FROM gcr.io/distroless/static:nonroot@sha256:88a46f645e304fc0dcfbdacdfa338ce02d9890df5f936872243d553278deae92
+FROM gcr.io/distroless/static:nonroot@sha256:f512d819b8f109f2375e8b51d8cfd8aafe81034bc3e319740128b7d7f70d5036
 WORKDIR /
 COPY --from=builder /workspace/bin/kubelb .
 USER 65532:65532
