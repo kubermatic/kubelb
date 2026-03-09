@@ -1,0 +1,66 @@
+# Copyright 2026 The KubeLB Authors.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+apiVersion: chainsaw.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: manager-metrics
+  labels:
+    all:
+    feature: metrics
+    resource: metrics
+    test: manager-metrics
+spec:
+  description: Verify KubeLB manager metrics endpoint is scrapable and exposes expected metrics.
+  steps:
+    - name: scrape-manager-metrics
+      cluster: kubelb
+      try:
+        - script:
+            skipCommandOutput: true
+            timeout: 60s
+            content: |
+              set -e
+              NAMESPACE=kubelb
+              POD=$(kubectl get pod -n "$NAMESPACE" -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{end}' \
+                | grep -E '^kubelb-[a-f0-9]' | head -1)
+              if [ -z "$POD" ]; then
+                echo "FAILED: Could not find manager pod"
+                exit 1
+              fi
+              POD_IP=$(kubectl get pod -n "$NAMESPACE" "$POD" -o jsonpath='{.status.podIP}')
+              if [ -z "$POD_IP" ]; then
+                echo "FAILED: Could not find manager pod IP"
+                exit 1
+              fi
+
+              METRICS_FILE=$(mktemp)
+              trap "rm -f $METRICS_FILE" EXIT
+              kubectl run metrics-probe-manager --image=busybox:1.36 --rm -i --restart=Never \
+                -n "$NAMESPACE" -- wget -qO- "http://${POD_IP}:9443/metrics" 2>/dev/null > "$METRICS_FILE"
+              if [ ! -s "$METRICS_FILE" ]; then
+                echo "FAILED: No metrics returned"
+                exit 1
+              fi
+
+              grep -q "kubelb_manager_loadbalancers" "$METRICS_FILE"
+              grep -q "kubelb_manager_tenants" "$METRICS_FILE"
+
+              echo "SUCCESS: All expected manager metrics found"
+            check:
+              ($error == null): true
+      finally:
+        - script:
+            content: |
+              kubectl delete pod metrics-probe-manager -n kubelb --ignore-not-found=true 2>/dev/null || true
