@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-FROM docker.io/golang:1.25.7@sha256:fb4095b65a7bb89f039def7e33d7b90095d2c25f34597748758a6f209eead7ff AS builder
+FROM docker.io/golang:1.26.1@sha256:e2ddb153f786ee6210bf8c40f7f35490b3ff7d38be70d1a0d358ba64225f6428 AS builder
 
 ARG GIT_VERSION
 ARG GIT_COMMIT
