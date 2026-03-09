@@ -265,7 +265,11 @@ $(ENVTEST): $(LOCALBIN)
 .PHONY: chainsaw
 chainsaw: $(CHAINSAW) ## Download chainsaw locally if necessary.
 $(CHAINSAW): $(LOCALBIN)
-	test -s $(LOCALBIN)/chainsaw || GOPROXY=https://proxy.golang.org,direct GOBIN=$(LOCALBIN) go install github.com/kyverno/chainsaw@$(CHAINSAW_VERSION)
+	@test -s $(LOCALBIN)/chainsaw || { \
+		OS=$$(uname -s | tr '[:upper:]' '[:lower:]') && \
+		ARCH=$$(uname -m | sed 's/x86_64/amd64/' | sed 's/aarch64/arm64/') && \
+		curl -sSfL "https://github.com/kyverno/chainsaw/releases/download/$(CHAINSAW_VERSION)/chainsaw_$${OS}_$${ARCH}.tar.gz" | tar xz -C $(LOCALBIN) chainsaw; \
+	}
 
 ##@ E2E Testing
 
