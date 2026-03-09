@@ -28,6 +28,7 @@ spec:
       cluster: tenant1
       try:
         - script:
+            skipCommandOutput: true
             timeout: 60s
             content: |
               set -e
@@ -44,16 +45,17 @@ spec:
                 exit 1
               fi
 
-              METRICS=$(kubectl run metrics-probe-ccm --image=busybox:1.36 --rm -i --restart=Never \
-                -n "$NAMESPACE" -- wget -qO- "http://${POD_IP}:9445/metrics" 2>/dev/null \
-                | grep "^kubelb_ccm_")
-              if [ -z "$METRICS" ]; then
+              METRICS_FILE=$(mktemp)
+              trap "rm -f $METRICS_FILE" EXIT
+              kubectl run metrics-probe-ccm --image=busybox:1.36 --rm -i --restart=Never \
+                -n "$NAMESPACE" -- wget -qO- "http://${POD_IP}:9445/metrics" 2>/dev/null > "$METRICS_FILE"
+              if [ ! -s "$METRICS_FILE" ]; then
                 echo "FAILED: No metrics returned"
                 exit 1
               fi
 
-              printf '%s\n' "$METRICS" | grep -q "kubelb_ccm_managed_services"
-              printf '%s\n' "$METRICS" | grep -q "kubelb_ccm_kubelb_cluster_connected"
+              grep -q "kubelb_ccm_managed_services" "$METRICS_FILE"
+              grep -q "kubelb_ccm_kubelb_cluster_connected" "$METRICS_FILE"
 
               echo "SUCCESS: All expected CCM metrics found"
             check:
