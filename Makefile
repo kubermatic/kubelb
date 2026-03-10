@@ -331,7 +331,6 @@ helm-lint:
 generate-helm-docs: helm-docs
 	$(LOCALBIN)/helm-docs charts/
 
-IMAGE_TAG=v1.3.5
 .PHONY: bump-chart
 bump-chart:
 	$(SED) -i "s/^version:.*/version: $(IMAGE_TAG)/" charts/kubelb-ccm/Chart.yaml charts/kubelb-manager/Chart.yaml
