@@ -1,7 +1,7 @@
 dependencies:
 - name: ingress-nginx
   repository: https://kubernetes.github.io/ingress-nginx
-  version: 4.14.3
+  version: 4.15.0
 - name: gateway-helm
   repository: oci://docker.io/envoyproxy
   version: 1.6.3
@@ -20,5 +20,5 @@ dependencies:
 - name: kgateway
   repository: oci://cr.kgateway.dev/kgateway-dev/charts
   version: v2.1.2
-digest: sha256:cfb89d8ef31b942c52f695696bb05d1e0c606ef33a110e43d3403328b4cac85d
-generated: "2026-02-03T11:20:56.317805+05:00"
+digest: sha256:60f34deb086a75934fb676a7b4fd157e61a45ecdcae3bd9b0220719635001ff9
+generated: "2026-03-10T11:07:36.39054+05:00"
