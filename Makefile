@@ -7,12 +7,12 @@ KUBELB_CCM_IMG ?= quay.io/kubermatic/kubelb-ccm
 ## Tool Versions
 # ENVTEST_K8S_VERSION refers to the version of kubebuilder assets to be downloaded by envtest binary.
 ENVTEST_K8S_VERSION ?= $(shell go list -m -f "{{ .Version }}" k8s.io/api | awk -F'[v.]' '{printf "1.%d", $$3}')
-KUSTOMIZE_VERSION ?= v5.8.1
-CONTROLLER_TOOLS_VERSION ?= v0.20.1
-GO_VERSION = 1.26.1
+KUSTOMIZE_VERSION ?= v5.8.0
+CONTROLLER_TOOLS_VERSION ?= v0.20.0
+GO_VERSION = 1.25.7
 HELM_DOCS_VERSION ?= v1.14.2
-CRD_REF_DOCS_VERSION ?= v0.3.0
-CHAINSAW_VERSION ?= v0.2.14
+CRD_REF_DOCS_VERSION ?= v0.2.0
+CHAINSAW_VERSION ?= v0.2.13
 
 CRD_CODE_GEN_PATH = "./api/ce/..."
 RECONCILE_HELPER_PATH = "internal/resources/reconciling/zz_generated_reconcile.go"
@@ -32,9 +32,9 @@ GIT_VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo 
 GIT_COMMIT ?= $(shell git rev-parse HEAD 2>/dev/null || echo "unknown")
 BUILD_DATE ?= $(shell date -u +"%Y-%m-%dT%H:%M:%SZ")
 
-LDFLAGS := -X 'k8c.io/kubelb/internal/versioninfo.GitVersion=$(GIT_VERSION)' \
-	-X 'k8c.io/kubelb/internal/versioninfo.GitCommit=$(GIT_COMMIT)' \
-	-X 'k8c.io/kubelb/internal/versioninfo.BuildDate=$(BUILD_DATE)'
+LDFLAGS := -X 'k8c.io/kubelb/internal/version.GitVersion=$(GIT_VERSION)' \
+	-X 'k8c.io/kubelb/internal/version.GitCommit=$(GIT_COMMIT)' \
+	-X 'k8c.io/kubelb/internal/version.BuildDate=$(BUILD_DATE)'
 
 IMAGE_TAG = \
 		$(shell echo $$(git rev-parse HEAD 2>/dev/null && if [[ -n $$(git status --porcelain 2>/dev/null) ]]; then echo '-dirty'; fi)|tr -d ' ')
@@ -265,11 +265,7 @@ $(ENVTEST): $(LOCALBIN)
 .PHONY: chainsaw
 chainsaw: $(CHAINSAW) ## Download chainsaw locally if necessary.
 $(CHAINSAW): $(LOCALBIN)
-	@test -s $(LOCALBIN)/chainsaw || { \
-		OS=$$(uname -s | tr '[:upper:]' '[:lower:]') && \
-		ARCH=$$(uname -m | sed 's/x86_64/amd64/' | sed 's/aarch64/arm64/') && \
-		curl -sSfL "https://github.com/kyverno/chainsaw/releases/download/$(CHAINSAW_VERSION)/chainsaw_$${OS}_$${ARCH}.tar.gz" | tar xz -C $(LOCALBIN) chainsaw; \
-	}
+	test -s $(LOCALBIN)/chainsaw || GOPROXY=https://proxy.golang.org,direct GOBIN=$(LOCALBIN) go install github.com/kyverno/chainsaw@$(CHAINSAW_VERSION)
 
 ##@ E2E Testing
 
@@ -366,7 +362,7 @@ generate-crd-docs: crd-ref-docs ## Generate API reference documentation.
 .PHONY: generate-metricsdocs
 generate-metricsdocs: ## Generate metrics reference documentation.
 	mkdir -p $(shell pwd)/docs
-	go run ./internal/metricsutil/metricsdocs > docs/metrics.md
+	go run ./internal/metrics/metricsdocs > docs/metrics.md
 
 .PHONY: update-gateway-api-crds
 update-gateway-api-crds:

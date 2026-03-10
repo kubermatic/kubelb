@@ -9,12 +9,12 @@ maintainers:
     url: https://kubermatic.com
 
 # Helm chart Version.
-version: v1.3.1
+version: v1.3.5
 # Application version to be deployed.
-appVersion: v1.3.1
+appVersion: v1.3.5
 
 dependencies:
   - name: kubelb-addons
     repository: oci://quay.io/kubermatic/helm-charts
     condition: kubelb-addons.enabled
-    version: v0.3.1
+    version: v0.3.2
