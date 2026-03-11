@@ -86,7 +86,7 @@ cosign verify quay.io/kubermatic/kubelb-manager:v1.3.5 \
 | kubelb.logLevel | string | `"info"` | To configure the verbosity of logging. Can be one of 'debug', 'info', 'error', 'panic' or any integer value > 0 which corresponds to custom debug levels of increasing verbosity. |
 | kubelb.propagateAllAnnotations | bool | `false` | Propagate all annotations from the LB resource to the LB service. |
 | kubelb.propagatedAnnotations | object | `{}` | Allowed annotations that will be propagated from the LB resource to the LB service. |
-| kubelb.skipConfigGeneration | bool | `false` | Set to true to skip the generation of the Config CR. Useful when the config CR needs to be managed manually. |
+| kubelb.skipConfigGeneration | bool | `true` | Set to false to enable the generation of the Config CR. Set to true to skip the generation of the Config CR. Useful when the config CR needs to be managed manually. |
 | metrics.port | int | `9443` | Port where the manager exposes metrics (includes both manager and envoycp metrics) |
 | nameOverride | string | `""` |  |
 | nodeSelector | object | `{}` |  |

@@ -26,3 +26,5 @@ test/e2e/reports/*
 .claude
 prd.md
 claude-plan.md
+ai/
+pr-reviews/

@@ -31,6 +31,7 @@ import (
 	"github.com/go-logr/logr"
 
 	kubelbv1alpha1 "k8c.io/kubelb/api/ce/kubelb.k8c.io/v1alpha1"
+	configpkg "k8c.io/kubelb/internal/config"
 	tenantresources "k8c.io/kubelb/internal/controllers/kubelb/resources/tenant"
 	envoycp "k8c.io/kubelb/internal/envoy"
 	"k8c.io/kubelb/internal/kubelb"
@@ -569,10 +570,11 @@ func (r *TenantReconciler) buildTenantState(ctx context.Context, tenant *kubelbv
 		Conditions:  existingConditions,
 	}
 
-	// Try to get Config to populate configuration-dependent fields
 	config, configErr := GetConfig(ctx, r.Client, r.Namespace)
 	if configErr != nil {
 		r.Log.V(2).Info("Could not get Config resource, using default values", "error", configErr)
+		defaultConf := configpkg.DefaultConfig()
+		config = &defaultConf
 	}
 
 	loadBalancerState := kubelbv1alpha1.LoadBalancerState{}

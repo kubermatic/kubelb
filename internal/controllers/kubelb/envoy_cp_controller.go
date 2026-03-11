@@ -80,14 +80,12 @@ func (r *EnvoyCPReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 
 	log.V(2).Info("reconciling LoadBalancer")
 
-	// Retrieve updated config.
 	config, err := GetConfig(ctx, r.Client, r.Namespace)
 	if err != nil {
 		managermetrics.EnvoyCPReconcileTotal.WithLabelValues(metricsutil.ResultError).Inc()
 		return ctrl.Result{}, fmt.Errorf("failed to retrieve config: %w", err)
 	}
 	r.Config = config
-	// Update EnvoyServer config so GenerateBootstrap() uses the latest config
 	r.EnvoyServer.UpdateConfig(config)
 
 	if err := r.reconcile(ctx, req); err != nil {
@@ -665,7 +663,7 @@ func configSpecChangedPredicate() predicate.Predicate {
 			return !reflect.DeepEqual(oldConfig.Spec.EnvoyProxy, newConfig.Spec.EnvoyProxy)
 		},
 		CreateFunc:  func(_ event.CreateEvent) bool { return true },
-		DeleteFunc:  func(_ event.DeleteEvent) bool { return false },
+		DeleteFunc:  func(_ event.DeleteEvent) bool { return true },
 		GenericFunc: func(_ event.GenericEvent) bool { return false },
 	}
 }
