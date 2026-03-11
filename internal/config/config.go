@@ -21,6 +21,7 @@ import (
 
 	"k8c.io/kubelb/api/ce/kubelb.k8c.io/v1alpha1"
 
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
@@ -35,7 +36,21 @@ func GetConfig(ctx context.Context, apiReader client.Reader, namespace string) (
 		Namespace: namespace,
 		Name:      DefaultConfigResourceName,
 	}, &conf); err != nil {
+		if apierrors.IsNotFound(err) {
+			return DefaultConfig(), nil
+		}
 		return conf, err
 	}
 	return conf, nil
+}
+
+func DefaultConfig() v1alpha1.Config {
+	return v1alpha1.Config{
+		Spec: v1alpha1.ConfigSpec{
+			EnvoyProxy: v1alpha1.EnvoyProxy{
+				Topology: v1alpha1.EnvoyProxyTopologyShared,
+				Replicas: 3,
+			},
+		},
+	}
 }

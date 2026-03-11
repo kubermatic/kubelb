@@ -26,7 +26,6 @@ resources:
 kubelb:
   enableGatewayAPI: true
   debug: true
-  skipConfigGeneration: true
 
 serviceMonitor:
   enabled: false

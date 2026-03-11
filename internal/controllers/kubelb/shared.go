@@ -22,6 +22,7 @@ import (
 	kubelbv1alpha1 "k8c.io/kubelb/api/ce/kubelb.k8c.io/v1alpha1"
 	configpkg "k8c.io/kubelb/internal/config"
 
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	ctrlclient "sigs.k8s.io/controller-runtime/pkg/client"
 )
 
@@ -54,6 +55,10 @@ func GetConfig(ctx context.Context, client ctrlclient.Client, configNamespace st
 		Namespace: configNamespace,
 		Name:      configpkg.DefaultConfigResourceName,
 	}, config); err != nil {
+		if apierrors.IsNotFound(err) {
+			defaultConf := configpkg.DefaultConfig()
+			return &defaultConf, nil
+		}
 		return nil, err
 	}
 	return config, nil

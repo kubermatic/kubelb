@@ -137,7 +137,6 @@ func main() {
 	// setup signal handler
 	ctx := ctrl.SetupSignalHandler()
 
-	// Load the Config for controller
 	conf, err := config.GetConfig(ctx, mgr.GetAPIReader(), opt.namespace)
 	if err != nil {
 		setupLog.Error(err, "unable to load controller config")
