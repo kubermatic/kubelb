@@ -277,16 +277,21 @@ E2E_DIR ?= ./test/e2e
 KUBECONFIGS_DIR ?= $(shell pwd)/.e2e-kubeconfigs
 CHAINSAW_CONFIG ?= $(E2E_DIR)/config.yaml
 CHAINSAW_VALUES ?= $(E2E_DIR)/values.yaml
-# All 4 clusters: kubelb (manager), tenant1 (multi-node), tenant2 (single-node), standalone (conversion)
+ENABLE_STANDALONE ?= false
+# Core clusters: kubelb (manager), tenant1 (multi-node), tenant2 (single-node)
 CHAINSAW_CLUSTERS ?= --cluster kubelb=$(KUBECONFIGS_DIR)/kubelb.kubeconfig \
 	--cluster tenant1=$(KUBECONFIGS_DIR)/tenant1.kubeconfig \
-	--cluster tenant2=$(KUBECONFIGS_DIR)/tenant2.kubeconfig \
-	--cluster standalone=$(KUBECONFIGS_DIR)/standalone.kubeconfig
-CHAINSAW_FLAGS ?= --config $(CHAINSAW_CONFIG) --values $(CHAINSAW_VALUES) $(CHAINSAW_CLUSTERS)
+	--cluster tenant2=$(KUBECONFIGS_DIR)/tenant2.kubeconfig
+ifeq ($(ENABLE_STANDALONE),true)
+CHAINSAW_CLUSTERS += --cluster standalone=$(KUBECONFIGS_DIR)/standalone.kubeconfig
+else
+CHAINSAW_EXCLUDE ?= --exclude-selector suite=conversion
+endif
+CHAINSAW_FLAGS ?= --config $(CHAINSAW_CONFIG) --values $(CHAINSAW_VALUES) $(CHAINSAW_CLUSTERS) $(CHAINSAW_EXCLUDE)
 
 .PHONY: e2e-setup-kind
-e2e-setup-kind: ## Setup Kind clusters for e2e tests (kubelb, tenant1, tenant2, standalone)
-	./hack/e2e/setup-kind.sh
+e2e-setup-kind: ## Setup Kind clusters for e2e tests (kubelb, tenant1, tenant2; standalone if ENABLE_STANDALONE=true)
+	ENABLE_STANDALONE=$(ENABLE_STANDALONE) ./hack/e2e/setup-kind.sh
 
 .PHONY: e2e-cleanup-kind
 e2e-cleanup-kind: ## Cleanup Kind clusters
@@ -294,11 +299,11 @@ e2e-cleanup-kind: ## Cleanup Kind clusters
 
 .PHONY: e2e-deploy
 e2e-deploy: ## Deploy KubeLB to all Kind clusters
-	KUBECONFIGS_DIR=$(KUBECONFIGS_DIR) ./hack/e2e/deploy.sh
+	KUBECONFIGS_DIR=$(KUBECONFIGS_DIR) ENABLE_STANDALONE=$(ENABLE_STANDALONE) ./hack/e2e/deploy.sh
 
 .PHONY: e2e-reload
 e2e-reload: ## Quick reload of kubelb/ccm after code changes (faster than e2e-deploy)
-	KUBECONFIGS_DIR=$(KUBECONFIGS_DIR) ./hack/e2e/reload.sh
+	KUBECONFIGS_DIR=$(KUBECONFIGS_DIR) ENABLE_STANDALONE=$(ENABLE_STANDALONE) ./hack/e2e/reload.sh
 
 .PHONY: e2e-kind
 e2e-kind: e2e-setup-kind e2e-deploy e2e ## Full e2e with Kind setup

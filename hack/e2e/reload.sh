@@ -29,13 +29,18 @@ BIN_DIR="${ROOT_DIR}/bin"
 IMAGE_TAG="${IMAGE_TAG:-e2e}"
 KUBELB_IMAGE="kubelb:${IMAGE_TAG}"
 CCM_IMAGE="kubelb-ccm:${IMAGE_TAG}"
+ENABLE_STANDALONE="${ENABLE_STANDALONE:-false}"
 
 # Hash tracking for change detection
 HASH_DIR="${KUBECONFIGS_DIR}/.reload-hashes"
 mkdir -p "${HASH_DIR}"
 
 # Verify kubeconfigs exist
-for cluster in kubelb tenant1 tenant2 standalone; do
+clusters="kubelb tenant1 tenant2"
+if [[ "${ENABLE_STANDALONE}" == "true" ]]; then
+  clusters="${clusters} standalone"
+fi
+for cluster in ${clusters}; do
   if [[ ! -f "${KUBECONFIGS_DIR}/${cluster}.kubeconfig" ]]; then
     echo "Error: ${KUBECONFIGS_DIR}/${cluster}.kubeconfig not found"
     echo "Run 'make e2e-setup-kind' first"
@@ -141,10 +146,12 @@ if [[ "${ccm_changed}" == "true" ]]; then
   echodate "Building ccm image..."
   docker build -q -t "${CCM_IMAGE}" -f "${ROOT_DIR}/ccm.goreleaser.dockerfile" "${BIN_DIR}/"
 
-  echodate "Loading ccm image into tenant and standalone clusters..."
+  echodate "Loading ccm image into tenant clusters..."
   kind load docker-image --name=tenant1 "${CCM_IMAGE}" &
   kind load docker-image --name=tenant2 "${CCM_IMAGE}" &
-  kind load docker-image --name=standalone "${CCM_IMAGE}" &
+  if [[ "${ENABLE_STANDALONE}" == "true" ]]; then
+    kind load docker-image --name=standalone "${CCM_IMAGE}" &
+  fi
   wait
 
   echodate "Restarting CCM deployments..."
@@ -152,8 +159,10 @@ if [[ "${ccm_changed}" == "true" ]]; then
     rollout restart deployment/kubelb-ccm -n kubelb &
   kubectl --kubeconfig="${KUBECONFIGS_DIR}/tenant2.kubeconfig" \
     rollout restart deployment/kubelb-ccm -n kubelb &
-  kubectl --kubeconfig="${KUBECONFIGS_DIR}/standalone.kubeconfig" \
-    rollout restart deployment/kubelb-ccm -n kubelb &
+  if [[ "${ENABLE_STANDALONE}" == "true" ]]; then
+    kubectl --kubeconfig="${KUBECONFIGS_DIR}/standalone.kubeconfig" \
+      rollout restart deployment/kubelb-ccm -n kubelb &
+  fi
   wait
 
   store_hash "ccm" "${ccm_hash}"

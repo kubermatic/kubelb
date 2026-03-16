@@ -36,11 +36,12 @@ GIT_COMMIT="${GIT_COMMIT:-$(git rev-parse --short HEAD)}"
 BUILD_DATE="${BUILD_DATE:-$(date -u +%Y-%m-%dT%H:%M:%SZ)}"
 
 # Cluster type detection
-USE_KIND="${USE_KIND:-auto}"                # auto, true, false
-SKIP_BUILD="${SKIP_BUILD:-false}"           # Skip image building (use pre-built images)
-SKIP_IMAGE_LOAD="${SKIP_IMAGE_LOAD:-false}" # Skip image loading
-METALLB_IP_RANGE="${METALLB_IP_RANGE:-}"    # Override MetalLB IP range for cloud
-CONVERSION_MODE="${CONVERSION_MODE:-false}" # Deploy CCM in standalone conversion mode
+USE_KIND="${USE_KIND:-auto}"                    # auto, true, false
+SKIP_BUILD="${SKIP_BUILD:-false}"               # Skip image building (use pre-built images)
+SKIP_IMAGE_LOAD="${SKIP_IMAGE_LOAD:-false}"     # Skip image loading
+METALLB_IP_RANGE="${METALLB_IP_RANGE:-}"        # Override MetalLB IP range for cloud
+CONVERSION_MODE="${CONVERSION_MODE:-false}"     # Deploy CCM in standalone conversion mode
+ENABLE_STANDALONE="${ENABLE_STANDALONE:-false}" # Enable standalone cluster for conversion tests
 
 mkdir -p "${LOGS_DIR}"
 
@@ -71,7 +72,11 @@ get_helm_command() {
 # Verify prerequisites
 #######################################
 verify_kubeconfigs() {
-  for cluster in kubelb tenant1 tenant2 standalone; do
+  local clusters="kubelb tenant1 tenant2"
+  if [[ "${ENABLE_STANDALONE}" == "true" ]]; then
+    clusters="${clusters} standalone"
+  fi
+  for cluster in ${clusters}; do
     if [[ ! -f "${KUBECONFIGS_DIR}/${cluster}.kubeconfig" ]]; then
       echo "Error: ${KUBECONFIGS_DIR}/${cluster}.kubeconfig not found"
       echo "Run 'make e2e-setup-kind' first"
@@ -150,7 +155,9 @@ load_images() {
   kind load docker-image --name=kubelb "${KUBELB_IMAGE}" "${CCM_IMAGE}" &
   kind load docker-image --name=tenant1 "${CCM_IMAGE}" &
   kind load docker-image --name=tenant2 "${CCM_IMAGE}" &
-  kind load docker-image --name=standalone "${CCM_IMAGE}" &
+  if [[ "${ENABLE_STANDALONE}" == "true" ]]; then
+    kind load docker-image --name=standalone "${CCM_IMAGE}" &
+  fi
   wait
 
   printElapsed "image_loads" ${load_start}
@@ -680,9 +687,11 @@ deploy_test_apps() {
       kubectl apply -f "${E2E_MANIFESTS_DIR}/test-apps/echo-server.yaml" &
   done
 
-  # Also deploy to standalone cluster
-  KUBECONFIG="${KUBECONFIGS_DIR}/standalone.kubeconfig" \
-    kubectl apply -f "${E2E_MANIFESTS_DIR}/test-apps/echo-server.yaml" &
+  # Also deploy to standalone cluster if enabled
+  if [[ "${ENABLE_STANDALONE}" == "true" ]]; then
+    KUBECONFIG="${KUBECONFIGS_DIR}/standalone.kubeconfig" \
+      kubectl apply -f "${E2E_MANIFESTS_DIR}/test-apps/echo-server.yaml" &
+  fi
 
   wait
   echodate "Test apps deployed (pods starting in background)"
@@ -733,11 +742,13 @@ load_images
 # Ensure helm repos configured once before parallel deploys
 ensure_helm_repos_once
 
-# Deploy kubelb manager and standalone addons in parallel (both do similar helm work)
+# Deploy kubelb manager (and standalone addons in parallel if enabled)
 deploy_kubelb_manager &
 manager_pid=$!
-deploy_standalone_addons &
-standalone_addons_pid=$!
+if [[ "${ENABLE_STANDALONE}" == "true" ]]; then
+  deploy_standalone_addons &
+  standalone_addons_pid=$!
+fi
 
 # Wait for manager before tenant setup (tenants need manager CRDs)
 wait ${manager_pid}
@@ -746,18 +757,24 @@ setup_tenants
 deploy_ccms &
 ccm_pid=$!
 
-# Wait for standalone addons before CCM deploy
-wait ${standalone_addons_pid}
-deploy_standalone_ccm &
-standalone_ccm_pid=$!
+if [[ "${ENABLE_STANDALONE}" == "true" ]]; then
+  # Wait for standalone addons before CCM deploy
+  wait ${standalone_addons_pid}
+  deploy_standalone_ccm &
+  standalone_ccm_pid=$!
+fi
 
 # Wait for CCMs to finish
 wait ${ccm_pid}
-wait ${standalone_ccm_pid}
+if [[ "${ENABLE_STANDALONE}" == "true" ]]; then
+  wait ${standalone_ccm_pid}
+fi
 
 # Wait for all clusters to be ready in parallel
 wait_for_ready &
-wait_for_standalone_ready &
+if [[ "${ENABLE_STANDALONE}" == "true" ]]; then
+  wait_for_standalone_ready &
+fi
 wait
 
 deploy_test_apps
@@ -781,6 +798,8 @@ echodate "Clusters ready:"
 echodate "  kubelb:     export KUBECONFIG=${KUBECONFIGS_DIR}/kubelb.kubeconfig"
 echodate "  tenant1:    export KUBECONFIG=${KUBECONFIGS_DIR}/tenant1.kubeconfig"
 echodate "  tenant2:    export KUBECONFIG=${KUBECONFIGS_DIR}/tenant2.kubeconfig"
-echodate "  standalone: export KUBECONFIG=${KUBECONFIGS_DIR}/standalone.kubeconfig"
+if [[ "${ENABLE_STANDALONE}" == "true" ]]; then
+  echodate "  standalone: export KUBECONFIG=${KUBECONFIGS_DIR}/standalone.kubeconfig"
+fi
 echodate ""
 printElapsed "total_deploy" ${SCRIPT_START}
