@@ -20,7 +20,6 @@ export ROOT_DIR="$(git rev-parse --show-toplevel)"
 source "${ROOT_DIR}/hack/lib.sh"
 
 KUBECONFIGS_DIR="${KUBECONFIGS_DIR:-${ROOT_DIR}/.e2e-kubeconfigs}"
-
 echodate "Deleting Kind clusters"
 kind delete clusters kubelb tenant1 tenant2 standalone || true
 

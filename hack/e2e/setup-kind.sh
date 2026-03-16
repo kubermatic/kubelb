@@ -26,7 +26,11 @@ cleanup() {
   set +e
   if [[ "${CLEANUP_ON_EXIT:-false}" == "true" ]] && [[ "${TEST_FAILED}" == "true" ]]; then
     echodate "Test failed, cleaning up clusters..."
-    kind delete clusters kubelb tenant1 tenant2 standalone &> /dev/null || true
+    local clusters="kubelb tenant1 tenant2"
+    if [[ "${ENABLE_STANDALONE}" == "true" ]]; then
+      clusters="${clusters} standalone"
+    fi
+    kind delete clusters ${clusters} &> /dev/null || true
   fi
 }
 
@@ -79,18 +83,21 @@ CHAINSAW_PID=""
 CHAINSAW_PID=$!
 
 KIND_IMAGE="${KIND_IMAGE:-kindest/node:v1.35.0}"
+ENABLE_STANDALONE="${ENABLE_STANDALONE:-false}"
 
 # Cluster definitions: name -> type (empty = single node, multinode = 3 workers)
 # - kubelb: manager cluster (single-node)
 # - tenant1: normal CCM hub-and-spoke (multi-node for endpoint/node tests)
 # - tenant2: normal CCM hub-and-spoke (single-node for edge cases)
-# - standalone: standalone conversion CCM (single-node)
+# - standalone: standalone conversion CCM (single-node, opt-in via ENABLE_STANDALONE)
 declare -A CLUSTERS=(
   ["kubelb"]=""
   ["tenant1"]="multinode"
   ["tenant2"]=""
-  ["standalone"]=""
 )
+if [[ "${ENABLE_STANDALONE}" == "true" ]]; then
+  CLUSTERS["standalone"]=""
+fi
 
 #######################################
 # Helper functions
@@ -334,9 +341,9 @@ prepull_images() {
     wait ${pid} || true
   done
 
-  # Load standalone cluster images
+  # Load standalone cluster images (only when standalone is enabled)
   local standalone_images_file="${ROOT_DIR}/hack/e2e/images-standalone.yaml"
-  if [[ -f "${standalone_images_file}" ]]; then
+  if [[ "${ENABLE_STANDALONE}" == "true" ]] && [[ -f "${standalone_images_file}" ]]; then
     local standalone_images=()
     while IFS= read -r line; do
       if [[ "${line}" =~ ^[[:space:]]*-[[:space:]]+(.+)$ ]]; then
