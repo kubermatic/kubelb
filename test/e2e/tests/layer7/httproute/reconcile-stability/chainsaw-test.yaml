@@ -1,0 +1,318 @@
+# Copyright 2026 The KubeLB Authors.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# HTTPRoute Reconcile Stability Test
+# Regression test for:
+# - https://github.com/kubermatic/kubelb/issues/331 (NodePort service storm)
+#
+# Verifies that HTTPRoutes with ClusterIP and NodePort backend services
+# do NOT trigger infinite reconciliation loops. After initial setup,
+# CCM reconciliations must stop within 30s.
+apiVersion: chainsaw.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: reconcile-stability
+  labels:
+    all:
+    test: reconcile-stability
+    resource: httproute
+    layer: layer7
+spec:
+  description: |
+    Regression test for reconciliation storms.
+    Deploys ClusterIP and NodePort backend services, creates HTTPRoute
+    with multiple rules, waits for setup, then asserts zero CCM
+    reconciliations over a 15s observation window.
+  steps:
+    - name: deploy-backends
+      description: Deploy ClusterIP and NodePort backend services
+      cluster: tenant1
+      try:
+        - apply:
+            resource:
+              apiVersion: apps/v1
+              kind: Deployment
+              metadata:
+                name: stable-clusterip
+                namespace: default
+                labels: {app: stable-clusterip}
+              spec:
+                replicas: 1
+                selector:
+                  matchLabels: {app: stable-clusterip}
+                template:
+                  metadata:
+                    labels: {app: stable-clusterip}
+                  spec:
+                    containers:
+                      - name: echo
+                        image: hashicorp/http-echo:1.0
+                        imagePullPolicy: IfNotPresent
+                        args: ["-text=clusterip", "-listen=:8080"]
+                        ports: [{containerPort: 8080}]
+        - apply:
+            resource:
+              apiVersion: apps/v1
+              kind: Deployment
+              metadata:
+                name: stable-nodeport
+                namespace: default
+                labels: {app: stable-nodeport}
+              spec:
+                replicas: 1
+                selector:
+                  matchLabels: {app: stable-nodeport}
+                template:
+                  metadata:
+                    labels: {app: stable-nodeport}
+                  spec:
+                    containers:
+                      - name: echo
+                        image: hashicorp/http-echo:1.0
+                        imagePullPolicy: IfNotPresent
+                        args: ["-text=nodeport", "-listen=:8080"]
+                        ports: [{containerPort: 8080}]
+        - apply:
+            resource:
+              apiVersion: v1
+              kind: Service
+              metadata:
+                name: stable-clusterip
+                namespace: default
+              spec:
+                type: ClusterIP
+                selector: {app: stable-clusterip}
+                ports: [{port: 80, targetPort: 8080}]
+        - apply:
+            resource:
+              apiVersion: v1
+              kind: Service
+              metadata:
+                name: stable-nodeport
+                namespace: default
+              spec:
+                type: NodePort
+                selector: {app: stable-nodeport}
+                ports: [{port: 80, targetPort: 8080}]
+        - assert:
+            timeout: 60s
+            resource:
+              apiVersion: apps/v1
+              kind: Deployment
+              metadata:
+                name: stable-clusterip
+                namespace: default
+              status:
+                readyReplicas: 1
+        - assert:
+            timeout: 60s
+            resource:
+              apiVersion: apps/v1
+              kind: Deployment
+              metadata:
+                name: stable-nodeport
+                namespace: default
+              status:
+                readyReplicas: 1
+
+    - name: create-gateway
+      cluster: tenant1
+      try:
+        - apply:
+            resource:
+              apiVersion: gateway.networking.k8s.io/v1
+              kind: Gateway
+              metadata:
+                name: stable-gw
+                namespace: default
+              spec:
+                gatewayClassName: kubelb
+                listeners:
+                  - name: http
+                    protocol: HTTP
+                    port: 80
+                    allowedRoutes:
+                      namespaces:
+                        from: All
+
+    - name: wait-gateway-ready
+      cluster: tenant1
+      try:
+        - script:
+            skipCommandOutput: true
+            timeout: 120s
+            content: |
+              set -e
+              for i in $(seq 1 40); do
+                IP=$(kubectl get gateway stable-gw -n default \
+                  -o jsonpath='{.status.addresses[0].value}' 2>/dev/null || true)
+                if [ -n "$IP" ]; then
+                  echo "Gateway ready with IP: $IP"
+                  exit 0
+                fi
+                sleep 3
+              done
+              echo "FAILED: Gateway not ready"
+              exit 1
+            check:
+              ($error == null): true
+
+    - name: create-httproute
+      description: HTTPRoute with ClusterIP and NodePort backends
+      cluster: tenant1
+      try:
+        - script:
+            skipCommandOutput: true
+            timeout: 60s
+            content: |
+              set -e
+              IP=$(kubectl get gateway stable-gw -n default \
+                -o jsonpath='{.status.addresses[0].value}')
+              HOST="stable.${IP}.nip.io"
+              cat <<EOF | kubectl apply -f -
+              apiVersion: gateway.networking.k8s.io/v1
+              kind: HTTPRoute
+              metadata:
+                name: stable-route
+                namespace: default
+              spec:
+                parentRefs:
+                  - name: stable-gw
+                hostnames:
+                  - "${HOST}"
+                rules:
+                  - backendRefs:
+                      - name: stable-clusterip
+                        port: 80
+                    matches:
+                      - path:
+                          type: PathPrefix
+                          value: /clusterip
+                  - backendRefs:
+                      - name: stable-nodeport
+                        port: 80
+                    matches:
+                      - path:
+                          type: PathPrefix
+                          value: /nodeport
+              EOF
+            check:
+              ($error == null): true
+
+    - name: wait-for-stabilization
+      description: Wait for initial reconciliation burst to complete
+      cluster: tenant1
+      try:
+        - script:
+            skipCommandOutput: true
+            timeout: 60s
+            content: |
+              sleep 30
+              echo "Stabilization window complete"
+            check:
+              ($error == null): true
+
+    - name: verify-no-storm
+      description: Assert zero CCM HTTPRoute reconciliations over 15s
+      cluster: tenant1
+      try:
+        - script:
+            timeout: 60s
+            content: |
+              set -e
+              CCM_POD=$(kubectl get pods -n kubelb -o jsonpath='{.items[0].metadata.name}')
+
+              # Count reconciliations over 15s observation window
+              COUNT_BEFORE=$(kubectl logs -n kubelb "$CCM_POD" -c ccm 2>&1 | grep -c "Reconciling HTTPRoute.*stable-route" || true)
+              sleep 15
+              COUNT_AFTER=$(kubectl logs -n kubelb "$CCM_POD" -c ccm 2>&1 | grep -c "Reconciling HTTPRoute.*stable-route" || true)
+
+              DELTA=$((COUNT_AFTER - COUNT_BEFORE))
+              echo "Reconciliations in 15s window: $DELTA (before=$COUNT_BEFORE, after=$COUNT_AFTER)"
+
+              if [ "$DELTA" -gt 0 ]; then
+                echo "FAILED: Reconciliation storm detected"
+                kubectl logs -n kubelb "$CCM_POD" -c ccm --since=20s 2>&1 | grep "Reconciling HTTPRoute.*stable-route" | tail -10
+                exit 1
+              fi
+              echo "PASS: No reconciliation storm"
+            check:
+              ($error == null): true
+
+    - name: verify-services-stable
+      description: Assert LB cluster services are not being recreated
+      cluster: kubelb
+      try:
+        - script:
+            timeout: 30s
+            content: |
+              set -e
+              NAMESPACE="tenant-primary"
+
+              # Check services exist and have stable age (>10s)
+              for i in $(seq 1 5); do
+                SVCS=$(kubectl get svc -n "$NAMESPACE" -o custom-columns='NAME:.metadata.name,AGE:.metadata.creationTimestamp' --no-headers 2>/dev/null | grep "stable" || true)
+                if [ -n "$SVCS" ]; then
+                  echo "Services found:"
+                  echo "$SVCS"
+                  break
+                fi
+                sleep 2
+              done
+
+              # Verify no service has been recently recreated (age should be >10s)
+              sleep 10
+              for svc in $(kubectl get svc -n "$NAMESPACE" --no-headers 2>/dev/null | grep "stable" | awk '{print $1}'); do
+                AGE_SECONDS=$(kubectl get svc "$svc" -n "$NAMESPACE" -o jsonpath='{.metadata.creationTimestamp}' 2>/dev/null)
+                CREATED=$(date -d "$AGE_SECONDS" +%s 2>/dev/null || date -jf "%Y-%m-%dT%H:%M:%SZ" "$AGE_SECONDS" +%s 2>/dev/null)
+                NOW=$(date +%s)
+                AGE=$((NOW - CREATED))
+                echo "Service $svc age: ${AGE}s"
+                if [ "$AGE" -lt 10 ]; then
+                  echo "FAILED: Service $svc was recently recreated (age=${AGE}s)"
+                  exit 1
+                fi
+              done
+              echo "PASS: All services stable"
+            check:
+              ($error == null): true
+
+    - name: cleanup
+      cluster: tenant1
+      try:
+        - script:
+            skipCommandOutput: true
+            timeout: 60s
+            content: |
+              kubectl delete httproute stable-route -n default --wait=false
+              echo "Cleanup initiated"
+            check:
+              ($error == null): true
+      finally:
+        - script:
+            skipCommandOutput: true
+            cluster: tenant1
+            timeout: 60s
+            content: |
+              kubectl delete httproute/stable-route gateway/stable-gw deployment/stable-clusterip deployment/stable-nodeport service/stable-clusterip service/stable-nodeport -n default --ignore-not-found
+
+    - name: verify-cleanup
+      use:
+        template: ../../../../step-templates/common/verify-route-cleanup.yaml
+        with:
+          bindings:
+            - name: resource_name
+              value: stable-route
+            - name: kubelb_namespace
+              value: tenant-primary
