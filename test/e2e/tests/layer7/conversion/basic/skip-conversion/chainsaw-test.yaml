@@ -15,7 +15,7 @@
 apiVersion: chainsaw.kyverno.io/v1alpha1
 kind: Test
 metadata:
-  name: conversion-basic-skip-conversion
+  name: ing-conversion-basic-skip-conversion
   labels:
     suite: conversion
     layer: layer7

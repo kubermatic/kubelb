@@ -15,7 +15,7 @@
 apiVersion: chainsaw.kyverno.io/v1alpha1
 kind: Test
 metadata:
-  name: conversion-policies-denylist
+  name: ing-conversion-policies-denylist
   labels:
     suite: conversion
     layer: layer7

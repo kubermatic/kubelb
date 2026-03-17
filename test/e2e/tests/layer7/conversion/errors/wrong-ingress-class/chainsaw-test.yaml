@@ -19,7 +19,7 @@
 apiVersion: chainsaw.kyverno.io/v1alpha1
 kind: Test
 metadata:
-  name: conversion-errors-wrong-class
+  name: ing-conversion-errors-wrong-class
   labels:
     suite: conversion
     layer: layer7

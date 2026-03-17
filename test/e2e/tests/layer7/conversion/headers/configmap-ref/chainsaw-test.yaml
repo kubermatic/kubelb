@@ -15,7 +15,7 @@
 apiVersion: chainsaw.kyverno.io/v1alpha1
 kind: Test
 metadata:
-  name: conversion-headers-configmap-ref
+  name: ing-conversion-headers-configmap-ref
   labels:
     suite: conversion
     layer: layer7

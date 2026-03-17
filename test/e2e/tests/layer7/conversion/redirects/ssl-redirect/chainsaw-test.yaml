@@ -15,7 +15,7 @@
 apiVersion: chainsaw.kyverno.io/v1alpha1
 kind: Test
 metadata:
-  name: conversion-redirects-ssl-redirect
+  name: ing-conversion-redirects-ssl-redirect
   labels:
     suite: conversion
     layer: layer7

@@ -15,7 +15,7 @@
 apiVersion: chainsaw.kyverno.io/v1alpha1
 kind: Test
 metadata:
-  name: conversion-unsupported-proxy-ssl
+  name: ing-conversion-unsupported-proxy-ssl
   labels:
     suite: conversion
     layer: layer7

@@ -15,7 +15,7 @@
 apiVersion: chainsaw.kyverno.io/v1alpha1
 kind: Test
 metadata:
-  name: conversion-grpc-basic
+  name: ing-conversion-grpc-basic
   labels:
     suite: conversion
     layer: layer7

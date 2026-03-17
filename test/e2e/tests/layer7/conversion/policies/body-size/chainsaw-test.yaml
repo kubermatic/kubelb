@@ -15,7 +15,7 @@
 apiVersion: chainsaw.kyverno.io/v1alpha1
 kind: Test
 metadata:
-  name: conversion-policies-body-size
+  name: ing-conversion-policies-body-size
   labels:
     suite: conversion
     layer: layer7

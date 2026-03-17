@@ -15,7 +15,7 @@
 apiVersion: chainsaw.kyverno.io/v1alpha1
 kind: Test
 metadata:
-  name: conversion-headers-x-forwarded-prefix
+  name: ing-conversion-headers-x-forwarded-prefix
   labels:
     suite: conversion
     layer: layer7

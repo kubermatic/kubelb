@@ -15,7 +15,7 @@
 apiVersion: chainsaw.kyverno.io/v1alpha1
 kind: Test
 metadata:
-  name: conversion-basic-gateway-annotations
+  name: ing-conversion-basic-gateway-annotations
   labels:
     suite: conversion
     layer: layer7

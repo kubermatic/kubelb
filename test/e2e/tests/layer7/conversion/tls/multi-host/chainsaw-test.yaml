@@ -15,7 +15,7 @@
 apiVersion: chainsaw.kyverno.io/v1alpha1
 kind: Test
 metadata:
-  name: conversion-tls-multi-host
+  name: ing-conversion-tls-multi-host
   labels:
     suite: conversion
     layer: layer7

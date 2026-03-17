@@ -15,7 +15,7 @@
 apiVersion: chainsaw.kyverno.io/v1alpha1
 kind: Test
 metadata:
-  name: conversion-policies-limit-connections
+  name: ing-conversion-policies-limit-connections
   labels:
     suite: conversion
     layer: layer7

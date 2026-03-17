@@ -15,7 +15,7 @@
 apiVersion: chainsaw.kyverno.io/v1alpha1
 kind: Test
 metadata:
-  name: conversion-headers-hsts
+  name: ing-conversion-headers-hsts
   labels:
     suite: conversion
     layer: layer7

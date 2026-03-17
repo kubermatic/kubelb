@@ -15,7 +15,7 @@
 apiVersion: chainsaw.kyverno.io/v1alpha1
 kind: Test
 metadata:
-  name: conversion-policies-external-auth
+  name: ing-conversion-policies-external-auth
   labels:
     suite: conversion
     layer: layer7
