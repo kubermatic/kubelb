@@ -40,6 +40,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	v1 "k8s.io/api/networking/v1"
 	kerrors "k8s.io/apimachinery/pkg/api/errors"
+	apimeta "k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
@@ -617,6 +618,7 @@ func updateServiceStatus(routeStatus *kubelbv1alpha1.RouteStatus, svc *corev1.Se
 		originalNamespace = svc.Namespace
 	}
 
+	key := fmt.Sprintf(kubelb.RouteServiceMapKey, originalNamespace, originalName)
 	status := kubelbv1alpha1.RouteServiceStatus{
 		ResourceState: kubelbv1alpha1.ResourceState{
 			GeneratedName: svc.GetName(),
@@ -625,7 +627,10 @@ func updateServiceStatus(routeStatus *kubelbv1alpha1.RouteStatus, svc *corev1.Se
 		},
 		Ports: svc.Spec.Ports,
 	}
-	status.Conditions = generateConditions(err)
+	if existing, ok := routeStatus.Resources.Services[key]; ok {
+		status.Conditions = existing.Conditions
+	}
+	setCondition(&status.Conditions, err)
 
 	svcStatus, err := json.Marshal(svc.Status)
 	if err != nil {
@@ -639,7 +644,6 @@ func updateServiceStatus(routeStatus *kubelbv1alpha1.RouteStatus, svc *corev1.Se
 	if routeStatus.Resources.Services == nil {
 		routeStatus.Resources.Services = make(map[string]kubelbv1alpha1.RouteServiceStatus)
 	}
-	key := fmt.Sprintf(kubelb.RouteServiceMapKey, originalNamespace, originalName)
 	routeStatus.Resources.Services[key] = status
 }
 
@@ -650,8 +654,9 @@ func updateResourceStatus(routeStatus *kubelbv1alpha1.RouteStatus, obj ctrlrunti
 		Name:          kubelb.GetName(obj),
 		APIVersion:    obj.GetObjectKind().GroupVersionKind().GroupVersion().String(),
 		Kind:          obj.GetObjectKind().GroupVersionKind().Kind,
+		Conditions:    routeStatus.Resources.Route.Conditions,
 	}
-	status.Conditions = generateConditions(err)
+	setCondition(&status.Conditions, err)
 
 	switch resource := obj.(type) {
 	case *v1.Ingress:
@@ -680,7 +685,7 @@ func getResourceStatus(v any) runtime.RawExtension {
 	}
 }
 
-func generateConditions(err error) []metav1.Condition {
+func setCondition(conditions *[]metav1.Condition, err error) {
 	conditionMessage := "Success"
 	conditionStatus := metav1.ConditionTrue
 	conditionReason := "InstallationSuccessful"
@@ -689,17 +694,12 @@ func generateConditions(err error) []metav1.Condition {
 		conditionStatus = metav1.ConditionFalse
 		conditionReason = "InstallationFailed"
 	}
-	return []metav1.Condition{
-		{
-			Type:   kubelbv1alpha1.ConditionResourceAppliedSuccessfully.String(),
-			Reason: conditionReason,
-			Status: conditionStatus,
-			LastTransitionTime: metav1.Time{
-				Time: time.Now(),
-			},
-			Message: conditionMessage,
-		},
-	}
+	apimeta.SetStatusCondition(conditions, metav1.Condition{
+		Type:    kubelbv1alpha1.ConditionResourceAppliedSuccessfully.String(),
+		Reason:  conditionReason,
+		Status:  conditionStatus,
+		Message: conditionMessage,
+	})
 }
 
 func envoyApplicationName(topology EnvoyProxyTopology, namespace string) string {
