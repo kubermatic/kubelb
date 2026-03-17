@@ -524,6 +524,9 @@ func makeHTTPListener(listenerName string, clusterName string, listenerPort uint
 		CommonHttpProtocolOptions: &envoyCore.HttpProtocolOptions{
 			IdleTimeout: durationpb.New(60 * time.Second),
 		},
+		UpgradeConfigs: []*envoyHttpManager.HttpConnectionManager_UpgradeConfig{
+			{UpgradeType: "websocket"},
+		},
 		// XFF and remote address handling
 		UseRemoteAddress:  &wrapperspb.BoolValue{Value: true},
 		XffNumTrustedHops: 1, // Trust 1 hop (Ingress/Gateway controller in front)
