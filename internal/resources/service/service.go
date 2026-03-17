@@ -156,7 +156,11 @@ func CreateOrUpdateService(ctx context.Context, client ctrlclient.Client, obj *c
 		return nil
 	}
 
-	// Update the Service object if it is different from the existing one.
+	if obj.Spec.ClusterIP == "" && existingObj.Spec.ClusterIP != "" {
+		obj.Spec.ClusterIP = existingObj.Spec.ClusterIP
+		obj.Spec.ClusterIPs = existingObj.Spec.ClusterIPs
+	}
+
 	if equality.Semantic.DeepEqual(existingObj.Spec, obj.Spec) &&
 		equality.Semantic.DeepEqual(existingObj.Labels, obj.Labels) &&
 		equality.Semantic.DeepEqual(existingObj.Annotations, obj.Annotations) {
