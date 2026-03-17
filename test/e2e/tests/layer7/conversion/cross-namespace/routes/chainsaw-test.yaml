@@ -15,7 +15,7 @@
 apiVersion: chainsaw.kyverno.io/v1alpha1
 kind: Test
 metadata:
-  name: conversion-cross-namespace-routes
+  name: ing-conversion-cross-namespace-routes
   labels:
     suite: conversion
     layer: layer7

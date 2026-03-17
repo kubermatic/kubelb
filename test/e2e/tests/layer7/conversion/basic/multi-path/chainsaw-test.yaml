@@ -15,7 +15,7 @@
 apiVersion: chainsaw.kyverno.io/v1alpha1
 kind: Test
 metadata:
-  name: conversion-basic-multi-path
+  name: ing-conversion-basic-multi-path
   labels:
     suite: conversion
     layer: layer7

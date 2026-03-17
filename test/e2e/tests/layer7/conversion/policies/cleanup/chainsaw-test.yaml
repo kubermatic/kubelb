@@ -15,7 +15,7 @@
 apiVersion: chainsaw.kyverno.io/v1alpha1
 kind: Test
 metadata:
-  name: conversion-policies-cleanup
+  name: ing-conversion-policies-cleanup
   labels:
     suite: conversion
     layer: layer7

@@ -15,7 +15,7 @@
 apiVersion: chainsaw.kyverno.io/v1alpha1
 kind: Test
 metadata:
-  name: conversion-headers-upstream-vhost
+  name: ing-conversion-headers-upstream-vhost
   labels:
     suite: conversion
     layer: layer7

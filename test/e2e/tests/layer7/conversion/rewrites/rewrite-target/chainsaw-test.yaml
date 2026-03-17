@@ -15,7 +15,7 @@
 apiVersion: chainsaw.kyverno.io/v1alpha1
 kind: Test
 metadata:
-  name: conversion-rewrites-rewrite-target
+  name: ing-conversion-rewrites-rewrite-target
   labels:
     suite: conversion
     layer: layer7

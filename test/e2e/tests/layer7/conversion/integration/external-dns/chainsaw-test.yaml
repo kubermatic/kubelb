@@ -15,7 +15,7 @@
 apiVersion: chainsaw.kyverno.io/v1alpha1
 kind: Test
 metadata:
-  name: conversion-integration-external-dns
+  name: ing-conversion-integration-external-dns
   labels:
     suite: conversion
     layer: layer7

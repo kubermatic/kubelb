@@ -15,7 +15,7 @@
 apiVersion: chainsaw.kyverno.io/v1alpha1
 kind: Test
 metadata:
-  name: conversion-unsupported-ssl-passthrough
+  name: ing-conversion-unsupported-ssl-passthrough
   labels:
     suite: conversion
     layer: layer7

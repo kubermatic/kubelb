@@ -15,7 +15,7 @@
 apiVersion: chainsaw.kyverno.io/v1alpha1
 kind: Test
 metadata:
-  name: conversion-rewrites-capture-groups
+  name: ing-conversion-rewrites-capture-groups
   labels:
     suite: conversion
     layer: layer7

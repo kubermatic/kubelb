@@ -15,7 +15,7 @@
 apiVersion: chainsaw.kyverno.io/v1alpha1
 kind: Test
 metadata:
-  name: conversion-headers-proxy-set
+  name: ing-conversion-headers-proxy-set
   labels:
     suite: conversion
     layer: layer7

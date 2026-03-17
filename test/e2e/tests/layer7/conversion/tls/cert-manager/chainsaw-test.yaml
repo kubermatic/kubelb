@@ -15,7 +15,7 @@
 apiVersion: chainsaw.kyverno.io/v1alpha1
 kind: Test
 metadata:
-  name: conversion-tls-cert-manager
+  name: ing-conversion-tls-cert-manager
   labels:
     suite: conversion
     layer: layer7

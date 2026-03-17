@@ -15,7 +15,7 @@
 apiVersion: chainsaw.kyverno.io/v1alpha1
 kind: Test
 metadata:
-  name: conversion-tls-basic
+  name: ing-conversion-tls-basic
   labels:
     suite: conversion
     layer: layer7

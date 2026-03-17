@@ -15,7 +15,7 @@
 apiVersion: chainsaw.kyverno.io/v1alpha1
 kind: Test
 metadata:
-  name: conversion-policies-combined-backend
+  name: ing-conversion-policies-combined-backend
   labels:
     suite: conversion
     layer: layer7

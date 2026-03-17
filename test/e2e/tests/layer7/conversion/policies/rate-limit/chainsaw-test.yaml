@@ -15,7 +15,7 @@
 apiVersion: chainsaw.kyverno.io/v1alpha1
 kind: Test
 metadata:
-  name: conversion-policies-rate-limit
+  name: ing-conversion-policies-rate-limit
   labels:
     suite: conversion
     layer: layer7

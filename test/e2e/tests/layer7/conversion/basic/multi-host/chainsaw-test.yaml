@@ -15,7 +15,7 @@
 apiVersion: chainsaw.kyverno.io/v1alpha1
 kind: Test
 metadata:
-  name: conversion-basic-multi-host
+  name: ing-conversion-basic-multi-host
   labels:
     suite: conversion
     layer: layer7
