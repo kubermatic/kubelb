@@ -161,7 +161,20 @@ presubmits:
               start-docker.sh
               docker load --input /kindest.tar
               make download-gocache
-              ENABLE_STANDALONE=true make e2e-kind
+
+              # Enable standalone cluster only when conversion-related code changes
+              CONVERSION_PATHS="internal/ingress-to-gateway/|pkg/conversion/|test/e2e/tests/layer7/conversion/|test/e2e/step-templates/conversion/|test/e2e/manifests/kubelb-ccm/values-standalone"
+              if [ -n "${PULL_BASE_SHA:-}" ] && git diff --name-only "${PULL_BASE_SHA}...HEAD" | grep -qE "${CONVERSION_PATHS}"; then
+                echo "Conversion code changed, enabling standalone cluster"
+                export ENABLE_STANDALONE=true
+              elif [ -z "${PULL_BASE_SHA:-}" ]; then
+                echo "PULL_BASE_SHA not set, enabling standalone cluster as fallback"
+                export ENABLE_STANDALONE=true
+              else
+                echo "No conversion code changes detected, skipping standalone cluster and conversion tests"
+              fi
+
+              make e2e-kind
           resources:
             requests:
               memory: 16Gi
