@@ -120,11 +120,11 @@ spec:
         with:
           bindings:
             - name: service_name
-              value: ($name)
+              value: echo-multiport
             - name: tenant
               value: tenant1
             - name: kubelb_namespace
-              value: ($kubelb_namespace)
+              value: tenant-primary
 
     # Step 5: Verify port 80 returns message1
     - name: verify-port1-response
@@ -134,9 +134,9 @@ spec:
         with:
           bindings:
             - name: service_name
-              value: ($name)
+              value: echo-multiport
             - name: expected
-              value: ($message1)
+              value: "hello-from-port-80"
             - name: port
               value: "80"
             - name: tenant
@@ -150,9 +150,9 @@ spec:
         with:
           bindings:
             - name: service_name
-              value: ($name)
+              value: echo-multiport
             - name: expected
-              value: ($message2)
+              value: "hello-from-port-81"
             - name: port
               value: "81"
             - name: tenant

@@ -114,9 +114,18 @@ func GenerateServiceForLBCluster(service corev1.Service, appName, namespace, rou
 	// For L7 routes, pass the original HTTPRoute/GRPCRoute/etc name.
 	endpointKey := fmt.Sprintf(kubelb.EnvoyEndpointRoutePattern, namespace, service.Namespace, service.Name, routeName)
 
-	service.Name = kubelb.GenerateRouteServiceName(routeName, GetServiceName(service), service.Namespace)
+	originalName := GetServiceName(service)
+	originalNamespace := GetServiceNamespace(service)
+
+	service.Name = kubelb.GenerateRouteServiceName(routeName, originalName, service.Namespace)
 	service.Namespace = namespace
 	service.UID = ""
+
+	if service.Labels == nil {
+		service.Labels = make(map[string]string)
+	}
+	service.Labels[kubelb.LabelOriginName] = originalName
+	service.Labels[kubelb.LabelOriginNamespace] = originalNamespace
 	if service.Spec.Type == corev1.ServiceTypeNodePort {
 		service.Spec.Type = corev1.ServiceTypeClusterIP
 	}
