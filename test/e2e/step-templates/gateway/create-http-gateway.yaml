@@ -27,7 +27,7 @@ spec:
     - name: gateway_class
       value: kubelb
     - name: gateway_port
-      value: 80
+      value: "80"
   try:
     - script:
         cluster: tenant1
