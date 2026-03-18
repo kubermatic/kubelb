@@ -26,7 +26,7 @@ metadata:
 spec:
   bindings:
     - name: expected_port
-      value: "80"
+      value: 80
     - name: expected_protocol
       value: TCP
   try:
