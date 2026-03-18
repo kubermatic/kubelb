@@ -184,8 +184,24 @@ spec:
             skipCommandOutput: true
             timeout: 60s
             content: |
-              sleep 30
-              echo "Stabilization window complete"
+              set -e
+              CCM_POD=$(kubectl get pods -n kubelb -o jsonpath='{.items[0].metadata.name}')
+              PREV_COUNT=-1
+              STABLE_CHECKS=0
+              for i in $(seq 1 15); do
+                COUNT=$(kubectl logs -n kubelb "$CCM_POD" -c ccm 2>&1 | grep -c "Reconciling HTTPRoute.*stable-route" || true)
+                if [ "$COUNT" = "$PREV_COUNT" ]; then
+                  STABLE_CHECKS=$((STABLE_CHECKS + 1))
+                  if [ "$STABLE_CHECKS" -ge 3 ]; then
+                    echo "Stabilized after $i checks ($COUNT reconciliations total)"
+                    break
+                  fi
+                else
+                  STABLE_CHECKS=0
+                fi
+                PREV_COUNT=$COUNT
+                sleep 2
+              done
             check:
               ($error == null): true
 
