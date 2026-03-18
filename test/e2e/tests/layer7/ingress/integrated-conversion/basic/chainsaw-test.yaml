@@ -42,9 +42,7 @@ spec:
     - name: httproute_host
       value: int-conv-basic.gateway.local
   steps:
-    # Step 1: Create ClusterIP service
     - name: create-service
-      description: Create ClusterIP service pointing to echo-shared
       cluster: tenant2
       try:
         - apply:
@@ -61,10 +59,11 @@ spec:
                 ports:
                   - port: 80
                     targetPort: 5678
+      catch:
+        - use:
+            template: ../../../../../step-templates/debug/collect-diagnostics.yaml
 
-    # Step 2: Create Ingress with kubelb class
     - name: create-ingress
-      description: Create Ingress with kubelb ingressClass
       cluster: tenant2
       try:
         - apply:
@@ -87,10 +86,11 @@ spec:
                               name: ($name)
                               port:
                                 number: 80
+      catch:
+        - use:
+            template: ../../../../../step-templates/debug/collect-diagnostics.yaml
 
-    # Step 3: Verify Ingress gets LoadBalancer IP
     - name: verify-ingress-ip
-      description: Verify Ingress gets LoadBalancer IP from kubelb
       cluster: tenant2
       try:
         - assert:
@@ -105,14 +105,14 @@ spec:
                 loadBalancer:
                   ingress:
                     - {}
+      catch:
+        - use:
+            template: ../../../../../step-templates/debug/collect-diagnostics.yaml
 
-    # Step 4: Verify Ingress traffic works
     - name: verify-ingress-traffic
-      description: Verify HTTP via Ingress
       cluster: tenant2
       try:
         - script:
-            skipCommandOutput: true
             timeout: 60s
             env:
               - name: NAME
@@ -128,24 +128,23 @@ spec:
               for i in $(seq 1 15); do
                 RESPONSE=$(curl -s --max-time 5 -H "Host: ${HOST}" "http://${IP}/" 2>/dev/null || true)
                 if echo "$RESPONSE" | grep -q "$EXPECTED"; then
-                  echo "SUCCESS: Ingress traffic OK"
+                  echo "Ingress traffic OK"
                   exit 0
                 fi
-                echo "Attempt $i: waiting..."
                 sleep 2
               done
-              echo "FAILED: Ingress traffic not working"
+              echo "Ingress traffic not working"
               exit 1
             check:
               ($error == null): true
+      catch:
+        - use:
+            template: ../../../../../step-templates/debug/collect-diagnostics.yaml
 
-    # Step 5: Verify HTTPRoute created locally by converter
     - name: verify-httproute-exists
-      description: Verify HTTPRoute created by converter
       cluster: tenant2
       try:
         - script:
-            skipCommandOutput: true
             timeout: 60s
             env:
               - name: NAME
@@ -163,21 +162,21 @@ spec:
                 if [ -n "$HTTPROUTE" ]; then
                   HOSTNAME=$(kubectl get $HTTPROUTE -n default -o jsonpath='{.spec.hostnames[0]}')
                   if [ "$HOSTNAME" = "$EXPECTED_HOST" ]; then
-                    echo "SUCCESS: HTTPRoute found with hostname $HOSTNAME"
+                    echo "HTTPRoute found with hostname $HOSTNAME"
                     exit 0
                   fi
                 fi
-                echo "Attempt $i: waiting for HTTPRoute..."
                 sleep 2
               done
-              echo "FAILED: HTTPRoute not found"
+              echo "HTTPRoute not found"
               exit 1
             check:
               ($error == null): true
+      catch:
+        - use:
+            template: ../../../../../step-templates/debug/collect-diagnostics.yaml
 
-    # Step 6: Verify Gateway created with kubelb class
     - name: verify-gateway-exists
-      description: Verify Gateway kubelb-int-conv created
       cluster: tenant2
       try:
         - assert:
@@ -193,14 +192,14 @@ spec:
               status:
                 addresses:
                   - {}
+      catch:
+        - use:
+            template: ../../../../../step-templates/debug/collect-diagnostics.yaml
 
-    # Step 7: Verify HTTPRoute traffic works and serves SAME content
     - name: verify-httproute-traffic
-      description: Verify HTTP via HTTPRoute (same content as Ingress)
       cluster: tenant2
       try:
         - script:
-            skipCommandOutput: true
             timeout: 60s
             env:
               - name: HOST
@@ -214,24 +213,23 @@ spec:
               for i in $(seq 1 15); do
                 RESPONSE=$(curl -s --max-time 5 -H "Host: ${HOST}" "http://${IP}/" 2>/dev/null || true)
                 if echo "$RESPONSE" | grep -q "$EXPECTED"; then
-                  echo "SUCCESS: HTTPRoute traffic OK - same content as Ingress"
+                  echo "HTTPRoute traffic OK - same content as Ingress"
                   exit 0
                 fi
-                echo "Attempt $i: waiting..."
                 sleep 2
               done
-              echo "FAILED: HTTPRoute traffic not working"
+              echo "HTTPRoute traffic not working"
               exit 1
             check:
               ($error == null): true
+      catch:
+        - use:
+            template: ../../../../../step-templates/debug/collect-diagnostics.yaml
 
-    # Cleanup
     - name: cleanup
-      description: Cleanup resources
       cluster: tenant2
       try:
         - script:
-            skipCommandOutput: true
             timeout: 30s
             env:
               - name: NAME

@@ -38,7 +38,6 @@ spec:
     - name: kubelb_namespace
       value: tenant-primary
   steps:
-    # Step 1: Deploy app1 (echo server returning "app1")
     - name: deploy-app1
       cluster: tenant1
       bindings:
@@ -61,8 +60,10 @@ spec:
                 namespace: default
               status:
                 readyReplicas: 1
+      catch:
+        - use:
+            template: ../../../../step-templates/debug/collect-diagnostics.yaml
 
-    # Step 2: Deploy app2 (echo server returning "app2")
     - name: deploy-app2
       cluster: tenant1
       bindings:
@@ -85,8 +86,10 @@ spec:
                 namespace: default
               status:
                 readyReplicas: 1
+      catch:
+        - use:
+            template: ../../../../step-templates/debug/collect-diagnostics.yaml
 
-    # Step 3: Create multi-path Ingress
     - name: create-ingress
       cluster: tenant1
       try:
@@ -117,10 +120,11 @@ spec:
                               name: echo-app2
                               port:
                                 number: 80
+      catch:
+        - use:
+            template: ../../../../step-templates/debug/collect-diagnostics.yaml
 
-    # Step 4: Verify Route CRD
     - name: verify-route-crd
-      description: Verify Route CRD exists with correct labels
       bindings:
         - name: name
           value: multi-path-ingress
@@ -135,12 +139,10 @@ spec:
             - name: kubelb_namespace
               value: ($kubelb_namespace)
 
-    # Step 5: Verify generated Ingress in kubelb cluster
     - name: verify-generated-ingress
       cluster: kubelb
       try:
         - script:
-            skipCommandOutput: true
             timeout: 60s
             content: |
               set -e
@@ -157,14 +159,15 @@ spec:
                 fi
                 sleep 2
               done
-              echo "FAILED: Generated Ingress not found in kubelb"
+              echo "Generated Ingress not found in kubelb"
               exit 1
             check:
               ($error == null): true
+      catch:
+        - use:
+            template: ../../../../step-templates/debug/collect-diagnostics.yaml
 
-    # Step 6: Wait for tenant Ingress status
     - name: verify-ingress-status
-      description: Verify Ingress gets LoadBalancer IP
       bindings:
         - name: name
           value: multi-path-ingress
@@ -175,16 +178,13 @@ spec:
             - name: ingress_name
               value: ($name)
 
-    # Step 7: Verify /app1 routes to app1
     - name: verify-app1-path
       cluster: tenant1
       try:
         - script:
-            skipCommandOutput: true
             timeout: 60s
             content: |
               set -e
-              # Get IP from Ingress status (propagated from kubelb)
               IP=$(kubectl get ingress multi-path-ingress -n default \
                 -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
               HOST="multipath.test.local"
@@ -194,24 +194,23 @@ spec:
                   echo "/app1 OK: response-from-app1"
                   exit 0
                 fi
-                echo "Attempt $i: waiting... (got: $RESPONSE)"
                 sleep 2
               done
-              echo "FAILED: /app1 did not return expected response"
+              echo "/app1 did not return expected response"
               exit 1
             check:
               ($error == null): true
+      catch:
+        - use:
+            template: ../../../../step-templates/debug/collect-diagnostics.yaml
 
-    # Step 8: Verify /app2 routes to app2
     - name: verify-app2-path
       cluster: tenant1
       try:
         - script:
-            skipCommandOutput: true
             timeout: 60s
             content: |
               set -e
-              # Get IP from Ingress status (propagated from kubelb)
               IP=$(kubectl get ingress multi-path-ingress -n default \
                 -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
               HOST="multipath.test.local"
@@ -221,20 +220,20 @@ spec:
                   echo "/app2 OK: response-from-app2"
                   exit 0
                 fi
-                echo "Attempt $i: waiting... (got: $RESPONSE)"
                 sleep 2
               done
-              echo "FAILED: /app2 did not return expected response"
+              echo "/app2 did not return expected response"
               exit 1
             check:
               ($error == null): true
+      catch:
+        - use:
+            template: ../../../../step-templates/debug/collect-diagnostics.yaml
 
-    # Step 9: Cleanup
     - name: cleanup
       cluster: tenant1
       try:
         - script:
-            skipCommandOutput: true
             timeout: 60s
             content: |
               kubectl delete ingress multi-path-ingress -n default --wait=false
@@ -242,7 +241,6 @@ spec:
               ($error == null): true
       finally:
         - script:
-            skipCommandOutput: true
             cluster: tenant1
             timeout: 60s
             content: |
@@ -253,7 +251,6 @@ spec:
               kubectl delete service echo-app2 -n default --ignore-not-found
 
     - name: verify-cleanup
-      description: Verify Route CRD removed
       bindings:
         - name: name
           value: multi-path-ingress

@@ -42,7 +42,6 @@ spec:
     - name: kubelb_namespace
       value: tenant-primary
   steps:
-    # Step 1: Deploy backend1 (for /app1 path)
     - name: deploy-backend1
       cluster: tenant1
       bindings:
@@ -65,8 +64,10 @@ spec:
                 namespace: default
               status:
                 readyReplicas: 1
+      catch:
+        - use:
+            template: ../../../../step-templates/debug/collect-diagnostics.yaml
 
-    # Step 2: Deploy backend2 (for /app2 path)
     - name: deploy-backend2
       cluster: tenant1
       bindings:
@@ -89,8 +90,10 @@ spec:
                 namespace: default
               status:
                 readyReplicas: 1
+      catch:
+        - use:
+            template: ../../../../step-templates/debug/collect-diagnostics.yaml
 
-    # Step 3: Deploy backend3 (for host2)
     - name: deploy-backend3
       cluster: tenant1
       bindings:
@@ -113,8 +116,10 @@ spec:
                 namespace: default
               status:
                 readyReplicas: 1
+      catch:
+        - use:
+            template: ../../../../step-templates/debug/collect-diagnostics.yaml
 
-    # Step 4: Create combined routing Ingress
     - name: create-ingress
       cluster: tenant1
       try:
@@ -157,10 +162,11 @@ spec:
                               name: routing-host2
                               port:
                                 number: 80
+      catch:
+        - use:
+            template: ../../../../step-templates/debug/collect-diagnostics.yaml
 
-    # Step 5: Verify Route CRD
     - name: verify-route-crd
-      description: Verify Route CRD exists with correct labels
       bindings:
         - name: name
           value: routing-ingress
@@ -175,12 +181,10 @@ spec:
             - name: kubelb_namespace
               value: ($kubelb_namespace)
 
-    # Step 6: Verify generated Ingress in kubelb cluster
     - name: verify-generated-ingress
       cluster: kubelb
       try:
         - script:
-            skipCommandOutput: true
             timeout: 60s
             content: |
               set -e
@@ -188,7 +192,6 @@ spec:
               INGRESS_NAME="routing-ingress"
 
               for i in $(seq 1 15); do
-                # Get generated Ingress by origin label
                 GEN_INGRESS=$(kubectl get ingress -n "$NAMESPACE" \
                   -l kubelb.k8c.io/origin-name="$INGRESS_NAME" -o name 2>/dev/null | head -1)
 
@@ -198,14 +201,15 @@ spec:
                 fi
                 sleep 2
               done
-              echo "FAILED: Generated Ingress not found in kubelb"
+              echo "Generated Ingress not found in kubelb"
               exit 1
             check:
               ($error == null): true
+      catch:
+        - use:
+            template: ../../../../step-templates/debug/collect-diagnostics.yaml
 
-    # Step 7: Verify status propagation
     - name: verify-status
-      description: Verify Ingress gets LoadBalancer IP
       use:
         template: ../../../../step-templates/ingress/verify-ingress-status.yaml
         with:
@@ -213,16 +217,13 @@ spec:
             - name: ingress_name
               value: ($name)
 
-    # Step 8: Verify /app1 path routing
     - name: verify-path1
       cluster: tenant1
       try:
         - script:
-            skipCommandOutput: true
             timeout: 60s
             content: |
               set -e
-              # Get IP from Ingress status (propagated from kubelb)
               IP=$(kubectl get ingress routing-ingress -n default \
                 -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
               HOST="routing.test.local"
@@ -234,21 +235,21 @@ spec:
                 fi
                 sleep 2
               done
-              echo "FAILED: /app1 did not return expected response"
+              echo "/app1 did not return expected response"
               exit 1
             check:
               ($error == null): true
+      catch:
+        - use:
+            template: ../../../../step-templates/debug/collect-diagnostics.yaml
 
-    # Step 9: Verify /app2 path routing
     - name: verify-path2
       cluster: tenant1
       try:
         - script:
-            skipCommandOutput: true
             timeout: 60s
             content: |
               set -e
-              # Get IP from Ingress status (propagated from kubelb)
               IP=$(kubectl get ingress routing-ingress -n default \
                 -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
               HOST="routing.test.local"
@@ -260,21 +261,21 @@ spec:
                 fi
                 sleep 2
               done
-              echo "FAILED: /app2 did not return expected response"
+              echo "/app2 did not return expected response"
               exit 1
             check:
               ($error == null): true
+      catch:
+        - use:
+            template: ../../../../step-templates/debug/collect-diagnostics.yaml
 
-    # Step 10: Verify host2 routing
     - name: verify-host2
       cluster: tenant1
       try:
         - script:
-            skipCommandOutput: true
             timeout: 60s
             content: |
               set -e
-              # Get IP from Ingress status (propagated from kubelb)
               IP=$(kubectl get ingress routing-ingress -n default \
                 -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
               HOST="host2.test.local"
@@ -286,17 +287,18 @@ spec:
                 fi
                 sleep 2
               done
-              echo "FAILED: host2 did not return expected response"
+              echo "host2 did not return expected response"
               exit 1
             check:
               ($error == null): true
+      catch:
+        - use:
+            template: ../../../../step-templates/debug/collect-diagnostics.yaml
 
-    # Step 11: Cleanup
     - name: cleanup
       cluster: tenant1
       try:
         - script:
-            skipCommandOutput: true
             timeout: 60s
             content: |
               kubectl delete ingress routing-ingress -n default --wait=false
@@ -304,7 +306,6 @@ spec:
               ($error == null): true
       finally:
         - script:
-            skipCommandOutput: true
             cluster: tenant1
             timeout: 60s
             content: |
@@ -317,7 +318,6 @@ spec:
               kubectl delete service routing-host2 -n default --ignore-not-found
 
     - name: verify-cleanup
-      description: Verify Route CRD removed
       bindings:
         - name: name
           value: routing-ingress

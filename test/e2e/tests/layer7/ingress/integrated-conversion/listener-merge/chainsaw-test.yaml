@@ -33,10 +33,8 @@ spec:
     - name: kubelb_namespace
       value: tenant-secondary
   steps:
-    # Step 1: Create services
     - name: create-services
       cluster: tenant2
-      description: Create services for both Ingresses
       try:
         - apply:
             resource:
@@ -66,11 +64,12 @@ spec:
                 ports:
                   - port: 80
                     targetPort: 5678
+      catch:
+        - use:
+            template: ../../../../../step-templates/debug/collect-diagnostics.yaml
 
-    # Step 2: Create both Ingresses with kubelb class
     - name: create-ingresses
       cluster: tenant2
-      description: Create both Ingresses
       try:
         - apply:
             resource:
@@ -112,11 +111,12 @@ spec:
                               name: int-lm2
                               port:
                                 number: 80
+      catch:
+        - use:
+            template: ../../../../../step-templates/debug/collect-diagnostics.yaml
 
-    # Step 3: Verify both Ingresses get IPs
     - name: verify-ingress-ips
       cluster: tenant2
-      description: Verify both Ingresses get LoadBalancer IPs
       try:
         - assert:
             timeout: 120s
@@ -142,20 +142,19 @@ spec:
                 loadBalancer:
                   ingress:
                     - {}
+      catch:
+        - use:
+            template: ../../../../../step-templates/debug/collect-diagnostics.yaml
 
-    # Step 4: Verify Ingress traffic works for both
     - name: verify-ingress-traffic
       cluster: tenant2
-      description: Verify HTTP via both Ingresses
       try:
         - script:
-            skipCommandOutput: true
             timeout: 60s
             content: |
               set -e
               EXPECTED="hello-shared"
 
-              # Test int-lm1
               IP1=$(kubectl get ingress int-lm1 -n default -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
               for i in $(seq 1 10); do
                 RESP=$(curl -s --max-time 5 -H "Host: int-lm1.test.local" "http://${IP1}/" 2>/dev/null || true)
@@ -166,29 +165,28 @@ spec:
                 sleep 2
               done
 
-              # Test int-lm2
               IP2=$(kubectl get ingress int-lm2 -n default -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
               for i in $(seq 1 10); do
                 RESP=$(curl -s --max-time 5 -H "Host: int-lm2.test.local" "http://${IP2}/" 2>/dev/null || true)
                 if echo "$RESP" | grep -q "$EXPECTED"; then
                   echo "int-lm2 Ingress OK"
-                  echo "SUCCESS: Both Ingresses working"
+                  echo "Both Ingresses working"
                   exit 0
                 fi
                 sleep 2
               done
-              echo "FAILED: Ingress traffic not working"
+              echo "Ingress traffic not working"
               exit 1
             check:
               ($error == null): true
+      catch:
+        - use:
+            template: ../../../../../step-templates/debug/collect-diagnostics.yaml
 
-    # Step 5: Verify HTTPRoutes created for both
     - name: verify-httproutes
       cluster: tenant2
-      description: Verify both HTTPRoutes created by converter
       try:
         - script:
-            skipCommandOutput: true
             timeout: 60s
             content: |
               set -e
@@ -199,21 +197,21 @@ spec:
                   -l "kubelb.k8c.io/source-ingress=int-lm2.default" -o name 2>/dev/null | head -1)
 
                 if [ -n "$HR1" ] && [ -n "$HR2" ]; then
-                  echo "SUCCESS: Both HTTPRoutes found"
+                  echo "Both HTTPRoutes found"
                   exit 0
                 fi
-                echo "Attempt $i: waiting..."
                 sleep 2
               done
-              echo "FAILED: HTTPRoutes not found"
+              echo "HTTPRoutes not found"
               exit 1
             check:
               ($error == null): true
+      catch:
+        - use:
+            template: ../../../../../step-templates/debug/collect-diagnostics.yaml
 
-    # Step 6: Verify shared Gateway has IP
     - name: verify-gateway
       cluster: tenant2
-      description: Verify shared Gateway kubelb-int-conv
       try:
         - assert:
             timeout: 120s
@@ -228,14 +226,14 @@ spec:
               status:
                 addresses:
                   - {}
+      catch:
+        - use:
+            template: ../../../../../step-templates/debug/collect-diagnostics.yaml
 
-    # Step 7: Verify HTTPRoute traffic works for both (same content as Ingress)
     - name: verify-httproute-traffic
       cluster: tenant2
-      description: Verify HTTP via HTTPRoutes
       try:
         - script:
-            skipCommandOutput: true
             timeout: 60s
             content: |
               set -e
@@ -243,7 +241,6 @@ spec:
                 -o jsonpath='{.status.addresses[0].value}')
               EXPECTED="hello-shared"
 
-              # Test int-lm1.gateway.local
               for i in $(seq 1 10); do
                 RESP=$(curl -s --max-time 5 -H "Host: int-lm1.gateway.local" "http://${IP}/" 2>/dev/null || true)
                 if echo "$RESP" | grep -q "$EXPECTED"; then
@@ -253,28 +250,27 @@ spec:
                 sleep 2
               done
 
-              # Test int-lm2.gateway.local
               for i in $(seq 1 10); do
                 RESP=$(curl -s --max-time 5 -H "Host: int-lm2.gateway.local" "http://${IP}/" 2>/dev/null || true)
                 if echo "$RESP" | grep -q "$EXPECTED"; then
                   echo "int-lm2 HTTPRoute OK"
-                  echo "SUCCESS: Both HTTPRoutes serving same content as Ingresses"
+                  echo "Both HTTPRoutes serving same content as Ingresses"
                   exit 0
                 fi
                 sleep 2
               done
-              echo "FAILED: HTTPRoute traffic not working"
+              echo "HTTPRoute traffic not working"
               exit 1
             check:
               ($error == null): true
+      catch:
+        - use:
+            template: ../../../../../step-templates/debug/collect-diagnostics.yaml
 
-    # Cleanup
     - name: cleanup
       cluster: tenant2
-      description: Cleanup resources
       try:
         - script:
-            skipCommandOutput: true
             timeout: 30s
             content: |
               kubectl delete ingress int-lm1 int-lm2 -n default --ignore-not-found
