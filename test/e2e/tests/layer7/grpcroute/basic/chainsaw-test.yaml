@@ -41,9 +41,7 @@ spec:
     - name: name
       value: grpc-basic
   steps:
-    # Step 1: Deploy gRPC backend service (grpcbin - supports reflection)
     - name: deploy-backend
-      description: Deploy grpcbin gRPC server
       cluster: tenant1
       try:
         - apply:
@@ -100,10 +98,11 @@ spec:
                 namespace: default
               status:
                 readyReplicas: 1
+      catch:
+        - use:
+            template: ../../../../step-templates/debug/collect-diagnostics.yaml
 
-    # Step 2: Create Gateway for GRPCRoute
     - name: create-gateway
-      description: Create Gateway for GRPCRoute to reference
       cluster: tenant1
       try:
         - apply:
@@ -124,14 +123,14 @@ spec:
                         from: All
                       kinds:
                         - kind: GRPCRoute
+      catch:
+        - use:
+            template: ../../../../step-templates/debug/collect-diagnostics.yaml
 
-    # Step 3: Wait for Gateway to have address
     - name: wait-gateway-ready
-      description: Wait for Gateway to have address (can take ~60s for LB IP)
       cluster: tenant1
       try:
         - script:
-            skipCommandOutput: true
             timeout: 120s
             content: |
               set -e
@@ -142,22 +141,21 @@ spec:
                   echo "Gateway ready with IP: $IP"
                   exit 0
                 fi
-                echo "Attempt $i: waiting for Gateway LB IP..."
                 sleep 3
               done
-              echo "FAILED: Gateway not ready"
+              echo "Gateway not ready"
               kubectl get gateway grpc-gw -n default -o yaml
               exit 1
             check:
               ($error == null): true
+      catch:
+        - use:
+            template: ../../../../step-templates/debug/collect-diagnostics.yaml
 
-    # Step 4: Create GRPCRoute
     - name: create-grpcroute
-      description: Create GRPCRoute referencing Gateway
       cluster: tenant1
       try:
         - script:
-            skipCommandOutput: true
             timeout: 60s
             content: |
               set -e
@@ -183,10 +181,12 @@ spec:
               echo "Created GRPCRoute with host: $HOST"
             check:
               ($error == null): true
+      catch:
+        - use:
+            template: ../../../../step-templates/debug/collect-diagnostics.yaml
 
     # Verify Route CRD in kubelb cluster
     - name: verify-route-crd
-      description: Verify Route CRD exists with correct labels
       use:
         template: ../../../../step-templates/common/verify-route-crd.yaml
         with:
@@ -198,13 +198,10 @@ spec:
             - name: kubelb_namespace
               value: ($kubelb_namespace)
 
-    # Step 6: Verify gRPC connectivity
     - name: verify-grpc
-      description: Verify gRPC response via grpcurl
       cluster: tenant1
       try:
         - script:
-            skipCommandOutput: true
             timeout: 60s
             content: |
               set -e
@@ -213,7 +210,6 @@ spec:
               HOST="grpc-basic.${IP}.nip.io"
 
               for i in $(seq 1 10); do
-                # Use grpcurl to test the grpcbin HelloService
                 RESPONSE=$(kubectl run grpcurl-test-$$-$i -n default --rm -i --restart=Never \
                   --image=fullstorydev/grpcurl:v1.9.1 \
                   -- -plaintext -authority "${HOST}" -d '{"greeting":"test"}' "${IP}:80" hello.HelloService/SayHello 2>&1 || true)
@@ -223,18 +219,18 @@ spec:
                 fi
                 sleep 2
               done
-              echo "FAILED: Expected 'reply' in response, got '$RESPONSE'"
+              echo "Expected 'reply' in response, got '$RESPONSE'"
               exit 1
             check:
               ($error == null): true
+      catch:
+        - use:
+            template: ../../../../step-templates/debug/collect-diagnostics.yaml
 
-    # Step 8: Cleanup
     - name: cleanup
-      description: Delete GRPCRoute and verify Route CRD removed
       cluster: tenant1
       try:
         - script:
-            skipCommandOutput: true
             timeout: 60s
             content: |
               kubectl delete grpcroute grpc-basic -n default --wait=false
@@ -243,7 +239,6 @@ spec:
               ($error == null): true
       finally:
         - script:
-            skipCommandOutput: true
             cluster: tenant1
             timeout: 60s
             content: |
@@ -253,7 +248,6 @@ spec:
               kubectl delete service grpc-yages -n default --ignore-not-found
 
     - name: verify-cleanup
-      description: Verify Route CRD removed
       use:
         template: ../../../../step-templates/common/verify-route-cleanup.yaml
         with:
