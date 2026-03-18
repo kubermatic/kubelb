@@ -22,7 +22,7 @@ presubmits:
       preset-goproxy: "true"
     spec:
       containers:
-        - image: golang:1.25
+        - image: golang:1.26
           command:
             - make
           args:
@@ -39,7 +39,7 @@ presubmits:
       preset-goproxy: "true"
     spec:
       containers:
-        - image: golangci/golangci-lint:v2.7.2
+        - image: golangci/golangci-lint:v2.10.1
           command:
             - make
           args:
@@ -57,7 +57,7 @@ presubmits:
       preset-goproxy: "true"
     spec:
       containers:
-        - image: quay.io/kubermatic/build:go-1.25-node-22-kind-0.30-7
+        - image: quay.io/kubermatic/build:go-1.26-node-22-kind-0.31-1
           command:
             - make
           args:
@@ -72,7 +72,7 @@ presubmits:
     clone_uri: "ssh://git@github.com/kubermatic/kubelb.git"
     spec:
       containers:
-        - image: quay.io/kubermatic/build:go-1.25-node-22-kind-0.30-7
+        - image: quay.io/kubermatic/build:go-1.26-node-22-kind-0.31-1
           command:
             - make
           args:
@@ -84,7 +84,7 @@ presubmits:
     clone_uri: "ssh://git@github.com/kubermatic/kubelb.git"
     spec:
       containers:
-        - image: quay.io/kubermatic/build:go-1.25-node-22-kind-0.30-7
+        - image: quay.io/kubermatic/build:go-1.26-node-22-kind-0.31-1
           command:
             - make
           args:
@@ -98,7 +98,7 @@ presubmits:
       preset-goproxy: "true"
     spec:
       containers:
-        - image: golang:1.25
+        - image: golang:1.26
           command:
             - make
           args:
@@ -119,7 +119,7 @@ presubmits:
       preset-goproxy: "true"
     spec:
       containers:
-        - image: golang:1.25
+        - image: golang:1.26
           command:
             - make
           args:
@@ -142,7 +142,7 @@ presubmits:
       preset-goproxy: "true"
     spec:
       containers:
-        - image: quay.io/kubermatic/build:go-1.25-node-22-kind-0.30-7
+        - image: quay.io/kubermatic/build:go-1.26-node-22-kind-0.31-1
           securityContext:
             privileged: true
           env:
@@ -176,7 +176,7 @@ presubmits:
     clone_uri: "ssh://git@github.com/kubermatic/kubelb.git"
     spec:
       containers:
-        - image: quay.io/kubermatic/build:go-1.25-node-22-kind-0.30-7
+        - image: quay.io/kubermatic/build:go-1.26-node-22-kind-0.31-1
           command:
             - shfmt
           args:
@@ -206,7 +206,7 @@ presubmits:
       preset-goproxy: "true"
     spec:
       containers:
-        - image: quay.io/kubermatic/build:go-1.25-node-22-kind-0.30-7
+        - image: quay.io/kubermatic/build:go-1.26-node-22-kind-0.31-1
           command:
             - ./hack/verify-licenses.sh
           resources:
@@ -222,7 +222,7 @@ presubmits:
       preset-goproxy: "true"
     spec:
       containers:
-        - image: quay.io/kubermatic/build:go-1.25-node-22-kind-0.30-7
+        - image: quay.io/kubermatic/build:go-1.26-node-22-kind-0.31-1
           command:
             - goreleaser
           args:

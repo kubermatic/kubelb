@@ -43,7 +43,7 @@ permissions: {}
 
 env:
   REGISTRY: quay.io
-  GO_VERSION: "1.25.7"
+  GO_VERSION: "1.26.1"
 
 jobs:
   release:
@@ -149,8 +149,11 @@ jobs:
           for img in kubelb-manager kubelb-ccm; do
             echo "=== Scanning quay.io/kubermatic/${img}:${VERSION} ==="
             trivy image --exit-code 1 --severity HIGH,CRITICAL --ignore-unfixed \
-              --format sarif --output "trivy-${img}.sarif" \
+              --format table \
               "quay.io/kubermatic/${img}:${VERSION}" || EXIT_CODE=1
+            trivy image --exit-code 0 --severity HIGH,CRITICAL --ignore-unfixed \
+              --format sarif --output "trivy-${img}.sarif" \
+              "quay.io/kubermatic/${img}:${VERSION}"
           done
           exit $EXIT_CODE
 

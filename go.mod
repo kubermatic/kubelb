@@ -1,6 +1,6 @@
 module k8c.io/kubelb
 
-go 1.25.7
+go 1.26.1
 
 require (
 	github.com/envoyproxy/gateway v1.6.3
