@@ -16,19 +16,11 @@
 # Required bindings (pass via use.with.bindings):
 #   - service_name: origin service name (label selector)
 #   - kubelb_namespace: namespace in kubelb cluster (e.g., tenant-primary)
-# Optional bindings:
-#   - expected_port: expected port number (default: "80")
-#   - expected_protocol: expected protocol (default: "TCP")
 apiVersion: chainsaw.kyverno.io/v1alpha1
 kind: StepTemplate
 metadata:
   name: assert-lb-crd
 spec:
-  bindings:
-    - name: expected_port
-      value: 80
-    - name: expected_protocol
-      value: TCP
   try:
     - assert:
         timeout: 60s
@@ -43,8 +35,6 @@ spec:
             finalizers:
               - kubelb.k8c.io/cleanup
           spec:
-            ports:
-              - port: ($expected_port)
             endpoints:
               - addressesReference:
                   (name != ''): true

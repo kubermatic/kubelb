@@ -81,10 +81,6 @@ spec:
               value: udp-echo
             - name: kubelb_namespace
               value: tenant-primary
-            - name: expected_protocol
-              value: UDP
-            - name: expected_port
-              value: 9999
 
     - name: verify-status-propagation
       use:

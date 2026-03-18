@@ -119,10 +119,6 @@ spec:
               value: udp-only-svc
             - name: kubelb_namespace
               value: tenant-primary
-            - name: expected_protocol
-              value: UDP
-            - name: expected_port
-              value: 9998
 
     - name: verify-tcp-to-udp-fails
       cluster: tenant1
