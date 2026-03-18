@@ -92,9 +92,6 @@ spec:
                 namespace: default
               status:
                 readyReplicas: 1
-      catch:
-        - use:
-            template: ../../../../step-templates/debug/collect-diagnostics.yaml
 
     - name: create-ingress
       cluster: tenant1
@@ -119,9 +116,6 @@ spec:
                               name: ($backend)
                               port:
                                 number: 80
-      catch:
-        - use:
-            template: ../../../../step-templates/debug/collect-diagnostics.yaml
 
     - name: verify-route-crd
       use:
@@ -166,9 +160,6 @@ spec:
               exit 1
             check:
               ($error == null): true
-      catch:
-        - use:
-            template: ../../../../step-templates/debug/collect-diagnostics.yaml
 
     - name: verify-websocket
       cluster: tenant1
@@ -206,9 +197,6 @@ spec:
               exit 1
             check:
               ($error == null): true
-      catch:
-        - use:
-            template: ../../../../step-templates/debug/collect-diagnostics.yaml
 
     - name: cleanup
       cluster: tenant1

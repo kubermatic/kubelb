@@ -58,9 +58,6 @@ spec:
                 namespace: default
               status:
                 readyReplicas: 1
-      catch:
-        - use:
-            template: ../../../../step-templates/debug/collect-diagnostics.yaml
 
     - name: deploy-echo-server-two
       cluster: tenant1
@@ -82,9 +79,6 @@ spec:
                 namespace: default
               status:
                 readyReplicas: 1
-      catch:
-        - use:
-            template: ../../../../step-templates/debug/collect-diagnostics.yaml
 
     - name: create-loadbalancer-one
       cluster: tenant1
@@ -106,9 +100,6 @@ spec:
                 loadBalancer:
                   ingress:
                     - {}
-      catch:
-        - use:
-            template: ../../../../step-templates/debug/collect-diagnostics.yaml
 
     - name: create-loadbalancer-two
       cluster: tenant1
@@ -130,9 +121,6 @@ spec:
                 loadBalancer:
                   ingress:
                     - {}
-      catch:
-        - use:
-            template: ../../../../step-templates/debug/collect-diagnostics.yaml
 
     - name: verify-lb-crd-one
       use:
@@ -143,9 +131,6 @@ spec:
               value: echo-svc-one
             - name: kubelb_namespace
               value: tenant-primary
-      catch:
-        - use:
-            template: ../../../../step-templates/debug/collect-diagnostics.yaml
 
     - name: verify-lb-crd-two
       use:
@@ -156,9 +141,6 @@ spec:
               value: echo-svc-two
             - name: kubelb_namespace
               value: tenant-primary
-      catch:
-        - use:
-            template: ../../../../step-templates/debug/collect-diagnostics.yaml
 
     - name: verify-status-one
       use:

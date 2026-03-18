@@ -106,9 +106,6 @@ spec:
                         args: ["-text=response-from-host3-backend"]
                         ports:
                           - containerPort: 5678
-      catch:
-        - use:
-            template: ../../../../../step-templates/debug/collect-diagnostics.yaml
 
     - name: create-services
       cluster: standalone
@@ -155,9 +152,6 @@ spec:
                 ports:
                   - port: 80
                     targetPort: 5678
-      catch:
-        - use:
-            template: ../../../../../step-templates/debug/collect-diagnostics.yaml
 
     - name: wait-backends
       cluster: standalone
@@ -166,9 +160,6 @@ spec:
             timeout: 120s
             content: |
               kubectl wait --for=condition=available deployment/conv-mh-host1 deployment/conv-mh-host2 deployment/conv-mh-host3 -n default --timeout=90s
-      catch:
-        - use:
-            template: ../../../../../step-templates/debug/collect-diagnostics.yaml
 
     - name: create-ingress
       cluster: standalone
@@ -213,9 +204,6 @@ spec:
                               name: conv-mh-host3
                               port:
                                 number: 80
-      catch:
-        - use:
-            template: ../../../../../step-templates/debug/collect-diagnostics.yaml
 
     - name: verify-httproute
       cluster: standalone
@@ -244,9 +232,6 @@ spec:
               exit 1
             check:
               ($error == null): true
-      catch:
-        - use:
-            template: ../../../../../step-templates/debug/collect-diagnostics.yaml
 
     - name: verify-status
       use:

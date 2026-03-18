@@ -58,9 +58,6 @@ spec:
                 ports:
                   - port: 80
                     targetPort: 5678
-      catch:
-        - use:
-            template: ../../../../step-templates/debug/collect-diagnostics.yaml
 
     - name: wait-for-envoy-ready
       cluster: kubelb
@@ -73,9 +70,6 @@ spec:
                 -n tenant-primary --timeout=60s
             check:
               ($error == null): true
-      catch:
-        - use:
-            template: ../../../../step-templates/debug/collect-diagnostics.yaml
 
     - name: patch-config-enable-overload-manager
       cluster: kubelb
@@ -101,9 +95,6 @@ spec:
               }'
             check:
               ($error == null): true
-      catch:
-        - use:
-            template: ../../../../step-templates/debug/collect-diagnostics.yaml
 
     - name: wait-for-deployment-rollout
       cluster: kubelb
@@ -138,9 +129,6 @@ spec:
               exit 1
             check:
               ($error == null): true
-      catch:
-        - use:
-            template: ../../../../step-templates/debug/collect-diagnostics.yaml
       finally:
         - script:
             cluster: tenant1

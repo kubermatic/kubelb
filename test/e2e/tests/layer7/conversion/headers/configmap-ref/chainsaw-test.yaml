@@ -50,9 +50,6 @@ spec:
                 ports:
                   - port: 80
                     targetPort: 5678
-      catch:
-        - use:
-            template: ../../../../../step-templates/debug/collect-diagnostics.yaml
 
     - name: create-configmap
       cluster: standalone
@@ -66,9 +63,6 @@ spec:
                 namespace: default
               data:
                 X-Custom-Header: "value"
-      catch:
-        - use:
-            template: ../../../../../step-templates/debug/collect-diagnostics.yaml
 
     - name: create-ingress
       cluster: standalone
@@ -95,9 +89,6 @@ spec:
                               name: conv-cm-headers
                               port:
                                 number: 80
-      catch:
-        - use:
-            template: ../../../../../step-templates/debug/collect-diagnostics.yaml
 
     - name: verify-httproute
       use:

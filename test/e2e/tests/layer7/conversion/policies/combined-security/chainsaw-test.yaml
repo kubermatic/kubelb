@@ -46,9 +46,6 @@ spec:
               type: Opaque
               data:
                 users: dXNlcjokYXByMSRhYmNkMTIzNA==
-      catch:
-        - use:
-            template: ../../../../../step-templates/debug/collect-diagnostics.yaml
 
     - name: create-service
       cluster: standalone
@@ -67,9 +64,6 @@ spec:
                 ports:
                   - port: 80
                     targetPort: 5678
-      catch:
-        - use:
-            template: ../../../../../step-templates/debug/collect-diagnostics.yaml
 
     - name: create-ingress
       cluster: standalone
@@ -101,9 +95,6 @@ spec:
                               name: conv-combined-sec
                               port:
                                 number: 80
-      catch:
-        - use:
-            template: ../../../../../step-templates/debug/collect-diagnostics.yaml
 
     - name: verify-httproute
       use:
@@ -165,9 +156,6 @@ spec:
               echo "BasicAuth: $BASIC_AUTH"
             check:
               ($error == null): true
-      catch:
-        - use:
-            template: ../../../../../step-templates/debug/collect-diagnostics.yaml
 
     - name: verify-single-policy
       try:
@@ -192,9 +180,6 @@ spec:
               echo "Exactly 1 SecurityPolicy created"
             check:
               ($error == null): true
-      catch:
-        - use:
-            template: ../../../../../step-templates/debug/collect-diagnostics.yaml
 
     - name: cleanup
       try:

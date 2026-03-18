@@ -64,9 +64,6 @@ spec:
                 namespace: default
               status:
                 readyReplicas: 1
-      catch:
-        - use:
-            template: ../../../../step-templates/debug/collect-diagnostics.yaml
 
     - name: deploy-backend2
       cluster: tenant1
@@ -90,9 +87,6 @@ spec:
                 namespace: default
               status:
                 readyReplicas: 1
-      catch:
-        - use:
-            template: ../../../../step-templates/debug/collect-diagnostics.yaml
 
     - name: deploy-backend3
       cluster: tenant1
@@ -116,9 +110,6 @@ spec:
                 namespace: default
               status:
                 readyReplicas: 1
-      catch:
-        - use:
-            template: ../../../../step-templates/debug/collect-diagnostics.yaml
 
     - name: create-ingress
       cluster: tenant1
@@ -162,9 +153,6 @@ spec:
                               name: routing-host2
                               port:
                                 number: 80
-      catch:
-        - use:
-            template: ../../../../step-templates/debug/collect-diagnostics.yaml
 
     - name: verify-route-crd
       bindings:
@@ -205,9 +193,6 @@ spec:
               exit 1
             check:
               ($error == null): true
-      catch:
-        - use:
-            template: ../../../../step-templates/debug/collect-diagnostics.yaml
 
     - name: verify-status
       use:
@@ -239,9 +224,6 @@ spec:
               exit 1
             check:
               ($error == null): true
-      catch:
-        - use:
-            template: ../../../../step-templates/debug/collect-diagnostics.yaml
 
     - name: verify-path2
       cluster: tenant1
@@ -265,9 +247,6 @@ spec:
               exit 1
             check:
               ($error == null): true
-      catch:
-        - use:
-            template: ../../../../step-templates/debug/collect-diagnostics.yaml
 
     - name: verify-host2
       cluster: tenant1
@@ -291,9 +270,6 @@ spec:
               exit 1
             check:
               ($error == null): true
-      catch:
-        - use:
-            template: ../../../../step-templates/debug/collect-diagnostics.yaml
 
     - name: cleanup
       cluster: tenant1

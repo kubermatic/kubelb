@@ -56,9 +56,6 @@ spec:
                               name: nonexistent-service
                               port:
                                 number: 80
-      catch:
-        - use:
-            template: ../../../../../step-templates/debug/collect-diagnostics.yaml
 
     - name: verify-httproute-created
       cluster: standalone
@@ -95,9 +92,6 @@ spec:
               exit 1
             check:
               ($error == null): true
-      catch:
-        - use:
-            template: ../../../../../step-templates/debug/collect-diagnostics.yaml
 
     - name: verify-traffic-fails
       try:
@@ -135,9 +129,6 @@ spec:
               exit 0
             check:
               ($error == null): true
-      catch:
-        - use:
-            template: ../../../../../step-templates/debug/collect-diagnostics.yaml
 
     - name: cleanup
       use:

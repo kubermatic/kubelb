@@ -68,9 +68,6 @@ spec:
                 loadBalancer:
                   ingress:
                     - {}
-      catch:
-        - use:
-            template: ../../../../step-templates/debug/collect-diagnostics.yaml
 
     - name: verify-loadbalancer-crd-exists
       cluster: kubelb
@@ -90,9 +87,6 @@ spec:
               done
               echo "LoadBalancer CRD not found"
               exit 1
-      catch:
-        - use:
-            template: ../../../../step-templates/debug/collect-diagnostics.yaml
 
     - name: wait-for-envoy-deployment
       cluster: kubelb
@@ -113,9 +107,6 @@ spec:
               done
               echo "Envoy deployment not found"
               exit 1
-      catch:
-        - use:
-            template: ../../../../step-templates/debug/collect-diagnostics.yaml
 
     - name: patch-config-with-custom-image
       cluster: kubelb
@@ -140,9 +131,6 @@ spec:
               fi
             check:
               ($error == null): true
-      catch:
-        - use:
-            template: ../../../../step-templates/debug/collect-diagnostics.yaml
 
     - name: verify-deployment-image-updated
       cluster: kubelb
@@ -170,9 +158,6 @@ spec:
               exit 1
             check:
               ($error == null): true
-      catch:
-        - use:
-            template: ../../../../step-templates/debug/collect-diagnostics.yaml
       finally:
         - script:
             timeout: 60s

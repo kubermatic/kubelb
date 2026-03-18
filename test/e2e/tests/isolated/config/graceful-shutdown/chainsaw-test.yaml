@@ -61,9 +61,6 @@ spec:
               }'
             check:
               ($error == null): true
-      catch:
-        - use:
-            template: ../../../../step-templates/debug/collect-diagnostics.yaml
 
     - name: wait-for-envoy-rollout
       cluster: kubelb
@@ -75,9 +72,6 @@ spec:
               kubectl rollout status deployment/envoy-tenant-primary -n tenant-primary --timeout=90s
             check:
               ($error == null): true
-      catch:
-        - use:
-            template: ../../../../step-templates/debug/collect-diagnostics.yaml
 
     - name: verify-shutdown-manager-sidecar
       cluster: kubelb
@@ -120,9 +114,6 @@ spec:
               exit 1
             check:
               ($error == null): true
-      catch:
-        - use:
-            template: ../../../../step-templates/debug/collect-diagnostics.yaml
       finally:
         - script:
             timeout: 90s

@@ -50,9 +50,6 @@ spec:
                 ports:
                   - port: 9000
                     targetPort: 5678
-      catch:
-        - use:
-            template: ../../../../../step-templates/debug/collect-diagnostics.yaml
 
     - name: create-ingress
       cluster: standalone
@@ -79,9 +76,6 @@ spec:
                               name: conv-grpc
                               port:
                                 number: 9000
-      catch:
-        - use:
-            template: ../../../../../step-templates/debug/collect-diagnostics.yaml
 
     - name: verify-grpcroute
       cluster: standalone
@@ -114,9 +108,6 @@ spec:
               exit 1
             check:
               ($error == null): true
-      catch:
-        - use:
-            template: ../../../../../step-templates/debug/collect-diagnostics.yaml
 
     - name: verify-no-httproute
       cluster: standalone
@@ -137,9 +128,6 @@ spec:
               fi
             check:
               ($error == null): true
-      catch:
-        - use:
-            template: ../../../../../step-templates/debug/collect-diagnostics.yaml
 
     - name: verify-warning
       use:

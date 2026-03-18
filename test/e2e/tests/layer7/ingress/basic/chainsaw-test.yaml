@@ -59,9 +59,6 @@ spec:
                 ports:
                   - port: 80
                     targetPort: 5678
-      catch:
-        - use:
-            template: ../../../../step-templates/debug/collect-diagnostics.yaml
 
     - name: create-ingress
       cluster: tenant1
@@ -86,9 +83,6 @@ spec:
                               name: echo-ingress
                               port:
                                 number: 80
-      catch:
-        - use:
-            template: ../../../../step-templates/debug/collect-diagnostics.yaml
 
     - name: verify-route-crd
       use:
@@ -135,9 +129,6 @@ spec:
               exit 1
             check:
               ($error == null): true
-      catch:
-        - use:
-            template: ../../../../step-templates/debug/collect-diagnostics.yaml
 
     - name: verify-status
       use:
@@ -171,9 +162,6 @@ spec:
               exit 1
             check:
               ($error == null): true
-      catch:
-        - use:
-            template: ../../../../step-templates/debug/collect-diagnostics.yaml
 
     - name: update-ingress-hostname
       cluster: tenant1
@@ -198,9 +186,6 @@ spec:
                               name: echo-ingress
                               port:
                                 number: 80
-      catch:
-        - use:
-            template: ../../../../step-templates/debug/collect-diagnostics.yaml
 
     - name: verify-route-updated
       cluster: kubelb
@@ -230,9 +215,6 @@ spec:
               exit 1
             check:
               ($error == null): true
-      catch:
-        - use:
-            template: ../../../../step-templates/debug/collect-diagnostics.yaml
 
     - name: verify-http-updated
       cluster: tenant1
@@ -258,9 +240,6 @@ spec:
               exit 1
             check:
               ($error == null): true
-      catch:
-        - use:
-            template: ../../../../step-templates/debug/collect-diagnostics.yaml
 
     - name: cleanup
       cluster: tenant1

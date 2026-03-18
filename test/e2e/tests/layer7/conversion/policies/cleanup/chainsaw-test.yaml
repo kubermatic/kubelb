@@ -50,9 +50,6 @@ spec:
                 ports:
                   - port: 80
                     targetPort: 5678
-      catch:
-        - use:
-            template: ../../../../../step-templates/debug/collect-diagnostics.yaml
 
     - name: create-ingress
       cluster: standalone
@@ -81,9 +78,6 @@ spec:
                               name: conv-cleanup-test
                               port:
                                 number: 80
-      catch:
-        - use:
-            template: ../../../../../step-templates/debug/collect-diagnostics.yaml
 
     - name: verify-resources-created
       try:
@@ -119,9 +113,6 @@ spec:
               fi
             check:
               ($error == null): true
-      catch:
-        - use:
-            template: ../../../../../step-templates/debug/collect-diagnostics.yaml
 
     - name: verify-owner-reference
       try:
@@ -153,9 +144,6 @@ spec:
               fi
             check:
               ($error == null): true
-      catch:
-        - use:
-            template: ../../../../../step-templates/debug/collect-diagnostics.yaml
 
     - name: delete-ingress
       try:
@@ -169,9 +157,6 @@ spec:
               kubectl delete ingress conv-cleanup-test -n "$NAMESPACE"
             check:
               ($error == null): true
-      catch:
-        - use:
-            template: ../../../../../step-templates/debug/collect-diagnostics.yaml
 
     - name: verify-cleanup
       try:
@@ -213,9 +198,6 @@ spec:
               fi
             check:
               ($error == null): true
-      catch:
-        - use:
-            template: ../../../../../step-templates/debug/collect-diagnostics.yaml
 
     - name: final-cleanup
       try:

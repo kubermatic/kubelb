@@ -48,9 +48,6 @@ spec:
               kind: Namespace
               metadata:
                 name: conv-tls-sync-ns
-      catch:
-        - use:
-            template: ../../../../../step-templates/debug/collect-diagnostics.yaml
 
     - name: create-service
       cluster: standalone
@@ -69,9 +66,6 @@ spec:
                 ports:
                   - port: 80
                     targetPort: 5678
-      catch:
-        - use:
-            template: ../../../../../step-templates/debug/collect-diagnostics.yaml
 
     - name: create-echo-pod
       cluster: standalone
@@ -108,9 +102,6 @@ spec:
               exit 1
             check:
               ($error == null): true
-      catch:
-        - use:
-            template: ../../../../../step-templates/debug/collect-diagnostics.yaml
 
     - name: create-tls-secret
       cluster: standalone
@@ -132,9 +123,6 @@ spec:
               echo "Created TLS secret 'xns-tls-secret' in namespace 'conv-tls-sync-ns'"
             check:
               ($error == null): true
-      catch:
-        - use:
-            template: ../../../../../step-templates/debug/collect-diagnostics.yaml
 
     - name: verify-secret-not-in-gateway-ns
       cluster: standalone
@@ -152,9 +140,6 @@ spec:
               fi
             check:
               ($error == null): true
-      catch:
-        - use:
-            template: ../../../../../step-templates/debug/collect-diagnostics.yaml
 
     - name: create-ingress
       cluster: standalone
@@ -183,9 +168,6 @@ spec:
                               name: conv-xns-tls
                               port:
                                 number: 80
-      catch:
-        - use:
-            template: ../../../../../step-templates/debug/collect-diagnostics.yaml
 
     - name: verify-secret-synced
       cluster: standalone
@@ -213,9 +195,6 @@ spec:
               exit 1
             check:
               ($error == null): true
-      catch:
-        - use:
-            template: ../../../../../step-templates/debug/collect-diagnostics.yaml
 
     - name: verify-secret-has-correct-labels
       cluster: standalone
@@ -249,9 +228,6 @@ spec:
               fi
             check:
               ($error == null): true
-      catch:
-        - use:
-            template: ../../../../../step-templates/debug/collect-diagnostics.yaml
 
     - name: verify-gateway-https-listener
       cluster: standalone
@@ -286,9 +262,6 @@ spec:
               exit 1
             check:
               ($error == null): true
-      catch:
-        - use:
-            template: ../../../../../step-templates/debug/collect-diagnostics.yaml
 
     - name: verify-gateway-listener-resolved
       cluster: standalone
@@ -325,9 +298,6 @@ spec:
               exit 1
             check:
               ($error == null): true
-      catch:
-        - use:
-            template: ../../../../../step-templates/debug/collect-diagnostics.yaml
 
     - name: verify-httproute-accepted
       cluster: standalone
@@ -351,9 +321,6 @@ spec:
               exit 1
             check:
               ($error == null): true
-      catch:
-        - use:
-            template: ../../../../../step-templates/debug/collect-diagnostics.yaml
 
     - name: verify-https-traffic
       cluster: standalone
@@ -398,9 +365,6 @@ spec:
               exit 1
             check:
               ($error == null): true
-      catch:
-        - use:
-            template: ../../../../../step-templates/debug/collect-diagnostics.yaml
 
     - name: verify-status
       cluster: standalone
@@ -421,9 +385,6 @@ spec:
               exit 1
             check:
               ($error == null): true
-      catch:
-        - use:
-            template: ../../../../../step-templates/debug/collect-diagnostics.yaml
 
     - name: cleanup
       cluster: standalone

@@ -61,9 +61,6 @@ spec:
                 loadBalancer:
                   ingress:
                     - {}
-      catch:
-        - use:
-            template: ../../../../step-templates/debug/collect-diagnostics.yaml
 
     - name: verify-loadbalancer-crd
       use:
@@ -74,9 +71,6 @@ spec:
               value: echo-basic
             - name: kubelb_namespace
               value: tenant-primary
-      catch:
-        - use:
-            template: ../../../../step-templates/debug/collect-diagnostics.yaml
 
     - name: verify-status-propagation
       use:
@@ -89,9 +83,6 @@ spec:
               value: tenant1
             - name: kubelb_namespace
               value: tenant-primary
-      catch:
-        - use:
-            template: ../../../../step-templates/debug/collect-diagnostics.yaml
 
     - name: verify-http-response
       use:
@@ -106,9 +97,6 @@ spec:
               value: "80"
             - name: tenant
               value: tenant1
-      catch:
-        - use:
-            template: ../../../../step-templates/debug/collect-diagnostics.yaml
 
     - name: cleanup-and-verify
       try:

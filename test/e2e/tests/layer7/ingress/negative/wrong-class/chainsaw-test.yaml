@@ -56,9 +56,6 @@ spec:
                 namespace: default
               status:
                 readyReplicas: 1
-      catch:
-        - use:
-            template: ../../../../../step-templates/debug/collect-diagnostics.yaml
 
     - name: create-ingress-wrong-class
       cluster: tenant1
@@ -90,9 +87,6 @@ spec:
               echo "Created Ingress with nginx class"
             check:
               ($error == null): true
-      catch:
-        - use:
-            template: ../../../../../step-templates/debug/collect-diagnostics.yaml
 
     - name: verify-no-route-crd
       cluster: kubelb

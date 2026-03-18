@@ -59,9 +59,6 @@ spec:
                 ports:
                   - port: 80
                     targetPort: 5678
-      catch:
-        - use:
-            template: ../../../../step-templates/debug/collect-diagnostics.yaml
 
     - name: create-tls-secret
       cluster: tenant1
@@ -86,9 +83,6 @@ spec:
               echo "Created TLS secret for host: $HOST"
             check:
               ($error == null): true
-      catch:
-        - use:
-            template: ../../../../step-templates/debug/collect-diagnostics.yaml
 
     - name: create-ingress
       cluster: tenant1
@@ -117,9 +111,6 @@ spec:
                               name: echo-tls
                               port:
                                 number: 80
-      catch:
-        - use:
-            template: ../../../../step-templates/debug/collect-diagnostics.yaml
 
     - name: verify-route-crd
       use:
@@ -167,9 +158,6 @@ spec:
               exit 1
             check:
               ($error == null): true
-      catch:
-        - use:
-            template: ../../../../step-templates/debug/collect-diagnostics.yaml
 
     - name: cleanup
       cluster: tenant1

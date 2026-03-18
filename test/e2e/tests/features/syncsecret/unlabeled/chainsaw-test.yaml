@@ -38,9 +38,6 @@ spec:
       try:
         - apply:
             file: ../../../../testdata/secrets/unlabeled-secret.yaml
-      catch:
-        - use:
-            template: ../../../../step-templates/debug/collect-diagnostics.yaml
 
     - name: verify-no-syncsecret
       cluster: tenant1
@@ -62,9 +59,6 @@ spec:
               exit 1
             check:
               ($error == null): true
-      catch:
-        - use:
-            template: ../../../../step-templates/debug/collect-diagnostics.yaml
 
     - name: verify-no-secret-kubelb
       cluster: kubelb
@@ -83,9 +77,6 @@ spec:
               exit 1
             check:
               ($error == null): true
-      catch:
-        - use:
-            template: ../../../../step-templates/debug/collect-diagnostics.yaml
       finally:
         - script:
             cluster: tenant1

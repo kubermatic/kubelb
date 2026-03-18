@@ -49,9 +49,6 @@ spec:
               NAMESPACE="tenant-primary"
               kubectl delete svc -n "$NAMESPACE" -l kubelb.k8c.io/origin-name=echo-lb-class --ignore-not-found
               kubectl delete loadbalancers.kubelb.k8c.io -n "$NAMESPACE" -l kubelb.k8c.io/origin-name=echo-lb-class --ignore-not-found
-      catch:
-        - use:
-            template: ../../../../step-templates/debug/collect-diagnostics.yaml
 
     - name: patch-config-with-lb-class
       cluster: kubelb
@@ -69,9 +66,6 @@ spec:
               }'
             check:
               ($error == null): true
-      catch:
-        - use:
-            template: ../../../../step-templates/debug/collect-diagnostics.yaml
 
     - name: create-loadbalancer
       cluster: tenant1
@@ -90,9 +84,6 @@ spec:
                 ports:
                   - port: 80
                     targetPort: 5678
-      catch:
-        - use:
-            template: ../../../../step-templates/debug/collect-diagnostics.yaml
 
     - name: verify-lb-class-on-service
       cluster: kubelb
@@ -128,9 +119,6 @@ spec:
               exit 1
             check:
               ($error == null): true
-      catch:
-        - use:
-            template: ../../../../step-templates/debug/collect-diagnostics.yaml
       finally:
         - script:
             cluster: tenant1

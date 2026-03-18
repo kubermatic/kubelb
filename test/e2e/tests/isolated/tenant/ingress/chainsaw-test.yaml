@@ -55,9 +55,6 @@ spec:
               }'
             check:
               ($error == null): true
-      catch:
-        - use:
-            template: ../../../../step-templates/debug/collect-diagnostics.yaml
 
     - name: create-service-and-ingress
       cluster: tenant1
@@ -96,9 +93,6 @@ spec:
                               name: echo-ting
                               port:
                                 number: 80
-      catch:
-        - use:
-            template: ../../../../step-templates/debug/collect-diagnostics.yaml
 
     - name: verify-route-ingress-class
       cluster: kubelb
@@ -133,9 +127,6 @@ spec:
               exit 1
             check:
               ($error == null): true
-      catch:
-        - use:
-            template: ../../../../step-templates/debug/collect-diagnostics.yaml
 
     - name: test-ingress-disable
       cluster: kubelb
@@ -153,9 +144,6 @@ spec:
               }'
             check:
               ($error == null): true
-      catch:
-        - use:
-            template: ../../../../step-templates/debug/collect-diagnostics.yaml
 
     - name: create-second-ingress
       cluster: tenant1
@@ -180,9 +168,6 @@ spec:
                               name: echo-ting
                               port:
                                 number: 80
-      catch:
-        - use:
-            template: ../../../../step-templates/debug/collect-diagnostics.yaml
 
     - name: verify-second-route-not-created
       cluster: kubelb

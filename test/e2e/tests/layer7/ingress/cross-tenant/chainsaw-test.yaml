@@ -62,9 +62,6 @@ spec:
                 namespace: default
               status:
                 readyReplicas: 1
-      catch:
-        - use:
-            template: ../../../../step-templates/debug/collect-diagnostics.yaml
 
     - name: deploy-echo-tenant2
       cluster: tenant2
@@ -86,9 +83,6 @@ spec:
                 namespace: default
               status:
                 readyReplicas: 1
-      catch:
-        - use:
-            template: ../../../../step-templates/debug/collect-diagnostics.yaml
 
     - name: create-ingress-tenant1
       cluster: tenant1
@@ -113,9 +107,6 @@ spec:
                               name: shared-name
                               port:
                                 number: 80
-      catch:
-        - use:
-            template: ../../../../step-templates/debug/collect-diagnostics.yaml
 
     - name: create-ingress-tenant2
       cluster: tenant2
@@ -140,9 +131,6 @@ spec:
                               name: shared-name
                               port:
                                 number: 80
-      catch:
-        - use:
-            template: ../../../../step-templates/debug/collect-diagnostics.yaml
 
     - name: verify-route-crds-both-tenants
       cluster: kubelb
@@ -186,9 +174,6 @@ spec:
               exit 1
             check:
               ($error == null): true
-      catch:
-        - use:
-            template: ../../../../step-templates/debug/collect-diagnostics.yaml
 
     - name: verify-generated-ingresses
       cluster: kubelb
@@ -217,9 +202,6 @@ spec:
               exit 1
             check:
               ($error == null): true
-      catch:
-        - use:
-            template: ../../../../step-templates/debug/collect-diagnostics.yaml
 
     - name: verify-status-tenant1
       cluster: tenant1
@@ -241,9 +223,6 @@ spec:
               exit 1
             check:
               ($error == null): true
-      catch:
-        - use:
-            template: ../../../../step-templates/debug/collect-diagnostics.yaml
 
     - name: verify-status-tenant2
       cluster: tenant2
@@ -265,9 +244,6 @@ spec:
               exit 1
             check:
               ($error == null): true
-      catch:
-        - use:
-            template: ../../../../step-templates/debug/collect-diagnostics.yaml
 
     - name: wait-nodeport-services
       cluster: tenant1
@@ -289,9 +265,6 @@ spec:
               exit 1
             check:
               ($error == null): true
-      catch:
-        - use:
-            template: ../../../../step-templates/debug/collect-diagnostics.yaml
 
     - name: wait-nodeport-services-tenant2
       cluster: tenant2
@@ -313,9 +286,6 @@ spec:
               exit 1
             check:
               ($error == null): true
-      catch:
-        - use:
-            template: ../../../../step-templates/debug/collect-diagnostics.yaml
 
     - name: verify-http-tenant1
       cluster: tenant1
@@ -343,9 +313,6 @@ spec:
               exit 1
             check:
               ($error == null): true
-      catch:
-        - use:
-            template: ../../../../step-templates/debug/collect-diagnostics.yaml
 
     - name: verify-http-tenant2
       cluster: tenant2
@@ -373,9 +340,6 @@ spec:
               exit 1
             check:
               ($error == null): true
-      catch:
-        - use:
-            template: ../../../../step-templates/debug/collect-diagnostics.yaml
 
     - name: verify-unknown-host-404
       cluster: tenant1
@@ -402,9 +366,6 @@ spec:
               exit 1
             check:
               ($error == null): true
-      catch:
-        - use:
-            template: ../../../../step-templates/debug/collect-diagnostics.yaml
 
     - name: cleanup-tenant1
       cluster: tenant1

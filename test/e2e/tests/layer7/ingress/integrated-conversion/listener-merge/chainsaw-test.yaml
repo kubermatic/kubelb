@@ -64,9 +64,6 @@ spec:
                 ports:
                   - port: 80
                     targetPort: 5678
-      catch:
-        - use:
-            template: ../../../../../step-templates/debug/collect-diagnostics.yaml
 
     - name: create-ingresses
       cluster: tenant2
@@ -111,9 +108,6 @@ spec:
                               name: int-lm2
                               port:
                                 number: 80
-      catch:
-        - use:
-            template: ../../../../../step-templates/debug/collect-diagnostics.yaml
 
     - name: verify-ingress-ips
       cluster: tenant2
@@ -142,9 +136,6 @@ spec:
                 loadBalancer:
                   ingress:
                     - {}
-      catch:
-        - use:
-            template: ../../../../../step-templates/debug/collect-diagnostics.yaml
 
     - name: verify-ingress-traffic
       cluster: tenant2
@@ -179,9 +170,6 @@ spec:
               exit 1
             check:
               ($error == null): true
-      catch:
-        - use:
-            template: ../../../../../step-templates/debug/collect-diagnostics.yaml
 
     - name: verify-httproutes
       cluster: tenant2
@@ -206,9 +194,6 @@ spec:
               exit 1
             check:
               ($error == null): true
-      catch:
-        - use:
-            template: ../../../../../step-templates/debug/collect-diagnostics.yaml
 
     - name: verify-gateway
       cluster: tenant2
@@ -226,9 +211,6 @@ spec:
               status:
                 addresses:
                   - {}
-      catch:
-        - use:
-            template: ../../../../../step-templates/debug/collect-diagnostics.yaml
 
     - name: verify-httproute-traffic
       cluster: tenant2
@@ -263,9 +245,6 @@ spec:
               exit 1
             check:
               ($error == null): true
-      catch:
-        - use:
-            template: ../../../../../step-templates/debug/collect-diagnostics.yaml
 
     - name: cleanup
       cluster: tenant2

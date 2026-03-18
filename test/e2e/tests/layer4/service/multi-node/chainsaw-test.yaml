@@ -51,9 +51,6 @@ spec:
                 namespace: default
               status:
                 readyReplicas: ($replicas)
-      catch:
-        - use:
-            template: ../../../../step-templates/debug/collect-diagnostics.yaml
 
     - name: create-loadbalancer-service
       cluster: tenant1
@@ -72,9 +69,6 @@ spec:
                 loadBalancer:
                   ingress:
                     - {}
-      catch:
-        - use:
-            template: ../../../../step-templates/debug/collect-diagnostics.yaml
 
     - name: verify-loadbalancer-crd
       use:
@@ -85,9 +79,6 @@ spec:
               value: echo-multinode
             - name: kubelb_namespace
               value: tenant-primary
-      catch:
-        - use:
-            template: ../../../../step-templates/debug/collect-diagnostics.yaml
 
     - name: verify-status-propagation
       use:

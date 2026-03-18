@@ -77,9 +77,6 @@ spec:
                 namespace: default
               status:
                 readyReplicas: 1
-      catch:
-        - use:
-            template: ../../../../../step-templates/debug/collect-diagnostics.yaml
 
     - name: create-udp-only-service
       cluster: tenant1
@@ -112,9 +109,6 @@ spec:
                 loadBalancer:
                   ingress:
                     - {}
-      catch:
-        - use:
-            template: ../../../../../step-templates/debug/collect-diagnostics.yaml
 
     - name: verify-udp-lb-crd
       use:
@@ -129,9 +123,6 @@ spec:
               value: UDP
             - name: expected_port
               value: "9998"
-      catch:
-        - use:
-            template: ../../../../../step-templates/debug/collect-diagnostics.yaml
 
     - name: verify-tcp-to-udp-fails
       cluster: tenant1

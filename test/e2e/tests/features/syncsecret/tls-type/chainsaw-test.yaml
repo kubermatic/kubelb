@@ -42,9 +42,6 @@ spec:
       try:
         - apply:
             file: ../../../../testdata/secrets/tls-secret.yaml
-      catch:
-        - use:
-            template: ../../../../step-templates/debug/collect-diagnostics.yaml
 
     - name: verify-syncsecret-tenant
       cluster: tenant1
@@ -57,9 +54,6 @@ spec:
               metadata:
                 name: ($name)
                 namespace: default
-      catch:
-        - use:
-            template: ../../../../step-templates/debug/collect-diagnostics.yaml
 
     - name: verify-tls-secret-kubelb
       cluster: kubelb
@@ -87,9 +81,6 @@ spec:
               exit 1
             check:
               ($error == null): true
-      catch:
-        - use:
-            template: ../../../../step-templates/debug/collect-diagnostics.yaml
       finally:
         - script:
             cluster: tenant1

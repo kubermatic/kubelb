@@ -44,9 +44,6 @@ spec:
       try:
         - apply:
             file: ../../../../testdata/secrets/opaque-secret.yaml
-      catch:
-        - use:
-            template: ../../../../step-templates/debug/collect-diagnostics.yaml
 
     - name: verify-syncsecret-tenant
       cluster: tenant1
@@ -59,9 +56,6 @@ spec:
               metadata:
                 name: ($name)
                 namespace: default
-      catch:
-        - use:
-            template: ../../../../step-templates/debug/collect-diagnostics.yaml
 
     - name: verify-secret-kubelb
       cluster: kubelb
@@ -103,9 +97,6 @@ spec:
               exit 1
             check:
               ($error == null): true
-      catch:
-        - use:
-            template: ../../../../step-templates/debug/collect-diagnostics.yaml
 
     - name: update-secret
       cluster: tenant1
@@ -116,9 +107,6 @@ spec:
               kubectl patch secret test-secret-crud -n default -p '{"stringData":{"key3":"new-value"}}'
             check:
               ($error == null): true
-      catch:
-        - use:
-            template: ../../../../step-templates/debug/collect-diagnostics.yaml
 
     - name: verify-update
       cluster: kubelb
@@ -142,9 +130,6 @@ spec:
               exit 1
             check:
               ($error == null): true
-      catch:
-        - use:
-            template: ../../../../step-templates/debug/collect-diagnostics.yaml
       finally:
         - script:
             cluster: tenant1

@@ -55,9 +55,6 @@ spec:
                 namespace: default
               status:
                 readyReplicas: 1
-      catch:
-        - use:
-            template: ../../../../step-templates/debug/collect-diagnostics.yaml
 
     - name: create-multiport-loadbalancer
       cluster: tenant1
@@ -76,9 +73,6 @@ spec:
                 loadBalancer:
                   ingress:
                     - {}
-      catch:
-        - use:
-            template: ../../../../step-templates/debug/collect-diagnostics.yaml
 
     - name: verify-loadbalancer-crd
       use:
@@ -89,9 +83,6 @@ spec:
               value: echo-multiport
             - name: kubelb_namespace
               value: tenant-primary
-      catch:
-        - use:
-            template: ../../../../step-templates/debug/collect-diagnostics.yaml
 
     - name: verify-status-propagation
       use:

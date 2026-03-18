@@ -61,9 +61,6 @@ spec:
                 loadBalancer:
                   ingress:
                     - {}
-      catch:
-        - use:
-            template: ../../../../step-templates/debug/collect-diagnostics.yaml
 
     - name: verify-loadbalancer-crd
       use:
@@ -74,9 +71,6 @@ spec:
               value: echo-single-node
             - name: kubelb_namespace
               value: tenant-secondary
-      catch:
-        - use:
-            template: ../../../../step-templates/debug/collect-diagnostics.yaml
 
     - name: verify-http-response
       use:

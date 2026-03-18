@@ -59,9 +59,6 @@ spec:
               echo "All expected manager metrics found"
             check:
               ($error == null): true
-      catch:
-        - use:
-            template: ../../../../step-templates/debug/collect-diagnostics.yaml
       finally:
         - script:
             content: |

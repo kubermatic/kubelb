@@ -48,9 +48,6 @@ spec:
                 ports:
                   - port: 80
                     targetPort: 5678
-      catch:
-        - use:
-            template: ../../../../../step-templates/debug/collect-diagnostics.yaml
 
     - name: create-ingress-wrong-class
       cluster: standalone
@@ -75,9 +72,6 @@ spec:
                               name: conv-wrongclass
                               port:
                                 number: 80
-      catch:
-        - use:
-            template: ../../../../../step-templates/debug/collect-diagnostics.yaml
 
     - name: verify-no-httproute
       cluster: standalone
@@ -103,9 +97,6 @@ spec:
               exit 1
             check:
               ($error == null): true
-      catch:
-        - use:
-            template: ../../../../../step-templates/debug/collect-diagnostics.yaml
 
     - name: verify-no-conversion-status
       cluster: standalone
@@ -126,9 +117,6 @@ spec:
               exit 0
             check:
               ($error == null): true
-      catch:
-        - use:
-            template: ../../../../../step-templates/debug/collect-diagnostics.yaml
 
     - name: cleanup
       cluster: standalone

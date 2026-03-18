@@ -98,9 +98,6 @@ spec:
                 namespace: default
               status:
                 readyReplicas: 1
-      catch:
-        - use:
-            template: ../../../../step-templates/debug/collect-diagnostics.yaml
 
     - name: create-gateway
       cluster: tenant1
@@ -123,9 +120,6 @@ spec:
                         from: All
                       kinds:
                         - kind: GRPCRoute
-      catch:
-        - use:
-            template: ../../../../step-templates/debug/collect-diagnostics.yaml
 
     - name: wait-gateway-ready
       cluster: tenant1
@@ -148,9 +142,6 @@ spec:
               exit 1
             check:
               ($error == null): true
-      catch:
-        - use:
-            template: ../../../../step-templates/debug/collect-diagnostics.yaml
 
     - name: create-grpcroute
       cluster: tenant1
@@ -181,9 +172,6 @@ spec:
               echo "Created GRPCRoute with host: $HOST"
             check:
               ($error == null): true
-      catch:
-        - use:
-            template: ../../../../step-templates/debug/collect-diagnostics.yaml
 
     # Verify Route CRD in kubelb cluster
     - name: verify-route-crd
@@ -223,9 +211,6 @@ spec:
               exit 1
             check:
               ($error == null): true
-      catch:
-        - use:
-            template: ../../../../step-templates/debug/collect-diagnostics.yaml
 
     - name: cleanup
       cluster: tenant1
