@@ -285,7 +285,7 @@ CHAINSAW_CLUSTERS ?= --cluster kubelb=$(KUBECONFIGS_DIR)/kubelb.kubeconfig \
 ifeq ($(ENABLE_STANDALONE),true)
 CHAINSAW_CLUSTERS += --cluster standalone=$(KUBECONFIGS_DIR)/standalone.kubeconfig
 else
-CHAINSAW_EXCLUDE ?= --exclude-test-regex ing-conversion
+CHAINSAW_EXCLUDE ?= --exclude-test-regex '.*/.*ing-conversion.*'
 endif
 CHAINSAW_FLAGS ?= --config $(CHAINSAW_CONFIG) --values $(CHAINSAW_VALUES) $(CHAINSAW_CLUSTERS) $(CHAINSAW_EXCLUDE)
 
