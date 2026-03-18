@@ -37,114 +37,27 @@ spec:
       value: tenant-primary
   steps:
     # Step 1: Deploy backend services
-    - name: deploy-backends
-      description: Deploy two echo servers with different messages
-      cluster: tenant1
-      try:
-        - apply:
-            resource:
-              apiVersion: apps/v1
-              kind: Deployment
-              metadata:
-                name: echo-host-a
-                namespace: default
-                labels:
-                  app: echo-host-a
-              spec:
-                replicas: 1
-                selector:
-                  matchLabels:
-                    app: echo-host-a
-                template:
-                  metadata:
-                    labels:
-                      app: echo-host-a
-                  spec:
-                    containers:
-                      - name: echo
-                        image: hashicorp/http-echo:1.0
-                        imagePullPolicy: IfNotPresent
-                        args:
-                          - -text=host-a-response
-                          - -listen=:8080
-                        ports:
-                          - containerPort: 8080
-        - apply:
-            resource:
-              apiVersion: v1
-              kind: Service
-              metadata:
-                name: echo-host-a
-                namespace: default
-              spec:
-                type: ClusterIP
-                selector:
-                  app: echo-host-a
-                ports:
-                  - port: 80
-                    targetPort: 8080
-        - apply:
-            resource:
-              apiVersion: apps/v1
-              kind: Deployment
-              metadata:
-                name: echo-host-b
-                namespace: default
-                labels:
-                  app: echo-host-b
-              spec:
-                replicas: 1
-                selector:
-                  matchLabels:
-                    app: echo-host-b
-                template:
-                  metadata:
-                    labels:
-                      app: echo-host-b
-                  spec:
-                    containers:
-                      - name: echo
-                        image: hashicorp/http-echo:1.0
-                        imagePullPolicy: IfNotPresent
-                        args:
-                          - -text=host-b-response
-                          - -listen=:8080
-                        ports:
-                          - containerPort: 8080
-        - apply:
-            resource:
-              apiVersion: v1
-              kind: Service
-              metadata:
-                name: echo-host-b
-                namespace: default
-              spec:
-                type: ClusterIP
-                selector:
-                  app: echo-host-b
-                ports:
-                  - port: 80
-                    targetPort: 8080
-        - assert:
-            timeout: 60s
-            resource:
-              apiVersion: apps/v1
-              kind: Deployment
-              metadata:
-                name: echo-host-a
-                namespace: default
-              status:
-                readyReplicas: 1
-        - assert:
-            timeout: 60s
-            resource:
-              apiVersion: apps/v1
-              kind: Deployment
-              metadata:
-                name: echo-host-b
-                namespace: default
-              status:
-                readyReplicas: 1
+    - name: deploy-backend-a
+      description: Deploy echo server for host-a
+      use:
+        template: ../../../../step-templates/common/deploy-echo-backend.yaml
+        with:
+          bindings:
+            - name: backend_name
+              value: echo-host-a
+            - name: backend_message
+              value: host-a-response
+
+    - name: deploy-backend-b
+      description: Deploy echo server for host-b
+      use:
+        template: ../../../../step-templates/common/deploy-echo-backend.yaml
+        with:
+          bindings:
+            - name: backend_name
+              value: echo-host-b
+            - name: backend_message
+              value: host-b-response
 
     # Step 2: Create Gateway
     - name: create-gateway

@@ -47,60 +47,14 @@ spec:
     # Step 1: Deploy backend service
     - name: deploy-backend
       description: Deploy echo server for wildcard test
-      cluster: tenant1
-      try:
-        - apply:
-            resource:
-              apiVersion: apps/v1
-              kind: Deployment
-              metadata:
-                name: echo-wildcard
-                namespace: default
-                labels:
-                  app: echo-wildcard
-              spec:
-                replicas: 1
-                selector:
-                  matchLabels:
-                    app: echo-wildcard
-                template:
-                  metadata:
-                    labels:
-                      app: echo-wildcard
-                  spec:
-                    containers:
-                      - name: echo
-                        image: hashicorp/http-echo:1.0
-                        imagePullPolicy: IfNotPresent
-                        args:
-                          - -text=wildcard-backend-response
-                          - -listen=:8080
-                        ports:
-                          - containerPort: 8080
-        - apply:
-            resource:
-              apiVersion: v1
-              kind: Service
-              metadata:
-                name: echo-wildcard
-                namespace: default
-              spec:
-                type: ClusterIP
-                selector:
-                  app: echo-wildcard
-                ports:
-                  - port: 80
-                    targetPort: 8080
-        - assert:
-            timeout: 60s
-            resource:
-              apiVersion: apps/v1
-              kind: Deployment
-              metadata:
-                name: echo-wildcard
-                namespace: default
-              status:
-                readyReplicas: 1
+      use:
+        template: ../../../../step-templates/common/deploy-echo-backend.yaml
+        with:
+          bindings:
+            - name: backend_name
+              value: echo-wildcard
+            - name: backend_message
+              value: wildcard-backend-response
 
     # Step 2: Create Gateway
     - name: create-gateway

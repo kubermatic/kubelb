@@ -39,114 +39,28 @@ spec:
       value: tenant-primary
   steps:
     # Step 1: Deploy two backend services
-    - name: deploy-backends
-      description: Deploy two echo servers
-      cluster: tenant1
-      try:
-        - apply:
-            resource:
-              apiVersion: apps/v1
-              kind: Deployment
-              metadata:
-                name: echo-v1
-                namespace: default
-                labels:
-                  app: echo-v1
-              spec:
-                replicas: 1
-                selector:
-                  matchLabels:
-                    app: echo-v1
-                template:
-                  metadata:
-                    labels:
-                      app: echo-v1
-                  spec:
-                    containers:
-                      - name: echo
-                        image: hashicorp/http-echo:1.0
-                        imagePullPolicy: IfNotPresent
-                        args:
-                          - -text=v1-response
-                          - -listen=:8080
-                        ports:
-                          - containerPort: 8080
-        - apply:
-            resource:
-              apiVersion: v1
-              kind: Service
-              metadata:
-                name: echo-v1
-                namespace: default
-              spec:
-                type: ClusterIP
-                selector:
-                  app: echo-v1
-                ports:
-                  - port: 80
-                    targetPort: 8080
-        - apply:
-            resource:
-              apiVersion: apps/v1
-              kind: Deployment
-              metadata:
-                name: echo-v2
-                namespace: default
-                labels:
-                  app: echo-v2
-              spec:
-                replicas: 1
-                selector:
-                  matchLabels:
-                    app: echo-v2
-                template:
-                  metadata:
-                    labels:
-                      app: echo-v2
-                  spec:
-                    containers:
-                      - name: echo
-                        image: hashicorp/http-echo:1.0
-                        imagePullPolicy: IfNotPresent
-                        args:
-                          - -text=v2-response
-                          - -listen=:8080
-                        ports:
-                          - containerPort: 8080
-        - apply:
-            resource:
-              apiVersion: v1
-              kind: Service
-              metadata:
-                name: echo-v2
-                namespace: default
-              spec:
-                type: ClusterIP
-                selector:
-                  app: echo-v2
-                ports:
-                  - port: 80
-                    targetPort: 8080
-        - assert:
-            timeout: 60s
-            resource:
-              apiVersion: apps/v1
-              kind: Deployment
-              metadata:
-                name: echo-v1
-                namespace: default
-              status:
-                readyReplicas: 1
-        - assert:
-            timeout: 60s
-            resource:
-              apiVersion: apps/v1
-              kind: Deployment
-              metadata:
-                name: echo-v2
-                namespace: default
-              status:
-                readyReplicas: 1
+    # Step 1: Deploy two backend services
+    - name: deploy-backend-v1
+      description: Deploy echo v1 server
+      use:
+        template: ../../../../step-templates/common/deploy-echo-backend.yaml
+        with:
+          bindings:
+            - name: backend_name
+              value: echo-v1
+            - name: backend_message
+              value: v1-response
+
+    - name: deploy-backend-v2
+      description: Deploy echo v2 server
+      use:
+        template: ../../../../step-templates/common/deploy-echo-backend.yaml
+        with:
+          bindings:
+            - name: backend_name
+              value: echo-v2
+            - name: backend_message
+              value: v2-response
 
     # Step 2: Create Gateway
     - name: create-gateway

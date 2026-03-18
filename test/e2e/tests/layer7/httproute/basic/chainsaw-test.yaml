@@ -49,60 +49,14 @@ spec:
     # Step 1: Deploy backend service
     - name: deploy-backend
       description: Deploy echo server for HTTPRoute
-      cluster: tenant1
-      try:
-        - apply:
-            resource:
-              apiVersion: apps/v1
-              kind: Deployment
-              metadata:
-                name: basic-echo
-                namespace: default
-                labels:
-                  app: basic-echo
-              spec:
-                replicas: 1
-                selector:
-                  matchLabels:
-                    app: basic-echo
-                template:
-                  metadata:
-                    labels:
-                      app: basic-echo
-                  spec:
-                    containers:
-                      - name: echo
-                        image: hashicorp/http-echo:1.0
-                        imagePullPolicy: IfNotPresent
-                        args:
-                          - -text=hello-from-httproute
-                          - -listen=:8080
-                        ports:
-                          - containerPort: 8080
-        - apply:
-            resource:
-              apiVersion: v1
-              kind: Service
-              metadata:
-                name: basic-echo
-                namespace: default
-              spec:
-                type: ClusterIP
-                selector:
-                  app: basic-echo
-                ports:
-                  - port: 80
-                    targetPort: 8080
-        - assert:
-            timeout: 60s
-            resource:
-              apiVersion: apps/v1
-              kind: Deployment
-              metadata:
-                name: basic-echo
-                namespace: default
-              status:
-                readyReplicas: 1
+      use:
+        template: ../../../../step-templates/common/deploy-echo-backend.yaml
+        with:
+          bindings:
+            - name: backend_name
+              value: basic-echo
+            - name: backend_message
+              value: hello-from-httproute
 
     # Step 2: Create Gateway for HTTPRoute
     - name: create-gateway
@@ -234,60 +188,14 @@ spec:
     # Step 7: Deploy second backend with different response
     - name: deploy-second-backend
       description: Deploy second echo server with different response
-      cluster: tenant1
-      try:
-        - apply:
-            resource:
-              apiVersion: apps/v1
-              kind: Deployment
-              metadata:
-                name: basic-echo-v2
-                namespace: default
-                labels:
-                  app: basic-echo-v2
-              spec:
-                replicas: 1
-                selector:
-                  matchLabels:
-                    app: basic-echo-v2
-                template:
-                  metadata:
-                    labels:
-                      app: basic-echo-v2
-                  spec:
-                    containers:
-                      - name: echo
-                        image: hashicorp/http-echo:1.0
-                        imagePullPolicy: IfNotPresent
-                        args:
-                          - -text=hello-from-httproute-v2
-                          - -listen=:8080
-                        ports:
-                          - containerPort: 8080
-        - apply:
-            resource:
-              apiVersion: v1
-              kind: Service
-              metadata:
-                name: basic-echo-v2
-                namespace: default
-              spec:
-                type: ClusterIP
-                selector:
-                  app: basic-echo-v2
-                ports:
-                  - port: 80
-                    targetPort: 8080
-        - assert:
-            timeout: 60s
-            resource:
-              apiVersion: apps/v1
-              kind: Deployment
-              metadata:
-                name: basic-echo-v2
-                namespace: default
-              status:
-                readyReplicas: 1
+      use:
+        template: ../../../../step-templates/common/deploy-echo-backend.yaml
+        with:
+          bindings:
+            - name: backend_name
+              value: basic-echo-v2
+            - name: backend_message
+              value: hello-from-httproute-v2
 
     # Step 8: Update HTTPRoute to use second backend
     - name: update-httproute-backend
