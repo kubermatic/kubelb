@@ -81,7 +81,8 @@ spec:
             check:
               ($error == null): true
 
-    - name: delete-baseline-lb
+    - name: cleanup-tenant2-resources
+      description: Delete all LB services, gateways, ingresses, routes on tenant2 left by concurrent tests
       cluster: tenant2
       try:
         - script:
@@ -89,6 +90,9 @@ spec:
             content: |
               set -e
               kubectl delete svc echo-shared-lb -n default
+              kubectl delete gateway --all -n default --ignore-not-found
+              kubectl delete httproute --all -n default --ignore-not-found
+              kubectl delete ingress --all -n default --ignore-not-found
             check:
               ($error == null): true
 
