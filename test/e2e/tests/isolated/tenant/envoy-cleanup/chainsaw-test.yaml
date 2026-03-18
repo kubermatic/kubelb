@@ -115,6 +115,29 @@ spec:
             check:
               ($error == null): true
 
+    - name: verify-route-count-zero
+      cluster: kubelb
+      try:
+        - script:
+            timeout: 60s
+            content: |
+              set -e
+              NAMESPACE="tenant-secondary"
+
+              for i in $(seq 1 20); do
+                COUNT=$(kubectl get routes.kubelb.k8c.io -n "$NAMESPACE" --no-headers 2>/dev/null | wc -l | tr -d ' ')
+                if [ "$COUNT" = "0" ]; then
+                  echo "Route count is 0"
+                  exit 0
+                fi
+                sleep 2
+              done
+              echo "Route count is $COUNT, expected 0"
+              kubectl get routes.kubelb.k8c.io -n "$NAMESPACE" -o wide || true
+              exit 1
+            check:
+              ($error == null): true
+
     - name: verify-envoy-cleaned-up
       cluster: kubelb
       try:
@@ -124,7 +147,7 @@ spec:
               set -e
               NAMESPACE="tenant-secondary"
 
-              for i in $(seq 1 10); do
+              for i in $(seq 1 15); do
                 DEPLOY=$(kubectl get deployment envoy-tenant-secondary -n "$NAMESPACE" -o name 2>/dev/null || true)
                 if [ -z "$DEPLOY" ]; then
                   echo "Envoy deployment removed"
