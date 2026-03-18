@@ -147,6 +147,74 @@ make e2e-select select=suite=conversion  # Run only conversion tests
 
 The step templates use `cluster: standalone` explicitly to target the standalone cluster.
 
+## Available Step Templates
+
+### Common
+
+| Template | Purpose | Required Bindings |
+|----------|---------|-------------------|
+| `common/deploy-echo-backend.yaml` | Deploy echo server + ClusterIP service + readiness check | `backend_name`, `backend_message` |
+| `common/verify-route-crd.yaml` | Assert Route CRD exists with labels | `resource_name`, `expected_kind`, `kubelb_namespace` |
+| `common/verify-route-cleanup.yaml` | Assert Route CRD removed | `resource_name`, `kubelb_namespace` |
+| `common/verify-http-response.yaml` | Verify HTTP response via Host header | `host`, `expected_response` |
+| `common/verify-headers.yaml` | Verify response headers | `gateway_name`, `route_name`, `backend_name` |
+| `common/cleanup-service.yaml` | Delete service + verify LB CRD removed | `service_name`, `tenant`, `kubelb_namespace` |
+
+### Gateway API
+
+| Template | Purpose | Required Bindings |
+|----------|---------|-------------------|
+| `gateway/create-http-gateway.yaml` | Create Gateway + wait for IP | `gateway_name` |
+| `gateway/verify-route-crd.yaml` | Assert Route CRD for Gateway resource | `resource_name`, `kubelb_namespace` |
+
+### Layer4
+
+| Template | Purpose | Required Bindings |
+|----------|---------|-------------------|
+| `layer4/assert-lb-crd.yaml` | Assert LB CRD exists with labels+finalizer | `service_name`, `kubelb_namespace` |
+| `layer4/assert-no-lb-crd.yaml` | Assert NO LB CRD exists | `service_name`, `kubelb_namespace` |
+| `layer4/verify-lb-cleanup.yaml` | Assert LB CRD removed | `service_name`, `kubelb_namespace` |
+| `layer4/verify-status-propagation.yaml` | Verify LB IP matches tenant service IP | `service_name`, `tenant`, `kubelb_namespace` |
+| `layer4/verify-http-response.yaml` | Verify HTTP from LB service | `service_name`, `expected`, `port`, `tenant` |
+
+### Layer7 Cleanup
+
+| Template | Purpose | Required Bindings |
+|----------|---------|-------------------|
+| `layer7/cleanup-gateway.yaml` | Delete Gateway + verify Route CRD removed | `gateway_name`, `tenant`, `kubelb_namespace` |
+| `layer7/cleanup-route.yaml` | Delete any Route kind + verify CRD removed | `route_name`, `route_kind`, `tenant`, `kubelb_namespace` |
+
+### Ingress
+
+| Template | Purpose | Required Bindings |
+|----------|---------|-------------------|
+| `ingress/cleanup-ingress.yaml` | Delete Ingress + verify Route CRD removed | `ingress_name` |
+| `ingress/verify-ingress-status.yaml` | Assert Ingress has LB IP | `ingress_name` |
+| `ingress/verify-route-crd.yaml` | Assert Route CRD for Ingress | `ingress_name`, `kubelb_namespace` |
+
+### Conversion
+
+| Template | Purpose | Required Bindings |
+|----------|---------|-------------------|
+| `conversion/cleanup-conversion.yaml` | Delete Ingress + service on standalone | `ingress_name` |
+| `conversion/verify-gateway.yaml` | Assert Gateway exists | `gateway_name` |
+| `conversion/verify-httproute.yaml` | Assert HTTPRoute with host | `ingress_name`, `expected_host` |
+| `conversion/verify-http-traffic.yaml` | Verify HTTP via Gateway | `host`, `expected_response` |
+| `conversion/verify-status-annotation.yaml` | Check conversion-status annotation | `ingress_name`, `expected_status` |
+| `conversion/verify-policy.yaml` | Check policy resource created | `policy_name`, `policy_kind` |
+| `conversion/verify-redirect.yaml` | Verify HTTP redirect behavior | `host`, `expected_code` |
+| `conversion/verify-warnings.yaml` | Check warning events | `ingress_name`, `expected_warning` |
+| `conversion/verify-skip-annotations.yaml` | Check skip-conversion annotation | `ingress_name` |
+
+### Isolated
+
+| Template | Purpose | Required Bindings |
+|----------|---------|-------------------|
+| `isolated/reset-configs.yaml` | Reset Config CRD to defaults | `manifestsPath` |
+| `isolated/reset-tenants.yaml` | Reset Tenant CRDs to defaults | `manifestsPath` |
+| `isolated/patch-config.yaml` | Patch Config CRD | `patch_json` |
+| `isolated/patch-tenant.yaml` | Patch Tenant CRD | `tenant_name`, `patch_json` |
+
 ## Manual Test Debugging
 
 For debugging test failures manually (instead of using chainsaw), create resources from the test directly and inspect logs.
