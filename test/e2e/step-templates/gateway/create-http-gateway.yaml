@@ -29,23 +29,36 @@ spec:
     - name: gateway_port
       value: 80
   try:
-    - apply:
+    - script:
         cluster: tenant1
-        resource:
+        timeout: 30s
+        env:
+          - name: GW_NAME
+            value: ($gateway_name)
+          - name: GW_CLASS
+            value: ($gateway_class)
+          - name: GW_PORT
+            value: ($gateway_port)
+        content: |
+          set -e
+          cat <<EOF | kubectl apply -f -
           apiVersion: gateway.networking.k8s.io/v1
           kind: Gateway
           metadata:
-            name: ($gateway_name)
+            name: ${GW_NAME}
             namespace: default
           spec:
-            gatewayClassName: ($gateway_class)
+            gatewayClassName: ${GW_CLASS}
             listeners:
               - name: http
                 protocol: HTTP
-                port: ($gateway_port)
+                port: ${GW_PORT}
                 allowedRoutes:
                   namespaces:
                     from: All
+          EOF
+        check:
+          ($error == null): true
     - script:
         cluster: tenant1
         timeout: 120s

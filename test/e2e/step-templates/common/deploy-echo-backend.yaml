@@ -30,50 +30,63 @@ spec:
     - name: container_port
       value: 8080
   try:
-    - apply:
+    - script:
         cluster: tenant1
-        resource:
+        timeout: 30s
+        env:
+          - name: NAME
+            value: ($backend_name)
+          - name: MESSAGE
+            value: ($backend_message)
+          - name: PORT
+            value: ($backend_port)
+          - name: CPORT
+            value: ($container_port)
+        content: |
+          set -e
+          cat <<EOF | kubectl apply -f -
           apiVersion: apps/v1
           kind: Deployment
           metadata:
-            name: ($backend_name)
+            name: ${NAME}
             namespace: default
             labels:
-              app: ($backend_name)
+              app: ${NAME}
           spec:
             replicas: 1
             selector:
               matchLabels:
-                app: ($backend_name)
+                app: ${NAME}
             template:
               metadata:
                 labels:
-                  app: ($backend_name)
+                  app: ${NAME}
               spec:
                 containers:
                   - name: echo
                     image: hashicorp/http-echo:1.0
                     imagePullPolicy: IfNotPresent
                     args:
-                      - -text=($backend_message)
-                      - -listen=:($container_port)
+                      - -text=${MESSAGE}
+                      - -listen=:${CPORT}
                     ports:
-                      - containerPort: ($container_port)
-    - apply:
-        cluster: tenant1
-        resource:
+                      - containerPort: ${CPORT}
+          ---
           apiVersion: v1
           kind: Service
           metadata:
-            name: ($backend_name)
+            name: ${NAME}
             namespace: default
           spec:
             type: ClusterIP
             selector:
-              app: ($backend_name)
+              app: ${NAME}
             ports:
-              - port: ($backend_port)
-                targetPort: ($container_port)
+              - port: ${PORT}
+                targetPort: ${CPORT}
+          EOF
+        check:
+          ($error == null): true
     - assert:
         cluster: tenant1
         timeout: 60s
