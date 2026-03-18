@@ -12,38 +12,32 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# Step Template: Deploy echo backend (deployment + service)
-# Required bindings:
+# Step Template: Deploy echo backend (deployment + ClusterIP service + readiness check)
+# Required bindings (pass via use.with.bindings):
 #   - backend_name: name for deployment and service
 #   - backend_message: message the echo server will return
 # Optional bindings:
-#   - backend_namespace: namespace (default: default)
 #   - backend_port: service port (default: 80)
 #   - container_port: container port (default: 8080)
-#   - cluster: cluster context (default: tenant1)
 apiVersion: chainsaw.kyverno.io/v1alpha1
 kind: StepTemplate
 metadata:
   name: deploy-echo-backend
 spec:
   bindings:
-    - name: backend_namespace
-      value: default
     - name: backend_port
-      value: "80"
+      value: 80
     - name: container_port
-      value: "8080"
-    - name: cluster
-      value: tenant1
+      value: 8080
   try:
     - apply:
-        cluster: ($cluster)
+        cluster: tenant1
         resource:
           apiVersion: apps/v1
           kind: Deployment
           metadata:
             name: ($backend_name)
-            namespace: ($backend_namespace)
+            namespace: default
             labels:
               app: ($backend_name)
           spec:
@@ -61,18 +55,18 @@ spec:
                     image: hashicorp/http-echo:1.0
                     imagePullPolicy: IfNotPresent
                     args:
-                      - (join('', ['-text=', $backend_message]))
-                      - (join('', ['-listen=:', $container_port]))
+                      - -text=($backend_message)
+                      - -listen=:($container_port)
                     ports:
                       - containerPort: ($container_port)
     - apply:
-        cluster: ($cluster)
+        cluster: tenant1
         resource:
           apiVersion: v1
           kind: Service
           metadata:
             name: ($backend_name)
-            namespace: ($backend_namespace)
+            namespace: default
           spec:
             type: ClusterIP
             selector:
@@ -81,13 +75,13 @@ spec:
               - port: ($backend_port)
                 targetPort: ($container_port)
     - assert:
-        cluster: ($cluster)
+        cluster: tenant1
         timeout: 60s
         resource:
           apiVersion: apps/v1
           kind: Deployment
           metadata:
             name: ($backend_name)
-            namespace: ($backend_namespace)
+            namespace: default
           status:
             readyReplicas: 1
