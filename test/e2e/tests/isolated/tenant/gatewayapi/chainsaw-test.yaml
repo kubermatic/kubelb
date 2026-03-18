@@ -32,7 +32,6 @@ spec:
     per-tenant Gateway API configuration.
   steps:
     - name: reset-tenants
-      description: Reset Tenants to default state
       use:
         template: ../../../../step-templates/isolated/reset-tenants.yaml
         with:
@@ -41,11 +40,9 @@ spec:
               value: ../../../../manifests
 
     - name: patch-tenant-with-gateway-class
-      description: Set custom gateway class for tenant
       cluster: kubelb
       try:
         - script:
-            skipCommandOutput: true
             timeout: 60s
             content: |
               set -e
@@ -56,35 +53,36 @@ spec:
                   }
                 }
               }'
-              echo "SUCCESS: Tenant patched with gateway class"
             check:
               ($error == null): true
+      catch:
+        - use:
+            template: ../../../../step-templates/debug/collect-diagnostics.yaml
 
     - name: verify-tenant-gateway-class-set
-      description: Verify tenant has custom gateway class
       cluster: kubelb
       try:
         - script:
-            skipCommandOutput: true
             timeout: 60s
             content: |
               set -e
               CLASS=$(kubectl get tenant primary -o jsonpath='{.spec.gatewayAPI.class}')
               if [ "$CLASS" = "tenant-gateway-class" ]; then
-                echo "SUCCESS: Tenant gateway class is 'tenant-gateway-class'"
+                echo "Tenant gateway class is 'tenant-gateway-class'"
                 exit 0
               fi
-              echo "FAILED: Tenant gateway class is '$CLASS'"
+              echo "Tenant gateway class is '$CLASS'"
               exit 1
             check:
               ($error == null): true
+      catch:
+        - use:
+            template: ../../../../step-templates/debug/collect-diagnostics.yaml
 
     - name: test-full-gateway-disable
-      description: Test fully disabling Gateway API for tenant
       cluster: kubelb
       try:
         - script:
-            skipCommandOutput: true
             timeout: 60s
             content: |
               set -e
@@ -95,32 +93,34 @@ spec:
                   }
                 }
               }'
-              echo "SUCCESS: Tenant Gateway API fully disabled"
             check:
               ($error == null): true
+      catch:
+        - use:
+            template: ../../../../step-templates/debug/collect-diagnostics.yaml
 
     - name: verify-gateway-disabled
-      description: Verify Gateway API is disabled
       cluster: kubelb
       try:
         - script:
-            skipCommandOutput: true
             timeout: 60s
             content: |
               set -e
               DISABLED=$(kubectl get tenant primary -o jsonpath='{.spec.gatewayAPI.disable}')
               if [ "$DISABLED" = "true" ]; then
-                echo "SUCCESS: Gateway API is disabled"
+                echo "Gateway API is disabled"
                 exit 0
               fi
-              echo "FAILED: Gateway API disabled flag is '$DISABLED'"
+              echo "Gateway API disabled flag is '$DISABLED'"
               exit 1
             check:
               ($error == null): true
+      catch:
+        - use:
+            template: ../../../../step-templates/debug/collect-diagnostics.yaml
       finally:
         - script:
             cluster: kubelb
-            skipCommandOutput: true
             timeout: 60s
             content: |
               kubectl replace -f ../../../../manifests/tenants/primary.yaml

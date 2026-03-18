@@ -33,7 +33,6 @@ spec:
     per-tenant LB configuration.
   steps:
     - name: reset-tenants
-      description: Reset Tenants to default state
       use:
         template: ../../../../step-templates/isolated/reset-tenants.yaml
         with:
@@ -42,11 +41,9 @@ spec:
               value: ../../../../manifests
 
     - name: patch-tenant-with-lb-limit
-      description: Set low LB limit for tenant
       cluster: kubelb
       try:
         - script:
-            skipCommandOutput: true
             timeout: 60s
             content: |
               set -e
@@ -57,12 +54,13 @@ spec:
                   }
                 }
               }'
-              echo "SUCCESS: Tenant patched with LB limit=1"
             check:
               ($error == null): true
+      catch:
+        - use:
+            template: ../../../../step-templates/debug/collect-diagnostics.yaml
 
     - name: create-first-lb
-      description: Create first LoadBalancer (should succeed)
       cluster: tenant1
       try:
         - apply:
@@ -91,13 +89,14 @@ spec:
                 loadBalancer:
                   ingress:
                     - {}
+      catch:
+        - use:
+            template: ../../../../step-templates/debug/collect-diagnostics.yaml
 
     - name: verify-first-lb
-      description: Verify first LB exists
       cluster: kubelb
       try:
         - script:
-            skipCommandOutput: true
             timeout: 60s
             content: |
               set -e
@@ -107,23 +106,23 @@ spec:
                 LB=$(kubectl get loadbalancers.kubelb.k8c.io -n "$NAMESPACE" \
                   -l kubelb.k8c.io/origin-name=echo-tlb-1 -o name 2>/dev/null | head -1)
                 if [ -n "$LB" ]; then
-                  echo "SUCCESS: First LoadBalancer CRD exists"
+                  echo "First LoadBalancer CRD exists"
                   exit 0
                 fi
-                echo "Attempt $i: waiting..."
                 sleep 2
               done
-              echo "FAILED: LoadBalancer CRD not found"
+              echo "LoadBalancer CRD not found"
               exit 1
             check:
               ($error == null): true
+      catch:
+        - use:
+            template: ../../../../step-templates/debug/collect-diagnostics.yaml
 
     - name: test-tenant-disable
-      description: Test disabling LB for tenant
       cluster: kubelb
       try:
         - script:
-            skipCommandOutput: true
             timeout: 60s
             content: |
               set -e
@@ -134,12 +133,13 @@ spec:
                   }
                 }
               }'
-              echo "SUCCESS: Tenant LB disabled"
             check:
               ($error == null): true
+      catch:
+        - use:
+            template: ../../../../step-templates/debug/collect-diagnostics.yaml
 
     - name: create-second-lb-when-disabled
-      description: Create second LB when tenant LB is disabled
       cluster: tenant1
       try:
         - apply:
@@ -156,13 +156,14 @@ spec:
                 ports:
                   - port: 81
                     targetPort: 5678
+      catch:
+        - use:
+            template: ../../../../step-templates/debug/collect-diagnostics.yaml
 
     - name: verify-second-lb-not-created
-      description: Verify second LB is not created (disabled)
       cluster: kubelb
       try:
         - script:
-            skipCommandOutput: true
             timeout: 60s
             content: |
               set -e
@@ -173,7 +174,7 @@ spec:
                 -l kubelb.k8c.io/origin-name=echo-tlb-2 -o name 2>/dev/null | head -1)
 
               if [ -z "$LB" ]; then
-                echo "SUCCESS: Second LB not created (tenant disabled)"
+                echo "Second LB not created (tenant disabled)"
                 exit 0
               fi
 
@@ -184,13 +185,11 @@ spec:
       finally:
         - script:
             cluster: tenant1
-            skipCommandOutput: true
             timeout: 60s
             content: |
               kubectl delete svc echo-tlb-1 echo-tlb-2 -n default --ignore-not-found
         - script:
             cluster: kubelb
-            skipCommandOutput: true
             timeout: 60s
             content: |
               kubectl replace -f ../../../../manifests/tenants/primary.yaml

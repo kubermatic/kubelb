@@ -33,7 +33,6 @@ spec:
     exist for a tenant. Uses secondary tenant to avoid affecting other tests.
   steps:
     - name: reset-tenants
-      description: Reset Tenants to default state
       use:
         template: ../../../../step-templates/isolated/reset-tenants.yaml
         with:
@@ -42,7 +41,6 @@ spec:
               value: ../../../../manifests
 
     - name: verify-baseline-lb-exists
-      description: Verify echo-shared-lb exists and envoy is running
       cluster: tenant2
       try:
         - assert:
@@ -57,13 +55,14 @@ spec:
                 loadBalancer:
                   ingress:
                     - {}
+      catch:
+        - use:
+            template: ../../../../step-templates/debug/collect-diagnostics.yaml
 
     - name: verify-envoy-running
-      description: Verify Envoy deployment exists for tenant-secondary
       cluster: kubelb
       try:
         - script:
-            skipCommandOutput: true
             timeout: 60s
             content: |
               set -e
@@ -74,38 +73,38 @@ spec:
                 if [ -n "$DEPLOY" ]; then
                   REPLICAS=$(kubectl get deployment envoy-tenant-secondary -n "$NAMESPACE" -o jsonpath='{.status.readyReplicas}' 2>/dev/null || echo "0")
                   if [ "$REPLICAS" -gt 0 ] 2>/dev/null; then
-                    echo "SUCCESS: Envoy deployment running with $REPLICAS replicas"
+                    echo "Envoy deployment running with $REPLICAS replicas"
                     exit 0
                   fi
                 fi
-                echo "Attempt $i: waiting for envoy..."
                 sleep 2
               done
-              echo "FAILED: Envoy deployment not running"
+              echo "Envoy deployment not running"
               exit 1
             check:
               ($error == null): true
+      catch:
+        - use:
+            template: ../../../../step-templates/debug/collect-diagnostics.yaml
 
     - name: delete-baseline-lb
-      description: Delete echo-shared-lb to trigger envoy cleanup
       cluster: tenant2
       try:
         - script:
-            skipCommandOutput: true
             timeout: 60s
             content: |
               set -e
               kubectl delete svc echo-shared-lb -n default
-              echo "SUCCESS: echo-shared-lb deleted"
             check:
               ($error == null): true
+      catch:
+        - use:
+            template: ../../../../step-templates/debug/collect-diagnostics.yaml
 
     - name: verify-lb-count-zero
-      description: Verify LoadBalancer count is 0 in manager
       cluster: kubelb
       try:
         - script:
-            skipCommandOutput: true
             timeout: 60s
             content: |
               set -e
@@ -114,24 +113,24 @@ spec:
               for i in $(seq 1 20); do
                 COUNT=$(kubectl get loadbalancers.kubelb.k8c.io -n "$NAMESPACE" --no-headers 2>/dev/null | wc -l | tr -d ' ')
                 if [ "$COUNT" = "0" ]; then
-                  echo "SUCCESS: LoadBalancer count is 0"
+                  echo "LoadBalancer count is 0"
                   exit 0
                 fi
-                echo "Attempt $i: LB count=$COUNT, waiting..."
                 sleep 2
               done
-              echo "FAILED: LoadBalancer count is $COUNT, expected 0"
+              echo "LoadBalancer count is $COUNT, expected 0"
               kubectl get loadbalancers.kubelb.k8c.io -n "$NAMESPACE" -o wide || true
               exit 1
             check:
               ($error == null): true
+      catch:
+        - use:
+            template: ../../../../step-templates/debug/collect-diagnostics.yaml
 
     - name: verify-envoy-cleaned-up
-      description: Verify Envoy deployment is removed
       cluster: kubelb
       try:
         - script:
-            skipCommandOutput: true
             timeout: 60s
             content: |
               set -e
@@ -140,25 +139,25 @@ spec:
               for i in $(seq 1 10); do
                 DEPLOY=$(kubectl get deployment envoy-tenant-secondary -n "$NAMESPACE" -o name 2>/dev/null || true)
                 if [ -z "$DEPLOY" ]; then
-                  echo "SUCCESS: Envoy deployment removed"
+                  echo "Envoy deployment removed"
                   exit 0
                 fi
-                echo "Attempt $i: envoy still exists, waiting..."
                 sleep 2
               done
-              echo "FAILED: Envoy deployment still exists"
+              echo "Envoy deployment still exists"
               kubectl get deployment -n "$NAMESPACE" || true
               exit 1
             check:
               ($error == null): true
+      catch:
+        - use:
+            template: ../../../../step-templates/debug/collect-diagnostics.yaml
       finally:
         - script:
             cluster: tenant2
-            skipCommandOutput: true
             timeout: 60s
             content: |
               set -e
-              # Re-create the baseline LB service
               kubectl apply -f - <<EOF
               apiVersion: v1
               kind: Service
@@ -173,13 +172,11 @@ spec:
                   - port: 80
                     targetPort: 5678
               EOF
-              echo "Recreated echo-shared-lb"
 
-              # Wait for LB to get IP
               for i in $(seq 1 10); do
                 IP=$(kubectl get svc echo-shared-lb -n default -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || true)
                 if [ -n "$IP" ]; then
-                  echo "SUCCESS: echo-shared-lb restored with IP $IP"
+                  echo "echo-shared-lb restored with IP $IP"
                   exit 0
                 fi
                 sleep 2

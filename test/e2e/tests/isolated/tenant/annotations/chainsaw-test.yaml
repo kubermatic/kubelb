@@ -30,7 +30,6 @@ spec:
     Test that Tenant.spec.defaultAnnotations override Config-level annotations.
   steps:
     - name: reset-tenants
-      description: Reset Tenants to default state
       use:
         template: ../../../../step-templates/isolated/reset-tenants.yaml
         with:
@@ -39,11 +38,9 @@ spec:
               value: ../../../../manifests
 
     - name: patch-config-with-annotations
-      description: Add default annotations to Config
       cluster: kubelb
       try:
         - script:
-            skipCommandOutput: true
             timeout: 60s
             content: |
               set -e
@@ -56,16 +53,16 @@ spec:
                   }
                 }
               }'
-              echo "SUCCESS: Config patched with annotations"
             check:
               ($error == null): true
+      catch:
+        - use:
+            template: ../../../../step-templates/debug/collect-diagnostics.yaml
 
     - name: patch-tenant-with-annotations
-      description: Add override annotations to Tenant
       cluster: kubelb
       try:
         - script:
-            skipCommandOutput: true
             timeout: 60s
             content: |
               set -e
@@ -78,12 +75,13 @@ spec:
                   }
                 }
               }'
-              echo "SUCCESS: Tenant patched with annotations"
             check:
               ($error == null): true
+      catch:
+        - use:
+            template: ../../../../step-templates/debug/collect-diagnostics.yaml
 
     - name: create-loadbalancer-service
-      description: Create LoadBalancer service using shared echo deployment
       cluster: tenant1
       try:
         - apply:
@@ -112,13 +110,14 @@ spec:
                 loadBalancer:
                   ingress:
                     - {}
+      catch:
+        - use:
+            template: ../../../../step-templates/debug/collect-diagnostics.yaml
 
     - name: verify-tenant-annotations
-      description: Verify tenant-level annotations are applied
       cluster: kubelb
       try:
         - script:
-            skipCommandOutput: true
             timeout: 60s
             content: |
               set -e
@@ -126,39 +125,37 @@ spec:
               for i in $(seq 1 10); do
                 SVC=$(kubectl get svc -n tenant-primary -l kubelb.k8c.io/origin-name=echo-tannot -o name 2>/dev/null | head -1)
                 if [ -z "$SVC" ]; then
-                  echo "Attempt $i: No Envoy service found, waiting..."
                   sleep 2
                   continue
                 fi
 
-                # Check for tenant-level annotation
                 TENANT_ANNOT=$(kubectl get $SVC -n tenant-primary \
                   -o jsonpath='{.metadata.annotations.test\.kubelb\.k8c\.io/tenant-level}')
 
                 if [ "$TENANT_ANNOT" = "from-tenant" ]; then
-                  echo "SUCCESS: Tenant-level annotation found: $TENANT_ANNOT"
+                  echo "Tenant-level annotation found: $TENANT_ANNOT"
                   exit 0
                 fi
 
-                echo "Attempt $i: waiting for annotation (current: '$TENANT_ANNOT')..."
                 sleep 2
               done
 
-              echo "FAILED: Tenant annotation not found"
+              echo "Tenant annotation not found"
               kubectl get svc -n tenant-primary -l kubelb.k8c.io/origin-name=echo-tannot -o yaml
               exit 1
             check:
               ($error == null): true
+      catch:
+        - use:
+            template: ../../../../step-templates/debug/collect-diagnostics.yaml
       finally:
         - script:
             cluster: tenant1
-            skipCommandOutput: true
             timeout: 60s
             content: |
               kubectl delete svc echo-tannot -n default --ignore-not-found
         - script:
             cluster: kubelb
-            skipCommandOutput: true
             timeout: 60s
             content: |
               kubectl replace -f ../../../../manifests/tenants/primary.yaml

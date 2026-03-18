@@ -45,6 +45,9 @@ spec:
                 podMetricsEndpoints:
                   - port: metrics
                     path: /stats/prometheus
+      catch:
+        - use:
+            template: ../../../../step-templates/debug/collect-diagnostics.yaml
     - name: verify-podmonitor-tenant-secondary
       cluster: kubelb
       try:
@@ -66,3 +69,6 @@ spec:
                 podMetricsEndpoints:
                   - port: metrics
                     path: /stats/prometheus
+      catch:
+        - use:
+            template: ../../../../step-templates/debug/collect-diagnostics.yaml
