@@ -38,28 +38,21 @@ spec:
                 echo "Could not find CCM pod"
                 exit 1
               fi
-              POD_IP=$(kubectl get pod -n "$NAMESPACE" "$POD" -o jsonpath='{.status.podIP}')
-              if [ -z "$POD_IP" ]; then
-                echo "Could not find CCM pod IP"
-                exit 1
-              fi
 
-              METRICS_FILE=$(mktemp)
-              trap "rm -f $METRICS_FILE" EXIT
-              kubectl run metrics-probe-ccm --image=busybox:1.36 --rm -i --restart=Never \
-                -n "$NAMESPACE" -- wget -qO- "http://${POD_IP}:9445/metrics" 2>/dev/null > "$METRICS_FILE"
-              if [ ! -s "$METRICS_FILE" ]; then
+              kubectl port-forward -n "$NAMESPACE" "$POD" 19445:9445 &
+              PF_PID=$!
+              trap "kill $PF_PID 2>/dev/null || true" EXIT
+              sleep 2
+
+              METRICS=$(curl -s --max-time 10 http://localhost:19445/metrics)
+              if [ -z "$METRICS" ]; then
                 echo "No metrics returned"
                 exit 1
               fi
 
-              grep -q "kubelb_ccm_managed_services" "$METRICS_FILE"
-              grep -q "kubelb_ccm_kubelb_cluster_connected" "$METRICS_FILE"
+              echo "$METRICS" | grep -q "kubelb_ccm_managed_services"
+              echo "$METRICS" | grep -q "kubelb_ccm_kubelb_cluster_connected"
 
               echo "All expected CCM metrics found"
             check:
               ($error == null): true
-      finally:
-        - script:
-            content: |
-              kubectl delete pod metrics-probe-ccm -n kubelb --ignore-not-found=true 2>/dev/null || true
