@@ -36,7 +36,6 @@ spec:
   steps:
     - name: create-service
       cluster: standalone
-      description: Create ClusterIP service
       try:
         - apply:
             resource:
@@ -52,10 +51,12 @@ spec:
                 ports:
                   - port: 80
                     targetPort: 5678
+      catch:
+        - use:
+            template: ../../../../../step-templates/debug/collect-diagnostics.yaml
 
     - name: create-ingress
       cluster: standalone
-      description: Create Ingress with rate limit annotations
       try:
         - apply:
             resource:
@@ -80,9 +81,11 @@ spec:
                               name: conv-ratelimit
                               port:
                                 number: 80
+      catch:
+        - use:
+            template: ../../../../../step-templates/debug/collect-diagnostics.yaml
 
     - name: verify-httproute
-      description: Verify HTTPRoute exists
       use:
         template: ../../../../../step-templates/conversion/verify-httproute.yaml
         with:
@@ -93,7 +96,6 @@ spec:
               value: ($transformed_host)
 
     - name: verify-backend-policy
-      description: Verify BackendTrafficPolicy CRD is created with rateLimit
       use:
         template: ../../../../../step-templates/conversion/verify-policy.yaml
         with:
@@ -106,7 +108,6 @@ spec:
               value: ".spec.rateLimit"
 
     - name: verify-rate-limit-enforcement
-      description: Verify rate limiting - rapid requests should trigger 429
       try:
         - script:
             cluster: standalone
@@ -116,7 +117,6 @@ spec:
               HOST="conv-ratelimit.gateway.local"
               GATEWAY_NS=default
 
-              # Wait for Gateway IP
               IP=""
               i=1; while [ "$i" -le 30 ]; do
                 IP=$(kubectl get gateway.gateway.networking.k8s.io kubelb -n "$GATEWAY_NS" \
@@ -129,27 +129,22 @@ spec:
               done
 
               if [ -z "$IP" ]; then
-                echo "FAILED: Gateway has no IP"
+                echo "Gateway has no IP"
                 exit 1
               fi
 
               echo "Gateway IP: $IP"
 
-              # Wait for route to propagate
               i=1; while [ "$i" -le 20 ]; do
                 CODE=$(curl -s -o /dev/null -w "%{http_code}" --max-time 5 \
                   -H "Host: ${HOST}" "http://${IP}/" 2>/dev/null || echo "000")
                 if [ "$CODE" = "200" ]; then
-                  echo "Route is ready"
                   break
                 fi
-                echo "Attempt $i: waiting for route..."
                 sleep 3
                 i=$((i + 1))
               done
 
-              # Send rapid requests to trigger rate limit (limit-rps: 10)
-              # Send 30 requests as fast as possible
               COUNT_200=0
               COUNT_429=0
               COUNT_OTHER=0
@@ -171,26 +166,26 @@ spec:
               echo "  429 Too Many Requests: $COUNT_429"
               echo "  Other: $COUNT_OTHER"
 
-              # Verify rate limiting
               if [ "$COUNT_429" -gt 0 ]; then
-                echo "SUCCESS: Rate limiting triggered ($COUNT_429 requests got 429)"
+                echo "Rate limiting triggered ($COUNT_429 requests got 429)"
                 exit 0
               fi
 
-              # If all requests succeeded, rate limiting is not enforced
               if [ "$COUNT_200" -gt 0 ]; then
-                echo "INFO: Traffic works but rate limiting not enforced"
+                echo "Traffic works but rate limiting not enforced"
                 echo "Rate limiting requires BackendTrafficPolicy CRD"
                 exit 0
               fi
 
-              echo "FAILED: No successful requests"
+              echo "No successful requests"
               exit 1
             check:
               ($error == null): true
+      catch:
+        - use:
+            template: ../../../../../step-templates/debug/collect-diagnostics.yaml
 
     - name: cleanup
-      description: Cleanup resources
       use:
         template: ../../../../../step-templates/conversion/cleanup-conversion.yaml
         with:

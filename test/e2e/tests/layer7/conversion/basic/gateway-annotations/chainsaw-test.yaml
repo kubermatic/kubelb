@@ -38,7 +38,6 @@ spec:
   steps:
     - name: create-service
       cluster: standalone
-      description: Create ClusterIP service
       try:
         - apply:
             resource:
@@ -54,10 +53,12 @@ spec:
                 ports:
                   - port: 80
                     targetPort: 5678
+      catch:
+        - use:
+            template: ../../../../../step-templates/debug/collect-diagnostics.yaml
 
     - name: create-ingress
       cluster: standalone
-      description: Create Ingress with nginx ingressClass
       try:
         - apply:
             resource:
@@ -79,9 +80,11 @@ spec:
                               name: conv-gw-annot
                               port:
                                 number: 80
+      catch:
+        - use:
+            template: ../../../../../step-templates/debug/collect-diagnostics.yaml
 
     - name: verify-httproute
-      description: Verify HTTPRoute exists with transformed hostname
       use:
         template: ../../../../../step-templates/conversion/verify-httproute.yaml
         with:
@@ -92,7 +95,6 @@ spec:
               value: ($transformed_host)
 
     - name: verify-gateway
-      description: Verify Gateway exists with correct settings
       use:
         template: ../../../../../step-templates/conversion/verify-gateway.yaml
         with:
@@ -102,7 +104,6 @@ spec:
 
     - name: verify-gateway-annotations
       cluster: standalone
-      description: Verify Gateway has static annotations from gatewayAnnotations config
       try:
         - script:
             timeout: 30s
@@ -111,35 +112,32 @@ spec:
               GATEWAY_NAME=kubelb
               NAMESPACE=default
 
-              # Get Gateway annotations
               E2E_TEST=$(kubectl get gateway.gateway.networking.k8s.io "$GATEWAY_NAME" -n "$NAMESPACE" \
                 -o jsonpath='{.metadata.annotations.kubelb\.k8c\.io/e2e-test}')
               CUSTOM_ANNOTATION=$(kubectl get gateway.gateway.networking.k8s.io "$GATEWAY_NAME" -n "$NAMESPACE" \
                 -o jsonpath='{.metadata.annotations.custom\.io/test-annotation}')
 
-              # Verify e2e-test annotation
               if [ "$E2E_TEST" != "gateway-annotations" ]; then
-                echo "FAILED: Expected kubelb.k8c.io/e2e-test='gateway-annotations', got '$E2E_TEST'"
-                echo "All annotations:"
+                echo "Expected kubelb.k8c.io/e2e-test='gateway-annotations', got '$E2E_TEST'"
                 kubectl get gateway.gateway.networking.k8s.io "$GATEWAY_NAME" -n "$NAMESPACE" \
                   -o jsonpath='{.metadata.annotations}' | jq .
                 exit 1
               fi
 
-              # Verify custom annotation
               if [ "$CUSTOM_ANNOTATION" != "test-value" ]; then
-                echo "FAILED: Expected custom.io/test-annotation='test-value', got '$CUSTOM_ANNOTATION'"
+                echo "Expected custom.io/test-annotation='test-value', got '$CUSTOM_ANNOTATION'"
                 exit 1
               fi
 
-              echo "SUCCESS: Gateway has expected annotations"
               echo "  kubelb.k8c.io/e2e-test: $E2E_TEST"
               echo "  custom.io/test-annotation: $CUSTOM_ANNOTATION"
             check:
               ($error == null): true
+      catch:
+        - use:
+            template: ../../../../../step-templates/debug/collect-diagnostics.yaml
 
     - name: verify-status
-      description: Verify Ingress has conversion-status=converted
       use:
         template: ../../../../../step-templates/conversion/verify-status-annotation.yaml
         with:
@@ -150,7 +148,6 @@ spec:
               value: converted
 
     - name: verify-http
-      description: Verify HTTP response via Envoy Gateway
       use:
         template: ../../../../../step-templates/conversion/verify-http-traffic.yaml
         with:
@@ -161,7 +158,6 @@ spec:
               value: hello-shared
 
     - name: cleanup
-      description: Cleanup resources
       use:
         template: ../../../../../step-templates/conversion/cleanup-conversion.yaml
         with:

@@ -36,7 +36,6 @@ spec:
   steps:
     - name: create-service
       cluster: standalone
-      description: Create ClusterIP service
       try:
         - apply:
             resource:
@@ -52,10 +51,12 @@ spec:
                 ports:
                   - port: 80
                     targetPort: 5678
+      catch:
+        - use:
+            template: ../../../../../step-templates/debug/collect-diagnostics.yaml
 
     - name: create-ingress
       cluster: standalone
-      description: Create Ingress with cert-manager annotations
       try:
         - apply:
             resource:
@@ -84,9 +85,11 @@ spec:
                               name: conv-tls-certmgr
                               port:
                                 number: 80
+      catch:
+        - use:
+            template: ../../../../../step-templates/debug/collect-diagnostics.yaml
 
     - name: verify-httproute
-      description: Verify HTTPRoute exists
       use:
         template: ../../../../../step-templates/conversion/verify-httproute.yaml
         with:
@@ -98,7 +101,6 @@ spec:
 
     - name: verify-https-listener
       cluster: standalone
-      description: Verify Gateway has HTTPS listener for the host
       try:
         - script:
             timeout: 60s
@@ -109,20 +111,22 @@ spec:
                   -o jsonpath='{.spec.listeners[*].protocol}' 2>/dev/null || echo "")
 
                 if echo "$LISTENERS" | grep -q "HTTPS"; then
-                  echo "SUCCESS: Gateway has HTTPS listener"
+                  echo "Gateway has HTTPS listener"
                   kubectl get gateway.gateway.networking.k8s.io kubelb -n default \
                     -o jsonpath='{range .spec.listeners[*]}{.name}: {.protocol} {.hostname}{"\n"}{end}'
                   exit 0
                 fi
                 sleep 2
               done
-              echo "FAILED: Gateway missing HTTPS listener"
+              echo "Gateway missing HTTPS listener"
               exit 1
             check:
               ($error == null): true
+      catch:
+        - use:
+            template: ../../../../../step-templates/debug/collect-diagnostics.yaml
 
     - name: verify-basic-traffic
-      description: Verify basic HTTP traffic works
       use:
         template: ../../../../../step-templates/conversion/verify-http-traffic.yaml
         with:
@@ -133,7 +137,6 @@ spec:
               value: hello-shared
 
     - name: verify-status
-      description: Verify conversion status
       use:
         template: ../../../../../step-templates/conversion/verify-status-annotation.yaml
         with:
@@ -144,7 +147,6 @@ spec:
               value: converted
 
     - name: cleanup
-      description: Cleanup resources
       use:
         template: ../../../../../step-templates/conversion/cleanup-conversion.yaml
         with:

@@ -35,7 +35,6 @@ spec:
   steps:
     - name: create-service
       cluster: standalone
-      description: Create ClusterIP service
       try:
         - apply:
             resource:
@@ -51,10 +50,12 @@ spec:
                 ports:
                   - port: 80
                     targetPort: 5678
+      catch:
+        - use:
+            template: ../../../../../step-templates/debug/collect-diagnostics.yaml
 
     - name: create-ingress
       cluster: standalone
-      description: Create Ingress with rewrite-target
       try:
         - apply:
             resource:
@@ -78,10 +79,12 @@ spec:
                               name: conv-rewrite
                               port:
                                 number: 80
+      catch:
+        - use:
+            template: ../../../../../step-templates/debug/collect-diagnostics.yaml
 
     - name: verify-httproute
       cluster: standalone
-      description: Verify HTTPRoute exists with URLRewrite filter
       try:
         - script:
             timeout: 60s
@@ -96,19 +99,21 @@ spec:
                 if [ -n "$HTTPROUTE" ]; then
                   FILTERS=$(kubectl get $HTTPROUTE -n default -o json | jq '.spec.rules[].filters[]?' 2>/dev/null)
                   if echo "$FILTERS" | grep -q "URLRewrite"; then
-                    echo "SUCCESS: HTTPRoute has URLRewrite filter"
+                    echo "HTTPRoute has URLRewrite filter"
                     exit 0
                   fi
                 fi
                 sleep 2
               done
-              echo "FAILED: No URLRewrite filter found"
+              echo "No URLRewrite filter found"
               exit 1
             check:
               ($error == null): true
+      catch:
+        - use:
+            template: ../../../../../step-templates/debug/collect-diagnostics.yaml
 
     - name: verify-traffic
-      description: Verify traffic works on rewritten path
       use:
         template: ../../../../../step-templates/conversion/verify-http-traffic.yaml
         with:
@@ -121,7 +126,6 @@ spec:
               value: hello-shared
 
     - name: verify-status
-      description: Verify conversion status
       use:
         template: ../../../../../step-templates/conversion/verify-status-annotation.yaml
         with:
@@ -133,7 +137,6 @@ spec:
 
     - name: cleanup
       cluster: standalone
-      description: Cleanup resources
       try:
         - script:
             timeout: 30s

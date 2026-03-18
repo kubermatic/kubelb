@@ -33,7 +33,6 @@ spec:
   steps:
     - name: create-service
       cluster: standalone
-      description: Create ClusterIP service
       try:
         - apply:
             resource:
@@ -49,10 +48,12 @@ spec:
                 ports:
                   - port: 80
                     targetPort: 5678
+      catch:
+        - use:
+            template: ../../../../../step-templates/debug/collect-diagnostics.yaml
 
     - name: create-tls-secrets
       cluster: standalone
-      description: Create TLS secrets
       try:
         - script:
             timeout: 30s
@@ -72,10 +73,12 @@ spec:
                 -n default --dry-run=client -o yaml | kubectl apply -f -
 
               rm -f /tmp/cx*.key /tmp/cx*.crt
+      catch:
+        - use:
+            template: ../../../../../step-templates/debug/collect-diagnostics.yaml
 
     - name: create-ingress
       cluster: standalone
-      description: Create complex Ingress
       try:
         - apply:
             resource:
@@ -118,10 +121,12 @@ spec:
                               name: conv-complex
                               port:
                                 number: 80
+      catch:
+        - use:
+            template: ../../../../../step-templates/debug/collect-diagnostics.yaml
 
     - name: verify-httproutes-created
       cluster: standalone
-      description: Verify HTTPRoutes created for both hosts
       try:
         - script:
             timeout: 60s
@@ -134,7 +139,6 @@ spec:
                   -l "kubelb.k8c.io/source-ingress=${SOURCE_LABEL}" -o name 2>/dev/null | wc -l)
 
                 if [ "$COUNT" -ge 1 ]; then
-                  echo "SUCCESS: Found $COUNT HTTPRoute(s)"
                   kubectl get httproutes.gateway.networking.k8s.io -n default \
                     -l "kubelb.k8c.io/source-ingress=${SOURCE_LABEL}" \
                     -o custom-columns='NAME:.metadata.name,HOSTNAME:.spec.hostnames[0]'
@@ -142,14 +146,16 @@ spec:
                 fi
                 sleep 2
               done
-              echo "FAILED: No HTTPRoutes found"
+              echo "No HTTPRoutes found"
               exit 1
             check:
               ($error == null): true
+      catch:
+        - use:
+            template: ../../../../../step-templates/debug/collect-diagnostics.yaml
 
     - name: verify-gateway-https-listeners
       cluster: standalone
-      description: Verify Gateway has HTTPS listeners for both hosts
       try:
         - script:
             timeout: 60s
@@ -160,21 +166,23 @@ spec:
                   -o jsonpath='{.spec.listeners[*].protocol}' 2>/dev/null | tr ' ' '\n' | grep -c HTTPS || echo "0")
 
                 if [ "$HTTPS_COUNT" -ge 2 ]; then
-                  echo "SUCCESS: Gateway has $HTTPS_COUNT HTTPS listeners"
+                  echo "Gateway has $HTTPS_COUNT HTTPS listeners"
                   exit 0
                 fi
                 sleep 2
               done
-              echo "FAILED: Expected at least 2 HTTPS listeners"
+              echo "Expected at least 2 HTTPS listeners"
               exit 1
             check:
               ($error == null): true
+      catch:
+        - use:
+            template: ../../../../../step-templates/debug/collect-diagnostics.yaml
 
     # Note: cert-manager annotation propagation from Ingress to Gateway is not implemented.
     # Use gatewayAnnotations config to set cert-manager annotations on Gateway.
 
     - name: verify-traffic-api
-      description: Verify HTTP traffic works for api.gateway.local (HTTPS listener config verified separately)
       use:
         template: ../../../../../step-templates/conversion/verify-http-traffic.yaml
         with:
@@ -187,7 +195,6 @@ spec:
               value: hello-shared
 
     - name: verify-traffic-web
-      description: Verify HTTP traffic works for web.gateway.local (HTTPS listener config verified separately)
       use:
         template: ../../../../../step-templates/conversion/verify-http-traffic.yaml
         with:
@@ -201,7 +208,6 @@ spec:
 
     - name: cleanup
       cluster: standalone
-      description: Cleanup resources
       try:
         - script:
             timeout: 30s

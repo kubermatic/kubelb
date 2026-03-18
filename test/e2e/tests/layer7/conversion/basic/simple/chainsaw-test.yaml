@@ -36,10 +36,8 @@ spec:
     - name: transformed_host
       value: conv-simple.gateway.local
   steps:
-    # Step 1: Create ClusterIP service pointing to echo-shared
     - name: create-service
       cluster: standalone
-      description: Create ClusterIP service
       try:
         - apply:
             resource:
@@ -55,11 +53,12 @@ spec:
                 ports:
                   - port: 80
                     targetPort: 5678
+      catch:
+        - use:
+            template: ../../../../../step-templates/debug/collect-diagnostics.yaml
 
-    # Step 2: Create Ingress with nginx class
     - name: create-ingress
       cluster: standalone
-      description: Create Ingress with nginx ingressClass
       try:
         - apply:
             resource:
@@ -81,10 +80,11 @@ spec:
                               name: conv-simple
                               port:
                                 number: 80
+      catch:
+        - use:
+            template: ../../../../../step-templates/debug/collect-diagnostics.yaml
 
-    # Step 3: Verify HTTPRoute created with correct hostname
     - name: verify-httproute
-      description: Verify HTTPRoute exists with transformed hostname
       use:
         template: ../../../../../step-templates/conversion/verify-httproute.yaml
         with:
@@ -94,9 +94,7 @@ spec:
             - name: expected_host
               value: ($transformed_host)
 
-    # Step 4: Verify Gateway created
     - name: verify-gateway
-      description: Verify Gateway exists with correct settings
       use:
         template: ../../../../../step-templates/conversion/verify-gateway.yaml
         with:
@@ -104,9 +102,7 @@ spec:
             - name: gateway_name
               value: kubelb
 
-    # Step 5: Verify conversion status annotation
     - name: verify-status
-      description: Verify Ingress has conversion-status=converted
       use:
         template: ../../../../../step-templates/conversion/verify-status-annotation.yaml
         with:
@@ -116,9 +112,7 @@ spec:
             - name: expected_status
               value: converted
 
-    # Step 6: Verify HTTP traffic via transformed hostname
     - name: verify-http
-      description: Verify HTTP response via Envoy Gateway
       use:
         template: ../../../../../step-templates/conversion/verify-http-traffic.yaml
         with:
@@ -128,9 +122,7 @@ spec:
             - name: expected_response
               value: hello-shared
 
-    # Cleanup
     - name: cleanup
-      description: Cleanup resources
       use:
         template: ../../../../../step-templates/conversion/cleanup-conversion.yaml
         with:

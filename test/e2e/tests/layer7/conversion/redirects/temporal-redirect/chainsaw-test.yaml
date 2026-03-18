@@ -35,7 +35,6 @@ spec:
   steps:
     - name: create-service
       cluster: standalone
-      description: Create ClusterIP service
       try:
         - apply:
             resource:
@@ -51,10 +50,12 @@ spec:
                 ports:
                   - port: 80
                     targetPort: 5678
+      catch:
+        - use:
+            template: ../../../../../step-templates/debug/collect-diagnostics.yaml
 
     - name: create-ingress
       cluster: standalone
-      description: Create Ingress with temporal-redirect
       try:
         - apply:
             resource:
@@ -78,10 +79,12 @@ spec:
                               name: conv-temp-redir
                               port:
                                 number: 80
+      catch:
+        - use:
+            template: ../../../../../step-templates/debug/collect-diagnostics.yaml
 
     - name: verify-httproute
       cluster: standalone
-      description: Verify HTTPRoute exists with redirect filter
       try:
         - script:
             timeout: 60s
@@ -96,19 +99,21 @@ spec:
                 if [ -n "$HTTPROUTE" ]; then
                   FILTERS=$(kubectl get $HTTPROUTE -n default -o json | jq '.spec.rules[].filters[]?')
                   if echo "$FILTERS" | grep -q "RequestRedirect"; then
-                    echo "SUCCESS: HTTPRoute has redirect filter"
+                    echo "HTTPRoute has redirect filter"
                     exit 0
                   fi
                 fi
                 sleep 2
               done
-              echo "FAILED: No redirect filter found"
+              echo "No redirect filter found"
               exit 1
             check:
               ($error == null): true
+      catch:
+        - use:
+            template: ../../../../../step-templates/debug/collect-diagnostics.yaml
 
     - name: verify-redirect-traffic
-      description: Verify actual 302 redirect behavior
       use:
         template: ../../../../../step-templates/conversion/verify-redirect.yaml
         with:
@@ -121,7 +126,6 @@ spec:
               value: "example.com/temp"
 
     - name: cleanup
-      description: Cleanup resources
       use:
         template: ../../../../../step-templates/conversion/cleanup-conversion.yaml
         with:

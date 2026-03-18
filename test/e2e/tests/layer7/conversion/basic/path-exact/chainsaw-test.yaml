@@ -12,10 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# pathType=Exact Conversion Test
-# Verifies:
-# - Ingress with pathType=Exact creates HTTPRoute with Exact path matching
-# - Traffic works only on exact path, not prefix
 apiVersion: chainsaw.kyverno.io/v1alpha1
 kind: Test
 metadata:
@@ -39,7 +35,6 @@ spec:
   steps:
     - name: create-service
       cluster: standalone
-      description: Create ClusterIP service
       try:
         - apply:
             resource:
@@ -55,10 +50,12 @@ spec:
                 ports:
                   - port: 80
                     targetPort: 5678
+      catch:
+        - use:
+            template: ../../../../../step-templates/debug/collect-diagnostics.yaml
 
     - name: create-ingress
       cluster: standalone
-      description: Create Ingress with pathType=Exact
       try:
         - apply:
             resource:
@@ -80,10 +77,12 @@ spec:
                               name: conv-exact
                               port:
                                 number: 80
+      catch:
+        - use:
+            template: ../../../../../step-templates/debug/collect-diagnostics.yaml
 
     - name: verify-httproute-exact
       cluster: standalone
-      description: Verify HTTPRoute has Exact path type
       try:
         - script:
             timeout: 60s
@@ -102,23 +101,24 @@ spec:
                     -o jsonpath='{.spec.rules[0].matches[0].path.value}')
 
                   if [ "$PATH_TYPE" = "Exact" ] && [ "$PATH_VALUE" = "/api/health" ]; then
-                    echo "SUCCESS: HTTPRoute has Exact path matching"
                     echo "  Path type: $PATH_TYPE"
                     echo "  Path value: $PATH_VALUE"
                     exit 0
                   fi
-                  echo "Attempt $i: type='$PATH_TYPE' value='$PATH_VALUE'"
+                  echo "type='$PATH_TYPE' value='$PATH_VALUE'"
                 fi
                 sleep 2
                 i=$((i + 1))
               done
-              echo "FAILED: HTTPRoute not found or wrong path type"
+              echo "HTTPRoute not found or wrong path type"
               exit 1
             check:
               ($error == null): true
+      catch:
+        - use:
+            template: ../../../../../step-templates/debug/collect-diagnostics.yaml
 
     - name: verify-exact-path-traffic
-      description: Verify traffic works on exact path
       use:
         template: ../../../../../step-templates/conversion/verify-http-traffic.yaml
         with:
@@ -131,7 +131,6 @@ spec:
               value: hello-shared
 
     - name: verify-prefix-rejected
-      description: Verify traffic on prefix path returns 404
       try:
         - script:
             cluster: standalone
@@ -143,28 +142,27 @@ spec:
               IP=$(kubectl get gateway.gateway.networking.k8s.io kubelb -n default \
                 -o jsonpath='{.status.addresses[0].value}')
 
-              # Request to /api/health/check should return 404 (not matching exact path)
               CODE=$(curl -s -o /dev/null -w "%{http_code}" --max-time 5 \
                 -H "Host: ${HOST}" "http://${IP}/api/health/check" 2>/dev/null || echo "000")
 
               if [ "$CODE" = "404" ]; then
-                echo "SUCCESS: Prefix path correctly returns 404"
                 exit 0
               fi
 
-              # 200 would mean prefix matching is being used (wrong)
               if [ "$CODE" = "200" ]; then
-                echo "FAILED: Prefix path returned 200 - Exact matching not working"
+                echo "Prefix path returned 200 - Exact matching not working"
                 exit 1
               fi
 
-              echo "INFO: Got $CODE for prefix path (expected 404)"
+              echo "Got $CODE for prefix path (expected 404)"
               exit 0
             check:
               ($error == null): true
+      catch:
+        - use:
+            template: ../../../../../step-templates/debug/collect-diagnostics.yaml
 
     - name: verify-status
-      description: Verify conversion status
       use:
         template: ../../../../../step-templates/conversion/verify-status-annotation.yaml
         with:
@@ -175,7 +173,6 @@ spec:
               value: converted
 
     - name: cleanup
-      description: Cleanup resources
       use:
         template: ../../../../../step-templates/conversion/cleanup-conversion.yaml
         with:

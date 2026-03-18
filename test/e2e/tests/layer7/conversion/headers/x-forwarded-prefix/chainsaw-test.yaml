@@ -35,7 +35,6 @@ spec:
   steps:
     - name: create-service
       cluster: standalone
-      description: Create ClusterIP service
       try:
         - apply:
             resource:
@@ -51,10 +50,12 @@ spec:
                 ports:
                   - port: 80
                     targetPort: 5678
+      catch:
+        - use:
+            template: ../../../../../step-templates/debug/collect-diagnostics.yaml
 
     - name: create-ingress
       cluster: standalone
-      description: Create Ingress with x-forwarded-prefix
       try:
         - apply:
             resource:
@@ -78,9 +79,11 @@ spec:
                               name: conv-xfwd-prefix
                               port:
                                 number: 80
+      catch:
+        - use:
+            template: ../../../../../step-templates/debug/collect-diagnostics.yaml
 
     - name: verify-httproute
-      description: Verify HTTPRoute has RequestHeaderModifier filter
       use:
         template: ../../../../../step-templates/conversion/verify-httproute.yaml
         with:
@@ -91,7 +94,6 @@ spec:
               value: ($transformed_host)
 
     - name: verify-status
-      description: Verify conversion status
       use:
         template: ../../../../../step-templates/conversion/verify-status-annotation.yaml
         with:
@@ -102,7 +104,6 @@ spec:
               value: converted
 
     - name: verify-traffic
-      description: Verify basic traffic works
       use:
         template: ../../../../../step-templates/conversion/verify-http-traffic.yaml
         with:
@@ -113,7 +114,6 @@ spec:
               value: hello-shared
 
     - name: cleanup
-      description: Cleanup resources
       use:
         template: ../../../../../step-templates/conversion/cleanup-conversion.yaml
         with:

@@ -33,9 +33,7 @@ spec:
     - name: transformed_host
       value: conv-default.gateway.local
   steps:
-    # Step 1: Create ClusterIP service
     - name: create-service
-      description: Create ClusterIP service
       cluster: standalone
       try:
         - apply:
@@ -52,10 +50,11 @@ spec:
                 ports:
                   - port: 80
                     targetPort: 5678
+      catch:
+        - use:
+            template: ../../../../../step-templates/debug/collect-diagnostics.yaml
 
-    # Step 2: Create Ingress with defaultBackend
     - name: create-ingress
-      description: Create Ingress with defaultBackend
       cluster: standalone
       try:
         - apply:
@@ -74,10 +73,11 @@ spec:
                       number: 80
                 rules:
                   - host: conv-default.test.local
+      catch:
+        - use:
+            template: ../../../../../step-templates/debug/collect-diagnostics.yaml
 
-    # Step 3: Verify HTTPRoute created
     - name: verify-httproute
-      description: Verify HTTPRoute exists
       use:
         template: ../../../../../step-templates/conversion/verify-httproute.yaml
         with:
@@ -87,9 +87,7 @@ spec:
             - name: expected_host
               value: ($transformed_host)
 
-    # Step 4: Verify conversion status
     - name: verify-status
-      description: Verify Ingress has conversion-status=converted
       use:
         template: ../../../../../step-templates/conversion/verify-status-annotation.yaml
         with:
@@ -99,9 +97,7 @@ spec:
             - name: expected_status
               value: converted
 
-    # Step 5: Verify HTTP traffic to catch-all path
     - name: verify-http
-      description: Verify HTTP for any path
       use:
         template: ../../../../../step-templates/conversion/verify-http-traffic.yaml
         with:
@@ -113,9 +109,7 @@ spec:
             - name: expected_response
               value: hello-shared
 
-    # Cleanup
     - name: cleanup
-      description: Cleanup resources
       use:
         template: ../../../../../step-templates/conversion/cleanup-conversion.yaml
         with:
