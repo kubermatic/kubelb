@@ -70,6 +70,16 @@ jobs:
           exit-code: "1"
           severity: "HIGH,CRITICAL"
           ignore-unfixed: true
+          format: "table"
+
+      - name: Generate SARIF for ${{ matrix.image.name }}
+        if: always()
+        uses: aquasecurity/trivy-action@b6643a29fecd7f34b3597bc6acb0a98b03d33ff8 # v0.28.0
+        with:
+          image-ref: ${{ matrix.image.name }}:pr-scan
+          exit-code: "0"
+          severity: "HIGH,CRITICAL"
+          ignore-unfixed: true
           format: "sarif"
           output: "trivy-${{ matrix.image.name }}.sarif"
 
