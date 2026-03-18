@@ -1,0 +1,50 @@
+# Copyright 2026 The KubeLB Authors.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+# Step Template: Assert LoadBalancer CRD exists with correct spec
+# Required bindings (pass via use.with.bindings):
+#   - service_name: origin service name (label selector)
+#   - kubelb_namespace: namespace in kubelb cluster (e.g., tenant-primary)
+# Optional bindings:
+#   - expected_port: expected port number (default: "80")
+#   - expected_protocol: expected protocol (default: "TCP")
+apiVersion: chainsaw.kyverno.io/v1alpha1
+kind: StepTemplate
+metadata:
+  name: assert-lb-crd
+spec:
+  bindings:
+    - name: expected_port
+      value: "80"
+    - name: expected_protocol
+      value: TCP
+  try:
+    - assert:
+        timeout: 60s
+        cluster: kubelb
+        resource:
+          apiVersion: kubelb.k8c.io/v1alpha1
+          kind: LoadBalancer
+          metadata:
+            namespace: ($kubelb_namespace)
+            labels:
+              kubelb.k8c.io/origin-name: ($service_name)
+            finalizers:
+              - kubelb.k8c.io/cleanup
+          spec:
+            ports:
+              - port: ($expected_port)
+            endpoints:
+              - addressesReference:
+                  (name != ''): true

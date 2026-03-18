@@ -12,19 +12,19 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 #
-# Step Template: Verify LoadBalancer CRD is removed after service deletion
+# Step Template: Assert NO LoadBalancer CRD exists for a given service
 # Required bindings (pass via use.with.bindings):
-#   - service_name: name of the Service resource (used for label selector)
+#   - service_name: origin service name (label selector)
 #   - kubelb_namespace: namespace in kubelb cluster (e.g., tenant-primary)
 apiVersion: chainsaw.kyverno.io/v1alpha1
 kind: StepTemplate
 metadata:
-  name: verify-lb-cleanup
+  name: assert-no-lb-crd
 spec:
   try:
     - script:
         cluster: kubelb
-        timeout: 60s
+        timeout: 30s
         env:
           - name: SERVICE_NAME
             value: ($service_name)
@@ -32,17 +32,14 @@ spec:
             value: ($kubelb_namespace)
         content: |
           set -e
-          for i in $(seq 1 20); do
-            LB=$(kubectl get loadbalancers.kubelb.k8c.io -n "$LB_NS" \
-              -l kubelb.k8c.io/origin-name="$SERVICE_NAME" -o name 2>/dev/null | head -1)
-            if [ -z "$LB" ]; then
-              echo "LoadBalancer CRD removed"
-              exit 0
-            fi
-            sleep 2
-          done
-          echo "LoadBalancer CRD not removed"
-          kubectl get loadbalancers.kubelb.k8c.io -n "$LB_NS" -o yaml
-          exit 1
+          sleep 3
+          LB=$(kubectl get loadbalancers.kubelb.k8c.io -n "$LB_NS" \
+            -l kubelb.k8c.io/origin-name="$SERVICE_NAME" -o name 2>/dev/null || true)
+          if [ -n "$LB" ]; then
+            echo "LoadBalancer CRD unexpectedly created: $LB"
+            exit 1
+          fi
+          echo "No LoadBalancer CRD created (expected)"
+          exit 0
         check:
           ($error == null): true
