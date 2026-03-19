@@ -35,7 +35,6 @@ spec:
   steps:
     - name: create-service
       cluster: standalone
-      description: Create ClusterIP service
       try:
         - apply:
             resource:
@@ -54,7 +53,6 @@ spec:
 
     - name: create-tls-secret
       cluster: standalone
-      description: Create TLS secret
       try:
         - script:
             timeout: 30s
@@ -73,7 +71,6 @@ spec:
 
     - name: create-ingress
       cluster: standalone
-      description: Create Ingress with TLS
       try:
         - apply:
             resource:
@@ -101,7 +98,6 @@ spec:
                                 number: 80
 
     - name: verify-httproute
-      description: Verify HTTPRoute exists
       use:
         template: ../../../../../step-templates/conversion/verify-httproute.yaml
         with:
@@ -113,7 +109,6 @@ spec:
 
     - name: verify-gateway-https
       cluster: standalone
-      description: Verify Gateway has HTTPS listener
       try:
         - script:
             timeout: 60s
@@ -124,20 +119,19 @@ spec:
                   -o jsonpath='{.spec.listeners[*].protocol}' 2>/dev/null || echo "")
 
                 if echo "$LISTENERS" | grep -q "HTTPS"; then
-                  echo "SUCCESS: Gateway has HTTPS listener"
+                  echo "Gateway has HTTPS listener"
                   kubectl get gateway.gateway.networking.k8s.io kubelb -n default \
                     -o jsonpath='{range .spec.listeners[*]}{.name}: {.protocol}{"\n"}{end}'
                   exit 0
                 fi
                 sleep 2
               done
-              echo "FAILED: Gateway missing HTTPS listener"
+              echo "Gateway missing HTTPS listener"
               exit 1
             check:
               ($error == null): true
 
     - name: verify-https-traffic
-      description: Verify HTTPS traffic works with self-signed certificate
       try:
         - script:
             cluster: standalone
@@ -146,7 +140,6 @@ spec:
               set -e
               HOST="conv-tlsbasic.gateway.local"
 
-              # Get Gateway IP
               IP=""
               i=1; while [ "$i" -le 30 ]; do
                 IP=$(kubectl get gateway.gateway.networking.k8s.io kubelb -n default \
@@ -159,27 +152,22 @@ spec:
               done
 
               if [ -z "$IP" ]; then
-                echo "FAILED: Gateway has no IP"
+                echo "Gateway has no IP"
                 exit 1
               fi
 
               echo "Gateway IP: $IP"
 
-              # Wait for HTTPS to be ready and test
-              # IMPORTANT: Must use --resolve to set SNI correctly for hostname-specific HTTPS listeners
               i=1; while [ "$i" -le 20 ]; do
-                # Test HTTPS with self-signed cert (-k to skip verification)
-                # --resolve sets both DNS and SNI, unlike -H "Host:" which only sets HTTP header
                 RESPONSE=$(curl -s -k --max-time 5 \
                   --resolve "${HOST}:443:${IP}" \
                   "https://${HOST}/" 2>/dev/null || echo "")
 
                 if echo "$RESPONSE" | grep -q "hello-shared"; then
-                  echo "SUCCESS: HTTPS traffic works"
+                  echo "HTTPS traffic works"
                   echo "  Host: $HOST"
                   echo "  Response contains: hello-shared"
 
-                  # Verify certificate is being served
                   CERT_CN=$(echo | openssl s_client -connect "${IP}:443" -servername "${HOST}" 2>/dev/null \
                     | openssl x509 -noout -subject 2>/dev/null | grep -o "CN = [^,]*" || echo "")
                   if [ -n "$CERT_CN" ]; then
@@ -189,18 +177,16 @@ spec:
                   exit 0
                 fi
 
-                echo "Attempt $i: waiting for HTTPS route..."
                 sleep 3
                 i=$((i + 1))
               done
 
-              echo "FAILED: HTTPS traffic not working"
+              echo "HTTPS traffic not working"
               exit 1
             check:
               ($error == null): true
 
     - name: verify-http-traffic
-      description: Verify HTTP traffic also works (dual-stack)
       use:
         template: ../../../../../step-templates/conversion/verify-http-traffic.yaml
         with:
@@ -211,7 +197,6 @@ spec:
               value: hello-shared
 
     - name: verify-status
-      description: Verify conversion status
       use:
         template: ../../../../../step-templates/conversion/verify-status-annotation.yaml
         with:
@@ -223,7 +208,6 @@ spec:
 
     - name: cleanup
       cluster: standalone
-      description: Cleanup resources
       try:
         - script:
             timeout: 30s

@@ -32,7 +32,6 @@ spec:
     per-tenant Ingress configuration.
   steps:
     - name: reset-tenants
-      description: Reset Tenants to default state
       use:
         template: ../../../../step-templates/isolated/reset-tenants.yaml
         with:
@@ -41,11 +40,9 @@ spec:
               value: ../../../../manifests
 
     - name: patch-tenant-with-ingress-class
-      description: Set custom ingress class for tenant
       cluster: kubelb
       try:
         - script:
-            skipCommandOutput: true
             timeout: 60s
             content: |
               set -e
@@ -56,12 +53,10 @@ spec:
                   }
                 }
               }'
-              echo "SUCCESS: Tenant patched with ingress class"
             check:
               ($error == null): true
 
     - name: create-service-and-ingress
-      description: Create ClusterIP service pointing to echo-shared and Ingress
       cluster: tenant1
       try:
         - apply:
@@ -100,11 +95,9 @@ spec:
                                 number: 80
 
     - name: verify-route-ingress-class
-      description: Verify generated Ingress uses tenant's ingress class
       cluster: kubelb
       try:
         - script:
-            skipCommandOutput: true
             timeout: 60s
             content: |
               set -e
@@ -115,24 +108,20 @@ spec:
                   -l kubelb.k8c.io/origin-name=echo-ting -o name 2>/dev/null | head -1)
 
                 if [ -n "$ROUTE" ]; then
-                  # Get the generated ingress name from the route status
-                  # Note: status.namespace is origin ns, generated Ingress is in Route's namespace ($NAMESPACE)
                   GEN_NAME=$(kubectl get $ROUTE -n "$NAMESPACE" -o jsonpath='{.status.resources.route.generatedName}')
                   if [ -n "$GEN_NAME" ]; then
                     CLASS=$(kubectl get ingress "$GEN_NAME" -n "$NAMESPACE" -o jsonpath='{.spec.ingressClassName}' 2>/dev/null)
                     if [ "$CLASS" = "tenant-ingress-class" ]; then
-                      echo "SUCCESS: Generated Ingress has tenant ingressClassName 'tenant-ingress-class'"
+                      echo "Generated Ingress has tenant ingressClassName 'tenant-ingress-class'"
                       exit 0
                     fi
-                    echo "Attempt $i: Generated Ingress '$GEN_NAME' has ingressClassName '$CLASS'"
                   fi
                 fi
 
-                echo "Attempt $i: waiting for Route and generated Ingress..."
                 sleep 2
               done
 
-              echo "FAILED: Route or generated Ingress not found, or class not correct"
+              echo "Route or generated Ingress not found, or class not correct"
               kubectl get routes.kubelb.k8c.io -n "$NAMESPACE" -o yaml
               kubectl get ingress -n "$NAMESPACE" -o yaml
               exit 1
@@ -140,11 +129,9 @@ spec:
               ($error == null): true
 
     - name: test-ingress-disable
-      description: Test disabling Ingress for tenant
       cluster: kubelb
       try:
         - script:
-            skipCommandOutput: true
             timeout: 60s
             content: |
               set -e
@@ -155,12 +142,10 @@ spec:
                   }
                 }
               }'
-              echo "SUCCESS: Tenant Ingress disabled"
             check:
               ($error == null): true
 
     - name: create-second-ingress
-      description: Create second Ingress when disabled
       cluster: tenant1
       try:
         - apply:
@@ -185,11 +170,9 @@ spec:
                                 number: 80
 
     - name: verify-second-route-not-created
-      description: Verify second Route is not created (disabled)
       cluster: kubelb
       try:
         - script:
-            skipCommandOutput: true
             timeout: 60s
             content: |
               set -e
@@ -200,7 +183,7 @@ spec:
                 -l kubelb.k8c.io/origin-name=echo-ting-2 -o name 2>/dev/null | head -1)
 
               if [ -z "$ROUTE" ]; then
-                echo "SUCCESS: Second Route not created (tenant disabled)"
+                echo "Second Route not created (tenant disabled)"
                 exit 0
               fi
 
@@ -211,14 +194,12 @@ spec:
       finally:
         - script:
             cluster: tenant1
-            skipCommandOutput: true
             timeout: 60s
             content: |
               kubectl delete ingress echo-ting echo-ting-2 -n default --ignore-not-found
               kubectl delete svc echo-ting -n default --ignore-not-found
         - script:
             cluster: kubelb
-            skipCommandOutput: true
             timeout: 60s
             content: |
               kubectl replace -f ../../../../manifests/tenants/primary.yaml

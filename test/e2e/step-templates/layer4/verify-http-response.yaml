@@ -11,12 +11,12 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
+#
 # Step Template: Verify HTTP response from LoadBalancer service
-# Bindings:
+# Required bindings (pass via use.with.bindings):
 #   - service_name: name of the Service resource
 #   - expected: expected substring in response
-#   - port: port to test (default: 80)
+#   - port: port to test (default: "80")
 #   - tenant: tenant cluster (default: tenant1)
 apiVersion: chainsaw.kyverno.io/v1alpha1
 kind: StepTemplate
@@ -36,38 +36,19 @@ spec:
             value: ($expected)
         content: |
           set -e
-          # Wait for service to get LoadBalancer IP (CI can be slow)
-          echo "Waiting for LoadBalancer IP on service $SERVICE_NAME..."
           for i in $(seq 1 30); do
-            IP=$(kubectl get svc "$SERVICE_NAME" -n default -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || true)
+            IP=$(kubectl get svc "$SERVICE_NAME" -n default \
+              -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || true)
             if [ -n "$IP" ]; then
-              echo "Got LoadBalancer IP: $IP"
-              break
+              RESPONSE=$(curl -s --max-time 5 "http://${IP}:${PORT}" || true)
+              if echo "$RESPONSE" | grep -q "$EXPECTED"; then
+                echo "HTTP OK: got '$EXPECTED' from $IP:$PORT"
+                exit 0
+              fi
             fi
-            echo "Attempt $i: waiting for IP..."
             sleep 3
           done
-
-          if [ -z "$IP" ]; then
-            echo "FAILED: No LoadBalancer IP for service $SERVICE_NAME after 90s"
-            kubectl get svc "$SERVICE_NAME" -n default -o yaml
-            exit 1
-          fi
-
-          echo "Testing connectivity to $IP:$PORT"
-          for i in $(seq 1 30); do
-            RESPONSE=$(curl -s --max-time 5 "http://${IP}:${PORT}" || true)
-            if echo "$RESPONSE" | grep -q "$EXPECTED"; then
-              echo "SUCCESS: Got expected response '$EXPECTED'"
-              echo "Full response: $RESPONSE"
-              exit 0
-            fi
-            echo "Attempt $i: waiting... (got: $RESPONSE)"
-            sleep 3
-          done
-
-          echo "FAILED: Did not get expected response '$EXPECTED'"
-          echo "Last response: $RESPONSE"
+          echo "HTTP verification failed for $SERVICE_NAME:$PORT (expected: $EXPECTED)"
           exit 1
         check:
           ($error == null): true

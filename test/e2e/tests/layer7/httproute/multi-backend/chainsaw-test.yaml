@@ -39,162 +39,38 @@ spec:
       value: tenant-primary
   steps:
     # Step 1: Deploy two backend services
-    - name: deploy-backends
-      description: Deploy two echo servers
-      cluster: tenant1
-      try:
-        - apply:
-            resource:
-              apiVersion: apps/v1
-              kind: Deployment
-              metadata:
-                name: echo-v1
-                namespace: default
-                labels:
-                  app: echo-v1
-              spec:
-                replicas: 1
-                selector:
-                  matchLabels:
-                    app: echo-v1
-                template:
-                  metadata:
-                    labels:
-                      app: echo-v1
-                  spec:
-                    containers:
-                      - name: echo
-                        image: hashicorp/http-echo:1.0
-                        imagePullPolicy: IfNotPresent
-                        args:
-                          - -text=v1-response
-                          - -listen=:8080
-                        ports:
-                          - containerPort: 8080
-        - apply:
-            resource:
-              apiVersion: v1
-              kind: Service
-              metadata:
-                name: echo-v1
-                namespace: default
-              spec:
-                type: ClusterIP
-                selector:
-                  app: echo-v1
-                ports:
-                  - port: 80
-                    targetPort: 8080
-        - apply:
-            resource:
-              apiVersion: apps/v1
-              kind: Deployment
-              metadata:
-                name: echo-v2
-                namespace: default
-                labels:
-                  app: echo-v2
-              spec:
-                replicas: 1
-                selector:
-                  matchLabels:
-                    app: echo-v2
-                template:
-                  metadata:
-                    labels:
-                      app: echo-v2
-                  spec:
-                    containers:
-                      - name: echo
-                        image: hashicorp/http-echo:1.0
-                        imagePullPolicy: IfNotPresent
-                        args:
-                          - -text=v2-response
-                          - -listen=:8080
-                        ports:
-                          - containerPort: 8080
-        - apply:
-            resource:
-              apiVersion: v1
-              kind: Service
-              metadata:
-                name: echo-v2
-                namespace: default
-              spec:
-                type: ClusterIP
-                selector:
-                  app: echo-v2
-                ports:
-                  - port: 80
-                    targetPort: 8080
-        - assert:
-            timeout: 60s
-            resource:
-              apiVersion: apps/v1
-              kind: Deployment
-              metadata:
-                name: echo-v1
-                namespace: default
-              status:
-                readyReplicas: 1
-        - assert:
-            timeout: 60s
-            resource:
-              apiVersion: apps/v1
-              kind: Deployment
-              metadata:
-                name: echo-v2
-                namespace: default
-              status:
-                readyReplicas: 1
+    # Step 1: Deploy two backend services
+    - name: deploy-backend-v1
+      description: Deploy echo v1 server
+      use:
+        template: ../../../../step-templates/common/deploy-echo-backend.yaml
+        with:
+          bindings:
+            - name: backend_name
+              value: echo-v1
+            - name: backend_message
+              value: v1-response
 
-    # Step 2: Create Gateway
+    - name: deploy-backend-v2
+      description: Deploy echo v2 server
+      use:
+        template: ../../../../step-templates/common/deploy-echo-backend.yaml
+        with:
+          bindings:
+            - name: backend_name
+              value: echo-v2
+            - name: backend_message
+              value: v2-response
+
+    # Step 2: Create Gateway and wait for IP
     - name: create-gateway
-      description: Create Gateway for HTTPRoute
-      cluster: tenant1
-      try:
-        - apply:
-            resource:
-              apiVersion: gateway.networking.k8s.io/v1
-              kind: Gateway
-              metadata:
-                name: hr-multi-gw
-                namespace: default
-              spec:
-                gatewayClassName: kubelb
-                listeners:
-                  - name: http
-                    protocol: HTTP
-                    port: 80
-                    allowedRoutes:
-                      namespaces:
-                        from: All
-
-    # Step 3: Wait for Gateway ready
-    - name: wait-gateway-ready
-      description: Wait for Gateway to have address (can take ~60s for LB IP)
-      cluster: tenant1
-      try:
-        - script:
-            skipCommandOutput: true
-            timeout: 120s
-            content: |
-              set -e
-              for i in $(seq 1 40); do
-                IP=$(kubectl get gateway hr-multi-gw -n default \
-                  -o jsonpath='{.status.addresses[0].value}' 2>/dev/null || true)
-                if [ -n "$IP" ]; then
-                  echo "Gateway ready with IP: $IP"
-                  exit 0
-                fi
-                echo "Attempt $i: waiting for Gateway LB IP..."
-                sleep 3
-              done
-              echo "FAILED: Gateway not ready"
-              kubectl get gateway hr-multi-gw -n default -o yaml
-              exit 1
-            check:
-              ($error == null): true
+      description: Create Gateway and wait for IP
+      use:
+        template: ../../../../step-templates/gateway/create-http-gateway.yaml
+        with:
+          bindings:
+            - name: gateway_name
+              value: hr-multi-gw
 
     # Step 4: Create HTTPRoute with weighted backends
     - name: create-httproute

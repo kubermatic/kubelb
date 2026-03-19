@@ -30,7 +30,6 @@ spec:
   steps:
     - name: create-services
       cluster: standalone
-      description: Create services for both Ingresses
       try:
         - apply:
             resource:
@@ -63,7 +62,6 @@ spec:
 
     - name: create-tls-secrets
       cluster: standalone
-      description: Create TLS secrets
       try:
         - script:
             timeout: 30s
@@ -86,7 +84,6 @@ spec:
 
     - name: create-first-ingress
       cluster: standalone
-      description: Create first TLS Ingress
       try:
         - apply:
             resource:
@@ -114,7 +111,6 @@ spec:
                                 number: 80
 
     - name: verify-httproute1
-      description: Verify first HTTPRoute with transformed host
       use:
         template: ../../../../../step-templates/conversion/verify-httproute.yaml
         with:
@@ -126,7 +122,6 @@ spec:
 
     - name: create-second-ingress
       cluster: standalone
-      description: Create second TLS Ingress
       try:
         - apply:
             resource:
@@ -154,7 +149,6 @@ spec:
                                 number: 80
 
     - name: verify-httproute2
-      description: Verify second HTTPRoute with transformed host
       use:
         template: ../../../../../step-templates/conversion/verify-httproute.yaml
         with:
@@ -166,7 +160,6 @@ spec:
 
     - name: verify-our-listeners
       cluster: standalone
-      description: Verify Gateway has our HTTPS listeners
       try:
         - script:
             timeout: 60s
@@ -176,27 +169,21 @@ spec:
               NAMESPACE=default
 
               for i in $(seq 1 30); do
-                # Get all listener names from the gateway
                 LISTENERS=$(kubectl get gateway.gateway.networking.k8s.io "$GATEWAY_NAME" -n "$NAMESPACE" \
                   -o jsonpath='{range .spec.listeners[*]}{.name}{"\n"}{end}' 2>/dev/null || echo "")
 
-                # Check if our specific listeners exist (other tests may add more)
                 HAS_LM1=$(echo "$LISTENERS" | grep -c "https-conv-lm1-gateway-local" || echo "0")
                 HAS_LM2=$(echo "$LISTENERS" | grep -c "https-conv-lm2-gateway-local" || echo "0")
 
                 if [ "$HAS_LM1" -ge 1 ] && [ "$HAS_LM2" -ge 1 ]; then
-                  echo "SUCCESS: Gateway has both our HTTPS listeners"
-                  echo "Our listeners found:"
                   echo "$LISTENERS" | grep -E "conv-lm[12]" || true
                   exit 0
                 fi
 
-                echo "Waiting for listeners... (attempt $i/30)"
                 sleep 2
               done
 
-              echo "FAILED: Expected both conv-lm1 and conv-lm2 listeners"
-              echo "Current listeners:"
+              echo "Expected both conv-lm1 and conv-lm2 listeners"
               kubectl get gateway.gateway.networking.k8s.io "$GATEWAY_NAME" -n "$NAMESPACE" \
                 -o jsonpath='{range .spec.listeners[*]}{.name}: {.protocol}{"\n"}{end}'
               exit 1
@@ -204,7 +191,6 @@ spec:
               ($error == null): true
 
     - name: verify-traffic-lm1
-      description: Verify HTTP traffic works for lm1
       use:
         template: ../../../../../step-templates/conversion/verify-http-traffic.yaml
         with:
@@ -215,7 +201,6 @@ spec:
               value: hello-shared
 
     - name: verify-traffic-lm2
-      description: Verify HTTP traffic works for lm2
       use:
         template: ../../../../../step-templates/conversion/verify-http-traffic.yaml
         with:
@@ -227,7 +212,6 @@ spec:
 
     - name: cleanup
       cluster: standalone
-      description: Cleanup resources
       try:
         - script:
             timeout: 30s

@@ -40,9 +40,7 @@ spec:
     - name: kubelb_namespace
       value: tenant-primary
   steps:
-    # Step 1: Deploy WebSocket-capable echo server
     - name: deploy-backend
-      description: Deploy jmalloc/echo-server (supports HTTP and WebSocket)
       cluster: tenant1
       try:
         - apply:
@@ -95,9 +93,7 @@ spec:
               status:
                 readyReplicas: 1
 
-    # Step 2: Create Ingress
     - name: create-ingress
-      description: Create Ingress with kubelb class
       cluster: tenant1
       try:
         - apply:
@@ -121,9 +117,7 @@ spec:
                               port:
                                 number: 80
 
-    # Step 3: Verify Route CRD
     - name: verify-route-crd
-      description: Verify Route CRD exists with correct labels
       use:
         template: ../../../../step-templates/common/verify-route-crd.yaml
         with:
@@ -135,9 +129,7 @@ spec:
             - name: kubelb_namespace
               value: ($kubelb_namespace)
 
-    # Step 4: Wait for Ingress status
     - name: wait-ingress-status
-      description: Wait for Ingress to get LoadBalancer IP
       use:
         template: ../../../../step-templates/ingress/verify-ingress-status.yaml
         with:
@@ -145,13 +137,10 @@ spec:
             - name: ingress_name
               value: ($name)
 
-    # Step 5: Verify normal HTTP works (route is functional)
     - name: verify-http
-      description: Verify normal HTTP connectivity through the proxy
       cluster: tenant1
       try:
         - script:
-            skipCommandOutput: true
             timeout: 60s
             content: |
               set -e
@@ -165,21 +154,17 @@ spec:
                   echo "HTTP OK: $RESPONSE"
                   exit 0
                 fi
-                echo "Attempt $i: waiting for route..."
                 sleep 2
               done
-              echo "FAILED: Normal HTTP not working"
+              echo "Normal HTTP not working"
               exit 1
             check:
               ($error == null): true
 
-    # Step 6: Attempt WebSocket upgrade handshake through the proxy
     - name: verify-websocket
-      description: Attempt WebSocket handshake through KubeLB Envoy proxy
       cluster: tenant1
       try:
         - script:
-            skipCommandOutput: true
             timeout: 60s
             content: |
               set -e
@@ -188,7 +173,6 @@ spec:
                 -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
               HOST="ws-ingress.test.local"
 
-              # Send WebSocket upgrade request (GET) and capture response status line
               HEADER_FILE=$(mktemp)
               curl -s -o /dev/null -D "$HEADER_FILE" --max-time 5 \
                 --http1.1 \
@@ -207,20 +191,17 @@ spec:
                 exit 0
               fi
 
-              echo "FAILED: Expected HTTP 101 Switching Protocols"
+              echo "Expected HTTP 101 Switching Protocols"
               echo "Response: $STATUS_LINE"
               echo "Envoy HttpConnectionManager is missing UpgradeConfigs for websocket."
               exit 1
             check:
               ($error == null): true
 
-    # Step 7: Cleanup
     - name: cleanup
-      description: Delete resources
       cluster: tenant1
       try:
         - script:
-            skipCommandOutput: true
             timeout: 60s
             content: |
               kubectl delete ingress ws-ingress -n default --wait=false
@@ -229,7 +210,6 @@ spec:
               ($error == null): true
       finally:
         - script:
-            skipCommandOutput: true
             cluster: tenant1
             timeout: 60s
             content: |
@@ -238,7 +218,6 @@ spec:
               kubectl delete service ws-echo-server -n default --ignore-not-found
 
     - name: verify-cleanup
-      description: Verify Route CRD removed
       use:
         template: ../../../../step-templates/common/verify-route-cleanup.yaml
         with:

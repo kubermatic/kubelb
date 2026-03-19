@@ -35,7 +35,6 @@ spec:
   steps:
     - name: create-service
       cluster: standalone
-      description: Create ClusterIP service
       try:
         - apply:
             resource:
@@ -54,7 +53,6 @@ spec:
 
     - name: create-ingress
       cluster: standalone
-      description: Create Ingress with snippet annotations
       try:
         - apply:
             resource:
@@ -83,7 +81,6 @@ spec:
                                 number: 80
 
     - name: verify-httproute
-      description: Verify HTTPRoute exists
       use:
         template: ../../../../../step-templates/conversion/verify-httproute.yaml
         with:
@@ -94,7 +91,6 @@ spec:
               value: ($transformed_host)
 
     - name: verify-warning
-      description: Verify warning about snippets not supported
       use:
         template: ../../../../../step-templates/conversion/verify-warnings.yaml
         with:
@@ -105,7 +101,6 @@ spec:
               value: snippet
 
     - name: verify-status-partial
-      description: Verify conversion status is partial
       use:
         template: ../../../../../step-templates/conversion/verify-status-annotation.yaml
         with:
@@ -116,7 +111,6 @@ spec:
               value: partial
 
     - name: verify-basic-traffic
-      description: Verify basic traffic works despite partial conversion
       use:
         template: ../../../../../step-templates/conversion/verify-http-traffic.yaml
         with:
@@ -127,7 +121,6 @@ spec:
               value: hello-shared
 
     - name: cleanup
-      description: Cleanup resources
       use:
         template: ../../../../../step-templates/conversion/cleanup-conversion.yaml
         with:

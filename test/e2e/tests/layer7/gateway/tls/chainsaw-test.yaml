@@ -184,60 +184,14 @@ spec:
     # Step 6: Deploy backend service for HTTPS test
     - name: deploy-backend
       description: Deploy echo backend for HTTPS connectivity test
-      cluster: tenant1
-      try:
-        - apply:
-            resource:
-              apiVersion: apps/v1
-              kind: Deployment
-              metadata:
-                name: gw-tls
-                namespace: default
-                labels:
-                  app: gw-tls
-              spec:
-                replicas: 1
-                selector:
-                  matchLabels:
-                    app: gw-tls
-                template:
-                  metadata:
-                    labels:
-                      app: gw-tls
-                  spec:
-                    containers:
-                      - name: echo
-                        image: hashicorp/http-echo:1.0
-                        imagePullPolicy: IfNotPresent
-                        args:
-                          - -text=hello-tls-gateway
-                          - -listen=:8080
-                        ports:
-                          - containerPort: 8080
-        - apply:
-            resource:
-              apiVersion: v1
-              kind: Service
-              metadata:
-                name: gw-tls
-                namespace: default
-              spec:
-                type: ClusterIP
-                selector:
-                  app: gw-tls
-                ports:
-                  - port: 80
-                    targetPort: 8080
-        - assert:
-            timeout: 60s
-            resource:
-              apiVersion: apps/v1
-              kind: Deployment
-              metadata:
-                name: gw-tls
-                namespace: default
-              status:
-                readyReplicas: 1
+      use:
+        template: ../../../../step-templates/common/deploy-echo-backend.yaml
+        with:
+          bindings:
+            - name: backend_name
+              value: gw-tls
+            - name: backend_message
+              value: hello-tls-gateway
 
     # Step 7: Create HTTPRoute for Gateway
     - name: create-httproute

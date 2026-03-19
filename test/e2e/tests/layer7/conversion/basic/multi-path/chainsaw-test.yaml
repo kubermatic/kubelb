@@ -33,10 +33,8 @@ spec:
     - name: transformed_host
       value: conv-multipath.gateway.local
   steps:
-    # Step 1: Deploy 3 distinct backends
     - name: deploy-backends
       cluster: standalone
-      description: Deploy backends with distinct responses for each path
       try:
         - apply:
             resource:
@@ -111,10 +109,8 @@ spec:
                         ports:
                           - containerPort: 5678
 
-    # Step 2: Create services for each backend
     - name: create-services
       cluster: standalone
-      description: Create ClusterIP services for each backend
       try:
         - apply:
             resource:
@@ -159,20 +155,16 @@ spec:
                   - port: 80
                     targetPort: 5678
 
-    # Step 3: Wait for backends to be ready
     - name: wait-backends
       cluster: standalone
-      description: Wait for all backends to be ready
       try:
         - script:
             timeout: 120s
             content: |
               kubectl wait --for=condition=available deployment/conv-mp-api deployment/conv-mp-web deployment/conv-mp-root -n default --timeout=90s
 
-    # Step 4: Create Ingress with multiple paths, each pointing to different backend
     - name: create-ingress
       cluster: standalone
-      description: Create Ingress with multiple paths
       try:
         - apply:
             resource:
@@ -209,10 +201,8 @@ spec:
                               port:
                                 number: 80
 
-    # Step 5: Verify HTTPRoute has multiple rules
     - name: verify-httproute-rules
       cluster: standalone
-      description: Verify HTTPRoute has rules for all paths
       try:
         - script:
             timeout: 60s
@@ -229,25 +219,21 @@ spec:
                     -o jsonpath='{.spec.rules}' | jq 'length')
 
                   if [ "$RULE_COUNT" -ge 3 ]; then
-                    echo "SUCCESS: HTTPRoute has $RULE_COUNT rules"
                     kubectl get $HTTPROUTE -n default \
                       -o jsonpath='{range .spec.rules[*]}{.matches[0].path.value}{"\n"}{end}'
                     exit 0
                   fi
                 fi
 
-                echo "Attempt $i: waiting for HTTPRoute with 3 rules..."
                 sleep 2
               done
 
-              echo "FAILED: Expected HTTPRoute with 3 rules"
+              echo "Expected HTTPRoute with 3 rules"
               exit 1
             check:
               ($error == null): true
 
-    # Step 6: Verify conversion status
     - name: verify-status
-      description: Verify Ingress has conversion-status=converted
       use:
         template: ../../../../../step-templates/conversion/verify-status-annotation.yaml
         with:
@@ -257,9 +243,7 @@ spec:
             - name: expected_status
               value: converted
 
-    # Step 7: Verify /api routes to api-backend
     - name: verify-http-api
-      description: Verify /api path routes to api backend
       use:
         template: ../../../../../step-templates/conversion/verify-http-traffic.yaml
         with:
@@ -271,9 +255,7 @@ spec:
             - name: expected_response
               value: response-from-api-backend
 
-    # Step 8: Verify /web routes to web-backend
     - name: verify-http-web
-      description: Verify /web path routes to web backend
       use:
         template: ../../../../../step-templates/conversion/verify-http-traffic.yaml
         with:
@@ -285,9 +267,7 @@ spec:
             - name: expected_response
               value: response-from-web-backend
 
-    # Step 9: Verify / routes to root-backend
     - name: verify-http-root
-      description: Verify / root path routes to root backend
       use:
         template: ../../../../../step-templates/conversion/verify-http-traffic.yaml
         with:
@@ -299,10 +279,8 @@ spec:
             - name: expected_response
               value: response-from-root-backend
 
-    # Cleanup
     - name: cleanup
       cluster: standalone
-      description: Cleanup resources
       try:
         - script:
             timeout: 30s

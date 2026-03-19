@@ -35,7 +35,6 @@ spec:
   steps:
     - name: create-service
       cluster: standalone
-      description: Create ClusterIP service
       try:
         - apply:
             resource:
@@ -54,7 +53,6 @@ spec:
 
     - name: create-configmap
       cluster: standalone
-      description: Create ConfigMap with headers
       try:
         - apply:
             resource:
@@ -68,7 +66,6 @@ spec:
 
     - name: create-ingress
       cluster: standalone
-      description: Create Ingress with ConfigMap headers reference
       try:
         - apply:
             resource:
@@ -94,7 +91,6 @@ spec:
                                 number: 80
 
     - name: verify-httproute
-      description: Verify HTTPRoute exists
       use:
         template: ../../../../../step-templates/conversion/verify-httproute.yaml
         with:
@@ -105,7 +101,6 @@ spec:
               value: ($transformed_host)
 
     - name: verify-warning
-      description: Verify conversion warning about ConfigMap reference
       use:
         template: ../../../../../step-templates/conversion/verify-warnings.yaml
         with:
@@ -116,7 +111,6 @@ spec:
               value: ConfigMap
 
     - name: verify-basic-traffic
-      description: Verify basic traffic still works despite warning
       use:
         template: ../../../../../step-templates/conversion/verify-http-traffic.yaml
         with:
@@ -128,7 +122,6 @@ spec:
 
     - name: cleanup
       cluster: standalone
-      description: Cleanup resources
       try:
         - script:
             timeout: 30s

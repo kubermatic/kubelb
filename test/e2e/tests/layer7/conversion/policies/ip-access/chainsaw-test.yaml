@@ -37,7 +37,6 @@ spec:
   steps:
     - name: create-service
       cluster: standalone
-      description: Create ClusterIP service
       try:
         - apply:
             resource:
@@ -56,7 +55,6 @@ spec:
 
     - name: create-ingress
       cluster: standalone
-      description: Create Ingress with IP access annotations
       try:
         - apply:
             resource:
@@ -82,7 +80,6 @@ spec:
                                 number: 80
 
     - name: verify-httproute
-      description: Verify HTTPRoute exists
       use:
         template: ../../../../../step-templates/conversion/verify-httproute.yaml
         with:
@@ -93,7 +90,6 @@ spec:
               value: ($transformed_host)
 
     - name: verify-security-policy
-      description: Verify SecurityPolicy CRD is created with authorization
       use:
         template: ../../../../../step-templates/conversion/verify-policy.yaml
         with:
@@ -106,7 +102,6 @@ spec:
               value: ".spec.authorization"
 
     - name: verify-ip-filtering-active
-      description: Verify IP filtering is active (403 expected from Kind network)
       try:
         - script:
             cluster: standalone
@@ -116,7 +111,6 @@ spec:
               HOST="conv-ipaccess.gateway.local"
               GATEWAY_NS=default
 
-              # Wait for Gateway IP
               IP=""
               i=1; while [ "$i" -le 30 ]; do
                 IP=$(kubectl get gateway.gateway.networking.k8s.io kubelb -n "$GATEWAY_NS" \
@@ -129,43 +123,38 @@ spec:
               done
 
               if [ -z "$IP" ]; then
-                echo "FAILED: Gateway has no IP"
+                echo "Gateway has no IP"
                 exit 1
               fi
 
               echo "Gateway IP: $IP"
 
-              # Wait for route/policy to propagate and test
-              # In Kind, our source IP (172.18.x.x) is outside the allowlist
-              # (10.0.0.0/8, 192.168.0.0/16), so we expect 403 when policy is active
               i=1; while [ "$i" -le 20 ]; do
                 CODE=$(curl -s -o /dev/null -w "%{http_code}" --max-time 5 \
                   -H "Host: ${HOST}" "http://${IP}/" 2>/dev/null || echo "000")
 
                 if [ "$CODE" = "403" ]; then
-                  echo "SUCCESS: IP filtering is active (403 Forbidden)"
+                  echo "IP filtering is active (403 Forbidden)"
                   echo "  Source IP (Kind network) is correctly blocked"
                   exit 0
                 fi
 
                 if [ "$CODE" = "200" ]; then
-                  echo "INFO: Traffic allowed (policy may not be enforced yet)"
+                  echo "Traffic allowed (policy may not be enforced yet)"
                   echo "  IP filtering requires SecurityPolicy to be programmed"
                   exit 0
                 fi
 
-                echo "Attempt $i: got $CODE, waiting for route/policy..."
                 sleep 3
                 i=$((i + 1))
               done
 
-              echo "FAILED: Route not responding (got $CODE)"
+              echo "Route not responding (got $CODE)"
               exit 1
             check:
               ($error == null): true
 
     - name: cleanup
-      description: Cleanup resources
       use:
         template: ../../../../../step-templates/conversion/cleanup-conversion.yaml
         with:

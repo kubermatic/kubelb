@@ -33,7 +33,6 @@ spec:
   steps:
     - name: create-service
       cluster: standalone
-      description: Create ClusterIP service
       try:
         - apply:
             resource:
@@ -52,7 +51,6 @@ spec:
 
     - name: create-canary-ingress
       cluster: standalone
-      description: Create canary Ingress (should be skipped)
       try:
         - apply:
             resource:
@@ -80,7 +78,6 @@ spec:
 
     - name: verify-no-httproute
       cluster: standalone
-      description: Verify no HTTPRoute created for canary
       try:
         - script:
             timeout: 20s
@@ -88,24 +85,22 @@ spec:
               set -e
               SOURCE_LABEL="conv-canary.default"
 
-              # Wait a bit for any potential processing
               sleep 10
 
               COUNT=$(kubectl get httproutes.gateway.networking.k8s.io -n default \
                 -l "kubelb.k8c.io/source-ingress=${SOURCE_LABEL}" -o name 2>/dev/null | wc -l)
 
               if [ "$COUNT" -eq 0 ]; then
-                echo "SUCCESS: No HTTPRoute created (canary Ingress skipped)"
+                echo "No HTTPRoute created (canary Ingress skipped)"
                 exit 0
               fi
 
-              echo "FAILED: HTTPRoute was created for canary Ingress"
+              echo "HTTPRoute was created for canary Ingress"
               exit 1
             check:
               ($error == null): true
 
     - name: verify-skip-annotations
-      description: Verify Ingress has skip annotations
       use:
         template: ../../../../../step-templates/conversion/verify-skip-annotations.yaml
         with:
@@ -117,7 +112,6 @@ spec:
 
     - name: cleanup
       cluster: standalone
-      description: Cleanup resources
       try:
         - script:
             timeout: 30s

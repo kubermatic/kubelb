@@ -33,9 +33,7 @@ spec:
     - name: transformed_host
       value: conv-default.gateway.local
   steps:
-    # Step 1: Create ClusterIP service
     - name: create-service
-      description: Create ClusterIP service
       cluster: standalone
       try:
         - apply:
@@ -53,9 +51,7 @@ spec:
                   - port: 80
                     targetPort: 5678
 
-    # Step 2: Create Ingress with defaultBackend
     - name: create-ingress
-      description: Create Ingress with defaultBackend
       cluster: standalone
       try:
         - apply:
@@ -75,9 +71,7 @@ spec:
                 rules:
                   - host: conv-default.test.local
 
-    # Step 3: Verify HTTPRoute created
     - name: verify-httproute
-      description: Verify HTTPRoute exists
       use:
         template: ../../../../../step-templates/conversion/verify-httproute.yaml
         with:
@@ -87,9 +81,7 @@ spec:
             - name: expected_host
               value: ($transformed_host)
 
-    # Step 4: Verify conversion status
     - name: verify-status
-      description: Verify Ingress has conversion-status=converted
       use:
         template: ../../../../../step-templates/conversion/verify-status-annotation.yaml
         with:
@@ -99,9 +91,7 @@ spec:
             - name: expected_status
               value: converted
 
-    # Step 5: Verify HTTP traffic to catch-all path
     - name: verify-http
-      description: Verify HTTP for any path
       use:
         template: ../../../../../step-templates/conversion/verify-http-traffic.yaml
         with:
@@ -113,9 +103,7 @@ spec:
             - name: expected_response
               value: hello-shared
 
-    # Cleanup
     - name: cleanup
-      description: Cleanup resources
       use:
         template: ../../../../../step-templates/conversion/cleanup-conversion.yaml
         with:

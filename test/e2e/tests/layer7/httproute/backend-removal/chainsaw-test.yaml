@@ -158,46 +158,12 @@ spec:
               status: {readyReplicas: 1}
 
     - name: create-gateway
-      cluster: tenant1
-      try:
-        - apply:
-            resource:
-              apiVersion: gateway.networking.k8s.io/v1
-              kind: Gateway
-              metadata:
-                name: removal-gw
-                namespace: default
-              spec:
-                gatewayClassName: kubelb
-                listeners:
-                  - name: http
-                    protocol: HTTP
-                    port: 80
-                    allowedRoutes:
-                      namespaces:
-                        from: All
-
-    - name: wait-gateway-ready
-      cluster: tenant1
-      try:
-        - script:
-            skipCommandOutput: true
-            timeout: 120s
-            content: |
-              set -e
-              for i in $(seq 1 40); do
-                IP=$(kubectl get gateway removal-gw -n default \
-                  -o jsonpath='{.status.addresses[0].value}' 2>/dev/null || true)
-                if [ -n "$IP" ]; then
-                  echo "Gateway ready with IP: $IP"
-                  exit 0
-                fi
-                sleep 3
-              done
-              echo "FAILED: Gateway not ready"
-              exit 1
-            check:
-              ($error == null): true
+      use:
+        template: ../../../../step-templates/gateway/create-http-gateway.yaml
+        with:
+          bindings:
+            - name: gateway_name
+              value: removal-gw
 
     - name: create-httproute-three-backends
       description: Create HTTPRoute with three path rules

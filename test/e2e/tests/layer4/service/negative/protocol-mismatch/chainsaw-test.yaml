@@ -12,11 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# Protocol Mismatch Negative Test
-# Verifies:
-# - Creating UDP LoadBalancer service
-# - TCP connection to UDP port fails (connection refused or timeout)
-# - This validates protocol isolation at the LoadBalancer level
 apiVersion: chainsaw.kyverno.io/v1alpha1
 kind: Test
 metadata:
@@ -40,9 +35,7 @@ spec:
     - name: kubelb_namespace
       value: tenant-primary
   steps:
-    # Step 1: Deploy UDP echo server
     - name: deploy-udp-server
-      description: Deploy UDP echo server
       cluster: tenant1
       try:
         - apply:
@@ -68,8 +61,6 @@ spec:
                       - name: udp-server
                         image: hashicorp/http-echo:1.0
                         imagePullPolicy: IfNotPresent
-                        # http-echo doesn't support UDP, but we just need a pod
-                        # The point is TCP to UDP port should fail
                         args:
                           - -text=tcp-response
                           - -listen=:8080
@@ -87,9 +78,7 @@ spec:
               status:
                 readyReplicas: 1
 
-    # Step 2: Create UDP-only LoadBalancer service
     - name: create-udp-only-service
-      description: Create UDP-only LoadBalancer service
       cluster: tenant1
       try:
         - apply:
@@ -121,133 +110,69 @@ spec:
                   ingress:
                     - {}
 
-    # Step 3: Verify LoadBalancer CRD has UDP protocol
     - name: verify-udp-lb-crd
-      description: Verify LoadBalancer CRD exists with UDP protocol
-      cluster: kubelb
-      try:
-        - script:
-            timeout: 60s
-            content: |
-              set -e
-              NAMESPACE="tenant-primary"
-              SVC_NAME="udp-only-svc"
+      use:
+        template: ../../../../../step-templates/layer4/assert-lb-crd.yaml
+        with:
+          bindings:
+            - name: service_name
+              value: udp-only-svc
+            - name: kubelb_namespace
+              value: tenant-primary
 
-              for i in $(seq 1 10); do
-                LB=$(kubectl get loadbalancers.kubelb.k8c.io -n "$NAMESPACE" \
-                  -l kubelb.k8c.io/origin-name="$SVC_NAME" -o name 2>/dev/null | head -1)
-                if [ -n "$LB" ]; then
-                  PROTOCOL=$(kubectl get "$LB" -n "$NAMESPACE" \
-                    -o jsonpath='{.spec.ports[0].protocol}')
-                  if [ "$PROTOCOL" = "UDP" ]; then
-                    echo "SUCCESS: LoadBalancer CRD has UDP protocol"
-                    exit 0
-                  fi
-                  echo "Protocol: $PROTOCOL"
-                fi
-                sleep 2
-              done
-              echo "FAILED: LoadBalancer CRD not found with UDP protocol"
-              exit 1
-            check:
-              ($error == null): true
-
-    # Step 4: Attempt TCP connection to UDP port - should fail
     - name: verify-tcp-to-udp-fails
-      description: Verify TCP connection to UDP-only port fails
       cluster: tenant1
       try:
         - script:
             timeout: 60s
             content: |
               set -e
-              SVC_NAME="udp-only-svc"
-              PORT=9998
-
-              IP=$(kubectl get svc "$SVC_NAME" -n default \
+              IP=$(kubectl get svc udp-only-svc -n default \
                 -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
-
-              if [ -z "$IP" ]; then
-                echo "FAILED: No LoadBalancer IP"
-                exit 1
-              fi
-
-              echo "Attempting TCP (HTTP) connection to UDP-only service at $IP:$PORT"
-
-              # TCP connection to UDP port should fail
-              # We expect: connection refused, timeout, or no response
               HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" --max-time 3 \
-                "http://${IP}:${PORT}/" 2>/dev/null || echo "000")
-
-              echo "HTTP response code: $HTTP_CODE"
-
-              # 000 = connection failed (expected)
-              # Empty response or timeout also acceptable
+                "http://${IP}:9998/" 2>/dev/null || echo "000")
               if [ "$HTTP_CODE" = "000" ]; then
-                echo "SUCCESS: TCP connection to UDP port failed as expected"
+                echo "TCP connection to UDP port failed as expected"
                 exit 0
               fi
-
-              # If we somehow got an HTTP response, that's unexpected but document it
-              echo "INFO: Got HTTP $HTTP_CODE - service may be handling protocol mismatch differently"
-              # Don't fail - just document the behavior
+              echo "Got HTTP $HTTP_CODE - service may handle protocol mismatch differently"
               exit 0
             check:
               ($error == null): true
 
-    # Step 5: Verify multiple TCP attempts fail consistently
     - name: verify-consistent-failure
-      description: Verify TCP consistently fails over multiple attempts
       cluster: tenant1
       try:
         - script:
             timeout: 60s
             content: |
               set -e
-              SVC_NAME="udp-only-svc"
-              PORT=9998
-              FAILURES=0
-              TOTAL=5
-
-              IP=$(kubectl get svc "$SVC_NAME" -n default \
+              IP=$(kubectl get svc udp-only-svc -n default \
                 -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
-
-              echo "Testing $TOTAL TCP connection attempts to UDP port $IP:$PORT"
-
-              for i in $(seq 1 $TOTAL); do
+              FAILURES=0
+              for i in $(seq 1 5); do
                 HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" --max-time 2 \
-                  "http://${IP}:${PORT}/" 2>/dev/null || echo "000")
+                  "http://${IP}:9998/" 2>/dev/null || echo "000")
                 if [ "$HTTP_CODE" = "000" ]; then
                   FAILURES=$((FAILURES + 1))
-                  echo "Attempt $i: Connection failed (expected)"
-                else
-                  echo "Attempt $i: Got HTTP $HTTP_CODE (unexpected)"
                 fi
               done
-
-              echo "Result: $FAILURES/$TOTAL connections failed as expected"
-
-              # At least 80% should fail
               if [ "$FAILURES" -ge 4 ]; then
-                echo "SUCCESS: TCP to UDP port consistently fails"
+                echo "TCP to UDP port consistently fails ($FAILURES/5)"
                 exit 0
               fi
-
-              echo "INFO: Some TCP connections succeeded - documenting behavior"
+              echo "Some TCP connections succeeded ($FAILURES/5 failed)"
               exit 0
             check:
               ($error == null): true
 
-    # Step 6: Cleanup
     - name: cleanup
-      description: Delete test resources
       cluster: tenant1
       try:
         - script:
             timeout: 60s
             content: |
               kubectl delete svc udp-only-svc -n default --wait=false
-              echo "Cleanup initiated"
             check:
               ($error == null): true
       finally:
@@ -258,14 +183,12 @@ spec:
               kubectl delete svc udp-only-svc -n default --ignore-not-found
               kubectl delete deployment udp-proto-test -n default --ignore-not-found
 
-    # Step 7: Verify LoadBalancer CRD removed
     - name: verify-lb-cleanup
-      description: Verify LoadBalancer CRD removed
       use:
         template: ../../../../../step-templates/layer4/verify-lb-cleanup.yaml
         with:
           bindings:
             - name: service_name
-              value: ($name)
+              value: udp-only-svc
             - name: kubelb_namespace
-              value: ($kubelb_namespace)
+              value: tenant-primary

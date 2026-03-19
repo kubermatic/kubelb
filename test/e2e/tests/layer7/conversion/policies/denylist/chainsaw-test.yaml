@@ -35,7 +35,6 @@ spec:
   steps:
     - name: create-service
       cluster: standalone
-      description: Create ClusterIP service
       try:
         - apply:
             resource:
@@ -54,7 +53,6 @@ spec:
 
     - name: create-ingress
       cluster: standalone
-      description: Create Ingress with denylist annotation
       try:
         - apply:
             resource:
@@ -80,7 +78,6 @@ spec:
                                 number: 80
 
     - name: verify-httproute
-      description: Verify HTTPRoute exists
       use:
         template: ../../../../../step-templates/conversion/verify-httproute.yaml
         with:
@@ -91,7 +88,6 @@ spec:
               value: ($transformed_host)
 
     - name: verify-security-policy
-      description: Verify SecurityPolicy exists with authorization
       use:
         template: ../../../../../step-templates/conversion/verify-policy.yaml
         with:
@@ -104,7 +100,6 @@ spec:
               value: ".spec.authorization"
 
     - name: verify-denylist-rule
-      description: Verify SecurityPolicy has Deny rule
       try:
         - script:
             cluster: standalone
@@ -114,34 +109,31 @@ spec:
               NAMESPACE=default
               POLICY_NAME="conv-denylist-security"
 
-              # Get the authorization rules
               RULES=$(kubectl get securitypolicies.gateway.envoyproxy.io "$POLICY_NAME" \
                 -n "$NAMESPACE" -o jsonpath='{.spec.authorization.rules}' 2>/dev/null || echo "")
 
               if [ -z "$RULES" ]; then
-                echo "FAILED: No authorization rules found"
+                echo "No authorization rules found"
                 exit 1
               fi
 
               echo "Authorization rules: $RULES"
 
-              # Check for Deny action in rules
               HAS_DENY=$(kubectl get securitypolicies.gateway.envoyproxy.io "$POLICY_NAME" \
                 -n "$NAMESPACE" -o jsonpath='{.spec.authorization.rules[*].action}' 2>/dev/null || echo "")
 
               if echo "$HAS_DENY" | grep -q "Deny"; then
-                echo "SUCCESS: Found Deny action in rules"
+                echo "Found Deny action in rules"
                 exit 0
               fi
 
-              echo "FAILED: No Deny action found in authorization rules"
+              echo "No Deny action found in authorization rules"
               kubectl get securitypolicies.gateway.envoyproxy.io "$POLICY_NAME" -n "$NAMESPACE" -o yaml
               exit 1
             check:
               ($error == null): true
 
     - name: cleanup
-      description: Cleanup resources
       use:
         template: ../../../../../step-templates/conversion/cleanup-conversion.yaml
         with:

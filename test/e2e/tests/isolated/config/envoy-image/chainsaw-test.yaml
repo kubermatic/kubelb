@@ -32,7 +32,6 @@ spec:
     causes the Envoy deployment spec to be updated with that image.
   steps:
     - name: reset-configs
-      description: Reset Config and Tenant to default state
       use:
         template: ../../../../step-templates/isolated/reset-configs.yaml
         with:
@@ -41,7 +40,6 @@ spec:
               value: ../../../../manifests
 
     - name: create-loadbalancer-setup
-      description: Create LB using shared echo deployment to trigger Envoy creation
       cluster: tenant1
       try:
         - apply:
@@ -72,7 +70,6 @@ spec:
                     - {}
 
     - name: verify-loadbalancer-crd-exists
-      description: Verify LoadBalancer CRD exists in kubelb cluster
       cluster: kubelb
       try:
         - script:
@@ -88,11 +85,10 @@ spec:
                 echo "Waiting for LoadBalancer CRD... ($i)"
                 sleep 2
               done
-              echo "FAILED: LoadBalancer CRD not found"
+              echo "LoadBalancer CRD not found"
               exit 1
 
     - name: wait-for-envoy-deployment
-      description: Wait for Envoy deployment to exist
       cluster: kubelb
       try:
         - script:
@@ -101,7 +97,6 @@ spec:
               set -e
               for i in $(seq 1 20); do
                 if kubectl get deployment/envoy-tenant-primary -n tenant-primary &>/dev/null; then
-                  # Get current image for reference
                   CURRENT=$(kubectl get deployment envoy-tenant-primary -n tenant-primary \
                     -o jsonpath='{.spec.template.spec.containers[?(@.name=="envoy-proxy")].image}')
                   echo "Envoy deployment exists with image: $CURRENT"
@@ -110,11 +105,10 @@ spec:
                 echo "Waiting for Envoy deployment... ($i)"
                 sleep 2
               done
-              echo "FAILED: Envoy deployment not found"
+              echo "Envoy deployment not found"
               exit 1
 
     - name: patch-config-with-custom-image
-      description: Patch Config to use custom Envoy image
       cluster: kubelb
       try:
         - script:
@@ -123,25 +117,22 @@ spec:
               set -e
               NEW_IMAGE="envoyproxy/envoy:distroless-v1.35.0"
 
-              # Patch the config
               kubectl patch config default -n kubelb --type=merge \
                 -p "{\"spec\":{\"envoyProxy\":{\"image\":\"$NEW_IMAGE\"}}}"
 
-              # Verify the patch was applied
               APPLIED=$(kubectl get config default -n kubelb \
                 -o jsonpath='{.spec.envoyProxy.image}')
 
               if [ "$APPLIED" = "$NEW_IMAGE" ]; then
-                echo "SUCCESS: Config patched with image: $APPLIED"
+                echo "Config patched with image: $APPLIED"
               else
-                echo "FAILED: Config image is '$APPLIED', expected '$NEW_IMAGE'"
+                echo "Config image is '$APPLIED', expected '$NEW_IMAGE'"
                 exit 1
               fi
             check:
               ($error == null): true
 
     - name: verify-deployment-image-updated
-      description: Verify deployment spec has custom image
       cluster: kubelb
       try:
         - script:
@@ -151,22 +142,18 @@ spec:
               EXPECTED_IMAGE="envoyproxy/envoy:distroless-v1.35.0"
 
               for i in $(seq 1 20); do
-                # Use container name selector to be more precise
                 IMAGE=$(kubectl get deployment envoy-tenant-primary -n tenant-primary \
                   -o jsonpath='{.spec.template.spec.containers[?(@.name=="envoy-proxy")].image}' 2>/dev/null)
 
                 if [ "$IMAGE" = "$EXPECTED_IMAGE" ]; then
-                  echo "SUCCESS: Deployment image updated to: $IMAGE"
+                  echo "Deployment image updated to: $IMAGE"
                   exit 0
                 fi
 
-                echo "Attempt $i: current image='$IMAGE', expected='$EXPECTED_IMAGE'"
                 sleep 2
               done
 
-              # Debug output on failure
-              echo "FAILED: Deployment image not updated"
-              echo "Current deployment spec:"
+              echo "Deployment image not updated"
               kubectl get deployment envoy-tenant-primary -n tenant-primary -o yaml
               exit 1
             check:
@@ -175,12 +162,9 @@ spec:
         - script:
             timeout: 60s
             content: |
-              # Revert Config
               kubectl replace -f ../../../../manifests/kubelb-manager/config.yaml || true
-              echo "Cleanup: Config reverted"
         - script:
             cluster: tenant1
             timeout: 60s
             content: |
               kubectl delete svc echo-setup -n default --ignore-not-found
-              echo "Cleanup: Service deleted"

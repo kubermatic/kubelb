@@ -28,7 +28,6 @@ spec:
       cluster: kubelb
       try:
         - script:
-            skipCommandOutput: true
             timeout: 60s
             content: |
               set -e
@@ -36,31 +35,24 @@ spec:
               POD=$(kubectl get pod -n "$NAMESPACE" -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{end}' \
                 | grep -E '^kubelb-[a-f0-9]' | head -1)
               if [ -z "$POD" ]; then
-                echo "FAILED: Could not find manager pod"
-                exit 1
-              fi
-              POD_IP=$(kubectl get pod -n "$NAMESPACE" "$POD" -o jsonpath='{.status.podIP}')
-              if [ -z "$POD_IP" ]; then
-                echo "FAILED: Could not find manager pod IP"
+                echo "Could not find manager pod"
                 exit 1
               fi
 
-              METRICS_FILE=$(mktemp)
-              trap "rm -f $METRICS_FILE" EXIT
-              kubectl run metrics-probe-manager --image=busybox:1.36 --rm -i --restart=Never \
-                -n "$NAMESPACE" -- wget -qO- "http://${POD_IP}:9443/metrics" 2>/dev/null > "$METRICS_FILE"
-              if [ ! -s "$METRICS_FILE" ]; then
-                echo "FAILED: No metrics returned"
+              kubectl port-forward -n "$NAMESPACE" "$POD" 19443:9443 &
+              PF_PID=$!
+              trap "kill $PF_PID 2>/dev/null || true" EXIT
+              sleep 2
+
+              METRICS=$(curl -s --max-time 10 http://localhost:19443/metrics)
+              if [ -z "$METRICS" ]; then
+                echo "No metrics returned"
                 exit 1
               fi
 
-              grep -q "kubelb_manager_loadbalancers" "$METRICS_FILE"
-              grep -q "kubelb_manager_tenants" "$METRICS_FILE"
+              echo "$METRICS" | grep -q "kubelb_manager_loadbalancers"
+              echo "$METRICS" | grep -q "kubelb_manager_tenants"
 
-              echo "SUCCESS: All expected manager metrics found"
+              echo "All expected manager metrics found"
             check:
               ($error == null): true
-      finally:
-        - script:
-            content: |
-              kubectl delete pod metrics-probe-manager -n kubelb --ignore-not-found=true 2>/dev/null || true

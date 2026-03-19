@@ -35,7 +35,6 @@ spec:
   steps:
     - name: create-service
       cluster: standalone
-      description: Create ClusterIP service
       try:
         - apply:
             resource:
@@ -54,7 +53,6 @@ spec:
 
     - name: create-ingress
       cluster: standalone
-      description: Create Ingress with upstream-vhost
       try:
         - apply:
             resource:
@@ -80,7 +78,6 @@ spec:
                                 number: 80
 
     - name: verify-httproute
-      description: Verify HTTPRoute has RequestHeaderModifier filter
       use:
         template: ../../../../../step-templates/conversion/verify-httproute.yaml
         with:
@@ -91,7 +88,6 @@ spec:
               value: ($transformed_host)
 
     - name: verify-status
-      description: Verify conversion status is partial (Host header not accepted by Envoy Gateway)
       use:
         template: ../../../../../step-templates/conversion/verify-status-annotation.yaml
         with:
@@ -103,11 +99,8 @@ spec:
 
     # Note: Traffic verification skipped because Envoy Gateway does not accept
     # HTTPRoute with RequestHeaderModifier that sets the Host header.
-    # The test verifies the conversion produces correct Gateway API resources,
-    # even if the specific implementation doesn't support all features.
 
     - name: cleanup
-      description: Cleanup resources
       use:
         template: ../../../../../step-templates/conversion/cleanup-conversion.yaml
         with:

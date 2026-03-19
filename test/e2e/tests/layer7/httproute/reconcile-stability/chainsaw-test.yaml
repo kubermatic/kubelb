@@ -127,46 +127,12 @@ spec:
                 readyReplicas: 1
 
     - name: create-gateway
-      cluster: tenant1
-      try:
-        - apply:
-            resource:
-              apiVersion: gateway.networking.k8s.io/v1
-              kind: Gateway
-              metadata:
-                name: stable-gw
-                namespace: default
-              spec:
-                gatewayClassName: kubelb
-                listeners:
-                  - name: http
-                    protocol: HTTP
-                    port: 80
-                    allowedRoutes:
-                      namespaces:
-                        from: All
-
-    - name: wait-gateway-ready
-      cluster: tenant1
-      try:
-        - script:
-            skipCommandOutput: true
-            timeout: 120s
-            content: |
-              set -e
-              for i in $(seq 1 40); do
-                IP=$(kubectl get gateway stable-gw -n default \
-                  -o jsonpath='{.status.addresses[0].value}' 2>/dev/null || true)
-                if [ -n "$IP" ]; then
-                  echo "Gateway ready with IP: $IP"
-                  exit 0
-                fi
-                sleep 3
-              done
-              echo "FAILED: Gateway not ready"
-              exit 1
-            check:
-              ($error == null): true
+      use:
+        template: ../../../../step-templates/gateway/create-http-gateway.yaml
+        with:
+          bindings:
+            - name: gateway_name
+              value: stable-gw
 
     - name: create-httproute
       description: HTTPRoute with ClusterIP and NodePort backends
@@ -218,8 +184,24 @@ spec:
             skipCommandOutput: true
             timeout: 60s
             content: |
-              sleep 30
-              echo "Stabilization window complete"
+              set -e
+              CCM_POD=$(kubectl get pods -n kubelb -o jsonpath='{.items[0].metadata.name}')
+              PREV_COUNT=-1
+              STABLE_CHECKS=0
+              for i in $(seq 1 15); do
+                COUNT=$(kubectl logs -n kubelb "$CCM_POD" -c ccm 2>&1 | grep -c "Reconciling HTTPRoute.*stable-route" || true)
+                if [ "$COUNT" = "$PREV_COUNT" ]; then
+                  STABLE_CHECKS=$((STABLE_CHECKS + 1))
+                  if [ "$STABLE_CHECKS" -ge 3 ]; then
+                    echo "Stabilized after $i checks ($COUNT reconciliations total)"
+                    break
+                  fi
+                else
+                  STABLE_CHECKS=0
+                fi
+                PREV_COUNT=$COUNT
+                sleep 2
+              done
             check:
               ($error == null): true
 

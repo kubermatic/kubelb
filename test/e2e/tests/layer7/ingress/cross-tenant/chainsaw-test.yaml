@@ -42,9 +42,7 @@ spec:
     - name: message_tenant2
       value: "hello-from-tenant2-ingress"
   steps:
-    # Step 1: Deploy echo server on tenant1
     - name: deploy-echo-tenant1
-      description: Deploy echo server on tenant1
       cluster: tenant1
       bindings:
         - name: message
@@ -65,9 +63,7 @@ spec:
               status:
                 readyReplicas: 1
 
-    # Step 2: Deploy echo server on tenant2
     - name: deploy-echo-tenant2
-      description: Deploy echo server on tenant2
       cluster: tenant2
       bindings:
         - name: message
@@ -88,9 +84,7 @@ spec:
               status:
                 readyReplicas: 1
 
-    # Step 3: Create Ingress on tenant1
     - name: create-ingress-tenant1
-      description: Create Ingress with kubelb class on tenant1
       cluster: tenant1
       try:
         - apply:
@@ -114,9 +108,7 @@ spec:
                               port:
                                 number: 80
 
-    # Step 4: Create Ingress on tenant2
     - name: create-ingress-tenant2
-      description: Create Ingress with kubelb class on tenant2
       cluster: tenant2
       try:
         - apply:
@@ -140,13 +132,10 @@ spec:
                               port:
                                 number: 80
 
-    # Step 5: Verify Route CRDs in both tenant namespaces
     - name: verify-route-crds-both-tenants
-      description: Verify separate Route CRDs for each tenant
       cluster: kubelb
       try:
         - script:
-            skipCommandOutput: true
             timeout: 120s
             content: |
               set -e
@@ -167,16 +156,15 @@ spec:
                   -o name 2>/dev/null | head -1)
 
                 if [ -n "$ROUTE_PRIMARY" ] && [ -n "$ROUTE_SECONDARY" ]; then
-                  echo "SUCCESS: Ingress Route CRDs exist in both tenant namespaces"
+                  echo "Ingress Route CRDs exist in both tenant namespaces"
                   echo "  $NS_PRIMARY: $ROUTE_PRIMARY"
                   echo "  $NS_SECONDARY: $ROUTE_SECONDARY"
                   exit 0
                 fi
-                echo "Attempt $i: waiting for Ingress Route CRDs..."
                 sleep 3
               done
 
-              echo "FAILED: Ingress Route CRDs not found in both namespaces"
+              echo "Ingress Route CRDs not found in both namespaces"
               echo "DEBUG: Routes in $NS_PRIMARY:"
               kubectl get routes.kubelb.k8c.io -n "$NS_PRIMARY" -o wide 2>/dev/null || echo "  none"
               echo "DEBUG: Routes in $NS_SECONDARY:"
@@ -187,13 +175,10 @@ spec:
             check:
               ($error == null): true
 
-    # Step 6: Verify generated Ingresses in kubelb cluster
     - name: verify-generated-ingresses
-      description: Verify Ingresses created in kubelb for both tenants
       cluster: kubelb
       try:
         - script:
-            skipCommandOutput: true
             timeout: 60s
             content: |
               set -e
@@ -213,18 +198,15 @@ spec:
                 fi
                 sleep 2
               done
-              echo "FAILED: Generated Ingresses not found"
+              echo "Generated Ingresses not found"
               exit 1
             check:
               ($error == null): true
 
-    # Step 7: Verify tenant1 Ingress gets status
     - name: verify-status-tenant1
-      description: Verify tenant1 Ingress gets LoadBalancer IP
       cluster: tenant1
       try:
         - script:
-            skipCommandOutput: true
             timeout: 120s
             content: |
               set -e
@@ -237,18 +219,15 @@ spec:
                 fi
                 sleep 3
               done
-              echo "FAILED: Tenant1 Ingress has no LoadBalancer IP"
+              echo "Tenant1 Ingress has no LoadBalancer IP"
               exit 1
             check:
               ($error == null): true
 
-    # Step 8: Verify tenant2 Ingress gets status
     - name: verify-status-tenant2
-      description: Verify tenant2 Ingress gets LoadBalancer IP
       cluster: tenant2
       try:
         - script:
-            skipCommandOutput: true
             timeout: 120s
             content: |
               set -e
@@ -261,18 +240,15 @@ spec:
                 fi
                 sleep 3
               done
-              echo "FAILED: Tenant2 Ingress has no LoadBalancer IP"
+              echo "Tenant2 Ingress has no LoadBalancer IP"
               exit 1
             check:
               ($error == null): true
 
-    # Step 9: Wait for NodePort services to be created by CCM on both tenants
     - name: wait-nodeport-services
-      description: Wait for CCM to create NodePort services for backends
       cluster: tenant1
       try:
         - script:
-            skipCommandOutput: true
             timeout: 60s
             content: |
               set -e
@@ -283,20 +259,17 @@ spec:
                   sleep 2
                   exit 0
                 fi
-                echo "Attempt $i: waiting for tenant1 NodePort service..."
                 sleep 2
               done
-              echo "FAILED: Tenant1 NodePort service not created"
+              echo "Tenant1 NodePort service not created"
               exit 1
             check:
               ($error == null): true
 
     - name: wait-nodeport-services-tenant2
-      description: Wait for CCM to create NodePort service on tenant2
       cluster: tenant2
       try:
         - script:
-            skipCommandOutput: true
             timeout: 60s
             content: |
               set -e
@@ -307,26 +280,21 @@ spec:
                   sleep 2
                   exit 0
                 fi
-                echo "Attempt $i: waiting for tenant2 NodePort service..."
                 sleep 2
               done
-              echo "FAILED: Tenant2 NodePort service not created"
+              echo "Tenant2 NodePort service not created"
               exit 1
             check:
               ($error == null): true
 
-    # Step 10: Verify tenant1 Ingress returns correct message
     - name: verify-http-tenant1
-      description: Verify tenant1 Ingress returns tenant1 message
       cluster: tenant1
       try:
         - script:
-            skipCommandOutput: true
             timeout: 60s
             content: |
               set -e
               EXPECTED="hello-from-tenant1-ingress"
-              # Get IP from Ingress status (propagated from kubelb)
               IP=$(kubectl get ingress shared-name -n default \
                 -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
               HOST="tenant1.test.local"
@@ -335,30 +303,25 @@ spec:
               for i in $(seq 1 20); do
                 RESPONSE=$(curl -s --max-time 5 -H "Host: ${HOST}" "http://${IP}/" 2>/dev/null || true)
                 if echo "$RESPONSE" | grep -q "$EXPECTED"; then
-                  echo "SUCCESS: Tenant1 Ingress returned '$EXPECTED'"
+                  echo "Tenant1 Ingress returned '$EXPECTED'"
                   exit 0
                 fi
-                echo "Attempt $i: waiting..."
                 sleep 2
               done
 
-              echo "FAILED: Expected '$EXPECTED', got '$RESPONSE'"
+              echo "Expected '$EXPECTED', got '$RESPONSE'"
               exit 1
             check:
               ($error == null): true
 
-    # Step 11: Verify tenant2 Ingress returns correct message
     - name: verify-http-tenant2
-      description: Verify tenant2 Ingress returns tenant2 message
       cluster: tenant2
       try:
         - script:
-            skipCommandOutput: true
             timeout: 60s
             content: |
               set -e
               EXPECTED="hello-from-tenant2-ingress"
-              # Get IP from Ingress status (propagated from kubelb)
               IP=$(kubectl get ingress shared-name -n default \
                 -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
               HOST="tenant2.test.local"
@@ -367,57 +330,47 @@ spec:
               for i in $(seq 1 20); do
                 RESPONSE=$(curl -s --max-time 5 -H "Host: ${HOST}" "http://${IP}/" 2>/dev/null || true)
                 if echo "$RESPONSE" | grep -q "$EXPECTED"; then
-                  echo "SUCCESS: Tenant2 Ingress returned '$EXPECTED'"
+                  echo "Tenant2 Ingress returned '$EXPECTED'"
                   exit 0
                 fi
-                echo "Attempt $i: waiting..."
                 sleep 2
               done
 
-              echo "FAILED: Expected '$EXPECTED', got '$RESPONSE'"
+              echo "Expected '$EXPECTED', got '$RESPONSE'"
               exit 1
             check:
               ($error == null): true
 
-    # Step 12: Verify unknown hostname returns 404 (proper routing isolation)
     - name: verify-unknown-host-404
-      description: Verify unknown hostname returns 404
       cluster: tenant1
       try:
         - script:
-            skipCommandOutput: true
             timeout: 60s
             content: |
               set -e
-              # Get the LoadBalancer IP
               IP=$(kubectl get ingress shared-name -n default \
                 -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
-              # Use an unknown hostname
               HOST="unknown.test.local"
 
               echo "Testing unknown hostname returns 404"
               for i in $(seq 1 15); do
                 HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" --max-time 5 -H "Host: ${HOST}" "http://${IP}/" 2>/dev/null || echo "000")
                 if [ "$HTTP_CODE" = "404" ]; then
-                  echo "SUCCESS: Got 404 for unknown hostname"
+                  echo "Got 404 for unknown hostname"
                   exit 0
                 fi
-                echo "Attempt $i: got HTTP $HTTP_CODE, waiting..."
                 sleep 2
               done
 
-              echo "FAILED: Expected 404, got HTTP $HTTP_CODE"
+              echo "Expected 404, got HTTP $HTTP_CODE"
               exit 1
             check:
               ($error == null): true
 
-    # Step 13: Cleanup tenant1
     - name: cleanup-tenant1
-      description: Delete Ingress on tenant1
       cluster: tenant1
       try:
         - script:
-            skipCommandOutput: true
             timeout: 60s
             content: |
               kubectl delete ingress shared-name -n default --wait=false || true
@@ -425,13 +378,10 @@ spec:
             check:
               ($error == null): true
 
-    # Step 14: Cleanup tenant2
     - name: cleanup-tenant2
-      description: Delete Ingress on tenant2
       cluster: tenant2
       try:
         - script:
-            skipCommandOutput: true
             timeout: 60s
             content: |
               kubectl delete ingress shared-name -n default --wait=false || true
@@ -439,13 +389,10 @@ spec:
             check:
               ($error == null): true
 
-    # Step 15: Verify Route CRDs removed
     - name: verify-cleanup
-      description: Verify Route CRDs removed from both namespaces
       cluster: kubelb
       try:
         - script:
-            skipCommandOutput: true
             timeout: 60s
             content: |
               set -e
@@ -460,19 +407,18 @@ spec:
                   -l kubelb.k8c.io/origin-name="shared-name",kubelb.k8c.io/origin-resource-kind="Ingress.networking.k8s.io" -o name 2>/dev/null | head -1)
 
                 if [ -z "$ROUTE_P" ] && [ -z "$ROUTE_S" ]; then
-                  echo "SUCCESS: Ingress Route CRDs removed from both namespaces"
+                  echo "Ingress Route CRDs removed from both namespaces"
                   exit 0
                 fi
                 sleep 2
               done
 
-              echo "FAILED: Ingress Route CRDs not removed"
+              echo "Ingress Route CRDs not removed"
               exit 1
             check:
               ($error == null): true
       finally:
         - script:
-            skipCommandOutput: true
             cluster: tenant1
             timeout: 60s
             content: |
@@ -480,7 +426,6 @@ spec:
               kubectl delete deployment shared-name -n default --ignore-not-found
               kubectl delete service shared-name -n default --ignore-not-found
         - script:
-            skipCommandOutput: true
             cluster: tenant2
             timeout: 60s
             content: |

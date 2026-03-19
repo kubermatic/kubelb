@@ -12,11 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# Multi-port + Multi-node L4 Service LoadBalancer Test
-# Verifies:
-# - Multiple replicas with multiple ports
-# - All endpoints synced to LoadBalancer CRD
-# - Correct message returned per port across replicas
 apiVersion: chainsaw.kyverno.io/v1alpha1
 kind: Test
 metadata:
@@ -47,9 +42,7 @@ spec:
     - name: kubelb_namespace
       value: tenant-primary
   steps:
-    # Step 1: Deploy multi-echo server with multiple replicas
     - name: deploy-multi-echo-replicas
-      description: Deploy multi-echo server with 3 replicas
       cluster: tenant1
       try:
         - apply:
@@ -65,9 +58,7 @@ spec:
               status:
                 readyReplicas: ($replicas)
 
-    # Step 2: Create multi-port LoadBalancer service
     - name: create-multiport-loadbalancer
-      description: Create multi-port LoadBalancer service
       cluster: tenant1
       try:
         - apply:
@@ -85,127 +76,86 @@ spec:
                   ingress:
                     - {}
 
-    # Step 3: Verify LoadBalancer CRD exists
     - name: verify-loadbalancer-crd
-      description: Verify LoadBalancer CRD exists in tenant namespace
-      cluster: kubelb
-      try:
-        - script:
-            skipCommandOutput: true
-            timeout: 60s
-            content: |
-              set -e
-              NAMESPACE="tenant-primary"
+      use:
+        template: ../../../../step-templates/layer4/assert-lb-crd.yaml
+        with:
+          bindings:
+            - name: service_name
+              value: echo-mpmnod
+            - name: kubelb_namespace
+              value: tenant-primary
 
-              # Wait for LoadBalancer CRD
-              for i in $(seq 1 10); do
-                LB_COUNT=$(kubectl get loadbalancers.kubelb.k8c.io -n "$NAMESPACE" --no-headers 2>/dev/null | wc -l | tr -d ' ')
-                if [ "$LB_COUNT" -ge 1 ]; then
-                  echo "SUCCESS: Found $LB_COUNT LoadBalancer CRD(s) in $NAMESPACE"
-                  kubectl get loadbalancers.kubelb.k8c.io -n "$NAMESPACE"
-                  exit 0
-                fi
-                echo "Attempt $i: waiting for LoadBalancer CRD..."
-                sleep 2
-              done
-
-              echo "FAILED: No LoadBalancer CRD found in $NAMESPACE"
-              exit 1
-            check:
-              ($error == null): true
-
-    # Step 4: Verify status propagation
     - name: verify-status-propagation
-      description: Verify LoadBalancer CRD status matches tenant service status
       use:
         template: ../../../../step-templates/layer4/verify-status-propagation.yaml
         with:
           bindings:
             - name: service_name
-              value: ($name)
+              value: echo-mpmnod
             - name: tenant
               value: tenant1
             - name: kubelb_namespace
-              value: ($kubelb_namespace)
+              value: tenant-primary
 
-    # Step 5: Verify port 80 returns message1
     - name: verify-port1-response
-      description: Verify port 80 returns correct message
       use:
         template: ../../../../step-templates/layer4/verify-http-response.yaml
         with:
           bindings:
             - name: service_name
-              value: ($name)
+              value: echo-mpmnod
             - name: expected
-              value: ($message1)
+              value: "hello-from-mpmnod-port-80"
             - name: port
               value: "80"
             - name: tenant
               value: tenant1
 
-    # Step 6: Verify port 81 returns message2
     - name: verify-port2-response
-      description: Verify port 81 returns correct message
       use:
         template: ../../../../step-templates/layer4/verify-http-response.yaml
         with:
           bindings:
             - name: service_name
-              value: ($name)
+              value: echo-mpmnod
             - name: expected
-              value: ($message2)
+              value: "hello-from-mpmnod-port-81"
             - name: port
               value: "81"
             - name: tenant
               value: tenant1
 
-    # Step 7: Verify multiple requests succeed on both ports
     - name: verify-multiple-requests-both-ports
-      description: Verify multiple requests succeed on both ports
       cluster: tenant1
       try:
         - script:
-            skipCommandOutput: true
             timeout: 60s
             content: |
               set -e
-              SERVICE_NAME="echo-mpmnod"
-              EXPECTED1="hello-from-mpmnod-port-80"
-              EXPECTED2="hello-from-mpmnod-port-81"
+              IP=$(kubectl get svc echo-mpmnod -n default -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
               SUCCESS_PORT1=0
               SUCCESS_PORT2=0
-              TOTAL_REQUESTS=10
 
-              IP=$(kubectl get svc "$SERVICE_NAME" -n default -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
-
-              echo "Sending $TOTAL_REQUESTS requests to each port on $IP"
-
-              # Test port 80
-              for i in $(seq 1 $TOTAL_REQUESTS); do
+              for i in $(seq 1 10); do
                 RESPONSE=$(curl -s --max-time 5 "http://${IP}:80" || true)
-                if echo "$RESPONSE" | grep -q "$EXPECTED1"; then
+                if echo "$RESPONSE" | grep -q "hello-from-mpmnod-port-80"; then
                   SUCCESS_PORT1=$((SUCCESS_PORT1 + 1))
                 fi
               done
 
-              # Test port 81
-              for i in $(seq 1 $TOTAL_REQUESTS); do
+              for i in $(seq 1 10); do
                 RESPONSE=$(curl -s --max-time 5 "http://${IP}:81" || true)
-                if echo "$RESPONSE" | grep -q "$EXPECTED2"; then
+                if echo "$RESPONSE" | grep -q "hello-from-mpmnod-port-81"; then
                   SUCCESS_PORT2=$((SUCCESS_PORT2 + 1))
                 fi
               done
 
-              echo "Port 80: $SUCCESS_PORT1 / $TOTAL_REQUESTS"
-              echo "Port 81: $SUCCESS_PORT2 / $TOTAL_REQUESTS"
-
-              if [ "$SUCCESS_PORT1" -eq "$TOTAL_REQUESTS" ] && [ "$SUCCESS_PORT2" -eq "$TOTAL_REQUESTS" ]; then
-                echo "SUCCESS: All requests on both ports returned expected responses"
+              if [ "$SUCCESS_PORT1" -eq 10 ] && [ "$SUCCESS_PORT2" -eq 10 ]; then
+                echo "All requests on both ports succeeded"
                 exit 0
-              else
-                echo "FAILED: Some requests failed"
-                exit 1
               fi
+              echo "Port 80: $SUCCESS_PORT1/10, Port 81: $SUCCESS_PORT2/10"
+              exit 1
             check:
               ($error == null): true

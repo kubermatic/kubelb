@@ -40,162 +40,37 @@ spec:
       value: tenant-primary
   steps:
     # Step 1: Deploy two backend services
-    - name: deploy-backends
-      description: Deploy two echo servers with different messages
-      cluster: tenant1
-      try:
-        - apply:
-            resource:
-              apiVersion: apps/v1
-              kind: Deployment
-              metadata:
-                name: echo-api
-                namespace: default
-                labels:
-                  app: echo-api
-              spec:
-                replicas: 1
-                selector:
-                  matchLabels:
-                    app: echo-api
-                template:
-                  metadata:
-                    labels:
-                      app: echo-api
-                  spec:
-                    containers:
-                      - name: echo
-                        image: hashicorp/http-echo:1.0
-                        imagePullPolicy: IfNotPresent
-                        args:
-                          - -text=api-response
-                          - -listen=:8080
-                        ports:
-                          - containerPort: 8080
-        - apply:
-            resource:
-              apiVersion: v1
-              kind: Service
-              metadata:
-                name: echo-api
-                namespace: default
-              spec:
-                type: ClusterIP
-                selector:
-                  app: echo-api
-                ports:
-                  - port: 80
-                    targetPort: 8080
-        - apply:
-            resource:
-              apiVersion: apps/v1
-              kind: Deployment
-              metadata:
-                name: echo-web
-                namespace: default
-                labels:
-                  app: echo-web
-              spec:
-                replicas: 1
-                selector:
-                  matchLabels:
-                    app: echo-web
-                template:
-                  metadata:
-                    labels:
-                      app: echo-web
-                  spec:
-                    containers:
-                      - name: echo
-                        image: hashicorp/http-echo:1.0
-                        imagePullPolicy: IfNotPresent
-                        args:
-                          - -text=web-response
-                          - -listen=:8080
-                        ports:
-                          - containerPort: 8080
-        - apply:
-            resource:
-              apiVersion: v1
-              kind: Service
-              metadata:
-                name: echo-web
-                namespace: default
-              spec:
-                type: ClusterIP
-                selector:
-                  app: echo-web
-                ports:
-                  - port: 80
-                    targetPort: 8080
-        - assert:
-            timeout: 60s
-            resource:
-              apiVersion: apps/v1
-              kind: Deployment
-              metadata:
-                name: echo-api
-                namespace: default
-              status:
-                readyReplicas: 1
-        - assert:
-            timeout: 60s
-            resource:
-              apiVersion: apps/v1
-              kind: Deployment
-              metadata:
-                name: echo-web
-                namespace: default
-              status:
-                readyReplicas: 1
+    - name: deploy-backend-api
+      description: Deploy echo server for API path
+      use:
+        template: ../../../../step-templates/common/deploy-echo-backend.yaml
+        with:
+          bindings:
+            - name: backend_name
+              value: echo-api
+            - name: backend_message
+              value: api-response
 
-    # Step 2: Create Gateway
+    - name: deploy-backend-web
+      description: Deploy echo server for web path
+      use:
+        template: ../../../../step-templates/common/deploy-echo-backend.yaml
+        with:
+          bindings:
+            - name: backend_name
+              value: echo-web
+            - name: backend_message
+              value: web-response
+
+    # Step 2: Create Gateway and wait for IP
     - name: create-gateway
-      description: Create Gateway for HTTPRoute
-      cluster: tenant1
-      try:
-        - apply:
-            resource:
-              apiVersion: gateway.networking.k8s.io/v1
-              kind: Gateway
-              metadata:
-                name: hr-path-gw
-                namespace: default
-              spec:
-                gatewayClassName: kubelb
-                listeners:
-                  - name: http
-                    protocol: HTTP
-                    port: 80
-                    allowedRoutes:
-                      namespaces:
-                        from: All
-
-    # Step 3: Wait for Gateway ready
-    - name: wait-gateway-ready
-      description: Wait for Gateway to have address (can take ~60s for LB IP)
-      cluster: tenant1
-      try:
-        - script:
-            skipCommandOutput: true
-            timeout: 120s
-            content: |
-              set -e
-              for i in $(seq 1 40); do
-                IP=$(kubectl get gateway hr-path-gw -n default \
-                  -o jsonpath='{.status.addresses[0].value}' 2>/dev/null || true)
-                if [ -n "$IP" ]; then
-                  echo "Gateway ready with IP: $IP"
-                  exit 0
-                fi
-                echo "Attempt $i: waiting for Gateway LB IP..."
-                sleep 3
-              done
-              echo "FAILED: Gateway not ready"
-              kubectl get gateway hr-path-gw -n default -o yaml
-              exit 1
-            check:
-              ($error == null): true
+      description: Create Gateway and wait for IP
+      use:
+        template: ../../../../step-templates/gateway/create-http-gateway.yaml
+        with:
+          bindings:
+            - name: gateway_name
+              value: hr-path-gw
 
     # Step 4: Create HTTPRoute with path rules
     - name: create-httproute

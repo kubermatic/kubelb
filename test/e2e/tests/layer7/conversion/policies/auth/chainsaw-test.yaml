@@ -38,7 +38,6 @@ spec:
   steps:
     - name: create-service
       cluster: standalone
-      description: Create ClusterIP service
       try:
         - apply:
             resource:
@@ -57,7 +56,6 @@ spec:
 
     - name: create-auth-secret
       cluster: standalone
-      description: Create basic auth secret
       try:
         - apply:
             resource:
@@ -73,7 +71,6 @@ spec:
 
     - name: create-ingress
       cluster: standalone
-      description: Create Ingress with auth annotations
       try:
         - apply:
             resource:
@@ -101,7 +98,6 @@ spec:
                                 number: 80
 
     - name: verify-httproute
-      description: Verify HTTPRoute exists
       use:
         template: ../../../../../step-templates/conversion/verify-httproute.yaml
         with:
@@ -112,7 +108,6 @@ spec:
               value: ($transformed_host)
 
     - name: verify-security-policy
-      description: Verify SecurityPolicy is created with basicAuth
       use:
         template: ../../../../../step-templates/conversion/verify-policy.yaml
         with:
@@ -126,7 +121,6 @@ spec:
 
     - name: cleanup
       cluster: standalone
-      description: Cleanup resources
       try:
         - script:
             timeout: 30s

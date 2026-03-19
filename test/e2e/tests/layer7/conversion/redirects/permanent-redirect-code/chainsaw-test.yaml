@@ -35,7 +35,6 @@ spec:
   steps:
     - name: create-service
       cluster: standalone
-      description: Create ClusterIP service
       try:
         - apply:
             resource:
@@ -54,7 +53,6 @@ spec:
 
     - name: create-ingress
       cluster: standalone
-      description: Create Ingress with redirect code
       try:
         - apply:
             resource:
@@ -81,7 +79,6 @@ spec:
                                 number: 80
 
     - name: verify-httproute
-      description: Verify HTTPRoute exists
       use:
         template: ../../../../../step-templates/conversion/verify-httproute.yaml
         with:
@@ -92,7 +89,6 @@ spec:
               value: ($transformed_host)
 
     - name: verify-redirect-traffic
-      description: Verify redirect behavior (301 or 308 with correct Location)
       try:
         - script:
             cluster: standalone
@@ -102,7 +98,6 @@ spec:
               HOST="conv-redircode.gateway.local"
               GATEWAY_NS=default
 
-              # Wait for Gateway IP
               IP=""
               i=1; while [ "$i" -le 30 ]; do
                 IP=$(kubectl get gateway.gateway.networking.k8s.io kubelb -n "$GATEWAY_NS" \
@@ -115,39 +110,35 @@ spec:
               done
 
               if [ -z "$IP" ]; then
-                echo "FAILED: Gateway has no IP"
+                echo "Gateway has no IP"
                 exit 1
               fi
 
               echo "Gateway IP: $IP"
 
-              # Test redirect
               i=1; while [ "$i" -le 20 ]; do
                 HEADERS=$(curl -s -I --max-time 5 -H "Host: ${HOST}" "http://${IP}/" 2>/dev/null || true)
                 STATUS=$(echo "$HEADERS" | head -1 | awk '{print $2}')
 
-                # Accept 301 or 308 (Gateway API may map codes)
                 if [ "$STATUS" = "301" ] || [ "$STATUS" = "308" ]; then
                   LOCATION=$(echo "$HEADERS" | grep -i "^location:" | awk '{print $2}' | tr -d '\r')
                   if echo "$LOCATION" | grep -q "example.com/redirect-code"; then
-                    echo "SUCCESS: Got redirect status $STATUS with Location: $LOCATION"
+                    echo "Got redirect status $STATUS with Location: $LOCATION"
                     exit 0
                   fi
                 fi
 
-                echo "Attempt $i: got status $STATUS, waiting..."
                 sleep 3
                 i=$((i + 1))
               done
 
-              echo "FAILED: Expected 301/308 redirect to example.com/redirect-code"
+              echo "Expected 301/308 redirect to example.com/redirect-code"
               echo "Headers: $HEADERS"
               exit 1
             check:
               ($error == null): true
 
     - name: cleanup
-      description: Cleanup resources
       use:
         template: ../../../../../step-templates/conversion/cleanup-conversion.yaml
         with:

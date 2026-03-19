@@ -35,7 +35,6 @@ spec:
   steps:
     - name: create-auth-secret
       cluster: standalone
-      description: Create basic auth secret
       try:
         - apply:
             resource:
@@ -46,12 +45,10 @@ spec:
                 namespace: default
               type: Opaque
               data:
-                # user:password base64 encoded
                 users: dXNlcjokYXByMSRhYmNkMTIzNA==
 
     - name: create-service
       cluster: standalone
-      description: Create ClusterIP service
       try:
         - apply:
             resource:
@@ -70,7 +67,6 @@ spec:
 
     - name: create-ingress
       cluster: standalone
-      description: Create Ingress with combined security annotations
       try:
         - apply:
             resource:
@@ -80,13 +76,10 @@ spec:
                 name: conv-combined-sec
                 namespace: default
                 annotations:
-                  # CORS
                   nginx.ingress.kubernetes.io/enable-cors: "true"
                   nginx.ingress.kubernetes.io/cors-allow-origin: "*"
                   nginx.ingress.kubernetes.io/cors-allow-methods: "GET,POST"
-                  # IP whitelist
                   nginx.ingress.kubernetes.io/whitelist-source-range: "10.0.0.0/8"
-                  # Basic auth
                   nginx.ingress.kubernetes.io/auth-type: "basic"
                   nginx.ingress.kubernetes.io/auth-secret: "conv-combined-sec-auth"
               spec:
@@ -104,7 +97,6 @@ spec:
                                 number: 80
 
     - name: verify-httproute
-      description: Verify HTTPRoute exists
       use:
         template: ../../../../../step-templates/conversion/verify-httproute.yaml
         with:
@@ -115,7 +107,6 @@ spec:
               value: ($transformed_host)
 
     - name: verify-security-policy
-      description: Verify single SecurityPolicy has all features
       try:
         - script:
             cluster: standalone
@@ -125,56 +116,48 @@ spec:
               NAMESPACE=default
               POLICY_NAME="conv-combined-sec-security"
 
-              # Wait for policy
               i=1; while [ "$i" -le 30 ]; do
                 POLICY=$(kubectl get securitypolicies.gateway.envoyproxy.io "$POLICY_NAME" \
                   -n "$NAMESPACE" -o name 2>/dev/null || echo "")
                 if [ -n "$POLICY" ]; then
                   break
                 fi
-                echo "Attempt $i: waiting for policy..."
                 sleep 2
                 i=$((i + 1))
               done
 
               if [ -z "$POLICY" ]; then
-                echo "FAILED: SecurityPolicy not found"
+                echo "SecurityPolicy not found"
                 exit 1
               fi
 
-              # Verify CORS
               CORS=$(kubectl get securitypolicies.gateway.envoyproxy.io "$POLICY_NAME" \
                 -n "$NAMESPACE" -o jsonpath='{.spec.cors}' 2>/dev/null || echo "")
               if [ -z "$CORS" ] || [ "$CORS" = "{}" ]; then
-                echo "FAILED: CORS not configured"
+                echo "CORS not configured"
                 exit 1
               fi
-              echo "Found CORS: $CORS"
+              echo "CORS: $CORS"
 
-              # Verify Authorization (IP whitelist)
               AUTH=$(kubectl get securitypolicies.gateway.envoyproxy.io "$POLICY_NAME" \
                 -n "$NAMESPACE" -o jsonpath='{.spec.authorization}' 2>/dev/null || echo "")
               if [ -z "$AUTH" ] || [ "$AUTH" = "{}" ]; then
-                echo "FAILED: Authorization not configured"
+                echo "Authorization not configured"
                 exit 1
               fi
-              echo "Found Authorization: $AUTH"
+              echo "Authorization: $AUTH"
 
-              # Verify Basic Auth
               BASIC_AUTH=$(kubectl get securitypolicies.gateway.envoyproxy.io "$POLICY_NAME" \
                 -n "$NAMESPACE" -o jsonpath='{.spec.basicAuth}' 2>/dev/null || echo "")
               if [ -z "$BASIC_AUTH" ] || [ "$BASIC_AUTH" = "{}" ]; then
-                echo "FAILED: BasicAuth not configured"
+                echo "BasicAuth not configured"
                 exit 1
               fi
-              echo "Found BasicAuth: $BASIC_AUTH"
-
-              echo "SUCCESS: Single SecurityPolicy has all features"
+              echo "BasicAuth: $BASIC_AUTH"
             check:
               ($error == null): true
 
     - name: verify-single-policy
-      description: Verify only one SecurityPolicy was created
       try:
         - script:
             cluster: standalone
@@ -188,18 +171,17 @@ spec:
                 -l "kubelb.k8c.io/source-ingress=${SOURCE_LABEL}" -o name 2>/dev/null | wc -l)
 
               if [ "$COUNT" -ne 1 ]; then
-                echo "FAILED: Expected 1 SecurityPolicy, found $COUNT"
+                echo "Expected 1 SecurityPolicy, found $COUNT"
                 kubectl get securitypolicies.gateway.envoyproxy.io -n "$NAMESPACE" \
                   -l "kubelb.k8c.io/source-ingress=${SOURCE_LABEL}" -o name
                 exit 1
               fi
 
-              echo "SUCCESS: Exactly 1 SecurityPolicy created"
+              echo "Exactly 1 SecurityPolicy created"
             check:
               ($error == null): true
 
     - name: cleanup
-      description: Cleanup resources
       try:
         - script:
             cluster: standalone

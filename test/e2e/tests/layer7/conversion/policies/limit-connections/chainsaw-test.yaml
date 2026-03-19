@@ -35,7 +35,6 @@ spec:
   steps:
     - name: create-service
       cluster: standalone
-      description: Create ClusterIP service
       try:
         - apply:
             resource:
@@ -54,7 +53,6 @@ spec:
 
     - name: create-ingress
       cluster: standalone
-      description: Create Ingress with limit-connections
       try:
         - apply:
             resource:
@@ -80,7 +78,6 @@ spec:
                                 number: 80
 
     - name: verify-httproute
-      description: Verify HTTPRoute is created
       use:
         template: ../../../../../step-templates/conversion/verify-httproute.yaml
         with:
@@ -91,7 +88,6 @@ spec:
               value: ($transformed_host)
 
     - name: verify-backend-traffic-policy
-      description: Verify BackendTrafficPolicy created with circuitBreaker
       use:
         template: ../../../../../step-templates/conversion/verify-policy.yaml
         with:
@@ -104,7 +100,6 @@ spec:
               value: ".spec.circuitBreaker"
 
     - name: verify-traffic
-      description: Verify basic traffic works
       use:
         template: ../../../../../step-templates/conversion/verify-http-traffic.yaml
         with:
@@ -115,7 +110,6 @@ spec:
               value: hello-shared
 
     - name: cleanup
-      description: Cleanup resources
       use:
         template: ../../../../../step-templates/conversion/cleanup-conversion.yaml
         with:

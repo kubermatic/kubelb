@@ -11,32 +11,30 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
-# Step Template: Wait for Gateway to have IP address in status
-# Required bindings:
-#   - gateway_name: name of the Gateway resource
-# Optional bindings:
-#   - gateway_namespace: namespace of Gateway (default: default)
-#   - cluster: cluster context to use (default: tenant1)
+#
+# Step Template: Assert LoadBalancer CRD exists with correct spec
+# Required bindings (pass via use.with.bindings):
+#   - service_name: origin service name (label selector)
+#   - kubelb_namespace: namespace in kubelb cluster (e.g., tenant-primary)
 apiVersion: chainsaw.kyverno.io/v1alpha1
 kind: StepTemplate
 metadata:
-  name: wait-for-gateway-ip
+  name: assert-lb-crd
 spec:
-  bindings:
-    - name: gateway_namespace
-      value: default
-    - name: cluster
-      value: tenant1
   try:
     - assert:
-        cluster: ($cluster)
-        timeout: 90s
+        timeout: 60s
+        cluster: kubelb
         resource:
-          apiVersion: gateway.networking.k8s.io/v1
-          kind: Gateway
+          apiVersion: kubelb.k8c.io/v1alpha1
+          kind: LoadBalancer
           metadata:
-            name: ($gateway_name)
-            namespace: ($gateway_namespace)
-          status:
-            (addresses != null && length(addresses) > `0`): true
+            namespace: ($kubelb_namespace)
+            labels:
+              kubelb.k8c.io/origin-name: ($service_name)
+            finalizers:
+              - kubelb.k8c.io/cleanup
+          spec:
+            endpoints:
+              - addressesReference:
+                  (name != ''): true

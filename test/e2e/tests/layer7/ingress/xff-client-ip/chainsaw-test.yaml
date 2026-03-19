@@ -39,9 +39,7 @@ spec:
     - name: kubelb_namespace
       value: tenant-primary
   steps:
-    # Step 1: Deploy echo-server backend
     - name: deploy-backend
-      description: Deploy echo-server that returns headers as JSON
       cluster: tenant1
       bindings:
         - name: name
@@ -62,9 +60,7 @@ spec:
               status:
                 readyReplicas: 1
 
-    # Step 2: Create Ingress
     - name: create-ingress
-      description: Create Ingress with kubelb class
       cluster: tenant1
       try:
         - apply:
@@ -88,9 +84,7 @@ spec:
                               port:
                                 number: 80
 
-    # Step 3: Verify Route CRD
     - name: verify-route-crd
-      description: Verify Route CRD exists with correct labels
       use:
         template: ../../../../step-templates/common/verify-route-crd.yaml
         with:
@@ -102,9 +96,7 @@ spec:
             - name: kubelb_namespace
               value: ($kubelb_namespace)
 
-    # Step 4: Wait for Ingress status
     - name: wait-ingress-status
-      description: Wait for Ingress to get LoadBalancer IP
       use:
         template: ../../../../step-templates/ingress/verify-ingress-status.yaml
         with:
@@ -112,9 +104,7 @@ spec:
             - name: ingress_name
               value: ($name)
 
-    # Step 5: Verify XFF contains real client IP
     - name: verify-xff-client-ip
-      description: Verify X-Forwarded-For first entry is the real client IP
       try:
         - script:
             timeout: 120s
@@ -126,7 +116,6 @@ spec:
               ROOT_DIR="$(git rev-parse --show-toplevel)"
               KUBECONFIGS_DIR="${ROOT_DIR}/.e2e-kubeconfigs"
 
-              # Get Ingress IP and host
               IP=$(KUBECONFIG="${KUBECONFIGS_DIR}/tenant1.kubeconfig" \
                 kubectl get ingress "$INGRESS_NAME" -n default \
                 -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
@@ -145,7 +134,7 @@ spec:
                   | tr ' ' '\n' | grep -v ':' | head -1)
               fi
               if [ -z "$EXPECTED_CLIENT_IP" ]; then
-                echo "FAILED: Could not determine Kind network gateway IP"
+                echo "Could not determine Kind network gateway IP"
                 exit 1
               fi
               echo "Expected client IP (Kind gateway): $EXPECTED_CLIENT_IP"
@@ -153,15 +142,12 @@ spec:
               for i in $(seq 1 30); do
                 RESPONSE=$(curl -s --max-time 5 -H "Host: ${HOST}" "http://${IP}/" || true)
                 if [ -z "$RESPONSE" ]; then
-                  echo "Attempt $i: no response"
                   sleep 3
                   continue
                 fi
 
-                # Parse XFF — first entry is the original client
                 XFF=$(echo "$RESPONSE" | jq -r '.request.headers["x-forwarded-for"] // empty' 2>/dev/null || true)
                 if [ -z "$XFF" ]; then
-                  echo "Attempt $i: x-forwarded-for missing"
                   sleep 3
                   continue
                 fi
@@ -169,7 +155,7 @@ spec:
                 CLIENT_IP=$(echo "$XFF" | cut -d',' -f1 | tr -d ' ')
 
                 if [ "$CLIENT_IP" != "$EXPECTED_CLIENT_IP" ]; then
-                  echo "FAILED: XFF first entry ($CLIENT_IP) != expected client IP ($EXPECTED_CLIENT_IP)"
+                  echo "XFF first entry ($CLIENT_IP) != expected client IP ($EXPECTED_CLIENT_IP)"
                   echo "  x-forwarded-for: $XFF"
                   exit 1
                 fi
@@ -177,11 +163,11 @@ spec:
                 # Also verify x-real-ip matches if present
                 REAL_IP=$(echo "$RESPONSE" | jq -r '.request.headers["x-real-ip"] // empty' 2>/dev/null || true)
                 if [ -n "$REAL_IP" ] && [ "$REAL_IP" != "$EXPECTED_CLIENT_IP" ]; then
-                  echo "FAILED: x-real-ip ($REAL_IP) != expected client IP ($EXPECTED_CLIENT_IP)"
+                  echo "x-real-ip ($REAL_IP) != expected client IP ($EXPECTED_CLIENT_IP)"
                   exit 1
                 fi
 
-                echo "SUCCESS: Client IP preserved correctly"
+                echo "Client IP preserved correctly"
                 echo "  x-forwarded-for: $XFF"
                 echo "  client_ip (first XFF entry): $CLIENT_IP"
                 echo "  expected_client_ip: $EXPECTED_CLIENT_IP"
@@ -191,18 +177,15 @@ spec:
                 exit 0
               done
 
-              echo "FAILED: Could not get response"
+              echo "Could not get response"
               exit 1
             check:
               ($error == null): true
 
-    # Step 6: Cleanup
     - name: cleanup
-      description: Delete resources
       cluster: tenant1
       try:
         - script:
-            skipCommandOutput: true
             timeout: 60s
             content: |
               kubectl delete ingress xff-ingress -n default --wait=false
@@ -211,7 +194,6 @@ spec:
               ($error == null): true
       finally:
         - script:
-            skipCommandOutput: true
             cluster: tenant1
             timeout: 60s
             content: |
@@ -220,7 +202,6 @@ spec:
               kubectl delete service echo-xff-ing -n default --ignore-not-found
 
     - name: verify-cleanup
-      description: Verify Route CRD removed
       use:
         template: ../../../../step-templates/common/verify-route-cleanup.yaml
         with:

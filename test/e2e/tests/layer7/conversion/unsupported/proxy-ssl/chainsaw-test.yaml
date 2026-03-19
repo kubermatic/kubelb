@@ -35,7 +35,6 @@ spec:
   steps:
     - name: create-service
       cluster: standalone
-      description: Create ClusterIP service
       try:
         - apply:
             resource:
@@ -54,7 +53,6 @@ spec:
 
     - name: create-ingress
       cluster: standalone
-      description: Create Ingress with proxy-ssl-secret
       try:
         - apply:
             resource:
@@ -80,7 +78,6 @@ spec:
                                 number: 443
 
     - name: verify-httproute
-      description: Verify HTTPRoute is created
       use:
         template: ../../../../../step-templates/conversion/verify-httproute.yaml
         with:
@@ -91,7 +88,6 @@ spec:
               value: ($transformed_host)
 
     - name: verify-warning
-      description: Verify warning about BackendTLSPolicy
       use:
         template: ../../../../../step-templates/conversion/verify-warnings.yaml
         with:
@@ -102,7 +98,6 @@ spec:
               value: "proxy-ssl"
 
     - name: cleanup
-      description: Cleanup resources
       use:
         template: ../../../../../step-templates/conversion/cleanup-conversion.yaml
         with:

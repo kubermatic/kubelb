@@ -45,94 +45,24 @@ spec:
     # Step 1: Deploy shared backend service
     - name: deploy-backend
       description: Deploy single shared echo server
-      cluster: tenant1
-      try:
-        - apply:
-            resource:
-              apiVersion: apps/v1
-              kind: Deployment
-              metadata:
-                name: shared-echo
-                namespace: default
-                labels:
-                  app: shared-echo
-              spec:
-                replicas: 1
-                selector:
-                  matchLabels:
-                    app: shared-echo
-                template:
-                  metadata:
-                    labels:
-                      app: shared-echo
-                  spec:
-                    containers:
-                      - name: echo
-                        image: hashicorp/http-echo:1.0
-                        imagePullPolicy: IfNotPresent
-                        args:
-                          - -text=response-from-shared-backend
-                          - -listen=:8080
-                        ports:
-                          - containerPort: 8080
-        - apply:
-            resource:
-              apiVersion: v1
-              kind: Service
-              metadata:
-                name: shared-echo
-                namespace: default
-              spec:
-                type: ClusterIP
-                selector:
-                  app: shared-echo
-                ports:
-                  - port: 80
-                    targetPort: 8080
-        - assert:
-            timeout: 60s
-            resource:
-              apiVersion: apps/v1
-              kind: Deployment
-              metadata:
-                name: shared-echo
-                namespace: default
-              status:
-                readyReplicas: 1
-
-    # Step 2: Create Gateway
-    - name: create-gateway
-      description: Create Gateway for HTTPRoutes
-      cluster: tenant1
-      try:
-        - apply:
-            resource:
-              apiVersion: gateway.networking.k8s.io/v1
-              kind: Gateway
-              metadata:
-                name: shared-backend-gw
-                namespace: default
-              spec:
-                gatewayClassName: kubelb
-                listeners:
-                  - name: http
-                    protocol: HTTP
-                    port: 80
-                    allowedRoutes:
-                      namespaces:
-                        from: All
-
-    # Step 3: Wait for Gateway
-    - name: wait-gateway-ready
-      description: Wait for Gateway to have address
       use:
-        template: ../../../../step-templates/common/wait-for-gateway-ip.yaml
+        template: ../../../../step-templates/common/deploy-echo-backend.yaml
+        with:
+          bindings:
+            - name: backend_name
+              value: shared-echo
+            - name: backend_message
+              value: response-from-shared-backend
+
+    # Step 2: Create Gateway and wait for IP
+    - name: create-gateway
+      description: Create Gateway and wait for IP
+      use:
+        template: ../../../../step-templates/gateway/create-http-gateway.yaml
         with:
           bindings:
             - name: gateway_name
-              value: ($gateway_name)
-            - name: gateway_namespace
-              value: default
+              value: shared-backend-gw
 
     # Step 4: Create 2 HTTPRoutes pointing to SAME backend
     - name: create-httproutes
