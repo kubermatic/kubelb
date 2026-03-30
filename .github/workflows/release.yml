@@ -94,7 +94,7 @@ jobs:
               max-parallelism = 4
 
       - name: Configure Docker cache
-        uses: actions/cache@cdf6c1fa76f9f475f3d7449005a359c84ca0f306 # v5.0.3
+        uses: actions/cache@668228422ae6a00e4ad889ee87cd7109ec5666a7 # v5.0.4
         with:
           path: /tmp/.buildx-cache
           key: ${{ runner.os }}-buildx-${{ github.sha }}
@@ -109,10 +109,10 @@ jobs:
           password: ${{ secrets.REGISTRY_PASSWORD }}
 
       - name: Install Cosign
-        uses: sigstore/cosign-installer@ba7bc0a3fef59531c69a25acd34668d6d3fe6f22 # v4.1.0
+        uses: sigstore/cosign-installer@cad07c2e89fa2edd6e2d7bab4c1aa38e53f76003 # v4.1.1
 
       - name: Install Syft
-        uses: anchore/sbom-action/download-syft@57aae528053a48a3f6235f2d9461b05fbcb7366d # v0.23.1
+        uses: anchore/sbom-action/download-syft@e22c389904149dbc22b58101806040fa8d37a610 # v0.24.0
 
       - name: Install ORAS
         uses: oras-project/setup-oras@22ce207df3b08e061f537244349aac6ae1d214f6 # v1.2.4
@@ -160,14 +160,14 @@ jobs:
 
       - name: Upload release scan results
         if: ${{ !inputs.skip_vulnerability_scans && always() }}
-        uses: github/codeql-action/upload-sarif@0d579ffd059c29b07949a3cce3983f0780820c98 # v4.32.6
+        uses: github/codeql-action/upload-sarif@c10b8064de6f491fea524254123dbe5e09572f13 # v4.35.1
         with:
           sarif_file: trivy-kubelb-manager.sarif
           category: release-kubelb-manager
 
       - name: Upload release scan results (ccm)
         if: ${{ !inputs.skip_vulnerability_scans && always() }}
-        uses: github/codeql-action/upload-sarif@0d579ffd059c29b07949a3cce3983f0780820c98 # v4.32.6
+        uses: github/codeql-action/upload-sarif@c10b8064de6f491fea524254123dbe5e09572f13 # v4.35.1
         with:
           sarif_file: trivy-kubelb-ccm.sarif
           category: release-kubelb-ccm
@@ -241,10 +241,10 @@ jobs:
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
       - name: Setup Helm
-        uses: azure/setup-helm@1a275c3b69536ee54be43f2070a358922e12c8d4 # v4.3.1
+        uses: azure/setup-helm@dda3372f752e03dde6b3237bc9431cdc2f7a02a2 # v5.0.0
 
       - name: Install Cosign
-        uses: sigstore/cosign-installer@ba7bc0a3fef59531c69a25acd34668d6d3fe6f22 # v4.1.0
+        uses: sigstore/cosign-installer@cad07c2e89fa2edd6e2d7bab4c1aa38e53f76003 # v4.1.1
 
       - name: Login to Quay.io (for cosign)
         uses: docker/login-action@b45d80f862d83dbcd57f89517bcf500b2ab88fb2 # v4.0.0
@@ -285,10 +285,10 @@ jobs:
           fi
 
       - name: Setup Helm
-        uses: azure/setup-helm@1a275c3b69536ee54be43f2070a358922e12c8d4 # v4.3.1
+        uses: azure/setup-helm@dda3372f752e03dde6b3237bc9431cdc2f7a02a2 # v5.0.0
 
       - name: Install Cosign
-        uses: sigstore/cosign-installer@ba7bc0a3fef59531c69a25acd34668d6d3fe6f22 # v4.1.0
+        uses: sigstore/cosign-installer@cad07c2e89fa2edd6e2d7bab4c1aa38e53f76003 # v4.1.1
 
       - name: Login to Quay.io (for cosign)
         uses: docker/login-action@b45d80f862d83dbcd57f89517bcf500b2ab88fb2 # v4.0.0
