@@ -126,6 +126,32 @@ jobs:
           EEEOF
           sed -i 's/^            //' "content/kubelb/${MINOR}/references/ee/_index.en.md"
 
+          cat > "content/kubelb/${MINOR}/tutorials/observability/metrics-and-dashboards/references/ce/_index.en.md" << 'MCEOF'
+            +++
+            title = "Community Edition"
+            linkTitle = "Community Edition"
+            weight = 10
+            +++
+
+            {{< render_external_markdown "https://raw.githubusercontent.com/KUBELB_REPO_PLACEHOLDER/refs/heads/release/MINOR_PLACEHOLDER/docs/generated/metrics.md" >}}
+          MCEOF
+          sed -i 's/^            //' "content/kubelb/${MINOR}/tutorials/observability/metrics-and-dashboards/references/ce/_index.en.md"
+          sed -i "s|KUBELB_REPO_PLACEHOLDER|${KUBELB_REPO}|g; s|MINOR_PLACEHOLDER|${MINOR}|g" \
+            "content/kubelb/${MINOR}/tutorials/observability/metrics-and-dashboards/references/ce/_index.en.md"
+
+          cat > "content/kubelb/${MINOR}/tutorials/observability/metrics-and-dashboards/references/ee/_index.en.md" << 'MEEOF'
+            +++
+            title = "Enterprise Edition"
+            linkTitle = "Enterprise Edition"
+            weight = 20
+            +++
+
+            {{< render_external_markdown "https://raw.githubusercontent.com/KUBELB_REPO_PLACEHOLDER/refs/heads/release/MINOR_PLACEHOLDER/docs/generated/metrics-ee.md" >}}
+          MEEOF
+          sed -i 's/^            //' "content/kubelb/${MINOR}/tutorials/observability/metrics-and-dashboards/references/ee/_index.en.md"
+          sed -i "s|KUBELB_REPO_PLACEHOLDER|${KUBELB_REPO}|g; s|MINOR_PLACEHOLDER|${MINOR}|g" \
+            "content/kubelb/${MINOR}/tutorials/observability/metrics-and-dashboards/references/ee/_index.en.md"
+
       - name: Update version strings in installation pages
         env:
           MINOR: ${{ inputs.minor }}
