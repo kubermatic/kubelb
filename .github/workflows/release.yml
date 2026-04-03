@@ -47,7 +47,7 @@ env:
 
 jobs:
   release:
-    if: ${{ !startsWith(github.ref_name, 'addons-') && inputs.release_type != 'addons' }}
+    if: ${{ !startsWith(github.ref_name, 'addons-') && inputs.release_type != 'addons' && !startsWith(github.ref, 'refs/tags/v99') }}
     runs-on: ubuntu-latest
     permissions:
       contents: write # Needed for GoReleaser to create releases
@@ -227,7 +227,7 @@ jobs:
           oras logout ${{ env.REGISTRY }} || true
 
   helm:
-    if: ${{ !startsWith(github.ref_name, 'addons-') && inputs.release_type != 'addons' }}
+    if: ${{ !startsWith(github.ref_name, 'addons-') && inputs.release_type != 'addons' && !startsWith(github.ref, 'refs/tags/v99') }}
     needs: release
     runs-on: ubuntu-latest
     timeout-minutes: 30
