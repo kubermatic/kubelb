@@ -1,0 +1,269 @@
+# Copyright 2026 The KubeLB Authors.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+name: Release Prep
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Release version (e.g. v1.4.0)"
+        required: true
+        type: string
+      branch:
+        description: "Target release branch (e.g. release/v1.4)"
+        required: true
+        type: string
+
+permissions: {}
+
+jobs:
+  prep:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    timeout-minutes: 30
+    steps:
+      - name: Validate version format
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          if [[ ! "$VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::Invalid version format: $VERSION (expected stable semver: v1.4.0, v1.4.1). Pre-releases (RC/alpha/beta) should use direct tag+push instead."
+            exit 1
+          fi
+
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+
+      - name: Validate tag doesn't exist
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          if git rev-parse "$VERSION" >/dev/null 2>&1; then
+            echo "::error::Tag $VERSION already exists"
+            exit 1
+          fi
+
+      - name: Ensure EE release branch exists
+        env:
+          GH_TOKEN: ${{ secrets.KUBELB_EE_TOKEN }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          MINOR=$(echo "$VERSION" | grep -oE 'v[0-9]+\.[0-9]+')
+          EE_REPO="kubermatic/kubelb-ee"
+          if gh api "repos/${EE_REPO}/branches/release/${MINOR}" --jq '.name' >/dev/null 2>&1; then
+            echo "::notice::EE release branch release/${MINOR} already exists"
+          else
+            echo "Creating EE release branch release/${MINOR} from main..."
+            MAIN_SHA=$(gh api "repos/${EE_REPO}/git/ref/heads/main" --jq '.object.sha')
+            gh api "repos/${EE_REPO}/git/refs" \
+              -f ref="refs/heads/release/${MINOR}" \
+              -f sha="$MAIN_SHA"
+            echo "::notice::Created EE release branch release/${MINOR}"
+          fi
+
+      - name: Ensure CE release branch exists
+        env:
+          BRANCH: ${{ inputs.branch }}
+        run: |
+          if ! git ls-remote --exit-code --heads origin "$BRANCH" >/dev/null 2>&1; then
+            echo "Creating CE release branch $BRANCH from main..."
+            git checkout main
+            git checkout -b "$BRANCH"
+            git push origin "$BRANCH"
+          else
+            echo "::notice::Branch $BRANCH already exists"
+          fi
+
+      - name: Checkout release branch
+        env:
+          BRANCH: ${{ inputs.branch }}
+        run: |
+          git fetch origin "$BRANCH"
+          git checkout "$BRANCH"
+          git branch --set-upstream-to="origin/$BRANCH" "$BRANCH"
+
+      - name: Setup Go
+        uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417 # v6.3.0
+        with:
+          go-version-file: go.mod
+
+      - name: Setup Helm
+        uses: azure/setup-helm@1a275c3b69536ee54be43f2070a358922e12c8d4 # v4.3.1
+
+      - name: Setup golangci-lint
+        uses: golangci/golangci-lint-action@4afd733a84b1f43292c63897423277bb7f4313a9 # v7.0.0
+        with:
+          version: v2.11.4
+          args: --help
+
+      - name: Install release-notes tool
+        run: go install k8s.io/release/cmd/release-notes@6ba294d3b031d2b69d903a1e92ce86a695d84dbd
+
+      - name: Bump versions
+        env:
+          VERSION: ${{ inputs.version }}
+        run: ./hack/release/bump-versions.sh "$VERSION"
+
+      - name: Generate artifacts (CE codegen + EE clone in parallel)
+        env:
+          KUBELB_EE_TOKEN: ${{ secrets.KUBELB_EE_TOKEN }}
+          VERSION: ${{ inputs.version }}
+          WORKSPACE: ${{ github.workspace }}
+        run: |
+          MINOR=$(echo "$VERSION" | grep -oE 'v[0-9]+\.[0-9]+')
+
+          # --- CE artifacts (background) ---
+          (
+            echo "::group::CE: helm docs + codegen"
+            make helm-lint helm-dependency-update generate-helm-docs
+            make update-codegen generate-crd-docs generate-crd-docs-ee
+            ./hack/release/extract-helm-values.sh ./charts ./docs/generated
+            echo "::endgroup::"
+          ) &
+          CE_PID=$!
+
+          # --- EE artifacts (background) ---
+          (
+            echo "::group::EE: clone + generate"
+            git clone --branch "release/${MINOR}" \
+              "https://x-access-token:${KUBELB_EE_TOKEN}@github.com/kubermatic/kubelb-ee.git" /tmp/kubelb-ee
+
+            cd /tmp/kubelb-ee
+            git fetch --tags
+
+            for chart in kubelb-manager kubelb-ccm; do
+              [ -f "charts/${chart}/Chart.yaml" ] || continue
+              sed -i "s/^version:.*/version: ${VERSION}/" "charts/${chart}/Chart.yaml"
+              sed -i "s/^appVersion:.*/appVersion: ${VERSION}/" "charts/${chart}/Chart.yaml"
+              sed -i "0,/^  tag:/{s/^  tag:.*/  tag: ${VERSION}/}" "charts/${chart}/values.yaml"
+            done
+
+            go mod download
+            go run ./internal/metricsutil/metricsdocs > "${WORKSPACE}/docs/generated/metrics-ee.md" || echo "::warning::EE metrics generation failed"
+            make generate-helm-docs || echo "::warning::EE helm docs generation failed"
+            cd "${WORKSPACE}"
+            ./hack/release/extract-helm-values.sh /tmp/kubelb-ee/charts ./docs/generated "-ee"
+            echo "::endgroup::"
+          ) &
+          EE_PID=$!
+
+          CE_EXIT=0; EE_EXIT=0
+          wait $CE_PID || CE_EXIT=$?
+          wait $EE_PID || EE_EXIT=$?
+
+          if [ $CE_EXIT -ne 0 ]; then echo "::error::CE artifact generation failed"; exit 1; fi
+          if [ $EE_EXIT -ne 0 ]; then echo "::warning::EE artifact generation failed (non-fatal)"; fi
+
+      - name: Generate release notes
+        env:
+          GH_TOKEN: ${{ secrets.KUBELB_EE_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.KUBELB_EE_TOKEN }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          PREV_TAG=""
+          for tag in $(git tag --sort=-v:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$'); do
+            if git log "${tag}..HEAD" --oneline -1 >/dev/null 2>&1; then
+              PREV_TAG="$tag"
+              break
+            fi
+          done
+          echo "Previous tag: ${PREV_TAG:-none}"
+
+          if [ -n "$PREV_TAG" ]; then
+            ./hack/release/generate-notes.sh "$VERSION" "$PREV_TAG" \
+              --ee-repo kubermatic/kubelb-ee --ee-path /tmp/kubelb-ee \
+              kubermatic/kubelb || echo "::warning::Release notes generation failed (non-fatal). Notes may need manual creation."
+          else
+            echo "::notice::No reachable previous tag found, skipping release notes generation"
+          fi
+
+      - name: Validate
+        run: make lint build
+
+      - name: Create prep branch and PR
+        env:
+          GH_TOKEN: ${{ secrets.KUBELB_EE_TOKEN }}
+          KUBELB_EE_TOKEN: ${{ secrets.KUBELB_EE_TOKEN }}
+          VERSION: ${{ inputs.version }}
+          BASE_BRANCH: ${{ inputs.branch }}
+        run: |
+          BRANCH="chore/prepare-${VERSION}"
+
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          git checkout -b "${BRANCH}"
+          echo "::group::Debug: git status before commit"
+          git diff --stat
+          git status
+          echo "::endgroup::"
+          git add -A
+          git commit -s -m "chore: prepare ${VERSION}"
+          git remote set-url origin "https://x-access-token:${KUBELB_EE_TOKEN}@github.com/${{ github.repository }}.git"
+          git push origin "${BRANCH}"
+
+          MINOR=$(echo "${VERSION}" | grep -oE 'v[0-9]+\.[0-9]+')
+          CHANGELOG_FILE="docs/changelogs/CHANGELOG-${MINOR}.md"
+          NOTES_PREVIEW=""
+          if [ -f "$CHANGELOG_FILE" ]; then
+            NOTES_PREVIEW=$(head -100 "$CHANGELOG_FILE")
+          fi
+
+          gh pr create \
+            --base "${BASE_BRANCH}" \
+            --head "${BRANCH}" \
+            --title "chore: prepare ${VERSION}" \
+            --body-file - <<PREOF
+          **What this PR does / why we need it**:
+          Prepare release ${VERSION}. Bumps chart versions, regenerates docs, and generates release notes.
+
+          **What type of PR is this?**
+          /kind chore
+
+          **Special notes for your reviewer**:
+          - Review generated release notes below and in \`docs/changelogs/\`
+          - Review generated docs (API refs, metrics, helm values)
+          - Merging this PR auto-tags CE + EE repos and triggers the release pipeline
+
+          ## Checklist
+          - [ ] Chart versions bumped
+          - [ ] Helm docs regenerated
+          - [ ] Release notes reviewed
+          - [ ] Vulnerability scan passed
+          - [ ] CI green
+          - [ ] Cherry-picks complete
+
+          <details>
+          <summary><b>Release Notes Preview</b></summary>
+
+          ${NOTES_PREVIEW}
+
+          </details>
+
+          \`\`\`release-note
+          NONE
+          \`\`\`
+
+          \`\`\`documentation
+          NONE
+          \`\`\`
+          PREOF
+
+          gh pr edit "${BRANCH}" --add-label "release-note-none" 2>/dev/null || true
+          gh pr edit "${BRANCH}" --add-label "kind/chore" 2>/dev/null || true

@@ -1,0 +1,101 @@
+name: Auto Tag on Release Prep Merge
+
+on:
+  pull_request:
+    types: [closed]
+    branches:
+      - 'release/v*'
+
+permissions: {}
+
+jobs:
+  auto-tag:
+    if: github.event.pull_request.merged == true && startsWith(github.event.pull_request.head.ref, 'chore/prepare-v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      minor: ${{ steps.version.outputs.minor }}
+      is_patch: ${{ steps.version.outputs.is_patch }}
+    steps:
+      - name: Extract version
+        id: version
+        env:
+          HEAD_REF: ${{ github.event.pull_request.head.ref }}
+        run: |
+          # chore/prepare-v1.4.0 → v1.4.0
+          VERSION="${HEAD_REF#chore/prepare-}"
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+
+          MINOR=$(echo "$VERSION" | grep -oE 'v[0-9]+\.[0-9]+')
+          echo "minor=${MINOR}" >> "$GITHUB_OUTPUT"
+
+          if [[ "$VERSION" =~ \.0$ ]]; then
+            echo "is_patch=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "is_patch=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+
+      - name: Tag CE repo
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          MERGE_SHA: ${{ github.event.pull_request.merge_commit_sha }}
+        run: |
+          git tag "$VERSION" "$MERGE_SHA"
+          git push origin "$VERSION"
+
+      - name: Tag EE repo
+        env:
+          KUBELB_EE_TOKEN: ${{ secrets.KUBELB_EE_TOKEN }}
+          VERSION: ${{ steps.version.outputs.version }}
+          MINOR: ${{ steps.version.outputs.minor }}
+        run: |
+          git clone --depth 1 --branch "release/${MINOR}" \
+            "https://x-access-token:${KUBELB_EE_TOKEN}@github.com/kubermatic/kubelb-ee.git" /tmp/kubelb-ee
+
+          cd /tmp/kubelb-ee
+          git tag "${VERSION}"
+          git push origin "${VERSION}"
+
+  docs-update:
+    needs: auto-tag
+    uses: ./.github/workflows/release-docs-update.yml
+    with:
+      version: ${{ needs.auto-tag.outputs.version }}
+      minor: ${{ needs.auto-tag.outputs.minor }}
+      is_patch: ${{ needs.auto-tag.outputs.is_patch }}
+    secrets:
+      KUBERMATIC_DOCS_TOKEN: ${{ secrets.KUBERMATIC_DOCS_TOKEN }}
+
+  notify:
+    needs: [auto-tag, docs-update]
+    if: always() && needs.auto-tag.result != 'skipped'
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+    steps:
+      - name: Comment on prep PR
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ needs.auto-tag.outputs.version }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          DOCS_PR: ${{ needs.docs-update.outputs.docs_pr_url }}
+          REPO: ${{ github.repository }}
+        run: |
+          BODY="### Release ${VERSION} — post-merge summary\n\n"
+          BODY+="- **CE tag:** [\`${VERSION}\`](https://github.com/${REPO}/releases/tag/${VERSION})\n"
+          BODY+="- **EE tag:** [\`${VERSION}\`](https://github.com/kubermatic/kubelb-ee/releases/tag/${VERSION})\n"
+
+          if [ -n "$DOCS_PR" ]; then
+            BODY+="- **Docs PR:** ${DOCS_PR} ← **review and merge**\n"
+          else
+            BODY+="- **Docs PR:** failed or skipped — check workflow logs\n"
+          fi
+
+          printf '%b' "$BODY" | gh pr comment "$PR_NUMBER" --repo "$REPO" --body-file -
