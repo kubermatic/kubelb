@@ -98,7 +98,7 @@ jobs:
             weight = 60
             +++
 
-            {{< render_external_markdown "https://raw.githubusercontent.com/KUBELB_REPO_PLACEHOLDER/refs/heads/main/docs/changelogs/CHANGELOG-MINOR_PLACEHOLDER.md" >}}
+            {{< render_external_markdown "https://raw.githubusercontent.com/KUBELB_REPO_PLACEHOLDER/refs/heads/release/MINOR_PLACEHOLDER/docs/changelogs/CHANGELOG-MINOR_PLACEHOLDER.md" >}}
           RNEOF
           sed -i 's/^            //' "content/kubelb/${MINOR}/release-notes/_index.en.md"
           sed -i "s|KUBELB_REPO_PLACEHOLDER|${KUBELB_REPO}|g; s|MINOR_PLACEHOLDER|${MINOR}|g" \
