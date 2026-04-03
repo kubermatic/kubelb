@@ -324,4 +324,44 @@ printf '%b' "$OUTPUT" >> "$TMPFILE"
 tail -n +2 "$CHANGELOG" >> "$TMPFILE"
 mv "$TMPFILE" "$CHANGELOG"
 
+# Rebuild TOC at the top of the changelog
+TITLE_LINE=$(head -1 "$CHANGELOG")
+TOC=""
+while IFS= read -r heading; do
+  ver="${heading#\#\# }"
+  anchor=$(echo "$ver" | tr -d '.')
+  TOC+="- [${ver}](#${anchor})\n"
+  in_block=false
+  has_ce=false
+  has_ee=false
+  while IFS= read -r line; do
+    if [[ "$line" == "## ${ver}" ]]; then
+      in_block=true
+      continue
+    fi
+    if $in_block && [[ "$line" =~ ^##\  ]]; then
+      break
+    fi
+    if $in_block && [[ "$line" == "### Community Edition" ]]; then
+      has_ce=true
+    fi
+    if $in_block && [[ "$line" == "### Enterprise Edition" ]]; then
+      has_ee=true
+    fi
+  done < "$CHANGELOG"
+  if $has_ce; then
+    TOC+="  - [Community Edition](#community-edition)\n"
+  fi
+  if $has_ee; then
+    TOC+="  - [Enterprise Edition](#enterprise-edition)\n"
+  fi
+done < <(grep '^## v' "$CHANGELOG")
+
+TOCFILE=$(mktemp)
+echo "$TITLE_LINE" > "$TOCFILE"
+echo "" >> "$TOCFILE"
+printf '%b' "$TOC" >> "$TOCFILE"
+sed -n '/^## v/,$p' "$CHANGELOG" >> "$TOCFILE"
+mv "$TOCFILE" "$CHANGELOG"
+
 printf '%b' "$OUTPUT"
