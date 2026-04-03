@@ -1,0 +1,46 @@
+name: Release Vulnerability Scan
+
+on:
+  pull_request:
+    branches:
+      - 'release/v*'
+
+permissions: {}
+
+jobs:
+  scan:
+    if: startsWith(github.event.pull_request.head.ref, 'chore/prepare-v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Set up Go
+        uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417 # v6.3.0
+        with:
+          go-version-file: go.mod
+
+      - name: Build binaries
+        run: make build
+
+      - name: Build Docker images
+        run: |
+          # GoReleaser dockerfiles expect binary at root context
+          cp bin/kubelb kubelb
+          cp bin/ccm ccm
+          docker build -t kubelb-manager:scan -f kubelb.goreleaser.dockerfile .
+          docker build -t kubelb-ccm:scan -f ccm.goreleaser.dockerfile .
+
+      - name: Install and run Trivy
+        run: |
+          curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b /usr/local/bin
+          EXIT_CODE=0
+          for img in kubelb-manager:scan kubelb-ccm:scan; do
+            echo "=== Scanning ${img} ==="
+            trivy image --exit-code 1 --severity HIGH,CRITICAL --ignore-unfixed \
+              --format table "${img}" || EXIT_CODE=1
+          done
+          exit $EXIT_CODE
