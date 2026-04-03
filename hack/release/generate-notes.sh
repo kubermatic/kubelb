@@ -112,11 +112,11 @@ run_release_notes() {
   # Using --repo-path on the workspace causes the tool to run `git pull --rebase`
   # which can fail (no tracking) and `git stash` which destroys uncommitted prep changes.
   if [[ "$repo_path" != "$REPO_ROOT" && -d "${repo_path}/.git" ]]; then
-    git -C "$repo_path" stash --quiet 2>/dev/null || true
+    git -C "$repo_path" stash --quiet 2> /dev/null || true
     local current_branch
-    current_branch=$(git -C "$repo_path" rev-parse --abbrev-ref HEAD 2>/dev/null || echo "")
+    current_branch=$(git -C "$repo_path" rev-parse --abbrev-ref HEAD 2> /dev/null || echo "")
     if [[ -n "$current_branch" && "$current_branch" != "HEAD" ]]; then
-      git -C "$repo_path" branch --set-upstream-to="origin/${current_branch}" "$current_branch" 2>/dev/null || true
+      git -C "$repo_path" branch --set-upstream-to="origin/${current_branch}" "$current_branch" 2> /dev/null || true
     fi
     rp_flag="--repo-path ${repo_path}"
   fi
@@ -207,7 +207,7 @@ else
   fi
 fi
 
-ADDONS_VERSION=$(grep -E '^KUBELB_ADDONS_CHART_VERSION \?=' "${REPO_ROOT}/Makefile" 2>/dev/null | cut -d'=' -f2 | tr -d ' ' || echo "")
+ADDONS_VERSION=$(grep -E '^KUBELB_ADDONS_CHART_VERSION \?=' "${REPO_ROOT}/Makefile" 2> /dev/null | cut -d'=' -f2 | tr -d ' ' || echo "")
 
 # Release artifacts (always split CE/EE)
 OUTPUT+="\n### Release Artifacts\n\n"
