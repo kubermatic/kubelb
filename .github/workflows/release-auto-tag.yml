@@ -75,7 +75,7 @@ jobs:
 
   notify:
     needs: [auto-tag, docs-update]
-    if: always()
+    if: always() && needs.auto-tag.result != 'skipped'
     runs-on: ubuntu-latest
     permissions:
       pull-requests: write
