@@ -31,7 +31,6 @@ COPY cmd/ cmd/
 COPY api/ api/
 COPY internal/ internal/
 COPY pkg/ pkg/
-COPY VERSION VERSION
 COPY Makefile Makefile
 
 # Pass build arguments to make command
