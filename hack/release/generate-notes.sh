@@ -1,4 +1,19 @@
 #!/usr/bin/env bash
+# Copyright 2026 The KubeLB Authors.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+#!/usr/bin/env bash
 # Generate combined CE+EE release notes using the k8s release-notes tool.
 # Usage: generate-notes.sh <VERSION> <PREV_TAG> [--ee-repo <owner/repo> --ee-path <path>] [CE_REPO]
 #
@@ -25,9 +40,18 @@ CE_REPO="kubermatic/kubelb"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --ee-repo) EE_REPO="${2:?--ee-repo requires a value}"; shift 2 ;;
-    --ee-path) EE_PATH="${2:?--ee-path requires a value}"; shift 2 ;;
-    *) CE_REPO="$1"; shift ;;
+  --ee-repo)
+    EE_REPO="${2:?--ee-repo requires a value}"
+    shift 2
+    ;;
+  --ee-path)
+    EE_PATH="${2:?--ee-path requires a value}"
+    shift 2
+    ;;
+  *)
+    CE_REPO="$1"
+    shift
+    ;;
   esac
 done
 
@@ -64,7 +88,7 @@ find_upstream_head() {
   # Get the upstream repo's default branch HEAD SHA via API.
   # This avoids issues when the local repo has fork-only commits.
   local upstream_sha
-  upstream_sha=$(gh api "repos/${org}/${repo}/commits/main" --jq '.sha' 2>/dev/null || echo "")
+  upstream_sha=$(gh api "repos/${org}/${repo}/commits/main" --jq '.sha' 2> /dev/null || echo "")
   if [[ -n "$upstream_sha" ]]; then
     echo "$upstream_sha"
     return
@@ -81,7 +105,7 @@ run_release_notes() {
   log_file=$(mktemp)
   rp_flag=""
   if [[ -d "${repo_path}/.git" ]]; then
-    git -C "$repo_path" stash --quiet 2>/dev/null || true
+    git -C "$repo_path" stash --quiet 2> /dev/null || true
     rp_flag="--repo-path ${repo_path}"
   fi
 
@@ -139,7 +163,7 @@ if [[ -n "$EE_REPO" && -n "$EE_PATH" ]]; then
 
   if [[ -n "$EE_TEXTS" ]]; then
     # Find EE notes not present in CE (by note text, ignoring PR references)
-    EE_UNIQUE=$(comm -23 <(echo "$EE_TEXTS") <(echo "$CE_TEXTS") 2>/dev/null || echo "$EE_TEXTS")
+    EE_UNIQUE=$(comm -23 <(echo "$EE_TEXTS") <(echo "$CE_TEXTS") 2> /dev/null || echo "$EE_TEXTS")
     if [[ -n "$EE_UNIQUE" ]]; then
       EE_HAS_UNIQUE=true
       EE_NOTES="$EE_NOTES_RAW"
@@ -185,7 +209,7 @@ OUTPUT+="<details>\n<summary><b>Helm Charts</b></summary>\n\n"
 OUTPUT+="\`\`\`bash\n"
 OUTPUT+="helm pull oci://quay.io/kubermatic/helm-charts/kubelb-manager-ee --version ${VERSION}\n"
 OUTPUT+="helm pull oci://quay.io/kubermatic/helm-charts/kubelb-ccm-ee --version ${VERSION}\n"
-ADDONS_VERSION=$(grep -E '^KUBELB_ADDONS_CHART_VERSION \?=' "${REPO_ROOT}/Makefile" 2>/dev/null | cut -d'=' -f2 | tr -d ' ' || echo "")
+ADDONS_VERSION=$(grep -E '^KUBELB_ADDONS_CHART_VERSION \?=' "${REPO_ROOT}/Makefile" 2> /dev/null | cut -d'=' -f2 | tr -d ' ' || echo "")
 if [[ -n "$ADDONS_VERSION" ]]; then
   OUTPUT+="helm pull oci://quay.io/kubermatic/helm-charts/kubelb-addons --version ${ADDONS_VERSION}\n"
 fi

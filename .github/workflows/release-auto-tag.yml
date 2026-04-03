@@ -71,3 +71,30 @@ jobs:
       is_patch: ${{ needs.auto-tag.outputs.is_patch }}
     secrets:
       KUBERMATIC_DOCS_TOKEN: ${{ secrets.KUBERMATIC_DOCS_TOKEN }}
+
+  notify:
+    needs: [auto-tag, docs-update]
+    if: always()
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+    steps:
+      - name: Comment on prep PR
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VERSION="${{ needs.auto-tag.outputs.version }}"
+          PR_NUMBER="${{ github.event.pull_request.number }}"
+          DOCS_PR="${{ needs.docs-update.outputs.docs_pr_url }}"
+
+          BODY="### Release ${VERSION} — post-merge summary\n\n"
+          BODY+="- **CE tag:** [\`${VERSION}\`](https://github.com/${{ github.repository }}/releases/tag/${VERSION})\n"
+          BODY+="- **EE tag:** [\`${VERSION}\`](https://github.com/kubermatic/kubelb-ee/releases/tag/${VERSION})\n"
+
+          if [ -n "$DOCS_PR" ]; then
+            BODY+="- **Docs PR:** ${DOCS_PR} ← **review and merge**\n"
+          else
+            BODY+="- **Docs PR:** failed or skipped — check workflow logs\n"
+          fi
+
+          printf '%b' "$BODY" | gh pr comment "$PR_NUMBER" --body-file -

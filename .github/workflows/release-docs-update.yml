@@ -29,6 +29,10 @@ on:
         description: "Is this a patch release?"
         required: true
         type: string
+    outputs:
+      docs_pr_url:
+        description: "URL of the created docs PR"
+        value: ${{ jobs.update-docs.outputs.pr_url }}
     secrets:
       KUBERMATIC_DOCS_TOKEN:
         required: true
@@ -58,6 +62,8 @@ jobs:
   update-docs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    outputs:
+      pr_url: ${{ steps.create-pr.outputs.pr_url }}
     steps:
       - name: Checkout docs repo
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -182,6 +188,7 @@ jobs:
           done
 
       - name: Create PR
+        id: create-pr
         env:
           GH_TOKEN: ${{ secrets.KUBERMATIC_DOCS_TOKEN || secrets.GITHUB_TOKEN }}
           VERSION: ${{ inputs.version }}
@@ -201,7 +208,8 @@ jobs:
             BODY="${BODY} Added new minor version directory and release notes."
           fi
 
-          gh pr create \
+          PR_URL=$(gh pr create \
             --repo "${{ env.DOCS_REPO }}" \
             --title "docs: update KubeLB docs for ${VERSION}" \
-            --body "${BODY}"
+            --body "${BODY}")
+          echo "pr_url=${PR_URL}" >> "$GITHUB_OUTPUT"

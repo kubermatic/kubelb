@@ -1,4 +1,19 @@
 #!/usr/bin/env bash
+# Copyright 2026 The KubeLB Authors.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+#!/usr/bin/env bash
 # Bump Chart.yaml version/appVersion and values.yaml image tag for kubelb-manager and kubelb-ccm.
 # Usage: bump-versions.sh [--dry-run] <VERSION>
 # VERSION must be semver with v prefix: v1.4.0, v1.4.0-rc.1
@@ -29,7 +44,7 @@ CHARTS=("kubelb-manager" "kubelb-ccm")
 SED_CMD="sed"
 if [[ "$(uname)" == "Darwin" ]]; then
   SED_CMD="gsed"
-  if ! command -v gsed &>/dev/null; then
+  if ! command -v gsed &> /dev/null; then
     echo "ERROR: GNU sed (gsed) required on macOS. Install via: brew install gnu-sed" >&2
     exit 1
   fi

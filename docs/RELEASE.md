@@ -1,111 +1,110 @@
-# Release Process
+# Releasing KubeLB
 
-## Overview
+## Pre-release (RC / Alpha / Beta)
 
-Prep-PR-driven pipeline: the release-prep workflow creates a PR with bumped versions, generated docs, and release notes. Merging the PR auto-tags CE + EE and triggers the release pipeline.
-
-```
-release-prep workflow -> prep PR (human review) -> merge -> auto-tag CE+EE -> release.yml (GoReleaser + Trivy + Helm) -> docs dispatch
-```
-
-Addons have a separate flow triggered by `addons-v*` tags.
-
-## Minor Release (RC -> GA)
-
-### 1. Create release branch + RC
+Tag and push directly — no prep workflow, no docs update.
 
 ```bash
-# Via workflow (creates branch on CE + EE if needed)
-# In GitHub Actions UI: run "Release Prep" with create_branch=true
-# Or:
-gh workflow run release-prep.yml \
-  -f version=v1.4.0-rc.1 \
-  -f branch=release/v1.4 \
-  -f create_branch=true
+git checkout release/v1.4
+git tag v1.4.0-rc.1
+git push origin v1.4.0-rc.1
 ```
 
-### 2. Review and merge prep PR
+This triggers `release.yml` which builds, scans, and publishes images + charts.
 
-The prep PR contains:
-- Bumped chart versions
-- Regenerated docs (CRD refs, metrics, helm values)
-- Release notes in `docs/changelogs/`
+## Minor Release
 
-Vulnerability scan runs as a separate check on the PR.
+### 1. Run release-prep
 
-### 3. Auto-tag
-
-Merging the prep PR triggers `auto-tag.yml`:
-- Tags CE repo with the version
-- Tags EE repo's `release/vX.Y` branch HEAD with the same version
-- Dispatches docs update to `kubermatic/docs`
-
-### 4. Release pipeline
-
-The CE tag push triggers `release.yml`:
-- GoReleaser builds binaries + Docker images
-- Trivy vulnerability scan
-- SBOM generation + attestation
-- Helm chart publish
-
-The EE tag push triggers EE's own `release.yml`.
-
-### 5. Soak period (RC only)
-
-Test the RC. Cherry-pick fixes to `release/v1.4` as needed.
-
-### 6. GA release
+Go to **Actions → Release Prep → Run workflow**, or:
 
 ```bash
 gh workflow run release-prep.yml \
   -f version=v1.4.0 \
-  -f branch=release/v1.4
+  -f branch=release/v1.4 \
+  -f create_branch=true
 ```
 
-Merge the PR. Same auto-tag + release pipeline flow.
+Use `create_branch=true` for the first release on a new minor — it creates `release/vX.Y` on both CE and EE.
+
+### 2. Review the prep PR
+
+The workflow creates a PR against the release branch with:
+- Bumped chart versions and image tags
+- Regenerated CRD docs, helm docs, metrics, and helm values
+- Combined CE+EE release notes in `docs/changelogs/`
+
+A vulnerability scan (`release-vuln-scan.yml`) runs as a separate check on the PR.
+
+### 3. Merge the prep PR
+
+On merge, `release-auto-tag.yml` runs automatically:
+1. Tags this repo (CE) with the version
+2. Tags `kubermatic/kubelb-ee` with the same version
+3. Creates a docs update PR on `kubermatic/docs`
+4. Comments on the prep PR with links to the CE/EE tags and docs PR
+
+Both CE and EE tag pushes trigger their respective `release.yml` workflows (GoReleaser, Trivy scan, SBOM, Helm charts).
+
+### 4. Review the docs PR
+
+A comment on the prep PR links to the docs PR. Review and merge it.
 
 ## Patch Release
 
-1. Cherry-pick fixes to the release branch (`release/v1.X`)
-2. Run prep: `gh workflow run release-prep.yml -f version=v1.X.Y -f branch=release/v1.X`
-3. Merge PR — auto-tag and release pipeline trigger automatically
+Same as minor, without `create_branch` (release branch already exists):
 
-## Cross-repo Dispatches
+```bash
+gh workflow run release-prep.yml \
+  -f version=v1.4.1 \
+  -f branch=release/v1.4
+```
 
-Triggered by `auto-tag.yml` on prep PR merge:
+Cherry-pick fixes to `release/v1.4` before running prep.
 
-| Dispatch | Target Repo | Event Type | Payload |
-|---|---|---|---|
-| EE tag | `kubermatic/kubelb-ee` | git tag push | version tag |
-| Docs update | `kubermatic/docs` | `workflow_call` via `docs-update.yml` | version, minor, is_patch |
+## What happens when
 
-## Required Secrets
-
-| Secret | Used By | Purpose |
-|---|---|---|
-| `REGISTRY_USER` | release.yml | Container registry auth |
-| `REGISTRY_PASSWORD` | release.yml | Container registry auth |
-| `KUBELB_EE_TOKEN` | release-prep.yml, auto-tag.yml | EE repo access (branch validation, clone, tag) |
-| `KUBERMATIC_DOCS_TOKEN` | docs-update.yml (via auto-tag) | Clone docs repo, push branch, create PR |
-| `GITHUB_TOKEN` | release-prep.yml | PR creation (automatic) |
+| Action | Result |
+| --- | --- |
+| Push `v*` tag | `release.yml` → GoReleaser + Trivy + SBOM + Helm charts |
+| Push `addons-v*` tag | `release.yml` → addons Helm chart only |
+| Merge prep PR to `release/v*` | `release-auto-tag.yml` → tag CE + EE, docs PR, comment on prep PR |
+| PR from `chore/prepare-v*` to `release/v*` | `release-vuln-scan.yml` → Trivy scan on built images |
 
 ## Failure Recovery
 
-| Stage | Recovery |
-|---|---|
-| **Prep workflow** | Fix the issue, re-run the workflow |
-| **Build** | Fix the issue, delete the tag (`git push --delete origin <tag>`), re-tag and push |
-| **Trivy scan** | Fix vulnerabilities or re-run with `skip_vulnerability_scans: true` (testing only) |
-| **Helm push** | Re-run the `helm` job; it's idempotent |
-| **EE tag** | Manually tag EE repo: `git tag <version> && git push origin <version>` |
-| **Docs dispatch** | Manually trigger `kubelb-docs-update.yml` in `kubermatic/docs` |
+| Stage | Fix |
+| --- | --- |
+| Prep workflow | Fix issue, re-run workflow |
+| Build/publish | Delete tag (`git push --delete origin <tag>`), fix, re-tag |
+| Trivy scan | Fix vulns or re-run with `skip_vulnerability_scans: true` |
+| Helm push | Re-run `helm` job (idempotent) |
+| EE tag | Manually: `cd kubelb-ee && git tag <v> && git push origin <v>` |
+| Docs PR | Manually run `release-docs-update.yml` via workflow_dispatch |
 
-For any stage: `release.yml` supports `workflow_dispatch` with `dry_run: true` for testing.
+`release.yml` supports `workflow_dispatch` with `dry_run: true` for testing.
+
+## Required Secrets
+
+| Secret | Workflows | Purpose |
+| --- | --- | --- |
+| `KUBELB_EE_TOKEN` | release-prep, release-auto-tag | EE repo access (branch create, clone, tag) |
+| `KUBERMATIC_DOCS_TOKEN` | release-docs-update | Docs repo access (push branch, create PR) |
+| `REGISTRY_USER` / `REGISTRY_PASSWORD` | release | quay.io container registry |
+| `GITHUB_TOKEN` | release-prep, release-auto-tag | PR creation, comments (automatic) |
 
 ## Scripts (`hack/release/`)
 
 | Script | Purpose |
-|---|---|
-| `bump-versions.sh` | Bumps Chart.yaml version/appVersion and values.yaml image tag for manager and CCM charts. Supports `--dry-run`. |
-| `generate-notes.sh` | Generates combined CE+EE changelog between two tags. Categorizes by `kind/*` labels. Writes to `docs/changelogs/`. |
+| --- | --- |
+| `bump-versions.sh` | Bumps Chart.yaml version/appVersion and values.yaml image tag. Supports `--dry-run`. |
+| `generate-notes.sh` | Generates combined CE+EE changelog between two tags. Writes to `docs/changelogs/`. |
 | `extract-helm-values.sh` | Extracts values tables from helm-docs READMEs for docs site. |
+
+## Makefile Targets
+
+```bash
+make release-prep VERSION=v1.4.0 BRANCH=release/v1.4  # Trigger release-prep workflow
+make release-notes-preview                              # Preview changelog using latest stable tag
+make generate-crd-docs-ee                               # Generate EE API reference docs
+```
