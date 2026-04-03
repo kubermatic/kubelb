@@ -56,9 +56,8 @@ jobs:
           VERSION: ${{ steps.version.outputs.version }}
           MINOR: ${{ steps.version.outputs.minor }}
         run: |
-          git -c "url.https://x-access-token:${KUBELB_EE_TOKEN}@github.com/.insteadOf=https://github.com/" \
-            clone --depth 1 --branch "release/${MINOR}" \
-            "https://github.com/kubermatic/kubelb-ee.git" /tmp/kubelb-ee
+          git clone --depth 1 --branch "release/${MINOR}" \
+            "https://x-access-token:${KUBELB_EE_TOKEN}@github.com/kubermatic/kubelb-ee.git" /tmp/kubelb-ee
 
           cd /tmp/kubelb-ee
           git tag "${VERSION}"
