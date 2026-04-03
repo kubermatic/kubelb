@@ -7,9 +7,12 @@ This document describes all Prometheus metrics exposed by KubeLB components.
 
 ## Table of Contents
 
-- [Manager Metrics](#manager-metrics)
-- [CCM Metrics](#ccm-metrics)
-- [EnvoyCP Metrics](#envoycp-metrics)
+- [KubeLB Metrics Reference](#kubelb-metrics-reference)
+  - [Table of Contents](#table-of-contents)
+  - [Manager Metrics](#manager-metrics)
+  - [CCM Metrics](#ccm-metrics)
+  - [EnvoyCP Metrics](#envoycp-metrics)
+  - [Label Reference](#label-reference)
 
 ---
 

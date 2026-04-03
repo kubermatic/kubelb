@@ -364,13 +364,13 @@ generate-crd-docs: crd-ref-docs ## Generate CE API reference documentation.
 	$(LOCALBIN)/crd-ref-docs --renderer=markdown \
 		--source-path ./api/ce/kubelb.k8c.io \
 		--config=./hack/crd-ref-docs.yaml \
-		--output-path ./docs/api-reference.md
+		--output-path ./docs/generated/api-reference.md
 
 generate-crd-docs-ee: crd-ref-docs ## Generate EE API reference documentation.
 	$(LOCALBIN)/crd-ref-docs --renderer=markdown \
 		--source-path ./api/ee/kubelb.k8c.io \
 		--config=./hack/crd-ref-docs.yaml \
-		--output-path ./docs/api-reference-ee.md
+		--output-path ./docs/generated/api-reference-ee.md
 
 .PHONY: release-prep
 release-prep: ## Trigger release prep workflow.
@@ -384,8 +384,8 @@ release-notes-preview: ## Preview release notes for next release.
 
 .PHONY: generate-metricsdocs
 generate-metricsdocs: ## Generate metrics reference documentation.
-	mkdir -p $(shell pwd)/docs
-	go run ./internal/metricsutil/metricsdocs > docs/metrics.md
+	mkdir -p $(shell pwd)/docs/generated
+	go run ./internal/metricsutil/metricsdocs > docs/generated/metrics.md
 
 .PHONY: update-gateway-api-crds
 update-gateway-api-crds:

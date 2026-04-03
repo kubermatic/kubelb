@@ -119,7 +119,7 @@ jobs:
             echo "::group::CE: helm docs + codegen"
             make helm-lint helm-dependency-update generate-helm-docs
             make update-codegen generate-crd-docs generate-crd-docs-ee
-            ./hack/release/extract-helm-values.sh ./charts ./docs
+            ./hack/release/extract-helm-values.sh ./charts ./docs/generated
             echo "::endgroup::"
           ) &
           CE_PID=$!
@@ -142,10 +142,10 @@ jobs:
             done
 
             go mod download
-            go run ./internal/metricsutil/metricsdocs > "${{ github.workspace }}/docs/metrics-ee.md" || echo "::warning::EE metrics generation failed"
+            go run ./internal/metricsutil/metricsdocs > "${{ github.workspace }}/docs/generated/metrics-ee.md" || echo "::warning::EE metrics generation failed"
             make generate-helm-docs || echo "::warning::EE helm docs generation failed"
             cd "${{ github.workspace }}"
-            ./hack/release/extract-helm-values.sh /tmp/kubelb-ee/charts ./docs "-ee"
+            ./hack/release/extract-helm-values.sh /tmp/kubelb-ee/charts ./docs/generated "-ee"
             echo "::endgroup::"
           ) &
           EE_PID=$!
@@ -202,7 +202,7 @@ jobs:
 
           # Read generated changelog for PR body preview
           MINOR=$(echo "${VERSION}" | grep -oE 'v[0-9]+\.[0-9]+')
-          CHANGELOG_FILE="docs/changelogs/CHANGELOG-${MINOR}.md"
+          CHANGELOG_FILE="docs/generated/changelogs/CHANGELOG-${MINOR}.md"
           NOTES_PREVIEW=""
           if [ -f "$CHANGELOG_FILE" ]; then
             NOTES_PREVIEW=$(cat "$CHANGELOG_FILE" | head -100)

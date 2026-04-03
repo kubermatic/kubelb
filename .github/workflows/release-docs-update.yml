@@ -98,7 +98,7 @@ jobs:
             weight = 60
             +++
 
-            {{< render_external_markdown "https://raw.githubusercontent.com/KUBELB_REPO_PLACEHOLDER/refs/heads/main/docs/changelogs/CHANGELOG-MINOR_PLACEHOLDER.md" >}}
+            {{< render_external_markdown "https://raw.githubusercontent.com/KUBELB_REPO_PLACEHOLDER/refs/heads/main/docs/generated/changelogs/CHANGELOG-MINOR_PLACEHOLDER.md" >}}
           RNEOF
           sed -i 's/^            //' "content/kubelb/${MINOR}/release-notes/_index.en.md"
           sed -i "s|KUBELB_REPO_PLACEHOLDER|${KUBELB_REPO}|g; s|MINOR_PLACEHOLDER|${MINOR}|g" \
@@ -111,7 +111,7 @@ jobs:
             weight = 10
             +++
 
-            {{< render_external_markdown "https://raw.githubusercontent.com/${KUBELB_REPO}/refs/heads/release/${MINOR}/docs/api-reference.md" >}}
+            {{< render_external_markdown "https://raw.githubusercontent.com/${KUBELB_REPO}/refs/heads/release/${MINOR}/docs/generated/api-reference.md" >}}
           CEEOF
           sed -i 's/^            //' "content/kubelb/${MINOR}/references/ce/_index.en.md"
 
@@ -122,7 +122,7 @@ jobs:
             weight = 20
             +++
 
-            {{< render_external_markdown "https://raw.githubusercontent.com/${KUBELB_REPO}/refs/heads/release/${MINOR}/docs/api-reference-ee.md" >}}
+            {{< render_external_markdown "https://raw.githubusercontent.com/${KUBELB_REPO}/refs/heads/release/${MINOR}/docs/generated/api-reference-ee.md" >}}
           EEEOF
           sed -i 's/^            //' "content/kubelb/${MINOR}/references/ee/_index.en.md"
 
@@ -157,10 +157,10 @@ jobs:
           DOCS_DIR="content/kubelb/${MINOR}"
 
           declare -A MARKERS
-          MARKERS["kubelb-manager"]="docs/helm-values-kubelb-manager.md"
-          MARKERS["kubelb-ccm"]="docs/helm-values-kubelb-ccm.md"
-          MARKERS["kubelb-manager-ee"]="docs/helm-values-kubelb-manager-ee.md"
-          MARKERS["kubelb-ccm-ee"]="docs/helm-values-kubelb-ccm-ee.md"
+          MARKERS["kubelb-manager"]="docs/generated/helm-values-kubelb-manager.md"
+          MARKERS["kubelb-ccm"]="docs/generated/helm-values-kubelb-ccm.md"
+          MARKERS["kubelb-manager-ee"]="docs/generated/helm-values-kubelb-manager-ee.md"
+          MARKERS["kubelb-ccm-ee"]="docs/generated/helm-values-kubelb-ccm-ee.md"
 
           for marker in "${!MARKERS[@]}"; do
             REMOTE_FILE="${MARKERS[$marker]}"

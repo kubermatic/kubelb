@@ -26,7 +26,7 @@
 # - Deduplicates: if all EE notes appear in CE, shows unified output (no EE section)
 # - If EE has unique notes, shows separate CE and EE sections
 # - Appends release artifacts template (always split CE/EE)
-# - Writes to docs/changelogs/CHANGELOG-v{MINOR}.md
+# - Writes to docs/generated/changelogs/CHANGELOG-v{MINOR}.md
 set -euo pipefail
 
 VERSION="${1:?Usage: generate-notes.sh <VERSION> <PREV_TAG> [--ee-repo <owner/repo> --ee-path <path>] [CE_REPO]}"
@@ -216,7 +216,7 @@ fi
 OUTPUT+="\`\`\`\n\n</details>\n"
 
 # Write to changelog file
-CHANGELOG="${REPO_ROOT}/docs/changelogs/CHANGELOG-${MINOR}.md"
+CHANGELOG="${REPO_ROOT}/docs/generated/changelogs/CHANGELOG-${MINOR}.md"
 mkdir -p "$(dirname "$CHANGELOG")"
 
 if [[ ! -f "$CHANGELOG" ]]; then
