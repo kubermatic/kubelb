@@ -360,11 +360,27 @@ crd-ref-docs: $(CRD_REF_DOCS) ## Download crd-ref-docs locally if necessary.
 $(CRD_REF_DOCS): $(LOCALBIN)
 	test -s $(LOCALBIN)/crd-ref-docs || GOBIN=$(LOCALBIN) go install github.com/elastic/crd-ref-docs@$(CRD_REF_DOCS_VERSION)
 
-generate-crd-docs: crd-ref-docs ## Generate API reference documentation.
+generate-crd-docs: crd-ref-docs ## Generate CE API reference documentation.
 	$(LOCALBIN)/crd-ref-docs --renderer=markdown \
 		--source-path ./api/ce/kubelb.k8c.io \
 		--config=./hack/crd-ref-docs.yaml \
 		--output-path ./docs/api-reference.md
+
+generate-crd-docs-ee: crd-ref-docs ## Generate EE API reference documentation.
+	$(LOCALBIN)/crd-ref-docs --renderer=markdown \
+		--source-path ./api/ee/kubelb.k8c.io \
+		--config=./hack/crd-ref-docs.yaml \
+		--output-path ./docs/api-reference-ee.md
+
+.PHONY: release-prep
+release-prep: ## Trigger release prep workflow.
+	@if [ -z "$(VERSION)" ] || [ -z "$(BRANCH)" ]; then echo "Usage: make release-prep VERSION=v1.4.0 BRANCH=release/v1.4"; exit 1; fi
+	gh workflow run release-prep.yml -f version=$(VERSION) -f branch=$(BRANCH)
+
+.PHONY: release-notes-preview
+release-notes-preview: ## Preview release notes for next release.
+	@PREV_TAG=$$(git tag --sort=-v:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$$' | head -1); \
+	./hack/release/generate-notes.sh "preview" "$$PREV_TAG"
 
 .PHONY: generate-metricsdocs
 generate-metricsdocs: ## Generate metrics reference documentation.
