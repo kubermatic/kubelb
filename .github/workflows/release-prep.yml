@@ -18,7 +18,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: "Release version (e.g. v1.4.0, v1.4.0-rc.1)"
+        description: "Release version (e.g. v1.4.0)"
         required: true
         type: string
       branch:
@@ -37,8 +37,9 @@ jobs:
     timeout-minutes: 30
     steps:
       - name: Validate version format
+        env:
+          VERSION: ${{ inputs.version }}
         run: |
-          VERSION="${{ inputs.version }}"
           if [[ ! "$VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
             echo "::error::Invalid version format: $VERSION (expected stable semver: v1.4.0, v1.4.1). Pre-releases (RC/alpha/beta) should use direct tag+push instead."
             exit 1
@@ -50,17 +51,20 @@ jobs:
           fetch-depth: 0
 
       - name: Validate tag doesn't exist
+        env:
+          VERSION: ${{ inputs.version }}
         run: |
-          if git rev-parse "${{ inputs.version }}" >/dev/null 2>&1; then
-            echo "::error::Tag ${{ inputs.version }} already exists"
+          if git rev-parse "$VERSION" >/dev/null 2>&1; then
+            echo "::error::Tag $VERSION already exists"
             exit 1
           fi
 
       - name: Ensure EE release branch exists
         env:
           GH_TOKEN: ${{ secrets.KUBELB_EE_TOKEN }}
+          VERSION: ${{ inputs.version }}
         run: |
-          MINOR=$(echo "${{ inputs.version }}" | grep -oE 'v[0-9]+\.[0-9]+')
+          MINOR=$(echo "$VERSION" | grep -oE 'v[0-9]+\.[0-9]+')
           EE_REPO="kubermatic/kubelb-ee"
           if gh api "repos/${EE_REPO}/branches/release/${MINOR}" --jq '.name' >/dev/null 2>&1; then
             echo "::notice::EE release branch release/${MINOR} already exists"
@@ -74,18 +78,22 @@ jobs:
           fi
 
       - name: Ensure CE release branch exists
+        env:
+          BRANCH: ${{ inputs.branch }}
         run: |
-          if ! git ls-remote --exit-code --heads origin "${{ inputs.branch }}" >/dev/null 2>&1; then
-            echo "Creating CE release branch ${{ inputs.branch }} from main..."
+          if ! git ls-remote --exit-code --heads origin "$BRANCH" >/dev/null 2>&1; then
+            echo "Creating CE release branch $BRANCH from main..."
             git checkout main
-            git checkout -b "${{ inputs.branch }}"
-            git push origin "${{ inputs.branch }}"
+            git checkout -b "$BRANCH"
+            git push origin "$BRANCH"
           else
-            echo "::notice::Branch ${{ inputs.branch }} already exists"
+            echo "::notice::Branch $BRANCH already exists"
           fi
 
       - name: Checkout release branch
-        run: git checkout "${{ inputs.branch }}"
+        env:
+          BRANCH: ${{ inputs.branch }}
+        run: git checkout "$BRANCH"
 
       - name: Setup Go
         uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417 # v6.3.0
@@ -96,7 +104,7 @@ jobs:
         uses: azure/setup-helm@1a275c3b69536ee54be43f2070a358922e12c8d4 # v4.3.1
 
       - name: Setup golangci-lint
-        uses: golangci/golangci-lint-action@v7
+        uses: golangci/golangci-lint-action@4afd733a84b1f43292c63897423277bb7f4313a9 # v7.0.0
         with:
           version: v2.11.4
           args: --help
@@ -105,14 +113,17 @@ jobs:
         run: go install k8s.io/release/cmd/release-notes@6ba294d3b031d2b69d903a1e92ce86a695d84dbd
 
       - name: Bump versions
-        run: ./hack/release/bump-versions.sh "${{ inputs.version }}"
+        env:
+          VERSION: ${{ inputs.version }}
+        run: ./hack/release/bump-versions.sh "$VERSION"
 
       - name: Generate artifacts (CE codegen + EE clone in parallel)
         env:
           KUBELB_EE_TOKEN: ${{ secrets.KUBELB_EE_TOKEN }}
+          VERSION: ${{ inputs.version }}
+          WORKSPACE: ${{ github.workspace }}
         run: |
-          MINOR=$(echo "${{ inputs.version }}" | grep -oE 'v[0-9]+\.[0-9]+')
-          VERSION="${{ inputs.version }}"
+          MINOR=$(echo "$VERSION" | grep -oE 'v[0-9]+\.[0-9]+')
 
           # --- CE artifacts (background) ---
           (
@@ -127,13 +138,13 @@ jobs:
           # --- EE artifacts (background) ---
           (
             echo "::group::EE: clone + generate"
-            git clone --branch "release/${MINOR}" \
-              "https://x-access-token:${KUBELB_EE_TOKEN}@github.com/kubermatic/kubelb-ee.git" /tmp/kubelb-ee
+            git -c "url.https://x-access-token:${KUBELB_EE_TOKEN}@github.com/.insteadOf=https://github.com/" \
+              clone --branch "release/${MINOR}" \
+              "https://github.com/kubermatic/kubelb-ee.git" /tmp/kubelb-ee
 
             cd /tmp/kubelb-ee
             git fetch --tags
 
-            # Bump EE chart versions to match CE
             for chart in kubelb-manager kubelb-ccm; do
               [ -f "charts/${chart}/Chart.yaml" ] || continue
               sed -i "s/^version:.*/version: ${VERSION}/" "charts/${chart}/Chart.yaml"
@@ -142,15 +153,14 @@ jobs:
             done
 
             go mod download
-            go run ./internal/metricsutil/metricsdocs > "${{ github.workspace }}/docs/generated/metrics-ee.md" || echo "::warning::EE metrics generation failed"
+            go run ./internal/metricsutil/metricsdocs > "${WORKSPACE}/docs/generated/metrics-ee.md" || echo "::warning::EE metrics generation failed"
             make generate-helm-docs || echo "::warning::EE helm docs generation failed"
-            cd "${{ github.workspace }}"
+            cd "${WORKSPACE}"
             ./hack/release/extract-helm-values.sh /tmp/kubelb-ee/charts ./docs/generated "-ee"
             echo "::endgroup::"
           ) &
           EE_PID=$!
 
-          # Wait for both
           CE_EXIT=0; EE_EXIT=0
           wait $CE_PID || CE_EXIT=$?
           wait $EE_PID || EE_EXIT=$?
@@ -162,9 +172,8 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.KUBELB_EE_TOKEN }}
           GITHUB_TOKEN: ${{ secrets.KUBELB_EE_TOKEN }}
+          VERSION: ${{ inputs.version }}
         run: |
-          VERSION="${{ inputs.version }}"
-          # Find previous stable tag whose commit is in our branch history
           PREV_TAG=""
           for tag in $(git tag --sort=-v:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$'); do
             if git log "${tag}..HEAD" --oneline -1 >/dev/null 2>&1; then
@@ -188,8 +197,9 @@ jobs:
       - name: Create prep branch and PR
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ inputs.version }}
+          BASE_BRANCH: ${{ inputs.branch }}
         run: |
-          VERSION="${{ inputs.version }}"
           BRANCH="chore/prepare-${VERSION}"
 
           git config user.name "github-actions[bot]"
@@ -200,19 +210,18 @@ jobs:
           git commit -m "chore: prepare ${VERSION}"
           git push origin "${BRANCH}"
 
-          # Read generated changelog for PR body preview
           MINOR=$(echo "${VERSION}" | grep -oE 'v[0-9]+\.[0-9]+')
           CHANGELOG_FILE="docs/changelogs/CHANGELOG-${MINOR}.md"
           NOTES_PREVIEW=""
           if [ -f "$CHANGELOG_FILE" ]; then
-            NOTES_PREVIEW=$(cat "$CHANGELOG_FILE" | head -100)
+            NOTES_PREVIEW=$(head -100 "$CHANGELOG_FILE")
           fi
 
           gh pr create \
-            --base "${{ inputs.branch }}" \
+            --base "${BASE_BRANCH}" \
             --head "${BRANCH}" \
             --title "chore: prepare ${VERSION}" \
-            --body "$(cat <<EOF
+            --body-file - <<PREOF
           **What this PR does / why we need it**:
           Prepare release ${VERSION}. Bumps chart versions, regenerates docs, and generates release notes.
 
@@ -246,9 +255,7 @@ jobs:
           \`\`\`documentation
           NONE
           \`\`\`
-          EOF
-          )"
+          PREOF
 
-          # Labels may not exist on forks — don't fail
           gh pr edit "${BRANCH}" --add-label "release-note-none" 2>/dev/null || true
           gh pr edit "${BRANCH}" --add-label "kind/chore" 2>/dev/null || true

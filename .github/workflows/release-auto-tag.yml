@@ -21,17 +21,16 @@ jobs:
     steps:
       - name: Extract version
         id: version
+        env:
+          HEAD_REF: ${{ github.event.pull_request.head.ref }}
         run: |
-          BRANCH="${{ github.event.pull_request.head.ref }}"
           # chore/prepare-v1.4.0 → v1.4.0
-          VERSION="${BRANCH#chore/prepare-}"
+          VERSION="${HEAD_REF#chore/prepare-}"
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
 
-          # Extract minor: v1.4.0 → v1.4
           MINOR=$(echo "$VERSION" | grep -oE 'v[0-9]+\.[0-9]+')
           echo "minor=${MINOR}" >> "$GITHUB_OUTPUT"
 
-          # Detect patch: v1.4.0 ends in .0 = minor, else patch
           if [[ "$VERSION" =~ \.0$ ]]; then
             echo "is_patch=false" >> "$GITHUB_OUTPUT"
           else
@@ -44,19 +43,22 @@ jobs:
           fetch-depth: 0
 
       - name: Tag CE repo
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          MERGE_SHA: ${{ github.event.pull_request.merge_commit_sha }}
         run: |
-          git tag "${{ steps.version.outputs.version }}" "${{ github.event.pull_request.merge_commit_sha }}"
-          git push origin "${{ steps.version.outputs.version }}"
+          git tag "$VERSION" "$MERGE_SHA"
+          git push origin "$VERSION"
 
       - name: Tag EE repo
         env:
           KUBELB_EE_TOKEN: ${{ secrets.KUBELB_EE_TOKEN }}
+          VERSION: ${{ steps.version.outputs.version }}
+          MINOR: ${{ steps.version.outputs.minor }}
         run: |
-          VERSION="${{ steps.version.outputs.version }}"
-          MINOR="${{ steps.version.outputs.minor }}"
-
-          git clone --depth 1 --branch "release/${MINOR}" \
-            "https://x-access-token:${KUBELB_EE_TOKEN}@github.com/kubermatic/kubelb-ee.git" /tmp/kubelb-ee
+          git -c "url.https://x-access-token:${KUBELB_EE_TOKEN}@github.com/.insteadOf=https://github.com/" \
+            clone --depth 1 --branch "release/${MINOR}" \
+            "https://github.com/kubermatic/kubelb-ee.git" /tmp/kubelb-ee
 
           cd /tmp/kubelb-ee
           git tag "${VERSION}"
@@ -82,13 +84,13 @@ jobs:
       - name: Comment on prep PR
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ needs.auto-tag.outputs.version }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          DOCS_PR: ${{ needs.docs-update.outputs.docs_pr_url }}
+          REPO: ${{ github.repository }}
         run: |
-          VERSION="${{ needs.auto-tag.outputs.version }}"
-          PR_NUMBER="${{ github.event.pull_request.number }}"
-          DOCS_PR="${{ needs.docs-update.outputs.docs_pr_url }}"
-
           BODY="### Release ${VERSION} — post-merge summary\n\n"
-          BODY+="- **CE tag:** [\`${VERSION}\`](https://github.com/${{ github.repository }}/releases/tag/${VERSION})\n"
+          BODY+="- **CE tag:** [\`${VERSION}\`](https://github.com/${REPO}/releases/tag/${VERSION})\n"
           BODY+="- **EE tag:** [\`${VERSION}\`](https://github.com/kubermatic/kubelb-ee/releases/tag/${VERSION})\n"
 
           if [ -n "$DOCS_PR" ]; then

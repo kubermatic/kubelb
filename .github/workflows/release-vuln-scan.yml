@@ -36,7 +36,7 @@ jobs:
 
       - name: Install and run Trivy
         run: |
-          curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b /usr/local/bin
+          curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/cfa322ed23f2e33ef1632ae3a5a8c7172f06a5c3/contrib/install.sh | sh -s -- -b /usr/local/bin v0.69.2
           EXIT_CODE=0
           for img in kubelb-manager:scan kubelb-ccm:scan; do
             echo "=== Scanning ${img} ==="
