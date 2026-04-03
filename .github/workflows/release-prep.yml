@@ -25,11 +25,6 @@ on:
         description: "Target release branch (e.g. release/v1.4)"
         required: true
         type: string
-      create_branch:
-        description: "Create release branch from main if it doesn't exist"
-        required: false
-        type: boolean
-        default: false
 
 permissions: {}
 
@@ -69,27 +64,24 @@ jobs:
           EE_REPO="kubermatic/kubelb-ee"
           if gh api "repos/${EE_REPO}/branches/release/${MINOR}" --jq '.name' >/dev/null 2>&1; then
             echo "::notice::EE release branch release/${MINOR} already exists"
-          elif [[ "${{ inputs.create_branch }}" == "true" ]]; then
+          else
             echo "Creating EE release branch release/${MINOR} from main..."
             MAIN_SHA=$(gh api "repos/${EE_REPO}/git/ref/heads/main" --jq '.object.sha')
             gh api "repos/${EE_REPO}/git/refs" \
               -f ref="refs/heads/release/${MINOR}" \
               -f sha="$MAIN_SHA"
             echo "::notice::Created EE release branch release/${MINOR}"
-          else
-            echo "::error::EE release branch release/${MINOR} does not exist on ${EE_REPO}. Re-run with create_branch=true to create it."
-            exit 1
           fi
 
-      - name: Create release branch from main
-        if: inputs.create_branch
+      - name: Ensure CE release branch exists
         run: |
           if ! git ls-remote --exit-code --heads origin "${{ inputs.branch }}" >/dev/null 2>&1; then
+            echo "Creating CE release branch ${{ inputs.branch }} from main..."
             git checkout main
             git checkout -b "${{ inputs.branch }}"
             git push origin "${{ inputs.branch }}"
           else
-            echo "::notice::Branch ${{ inputs.branch }} already exists, skipping creation"
+            echo "::notice::Branch ${{ inputs.branch }} already exists"
           fi
 
       - name: Checkout release branch

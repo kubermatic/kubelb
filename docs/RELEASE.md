@@ -21,15 +21,15 @@ Go to **Actions → Release Prep → Run workflow**, or:
 ```bash
 gh workflow run release-prep.yml \
   -f version=v1.4.0 \
-  -f branch=release/v1.4 \
-  -f create_branch=true
+  -f branch=release/v1.4
 ```
 
-Use `create_branch=true` for the first release on a new minor — it creates `release/vX.Y` on both CE and EE.
+If `release/v1.4` doesn't exist on CE or EE, it's created from main automatically.
 
 ### 2. Review the prep PR
 
 The workflow creates a PR against the release branch with:
+
 - Bumped chart versions and image tags
 - Regenerated CRD docs, helm docs, metrics, and helm values
 - Combined CE+EE release notes in `docs/changelogs/`
@@ -39,6 +39,7 @@ A vulnerability scan (`release-vuln-scan.yml`) runs as a separate check on the P
 ### 3. Merge the prep PR
 
 On merge, `release-auto-tag.yml` runs automatically:
+
 1. Tags this repo (CE) with the version
 2. Tags `kubermatic/kubelb-ee` with the same version
 3. Creates a docs update PR on `kubermatic/docs`
