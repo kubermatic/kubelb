@@ -83,6 +83,10 @@ strip_wrapper() {
   sed '/^- \[Changes by Kind\]/,/^$/d; /^## Changes by Kind$/d'
 }
 
+prefix_ee_headings() {
+  sed -E 's/^(#{3,}) /\1 EE /'
+}
+
 find_upstream_head() {
   local org="$1" repo="$2"
   # Get the upstream repo's default branch HEAD SHA via API.
@@ -104,10 +108,15 @@ run_release_notes() {
 
   log_file=$(mktemp)
   rp_flag=""
-  local did_stash=false
-  if [[ -d "${repo_path}/.git" ]]; then
-    if git -C "$repo_path" stash --quiet 2> /dev/null; then
-      did_stash=true
+  # Only use --repo-path for external clones (EE), never for the workspace.
+  # Using --repo-path on the workspace causes the tool to run `git pull --rebase`
+  # which can fail (no tracking) and `git stash` which destroys uncommitted prep changes.
+  if [[ "$repo_path" != "$REPO_ROOT" && -d "${repo_path}/.git" ]]; then
+    git -C "$repo_path" stash --quiet 2> /dev/null || true
+    local current_branch
+    current_branch=$(git -C "$repo_path" rev-parse --abbrev-ref HEAD 2> /dev/null || echo "")
+    if [[ -n "$current_branch" && "$current_branch" != "HEAD" ]]; then
+      git -C "$repo_path" branch --set-upstream-to="origin/${current_branch}" "$current_branch" 2> /dev/null || true
     fi
     rp_flag="--repo-path ${repo_path}"
   fi
@@ -127,10 +136,6 @@ run_release_notes() {
     $rp_flag 2>&1 | tee "$log_file" | grep -v "^level=info"
   local rc=${PIPESTATUS[0]}
   set -e
-
-  if [[ "$did_stash" == "true" ]]; then
-    git -C "$repo_path" stash pop --quiet 2> /dev/null || true
-  fi
 
   if [ $rc -ne 0 ]; then
     echo "  WARNING: release-notes tool exited with code $rc" >&2
@@ -173,7 +178,7 @@ if [[ -n "$EE_REPO" && -n "$EE_PATH" ]]; then
     EE_UNIQUE=$(comm -23 <(echo "$EE_TEXTS") <(echo "$CE_TEXTS") 2> /dev/null || echo "$EE_TEXTS")
     if [[ -n "$EE_UNIQUE" ]]; then
       EE_HAS_UNIQUE=true
-      EE_NOTES="$EE_NOTES_RAW"
+      EE_NOTES=$(echo "$EE_NOTES_RAW" | prefix_ee_headings)
     fi
   fi
 fi
@@ -191,6 +196,7 @@ if [[ "$EE_HAS_UNIQUE" == "true" ]]; then
     OUTPUT+="No notable changes.\n"
   fi
   OUTPUT+="\n### Enterprise Edition\n\n"
+  OUTPUT+="**Enterprise Edition includes everything from Community Edition and more. The release notes below are for changes specific to just the Enterprise Edition.**\n\n"
   OUTPUT+="${EE_NOTES}\n"
 else
   # Unified: no separate EE section (all EE notes are cherry-picks from CE)
@@ -201,26 +207,107 @@ else
   fi
 fi
 
+ADDONS_VERSION=$(grep -E '^KUBELB_ADDONS_CHART_VERSION \?=' "${REPO_ROOT}/Makefile" 2> /dev/null | cut -d'=' -f2 | tr -d ' ' || echo "")
+
 # Release artifacts (always split CE/EE)
 OUTPUT+="\n### Release Artifacts\n\n"
 OUTPUT+="#### Community Edition\n\n"
 OUTPUT+="For Community Edition, the release artifacts are available on [GitHub Releases](https://github.com/${CE_REPO}/releases/tag/${VERSION}).\n\n"
 OUTPUT+="#### Enterprise Edition\n\n"
+
 OUTPUT+="<details>\n<summary><b>Docker Images</b></summary>\n\n"
 OUTPUT+="\`\`\`bash\n"
-OUTPUT+="docker pull quay.io/kubermatic/kubelb-manager-ee:${VERSION}\n"
-OUTPUT+="docker pull quay.io/kubermatic/kubelb-ccm-ee:${VERSION}\n"
+OUTPUT+="# Login to registry\n"
+OUTPUT+="docker login quay.io -u <username> -p <password>\n\n"
+OUTPUT+="# kubelb manager\n"
+OUTPUT+="docker pull quay.io/kubermatic/kubelb-manager-ee:${VERSION}\n\n"
+OUTPUT+="# ccm\n"
+OUTPUT+="docker pull quay.io/kubermatic/kubelb-ccm-ee:${VERSION}\n\n"
+OUTPUT+="# connection-manager\n"
 OUTPUT+="docker pull quay.io/kubermatic/kubelb-connection-manager-ee:${VERSION}\n"
 OUTPUT+="\`\`\`\n\n</details>\n\n"
+
 OUTPUT+="<details>\n<summary><b>Helm Charts</b></summary>\n\n"
 OUTPUT+="\`\`\`bash\n"
-OUTPUT+="helm pull oci://quay.io/kubermatic/helm-charts/kubelb-manager-ee --version ${VERSION}\n"
-OUTPUT+="helm pull oci://quay.io/kubermatic/helm-charts/kubelb-ccm-ee --version ${VERSION}\n"
-ADDONS_VERSION=$(grep -E '^KUBELB_ADDONS_CHART_VERSION \?=' "${REPO_ROOT}/Makefile" 2> /dev/null | cut -d'=' -f2 | tr -d ' ' || echo "")
-if [[ -n "$ADDONS_VERSION" ]]; then
-  OUTPUT+="helm pull oci://quay.io/kubermatic/helm-charts/kubelb-addons --version ${ADDONS_VERSION}\n"
-fi
-OUTPUT+="\`\`\`\n\n</details>\n"
+OUTPUT+="# kubelb-manager\n"
+OUTPUT+="helm pull oci://quay.io/kubermatic/helm-charts/kubelb-manager-ee --version ${VERSION}\n\n"
+OUTPUT+="# kubelb-ccm\n"
+OUTPUT+="helm pull oci://quay.io/kubermatic/helm-charts/kubelb-ccm-ee --version ${VERSION}\n\n"
+OUTPUT+="# kubelb-addons\n"
+OUTPUT+="helm pull oci://quay.io/kubermatic/helm-charts/kubelb-addons --version ${ADDONS_VERSION}\n"
+OUTPUT+="\`\`\`\n\n</details>\n\n"
+
+OUTPUT+="<details>\n<summary><b>SBOMs</b></summary>\n\n"
+OUTPUT+="Container image SBOMs are attached as OCI artifacts and attested with cosign.\n\n"
+OUTPUT+="**Pull SBOM:**\n\n"
+OUTPUT+="\`\`\`bash\n"
+OUTPUT+="# Login to registry\n"
+OUTPUT+="oras login quay.io -u <username> -p <password>\n\n"
+OUTPUT+="## kubelb-manager\n"
+OUTPUT+="SBOM_DIGEST=\$(oras discover --format json --artifact-type application/spdx+json \\\\\n"
+OUTPUT+="  quay.io/kubermatic/kubelb-manager-ee:${VERSION} | jq -r '.referrers[0].digest')\n"
+OUTPUT+="oras pull quay.io/kubermatic/kubelb-manager-ee@\${SBOM_DIGEST} --output sbom/\n\n"
+OUTPUT+="## kubelb-ccm\n"
+OUTPUT+="SBOM_DIGEST=\$(oras discover --format json --artifact-type application/spdx+json \\\\\n"
+OUTPUT+="  quay.io/kubermatic/kubelb-ccm-ee:${VERSION} | jq -r '.referrers[0].digest')\n"
+OUTPUT+="oras pull quay.io/kubermatic/kubelb-ccm-ee@\${SBOM_DIGEST} --output sbom/\n\n"
+OUTPUT+="## kubelb-connection-manager\n"
+OUTPUT+="SBOM_DIGEST=\$(oras discover --format json --artifact-type application/spdx+json \\\\\n"
+OUTPUT+="  quay.io/kubermatic/kubelb-connection-manager-ee:${VERSION} | jq -r '.referrers[0].digest')\n"
+OUTPUT+="oras pull quay.io/kubermatic/kubelb-connection-manager-ee@\${SBOM_DIGEST} --output sbom/\n"
+OUTPUT+="\`\`\`\n\n"
+OUTPUT+="**Verify SBOM attestation:**\n\n"
+OUTPUT+="\`\`\`bash\n"
+OUTPUT+="cosign verify-attestation quay.io/kubermatic/kubelb-manager-ee:${VERSION} \\\\\n"
+OUTPUT+="  --type spdxjson \\\\\n"
+OUTPUT+="  --certificate-identity-regexp=\"^https://github.com/kubermatic/kubelb-ee/.github/workflows/release.yml@refs/tags/v.*\" \\\\\n"
+OUTPUT+="  --certificate-oidc-issuer=https://token.actions.githubusercontent.com\n\n"
+OUTPUT+="cosign verify-attestation quay.io/kubermatic/kubelb-ccm-ee:${VERSION} \\\\\n"
+OUTPUT+="  --type spdxjson \\\\\n"
+OUTPUT+="  --certificate-identity-regexp=\"^https://github.com/kubermatic/kubelb-ee/.github/workflows/release.yml@refs/tags/v.*\" \\\\\n"
+OUTPUT+="  --certificate-oidc-issuer=https://token.actions.githubusercontent.com\n\n"
+OUTPUT+="cosign verify-attestation quay.io/kubermatic/kubelb-connection-manager-ee:${VERSION} \\\\\n"
+OUTPUT+="  --type spdxjson \\\\\n"
+OUTPUT+="  --certificate-identity-regexp=\"^https://github.com/kubermatic/kubelb-ee/.github/workflows/release.yml@refs/tags/v.*\" \\\\\n"
+OUTPUT+="  --certificate-oidc-issuer=https://token.actions.githubusercontent.com\n"
+OUTPUT+="\`\`\`\n\n</details>\n\n"
+
+OUTPUT+="<details>\n<summary><b>Verify Signatures</b></summary>\n\n"
+OUTPUT+="**Docker images:**\n\n"
+OUTPUT+="\`\`\`bash\n"
+OUTPUT+="cosign verify quay.io/kubermatic/kubelb-manager-ee:${VERSION} \\\\\n"
+OUTPUT+="  --certificate-identity-regexp=\"^https://github.com/kubermatic/kubelb-ee/.github/workflows/release.yml@refs/tags/v.*\" \\\\\n"
+OUTPUT+="  --certificate-oidc-issuer=https://token.actions.githubusercontent.com\n\n"
+OUTPUT+="cosign verify quay.io/kubermatic/kubelb-ccm-ee:${VERSION} \\\\\n"
+OUTPUT+="  --certificate-identity-regexp=\"^https://github.com/kubermatic/kubelb-ee/.github/workflows/release.yml@refs/tags/v.*\" \\\\\n"
+OUTPUT+="  --certificate-oidc-issuer=https://token.actions.githubusercontent.com\n\n"
+OUTPUT+="cosign verify quay.io/kubermatic/kubelb-connection-manager-ee:${VERSION} \\\\\n"
+OUTPUT+="  --certificate-identity-regexp=\"^https://github.com/kubermatic/kubelb-ee/.github/workflows/release.yml@refs/tags/v.*\" \\\\\n"
+OUTPUT+="  --certificate-oidc-issuer=https://token.actions.githubusercontent.com\n"
+OUTPUT+="\`\`\`\n\n"
+OUTPUT+="**Helm charts:**\n\n"
+OUTPUT+="\`\`\`bash\n"
+OUTPUT+="cosign verify quay.io/kubermatic/helm-charts/kubelb-manager-ee:${VERSION} \\\\\n"
+OUTPUT+="  --certificate-identity-regexp=\"^https://github.com/kubermatic/kubelb-ee/.github/workflows/release.yml@refs/tags/v.*\" \\\\\n"
+OUTPUT+="  --certificate-oidc-issuer=https://token.actions.githubusercontent.com\n\n"
+OUTPUT+="cosign verify quay.io/kubermatic/helm-charts/kubelb-ccm-ee:${VERSION} \\\\\n"
+OUTPUT+="  --certificate-identity-regexp=\"^https://github.com/kubermatic/kubelb-ee/.github/workflows/release.yml@refs/tags/v.*\" \\\\\n"
+OUTPUT+="  --certificate-oidc-issuer=https://token.actions.githubusercontent.com\n\n"
+OUTPUT+="cosign verify quay.io/kubermatic/helm-charts/kubelb-addons:${ADDONS_VERSION} \\\\\n"
+OUTPUT+="  --certificate-identity-regexp=\"^https://github.com/kubermatic/kubelb/.github/workflows/release.yml@refs/tags/addons-v.*\" \\\\\n"
+OUTPUT+="  --certificate-oidc-issuer=https://token.actions.githubusercontent.com\n"
+OUTPUT+="\`\`\`\n\n"
+OUTPUT+="**Release checksums (requires repository access):**\n\n"
+OUTPUT+="\`\`\`bash\n"
+OUTPUT+="cosign verify-blob --bundle checksums.txt.sigstore.json checksums.txt \\\\\n"
+OUTPUT+="  --certificate-identity-regexp=\"^https://github.com/kubermatic/kubelb-ee/.github/workflows/release.yml@refs/tags/v.*\" \\\\\n"
+OUTPUT+="  --certificate-oidc-issuer=https://token.actions.githubusercontent.com\n"
+OUTPUT+="\`\`\`\n\n</details>\n\n"
+
+OUTPUT+="<details>\n<summary><b>Tools</b></summary>\n\n"
+OUTPUT+="- [Cosign](https://github.com/sigstore/cosign) - Container signing\n"
+OUTPUT+="- [ORAS](https://oras.land) - OCI Registry As Storage\n\n"
+OUTPUT+="</details>\n"
 
 # Write to changelog file
 CHANGELOG="${REPO_ROOT}/docs/changelogs/CHANGELOG-${MINOR}.md"
