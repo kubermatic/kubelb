@@ -146,36 +146,43 @@ jobs:
             fi
           done
 
-      - name: Replace helm values tables with render_external_markdown
+      - name: Replace helm values tables between marker comments
         env:
           MINOR: ${{ inputs.minor }}
+          VERSION: ${{ inputs.version }}
         run: |
           DOCS_DIR="content/kubelb/${MINOR}"
-          BRANCH="release/${MINOR}"
 
-          declare -A VALUES_MAP
-          VALUES_MAP["KubeLB Manager EE Values"]="docs/helm-values-kubelb-manager-ee.md"
-          VALUES_MAP["KubeLB Manager CE Values"]="docs/helm-values-kubelb-manager.md"
-          VALUES_MAP["KubeLB CCM EE Values"]="docs/helm-values-kubelb-ccm-ee.md"
-          VALUES_MAP["KubeLB CCM CE Values"]="docs/helm-values-kubelb-ccm.md"
+          declare -A MARKERS
+          MARKERS["kubelb-manager"]="docs/helm-values-kubelb-manager.md"
+          MARKERS["kubelb-ccm"]="docs/helm-values-kubelb-ccm.md"
+          MARKERS["kubelb-manager-ee"]="docs/helm-values-kubelb-manager-ee.md"
+          MARKERS["kubelb-ccm-ee"]="docs/helm-values-kubelb-ccm-ee.md"
 
-          for page in management-cluster tenant-cluster; do
-            FILE="${DOCS_DIR}/installation/${page}/_index.en.md"
-            [[ -f "$FILE" ]] || continue
+          for marker in "${!MARKERS[@]}"; do
+            REMOTE_FILE="${MARKERS[$marker]}"
+            RAW_URL="https://raw.githubusercontent.com/${KUBELB_REPO}/refs/tags/${VERSION}/${REMOTE_FILE}"
+            TABLE=$(curl -sfL "$RAW_URL" || echo "")
 
-            for header in "${!VALUES_MAP[@]}"; do
-              REMOTE_FILE="${VALUES_MAP[$header]}"
-              URL="https://raw.githubusercontent.com/${KUBELB_REPO}/refs/heads/${BRANCH}/${REMOTE_FILE}"
+            if [ -z "$TABLE" ]; then
+              echo "::warning::Could not fetch ${REMOTE_FILE} for ${VERSION}, skipping ${marker}"
+              continue
+            fi
 
-              if grep -q "### ${header}" "$FILE"; then
-                sed -i "/### ${header}/,/^$/{
-                  /### ${header}/!{
-                    /^$/!d
+            START_MARKER="<!-- helm-values-${marker} start -->"
+            END_MARKER="<!-- helm-values-${marker} end -->"
+
+            find "${DOCS_DIR}" -name "*.md" -type f | while read -r file; do
+              if grep -q "$START_MARKER" "$file"; then
+                # Replace content between markers (keep markers intact)
+                sed -i "/${START_MARKER}/,/${END_MARKER}/{
+                  /${START_MARKER}/!{
+                    /${END_MARKER}/!d
                   }
-                }" "$FILE"
-                SHORTCODE="{{< render_external_markdown \"${URL}\" >}}"
-                sed -i "/### ${header}/a\\\\n${SHORTCODE}" "$FILE"
-                echo "  Replaced ${header} table in ${page} with shortcode"
+                }" "$file"
+                # Insert new table after start marker
+                sed -i "/${START_MARKER}/r /dev/stdin" "$file" <<< "$TABLE"
+                echo "  Updated ${marker} in ${file}"
               fi
             done
           done
