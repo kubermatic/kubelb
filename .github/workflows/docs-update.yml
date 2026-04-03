@@ -1,0 +1,200 @@
+# Copyright 2026 The KubeLB Authors.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+name: KubeLB Docs Update
+
+on:
+  workflow_call:
+    inputs:
+      version:
+        description: "Release version (e.g. v1.4.0)"
+        required: true
+        type: string
+      minor:
+        description: "Minor version (e.g. v1.4)"
+        required: true
+        type: string
+      is_patch:
+        description: "Is this a patch release?"
+        required: true
+        type: string
+    secrets:
+      KUBERMATIC_DOCS_TOKEN:
+        required: true
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Release version (e.g. v1.4.0)"
+        required: true
+        type: string
+      minor:
+        description: "Minor version (e.g. v1.4)"
+        required: true
+        type: string
+      is_patch:
+        description: "Is this a patch release?"
+        required: true
+        type: string
+        default: "true"
+
+permissions: {}
+
+env:
+  DOCS_REPO: kubermatic/docs
+  KUBELB_REPO: kubermatic/kubelb
+
+jobs:
+  update-docs:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout docs repo
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          repository: ${{ env.DOCS_REPO }}
+          token: ${{ secrets.KUBERMATIC_DOCS_TOKEN || secrets.GITHUB_TOKEN }}
+
+      - name: Setup for minor release
+        if: inputs.is_patch == 'false'
+        env:
+          MINOR: ${{ inputs.minor }}
+        run: |
+          if [ -d "content/kubelb/${MINOR}" ]; then
+            echo "::notice::Version directory content/kubelb/${MINOR} already exists, skipping copy"
+          else
+            PREVIOUS_MINOR=$(ls -d content/kubelb/v* | sort -V | tail -1 | xargs basename)
+            cp -r "content/kubelb/${PREVIOUS_MINOR}" "content/kubelb/${MINOR}"
+          fi
+
+          if ! grep -q "release: ${MINOR}" data/products.yaml; then
+            sed -i "/kubelb:/,/^[a-z]/{/- release: main/{a\\
+            \    - release: ${MINOR}\n      name: ${MINOR}
+            }}" data/products.yaml
+          fi
+
+          cat > "content/kubelb/${MINOR}/release-notes/_index.en.md" << CONTENT
+          +++
+          title = "Release Notes"
+          date = 2026-01-15T00:00:00+01:00
+          weight = 60
+          +++
+
+          {{< render_external_markdown "https://raw.githubusercontent.com/${KUBELB_REPO}/refs/heads/main/docs/changelogs/CHANGELOG-MINOR_PLACEHOLDER.md" >}}
+          CONTENT
+          sed -i "s|MINOR_PLACEHOLDER|${MINOR}|g" "content/kubelb/${MINOR}/release-notes/_index.en.md"
+          sed -i 's/^          //' "content/kubelb/${MINOR}/release-notes/_index.en.md"
+
+          cat > "content/kubelb/${MINOR}/references/ce/_index.en.md" << REFEOF
+          +++
+          title = "Community Edition"
+          date = 2026-01-15T00:00:00+01:00
+          weight = 10
+          +++
+
+          {{< render_external_markdown "https://raw.githubusercontent.com/${KUBELB_REPO}/refs/heads/release/${MINOR}/docs/api-reference.md" >}}
+          REFEOF
+          sed -i 's/^          //' "content/kubelb/${MINOR}/references/ce/_index.en.md"
+
+          cat > "content/kubelb/${MINOR}/references/ee/_index.en.md" << REFEOF
+          +++
+          title = "Enterprise Edition"
+          date = 2026-01-15T00:00:00+01:00
+          weight = 20
+          +++
+
+          {{< render_external_markdown "https://raw.githubusercontent.com/${KUBELB_REPO}/refs/heads/release/${MINOR}/docs/api-reference-ee.md" >}}
+          REFEOF
+          sed -i 's/^          //' "content/kubelb/${MINOR}/references/ee/_index.en.md"
+
+      - name: Update version strings in installation pages
+        env:
+          MINOR: ${{ inputs.minor }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          DOCS_DIR="content/kubelb/${MINOR}"
+
+          PREV_VERSION=$(grep -ohE 'version=v[0-9]+\.[0-9]+\.[0-9]+' "${DOCS_DIR}/installation/management-cluster/_index.en.md" | head -1 | cut -d= -f2)
+
+          if [ -z "$PREV_VERSION" ]; then
+            echo "::warning::Could not detect previous version in docs, skipping version update"
+            exit 0
+          fi
+
+          echo "Updating ${PREV_VERSION} → ${VERSION} in ${DOCS_DIR}"
+
+          find "${DOCS_DIR}" -name "*.md" -type f | while read -r file; do
+            if grep -q "${PREV_VERSION}" "$file"; then
+              sed -i "s/${PREV_VERSION}/${VERSION}/g" "$file"
+              echo "  Updated: $file"
+            fi
+          done
+
+      - name: Replace helm values tables with render_external_markdown
+        env:
+          MINOR: ${{ inputs.minor }}
+        run: |
+          DOCS_DIR="content/kubelb/${MINOR}"
+          BRANCH="release/${MINOR}"
+
+          declare -A VALUES_MAP
+          VALUES_MAP["KubeLB Manager EE Values"]="docs/helm-values-kubelb-manager-ee.md"
+          VALUES_MAP["KubeLB Manager CE Values"]="docs/helm-values-kubelb-manager.md"
+          VALUES_MAP["KubeLB CCM EE Values"]="docs/helm-values-kubelb-ccm-ee.md"
+          VALUES_MAP["KubeLB CCM CE Values"]="docs/helm-values-kubelb-ccm.md"
+
+          for page in management-cluster tenant-cluster; do
+            FILE="${DOCS_DIR}/installation/${page}/_index.en.md"
+            [[ -f "$FILE" ]] || continue
+
+            for header in "${!VALUES_MAP[@]}"; do
+              REMOTE_FILE="${VALUES_MAP[$header]}"
+              URL="https://raw.githubusercontent.com/${KUBELB_REPO}/refs/heads/${BRANCH}/${REMOTE_FILE}"
+
+              if grep -q "### ${header}" "$FILE"; then
+                sed -i "/### ${header}/,/^$/{
+                  /### ${header}/!{
+                    /^$/!d
+                  }
+                }" "$FILE"
+                SHORTCODE="{{< render_external_markdown \"${URL}\" >}}"
+                sed -i "/### ${header}/a\\\\n${SHORTCODE}" "$FILE"
+                echo "  Replaced ${header} table in ${page} with shortcode"
+              fi
+            done
+          done
+
+      - name: Create PR
+        env:
+          GH_TOKEN: ${{ secrets.KUBERMATIC_DOCS_TOKEN || secrets.GITHUB_TOKEN }}
+          VERSION: ${{ inputs.version }}
+          IS_PATCH: ${{ inputs.is_patch }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          BRANCH="chore/kubelb-${VERSION}-docs"
+          git checkout -b "${BRANCH}"
+          git add -A
+          git commit -m "docs: update KubeLB docs for ${VERSION}" || exit 0
+          git push -u origin "${BRANCH}"
+
+          BODY="Update KubeLB documentation for release ${VERSION}."
+          if [ "${IS_PATCH}" = "false" ]; then
+            BODY="${BODY} Added new minor version directory and release notes."
+          fi
+
+          gh pr create \
+            --repo "${{ env.DOCS_REPO }}" \
+            --title "docs: update KubeLB docs for ${VERSION}" \
+            --body "${BODY}"

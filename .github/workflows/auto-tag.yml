@@ -14,6 +14,10 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      minor: ${{ steps.version.outputs.minor }}
+      is_patch: ${{ steps.version.outputs.is_patch }}
     steps:
       - name: Extract version
         id: version
@@ -49,7 +53,6 @@ jobs:
           VERSION="${{ steps.version.outputs.version }}"
           MINOR="${{ steps.version.outputs.minor }}"
 
-          # Clone EE repo, tag its release branch HEAD
           git clone --depth 1 --branch "release/${MINOR}" \
             "https://x-access-token:${KUBELB_EE_TOKEN}@github.com/kubermatic/kubelb-ee.git" /tmp/kubelb-ee
 
@@ -57,15 +60,12 @@ jobs:
           git tag "${VERSION}"
           git push origin "${VERSION}"
 
-      - name: Dispatch docs update
-        uses: peter-evans/repository-dispatch@v3
-        with:
-          token: ${{ secrets.KUBERMATIC_DOCS_TOKEN }}
-          repository: kubermatic/docs
-          event-type: kubelb-release
-          client-payload: >-
-            {
-              "version": "${{ steps.version.outputs.version }}",
-              "minor": "${{ steps.version.outputs.minor }}",
-              "is_patch": "${{ steps.version.outputs.is_patch }}"
-            }
+  docs-update:
+    needs: auto-tag
+    uses: ./.github/workflows/docs-update.yml
+    with:
+      version: ${{ needs.auto-tag.outputs.version }}
+      minor: ${{ needs.auto-tag.outputs.minor }}
+      is_patch: ${{ needs.auto-tag.outputs.is_patch }}
+    secrets:
+      KUBERMATIC_DOCS_TOKEN: ${{ secrets.KUBERMATIC_DOCS_TOKEN }}
