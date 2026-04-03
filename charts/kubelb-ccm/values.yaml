@@ -3,7 +3,7 @@ replicaCount: 1
 image:
   repository: quay.io/kubermatic/kubelb-ccm
   pullPolicy: IfNotPresent
-  tag: v99.0.0
+  tag: v1.3.5
 
 kubeRbacProxy:
   image:
