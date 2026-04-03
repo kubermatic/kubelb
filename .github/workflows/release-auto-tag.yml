@@ -62,7 +62,7 @@ jobs:
 
   docs-update:
     needs: auto-tag
-    uses: ./.github/workflows/docs-update.yml
+    uses: ./.github/workflows/release-docs-update.yml
     with:
       version: ${{ needs.auto-tag.outputs.version }}
       minor: ${{ needs.auto-tag.outputs.minor }}
