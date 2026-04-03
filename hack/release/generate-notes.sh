@@ -104,8 +104,11 @@ run_release_notes() {
 
   log_file=$(mktemp)
   rp_flag=""
+  local did_stash=false
   if [[ -d "${repo_path}/.git" ]]; then
-    git -C "$repo_path" stash --quiet 2> /dev/null || true
+    if git -C "$repo_path" stash --quiet 2> /dev/null; then
+      did_stash=true
+    fi
     rp_flag="--repo-path ${repo_path}"
   fi
 
@@ -124,6 +127,10 @@ run_release_notes() {
     $rp_flag 2>&1 | tee "$log_file" | grep -v "^level=info"
   local rc=${PIPESTATUS[0]}
   set -e
+
+  if [[ "$did_stash" == "true" ]]; then
+    git -C "$repo_path" stash pop --quiet 2> /dev/null || true
+  fi
 
   if [ $rc -ne 0 ]; then
     echo "  WARNING: release-notes tool exited with code $rc" >&2

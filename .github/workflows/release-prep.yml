@@ -93,7 +93,10 @@ jobs:
       - name: Checkout release branch
         env:
           BRANCH: ${{ inputs.branch }}
-        run: git checkout "$BRANCH"
+        run: |
+          git fetch origin "$BRANCH"
+          git checkout "$BRANCH"
+          git branch --set-upstream-to="origin/$BRANCH" "$BRANCH"
 
       - name: Setup Go
         uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417 # v6.3.0
@@ -138,9 +141,8 @@ jobs:
           # --- EE artifacts (background) ---
           (
             echo "::group::EE: clone + generate"
-            git -c "url.https://x-access-token:${KUBELB_EE_TOKEN}@github.com/.insteadOf=https://github.com/" \
-              clone --branch "release/${MINOR}" \
-              "https://github.com/kubermatic/kubelb-ee.git" /tmp/kubelb-ee
+            git clone --branch "release/${MINOR}" \
+              "https://x-access-token:${KUBELB_EE_TOKEN}@github.com/kubermatic/kubelb-ee.git" /tmp/kubelb-ee
 
             cd /tmp/kubelb-ee
             git fetch --tags
@@ -206,8 +208,12 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
           git checkout -b "${BRANCH}"
+          echo "::group::Debug: git status before commit"
+          git diff --stat
+          git status
+          echo "::endgroup::"
           git add -A
-          git commit -m "chore: prepare ${VERSION}"
+          git commit -s -m "chore: prepare ${VERSION}"
           git push origin "${BRANCH}"
 
           MINOR=$(echo "${VERSION}" | grep -oE 'v[0-9]+\.[0-9]+')
