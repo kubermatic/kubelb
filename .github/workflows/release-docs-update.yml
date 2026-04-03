@@ -84,13 +84,19 @@ jobs:
           fi
 
           if ! grep -q "release: ${MINOR}" data/products.yaml; then
-            sed -i "/kubelb:/,/^[a-z]/{/- release: main/{a\\
-            \    - release: ${MINOR}\n      name: ${MINOR}
-            }}" data/products.yaml
+            awk -v minor="${MINOR}" '
+              /^kubelb:/{found=1}
+              found && /name: main/{
+                print
+                printf "    - release: %s\n      name: %s\n", minor, minor
+                found=0
+                next
+              }
+              {print}
+            ' data/products.yaml > data/products.yaml.tmp
+            mv data/products.yaml.tmp data/products.yaml
           fi
 
-          # Replace with render_external_markdown shortcodes
-          # Heredoc content is indented to avoid breaking YAML block scalars (issue #19)
           cat > "content/kubelb/${MINOR}/release-notes/_index.en.md" << 'RNEOF'
             +++
             title = "Release Notes"
@@ -100,31 +106,35 @@ jobs:
 
             {{< render_external_markdown "https://raw.githubusercontent.com/KUBELB_REPO_PLACEHOLDER/refs/heads/release/MINOR_PLACEHOLDER/docs/changelogs/CHANGELOG-MINOR_PLACEHOLDER.md" >}}
           RNEOF
-          sed -i 's/^            //' "content/kubelb/${MINOR}/release-notes/_index.en.md"
+          sed -i 's/^  //' "content/kubelb/${MINOR}/release-notes/_index.en.md"
           sed -i "s|KUBELB_REPO_PLACEHOLDER|${KUBELB_REPO}|g; s|MINOR_PLACEHOLDER|${MINOR}|g" \
             "content/kubelb/${MINOR}/release-notes/_index.en.md"
 
-          cat > "content/kubelb/${MINOR}/references/ce/_index.en.md" << CEEOF
+          cat > "content/kubelb/${MINOR}/references/ce/_index.en.md" << 'CEEOF'
             +++
             title = "Community Edition"
             date = 2026-01-15T00:00:00+01:00
             weight = 10
             +++
 
-            {{< render_external_markdown "https://raw.githubusercontent.com/${KUBELB_REPO}/refs/heads/release/${MINOR}/docs/generated/api-reference.md" >}}
+            {{< render_external_markdown "https://raw.githubusercontent.com/KUBELB_REPO_PLACEHOLDER/refs/heads/release/MINOR_PLACEHOLDER/docs/generated/api-reference.md" >}}
           CEEOF
-          sed -i 's/^            //' "content/kubelb/${MINOR}/references/ce/_index.en.md"
+          sed -i 's/^  //' "content/kubelb/${MINOR}/references/ce/_index.en.md"
+          sed -i "s|KUBELB_REPO_PLACEHOLDER|${KUBELB_REPO}|g; s|MINOR_PLACEHOLDER|${MINOR}|g" \
+            "content/kubelb/${MINOR}/references/ce/_index.en.md"
 
-          cat > "content/kubelb/${MINOR}/references/ee/_index.en.md" << EEEOF
+          cat > "content/kubelb/${MINOR}/references/ee/_index.en.md" << 'EEEOF'
             +++
             title = "Enterprise Edition"
             date = 2026-01-15T00:00:00+01:00
             weight = 20
             +++
 
-            {{< render_external_markdown "https://raw.githubusercontent.com/${KUBELB_REPO}/refs/heads/release/${MINOR}/docs/generated/api-reference-ee.md" >}}
+            {{< render_external_markdown "https://raw.githubusercontent.com/KUBELB_REPO_PLACEHOLDER/refs/heads/release/MINOR_PLACEHOLDER/docs/generated/api-reference-ee.md" >}}
           EEEOF
-          sed -i 's/^            //' "content/kubelb/${MINOR}/references/ee/_index.en.md"
+          sed -i 's/^  //' "content/kubelb/${MINOR}/references/ee/_index.en.md"
+          sed -i "s|KUBELB_REPO_PLACEHOLDER|${KUBELB_REPO}|g; s|MINOR_PLACEHOLDER|${MINOR}|g" \
+            "content/kubelb/${MINOR}/references/ee/_index.en.md"
 
       - name: Update version strings in installation pages
         env:
@@ -203,7 +213,7 @@ jobs:
           BRANCH="chore/kubelb-${VERSION}-docs"
           git checkout -b "${BRANCH}"
           git add -A
-          git commit -m "docs: update KubeLB docs for ${VERSION}" || exit 0
+          git commit -s -m "docs: update KubeLB docs for ${VERSION}" || exit 0
           git push -u origin "${BRANCH}"
 
           BODY="Update KubeLB documentation for release ${VERSION}."
