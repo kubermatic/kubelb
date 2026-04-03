@@ -95,7 +95,7 @@ manifests: generate controller-gen ## Generate WebhookConfiguration, ClusterRole
 generate: controller-gen ## Generate code containing DeepCopy, DeepCopyInto, and DeepCopyObject method implementations.
 	$(CONTROLLER_GEN) object:headerFile="hack/boilerplate/boilerplate.go.txt" paths="./..."
 
-update-codegen: generate controller-gen manifests reconciler-gen generate-helm-docs generate-metricsdocs generate-crd-docs generate-crd-docs-ee fmt vet go-mod-tidy
+update-codegen: generate controller-gen manifests reconciler-gen generate-helm-docs generate-metricsdocs generate-crd-docs generate-crd-docs-ee extract-helm-values fmt vet go-mod-tidy
 
 helm-dependency-update:
 	./hack/ensure-helm-repos.sh && \
@@ -386,6 +386,10 @@ release-notes-preview: ## Preview release notes for next release.
 generate-metricsdocs: ## Generate metrics reference documentation.
 	mkdir -p $(shell pwd)/docs/generated
 	go run ./internal/metricsutil/metricsdocs > docs/generated/metrics.md
+
+.PHONY: extract-helm-values
+extract-helm-values: generate-helm-docs ## Extract helm values tables from chart READMEs.
+	./hack/release/extract-helm-values.sh ./charts ./docs/generated
 
 .PHONY: update-gateway-api-crds
 update-gateway-api-crds:
