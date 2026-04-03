@@ -89,39 +89,57 @@ jobs:
             }}" data/products.yaml
           fi
 
-          cat > "content/kubelb/${MINOR}/release-notes/_index.en.md" << CONTENT
-          +++
-          title = "Release Notes"
-          date = 2026-01-15T00:00:00+01:00
-          weight = 60
-          +++
+          # Create stub pages with frontmatter (content populated by later step)
+          printf '+++\ntitle = "Release Notes"\ndate = 2026-01-15T00:00:00+01:00\nweight = 60\n+++\n' \
+            > "content/kubelb/${MINOR}/release-notes/_index.en.md"
 
-          {{< render_external_markdown "https://raw.githubusercontent.com/${KUBELB_REPO}/refs/heads/main/docs/changelogs/CHANGELOG-MINOR_PLACEHOLDER.md" >}}
-          CONTENT
-          sed -i "s|MINOR_PLACEHOLDER|${MINOR}|g" "content/kubelb/${MINOR}/release-notes/_index.en.md"
-          sed -i 's/^          //' "content/kubelb/${MINOR}/release-notes/_index.en.md"
+          printf '+++\ntitle = "Community Edition"\ndate = 2026-01-15T00:00:00+01:00\nweight = 10\n+++\n' \
+            > "content/kubelb/${MINOR}/references/ce/_index.en.md"
 
-          cat > "content/kubelb/${MINOR}/references/ce/_index.en.md" << REFEOF
-          +++
-          title = "Community Edition"
-          date = 2026-01-15T00:00:00+01:00
-          weight = 10
-          +++
+          printf '+++\ntitle = "Enterprise Edition"\ndate = 2026-01-15T00:00:00+01:00\nweight = 20\n+++\n' \
+            > "content/kubelb/${MINOR}/references/ee/_index.en.md"
 
-          {{< render_external_markdown "https://raw.githubusercontent.com/${KUBELB_REPO}/refs/heads/release/${MINOR}/docs/api-reference.md" >}}
-          REFEOF
-          sed -i 's/^          //' "content/kubelb/${MINOR}/references/ce/_index.en.md"
+      - name: Update release notes and API references
+        env:
+          MINOR: ${{ inputs.minor }}
+        run: |
+          DOCS_DIR="content/kubelb/${MINOR}"
+          [ -d "$DOCS_DIR" ] || exit 0
 
-          cat > "content/kubelb/${MINOR}/references/ee/_index.en.md" << REFEOF
-          +++
-          title = "Enterprise Edition"
-          date = 2026-01-15T00:00:00+01:00
-          weight = 20
-          +++
+          # Release notes (from main, contains all patch entries)
+          CHANGELOG_URL="https://raw.githubusercontent.com/${KUBELB_REPO}/refs/heads/main/docs/changelogs/CHANGELOG-${MINOR}.md"
+          CHANGELOG=$(curl -sfL "$CHANGELOG_URL" || echo "")
+          if [ -n "$CHANGELOG" ]; then
+            NOTES_FILE="${DOCS_DIR}/release-notes/_index.en.md"
+            # Preserve frontmatter, replace body
+            FRONTMATTER=$(sed -n '/^+++$/,/^+++$/p' "$NOTES_FILE")
+            echo "$FRONTMATTER" > "$NOTES_FILE"
+            echo "" >> "$NOTES_FILE"
+            echo "$CHANGELOG" >> "$NOTES_FILE"
+            echo "  Updated release notes"
+          fi
 
-          {{< render_external_markdown "https://raw.githubusercontent.com/${KUBELB_REPO}/refs/heads/release/${MINOR}/docs/api-reference-ee.md" >}}
-          REFEOF
-          sed -i 's/^          //' "content/kubelb/${MINOR}/references/ee/_index.en.md"
+          # CE API reference
+          CE_API=$(curl -sfL "https://raw.githubusercontent.com/${KUBELB_REPO}/refs/heads/release/${MINOR}/docs/api-reference.md" || echo "")
+          if [ -n "$CE_API" ]; then
+            CE_FILE="${DOCS_DIR}/references/ce/_index.en.md"
+            FRONTMATTER=$(sed -n '/^+++$/,/^+++$/p' "$CE_FILE")
+            echo "$FRONTMATTER" > "$CE_FILE"
+            echo "" >> "$CE_FILE"
+            echo "$CE_API" >> "$CE_FILE"
+            echo "  Updated CE API reference"
+          fi
+
+          # EE API reference
+          EE_API=$(curl -sfL "https://raw.githubusercontent.com/${KUBELB_REPO}/refs/heads/release/${MINOR}/docs/api-reference-ee.md" || echo "")
+          if [ -n "$EE_API" ]; then
+            EE_FILE="${DOCS_DIR}/references/ee/_index.en.md"
+            FRONTMATTER=$(sed -n '/^+++$/,/^+++$/p' "$EE_FILE")
+            echo "$FRONTMATTER" > "$EE_FILE"
+            echo "" >> "$EE_FILE"
+            echo "$EE_API" >> "$EE_FILE"
+            echo "  Updated EE API reference"
+          fi
 
       - name: Update version strings in installation pages
         env:
