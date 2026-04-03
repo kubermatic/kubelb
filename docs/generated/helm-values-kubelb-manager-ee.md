@@ -9,7 +9,7 @@
 | autoscaling.targetMemoryUtilizationPercentage | int | `80` |  |
 | fullnameOverride | string | `""` |  |
 | grafana.dashboards.annotations | object | `{}` | Additional annotations for dashboard ConfigMaps |
-| grafana.dashboards.enabled | bool | `false` | Requires grafana to be deployed with `sidecar.dashboards.enabled=true`. For more info: <https://github.com/grafana/helm-charts/tree/grafana-10.5.13/charts/grafana#:~:text=%5B%5D-,sidecar.dashboards.enabled,-Enables%20the%20cluster> |
+| grafana.dashboards.enabled | bool | `false` | Requires grafana to be deployed with `sidecar.dashboards.enabled=true`. For more info: https://github.com/grafana/helm-charts/tree/grafana-10.5.13/charts/grafana#:~:text=%5B%5D-,sidecar.dashboards.enabled,-Enables%20the%20cluster |
 | image.pullPolicy | string | `"IfNotPresent"` |  |
 | image.repository | string | `"quay.io/kubermatic/kubelb-manager"` |  |
 | image.tag | string | `"v1.3.5"` |  |
@@ -62,3 +62,4 @@
 | serviceAccount.name | string | `""` |  |
 | serviceMonitor.enabled | bool | `false` |  |
 | tolerations | list | `[]` |  |
+
