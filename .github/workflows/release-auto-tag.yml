@@ -38,13 +38,15 @@ jobs:
             echo "is_patch=true" >> "$GITHUB_OUTPUT"
           fi
 
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+
       - name: Tag CE repo
         run: |
           git tag "${{ steps.version.outputs.version }}" "${{ github.event.pull_request.merge_commit_sha }}"
           git push origin "${{ steps.version.outputs.version }}"
-
-      - name: Checkout for git operations
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
       - name: Tag EE repo
         env:
