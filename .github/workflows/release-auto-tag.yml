@@ -98,4 +98,4 @@ jobs:
             BODY+="- **Docs PR:** failed or skipped — check workflow logs\n"
           fi
 
-          printf '%b' "$BODY" | gh pr comment "$PR_NUMBER" --body-file -
+          printf '%b' "$BODY" | gh pr comment "$PR_NUMBER" --repo "$REPO" --body-file -
