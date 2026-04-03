@@ -198,7 +198,8 @@ jobs:
 
       - name: Create prep branch and PR
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.KUBELB_EE_TOKEN }}
+          KUBELB_EE_TOKEN: ${{ secrets.KUBELB_EE_TOKEN }}
           VERSION: ${{ inputs.version }}
           BASE_BRANCH: ${{ inputs.branch }}
         run: |
@@ -214,6 +215,7 @@ jobs:
           echo "::endgroup::"
           git add -A
           git commit -s -m "chore: prepare ${VERSION}"
+          git remote set-url origin "https://x-access-token:${KUBELB_EE_TOKEN}@github.com/${{ github.repository }}.git"
           git push origin "${BRANCH}"
 
           MINOR=$(echo "${VERSION}" | grep -oE 'v[0-9]+\.[0-9]+')
