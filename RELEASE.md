@@ -77,7 +77,7 @@ Triggered by `auto-tag.yml` on prep PR merge:
 | Dispatch | Target Repo | Event Type | Payload |
 |---|---|---|---|
 | EE tag | `kubermatic/kubelb-ee` | git tag push | version tag |
-| Docs update | `kubermatic/docs` | `kubelb-release` | version, minor, is_patch |
+| Docs update | `kubermatic/docs` | `workflow_call` via `docs-update.yml` | version, minor, is_patch |
 
 ## Required Secrets
 
@@ -86,7 +86,7 @@ Triggered by `auto-tag.yml` on prep PR merge:
 | `REGISTRY_USER` | release.yml | Container registry auth |
 | `REGISTRY_PASSWORD` | release.yml | Container registry auth |
 | `KUBELB_EE_TOKEN` | release-prep.yml, auto-tag.yml | EE repo access (branch validation, clone, tag) |
-| `KUBERMATIC_DOCS_TOKEN` | auto-tag.yml | Dispatch to docs repo |
+| `KUBERMATIC_DOCS_TOKEN` | docs-update.yml (via auto-tag) | Clone docs repo, push branch, create PR |
 | `GITHUB_TOKEN` | release-prep.yml | PR creation (automatic) |
 
 ## Failure Recovery
