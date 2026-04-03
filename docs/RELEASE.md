@@ -32,7 +32,7 @@ The workflow creates a PR against the release branch with:
 
 - Bumped chart versions and image tags
 - Regenerated CRD docs, helm docs, metrics, and helm values
-- Combined CE+EE release notes in `docs/generated/changelogs/`
+- Combined CE+EE release notes in `docs/changelogs/`
 
 A vulnerability scan (`release-vuln-scan.yml`) runs as a separate check on the PR.
 
@@ -99,7 +99,7 @@ Cherry-pick fixes to `release/v1.4` before running prep.
 | Script | Purpose |
 | --- | --- |
 | `bump-versions.sh` | Bumps Chart.yaml version/appVersion and values.yaml image tag. Supports `--dry-run`. |
-| `generate-notes.sh` | Generates combined CE+EE changelog between two tags. Writes to `docs/generated/changelogs/`. |
+| `generate-notes.sh` | Generates combined CE+EE changelog between two tags. Writes to `docs/changelogs/`. |
 | `extract-helm-values.sh` | Extracts values tables from helm-docs READMEs for docs site. |
 
 ## Makefile Targets

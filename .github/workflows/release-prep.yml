@@ -202,7 +202,7 @@ jobs:
 
           # Read generated changelog for PR body preview
           MINOR=$(echo "${VERSION}" | grep -oE 'v[0-9]+\.[0-9]+')
-          CHANGELOG_FILE="docs/generated/changelogs/CHANGELOG-${MINOR}.md"
+          CHANGELOG_FILE="docs/changelogs/CHANGELOG-${MINOR}.md"
           NOTES_PREVIEW=""
           if [ -f "$CHANGELOG_FILE" ]; then
             NOTES_PREVIEW=$(cat "$CHANGELOG_FILE" | head -100)
