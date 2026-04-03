@@ -1,0 +1,25 @@
+repo: kubermatic/kubelb
+changelog_path: docs/changelogs/CHANGELOG-{MINOR}.md
+github_release_repo: kubermatic/kubelb
+
+editions:
+  - name: Community Edition
+    repo: kubermatic/kubelb
+
+release_branch_pattern: "release/v{major}.{minor}"
+cherry_pick_prefix: "[release/"
+
+highlight_threshold: minor
+
+sections:
+  - label: kind/feature
+    heading: Features
+  - label: kind/bug
+    heading: Bug or Regression
+  - label: kind/api-change
+    heading: Features
+    suffix: "(API change)"
+  - label: kind/deprecation
+    heading: Deprecation
+  - label: _default
+    heading: "Other (Cleanup, Flake, or Chore)"
