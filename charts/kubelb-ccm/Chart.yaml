@@ -9,6 +9,6 @@ maintainers:
     url: https://kubermatic.com
 
 # Helm chart Version.
-version: v1.3.5
+version: v1.3.9
 # Application version to be deployed.
-appVersion: v1.3.5
+appVersion: v1.3.9

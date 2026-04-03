@@ -39,8 +39,6 @@ LDFLAGS := -X 'k8c.io/kubelb/internal/version.GitVersion=$(GIT_VERSION)' \
 IMAGE_TAG = \
 		$(shell echo $$(git rev-parse HEAD 2>/dev/null && if [[ -n $$(git status --porcelain 2>/dev/null) ]]; then echo '-dirty'; fi)|tr -d ' ')
 
-VERSION = $(shell cat VERSION)
-
 CCM_IMAGE_NAME ?= $(KUBELB_CCM_IMG):$(IMAGE_TAG)
 KUBELB_IMAGE_NAME ?= $(KUBELB_IMG):$(IMAGE_TAG)
 

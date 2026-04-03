@@ -1,1 +1,134 @@
-<!-- This file is auto-generated during release-prep from the EE repository. -->
+# KubeLB Metrics Reference
+
+This document describes all Prometheus metrics exposed by KubeLB components.
+
+## Table of Contents
+
+- [Manager Metrics](#manager-metrics)
+- [CCM Metrics](#ccm-metrics)
+- [EnvoyCP Metrics](#envoycp-metrics)
+
+---
+
+## Manager Metrics
+
+Metrics exposed by the KubeLB Manager component (kubelb-manager).
+
+| Metric | Type | Description | Labels |
+|--------|------|-------------|--------|
+| `kubelb_manager_envoy_proxies` | Gauge | Current number of Envoy proxy deployments | `namespace`, `topology` |
+| `kubelb_manager_envoycp_clusters` | Gauge | Current number of clusters in the Envoy snapshot | `snapshot_name` |
+| `kubelb_manager_envoycp_endpoints` | Gauge | Current number of endpoints in the Envoy snapshot | `snapshot_name` |
+| `kubelb_manager_envoycp_listeners` | Gauge | Current number of listeners in the Envoy snapshot | `snapshot_name` |
+| `kubelb_manager_envoycp_reconcile_duration_seconds` | Histogram | Duration of Envoy control plane reconciliations in seconds | - |
+| `kubelb_manager_envoycp_reconcile_total` | Counter | Total number of Envoy control plane reconciliation attempts | `result` |
+| `kubelb_manager_envoycp_snapshot_updates_total` | Counter | Total number of Envoy snapshot updates | `snapshot_name` |
+| `kubelb_manager_loadbalancer_reconcile_duration_seconds` | Histogram | Duration of LoadBalancer reconciliations in seconds | `namespace` |
+| `kubelb_manager_loadbalancer_reconcile_total` | Counter | Total number of LoadBalancer reconciliation attempts | `namespace`, `result` |
+| `kubelb_manager_loadbalancers` | Gauge | Current number of LoadBalancer resources | `namespace`, `tenant`, `topology` |
+| `kubelb_manager_port_allocator_allocated_ports` | Gauge | Current number of allocated ports in the port allocator | - |
+| `kubelb_manager_port_allocator_endpoints` | Gauge | Current number of endpoints tracked by the port allocator | - |
+| `kubelb_manager_route_reconcile_duration_seconds` | Histogram | Duration of Route reconciliations in seconds | `namespace` |
+| `kubelb_manager_route_reconcile_total` | Counter | Total number of Route reconciliation attempts | `namespace`, `route_type`, `result` |
+| `kubelb_manager_routes` | Gauge | Current number of Route resources | `namespace`, `tenant`, `route_type` |
+| `kubelb_manager_sync_secret_reconcile_duration_seconds` | Histogram | Duration of SyncSecret reconciliations in seconds | `namespace` |
+| `kubelb_manager_sync_secret_reconcile_total` | Counter | Total number of SyncSecret reconciliation attempts | `namespace`, `result` |
+| `kubelb_manager_tenant_reconcile_duration_seconds` | Histogram | Duration of Tenant reconciliations in seconds | - |
+| `kubelb_manager_tenant_reconcile_total` | Counter | Total number of Tenant reconciliation attempts | `result` |
+| `kubelb_manager_tenants` | Gauge | Current number of Tenant resources | - |
+| `kubelb_manager_waf_filter_failures_total` | Counter | Total number of WAF filter creation failures | `namespace`, `failure_mode` |
+| `kubelb_manager_waf_policies` | Gauge | Current number of WAFPolicy resources by validity status | `namespace`, `status` |
+| `kubelb_manager_waf_policy_reconcile_duration_seconds` | Histogram | Duration of WAFPolicy reconciliations in seconds | `name` |
+| `kubelb_manager_waf_policy_reconcile_total` | Counter | Total number of WAFPolicy reconciliation attempts | `name`, `result` |
+| `kubelb_manager_waf_routes_blocked` | Gauge | Number of routes blocked due to WAF fail-closed mode | `namespace` |
+| `kubelb_manager_waf_routes_protected` | Gauge | Number of routes with WAF protection successfully applied | `namespace` |
+
+---
+
+## CCM Metrics
+
+Metrics exposed by the KubeLB Cloud Controller Manager component (kubelb-ccm).
+
+| Metric | Type | Description | Labels |
+|--------|------|-------------|--------|
+| `kubelb_ccm_backendtrafficpolicy_reconcile_duration_seconds` | Histogram | Duration of BackendTrafficPolicy reconciliations in seconds | `namespace` |
+| `kubelb_ccm_backendtrafficpolicy_reconcile_total` | Counter | Total number of BackendTrafficPolicy reconciliation attempts | `namespace`, `result` |
+| `kubelb_ccm_clienttrafficpolicy_reconcile_duration_seconds` | Histogram | Duration of ClientTrafficPolicy reconciliations in seconds | `namespace` |
+| `kubelb_ccm_clienttrafficpolicy_reconcile_total` | Counter | Total number of ClientTrafficPolicy reconciliation attempts | `namespace`, `result` |
+| `kubelb_ccm_gateway_reconcile_duration_seconds` | Histogram | Duration of Gateway reconciliations in seconds | `namespace` |
+| `kubelb_ccm_gateway_reconcile_total` | Counter | Total number of Gateway reconciliation attempts | `namespace`, `result` |
+| `kubelb_ccm_grpcroute_reconcile_duration_seconds` | Histogram | Duration of GRPCRoute reconciliations in seconds | `namespace` |
+| `kubelb_ccm_grpcroute_reconcile_total` | Counter | Total number of GRPCRoute reconciliation attempts | `namespace`, `result` |
+| `kubelb_ccm_httproute_reconcile_duration_seconds` | Histogram | Duration of HTTPRoute reconciliations in seconds | `namespace` |
+| `kubelb_ccm_httproute_reconcile_total` | Counter | Total number of HTTPRoute reconciliation attempts | `namespace`, `result` |
+| `kubelb_ccm_ingress_reconcile_duration_seconds` | Histogram | Duration of Ingress reconciliations in seconds | `namespace` |
+| `kubelb_ccm_ingress_reconcile_total` | Counter | Total number of Ingress reconciliation attempts | `namespace`, `result` |
+| `kubelb_ccm_kubelb_cluster_connected` | Gauge | Whether the CCM is connected to the KubeLB cluster (1=connected, 0=disconnected) | - |
+| `kubelb_ccm_kubelb_cluster_latency_seconds` | Histogram | Latency of operations to the KubeLB cluster in seconds | `operation` |
+| `kubelb_ccm_kubelb_cluster_operations_total` | Counter | Total number of operations performed on the KubeLB cluster | `operation`, `result` |
+| `kubelb_ccm_managed_backendtrafficpolicies` | Gauge | Current number of BackendTrafficPolicies managed by CCM | `namespace` |
+| `kubelb_ccm_managed_clienttrafficpolicies` | Gauge | Current number of ClientTrafficPolicies managed by CCM | `namespace` |
+| `kubelb_ccm_managed_gateways` | Gauge | Current number of Gateways managed by CCM | `namespace` |
+| `kubelb_ccm_managed_grpcroutes` | Gauge | Current number of GRPCRoutes managed by CCM | `namespace` |
+| `kubelb_ccm_managed_httproutes` | Gauge | Current number of HTTPRoutes managed by CCM | `namespace` |
+| `kubelb_ccm_managed_ingresses` | Gauge | Current number of Ingresses managed by CCM | `namespace` |
+| `kubelb_ccm_managed_services` | Gauge | Current number of LoadBalancer services managed by CCM | `namespace` |
+| `kubelb_ccm_managed_tcproutes` | Gauge | Current number of TCPRoutes managed by CCM | `namespace` |
+| `kubelb_ccm_managed_tlsroutes` | Gauge | Current number of TLSRoutes managed by CCM | `namespace` |
+| `kubelb_ccm_managed_udproutes` | Gauge | Current number of UDPRoutes managed by CCM | `namespace` |
+| `kubelb_ccm_node_reconcile_duration_seconds` | Histogram | Duration of Node reconciliations in seconds | - |
+| `kubelb_ccm_node_reconcile_total` | Counter | Total number of Node reconciliation attempts | `result` |
+| `kubelb_ccm_nodes` | Gauge | Current number of nodes in the cluster | - |
+| `kubelb_ccm_service_reconcile_duration_seconds` | Histogram | Duration of Service reconciliations in seconds | `namespace` |
+| `kubelb_ccm_service_reconcile_total` | Counter | Total number of Service reconciliation attempts | `namespace`, `result` |
+| `kubelb_ccm_sync_secret_reconcile_duration_seconds` | Histogram | Duration of SyncSecret reconciliations in seconds | `namespace` |
+| `kubelb_ccm_sync_secret_reconcile_total` | Counter | Total number of SyncSecret reconciliation attempts | `namespace`, `result` |
+| `kubelb_ccm_tcproute_reconcile_duration_seconds` | Histogram | Duration of TCPRoute reconciliations in seconds | `namespace` |
+| `kubelb_ccm_tcproute_reconcile_total` | Counter | Total number of TCPRoute reconciliation attempts | `namespace`, `result` |
+| `kubelb_ccm_tlsroute_reconcile_duration_seconds` | Histogram | Duration of TLSRoute reconciliations in seconds | `namespace` |
+| `kubelb_ccm_tlsroute_reconcile_total` | Counter | Total number of TLSRoute reconciliation attempts | `namespace`, `result` |
+| `kubelb_ccm_udproute_reconcile_duration_seconds` | Histogram | Duration of UDPRoute reconciliations in seconds | `namespace` |
+| `kubelb_ccm_udproute_reconcile_total` | Counter | Total number of UDPRoute reconciliation attempts | `namespace`, `result` |
+
+---
+
+## EnvoyCP Metrics
+
+Metrics exposed by the KubeLB Envoy Control Plane component.
+
+| Metric | Type | Description | Labels |
+|--------|------|-------------|--------|
+| `kubelb_envoy_control_plane_cache_clears_total` | Counter | Total number of cache clears | `snapshot_name` |
+| `kubelb_envoy_control_plane_cache_hits_total` | Counter | Total number of cache hits for snapshot lookups | `snapshot_name` |
+| `kubelb_envoy_control_plane_cache_misses_total` | Counter | Total number of cache misses for snapshot lookups | `snapshot_name` |
+| `kubelb_envoy_control_plane_clusters` | Gauge | Current number of clusters in the Envoy snapshot | `snapshot_name` |
+| `kubelb_envoy_control_plane_endpoints` | Gauge | Current number of endpoints in the Envoy snapshot | `snapshot_name` |
+| `kubelb_envoy_control_plane_envoy_proxies` | Gauge | Current number of Envoy proxy deployments | `namespace`, `topology` |
+| `kubelb_envoy_control_plane_envoy_proxy_create_total` | Counter | Total number of Envoy proxy deployments created | `namespace` |
+| `kubelb_envoy_control_plane_envoy_proxy_delete_total` | Counter | Total number of Envoy proxy deployments deleted | `namespace` |
+| `kubelb_envoy_control_plane_grpc_connections` | Gauge | Current number of active gRPC connections to the xDS server | - |
+| `kubelb_envoy_control_plane_grpc_requests_total` | Counter | Total number of gRPC xDS requests | `type_url` |
+| `kubelb_envoy_control_plane_grpc_responses_total` | Counter | Total number of gRPC xDS responses | `type_url` |
+| `kubelb_envoy_control_plane_listeners` | Gauge | Current number of listeners in the Envoy snapshot | `snapshot_name` |
+| `kubelb_envoy_control_plane_routes` | Gauge | Current number of routes in the Envoy snapshot | `snapshot_name` |
+| `kubelb_envoy_control_plane_secrets` | Gauge | Current number of secrets in the Envoy snapshot | `snapshot_name` |
+| `kubelb_envoy_control_plane_snapshot_generation_duration_seconds` | Histogram | Duration of Envoy snapshot generation in seconds | `snapshot_name` |
+| `kubelb_envoy_control_plane_snapshot_updates_total` | Counter | Total number of Envoy snapshot updates | `snapshot_name` |
+| `kubelb_envoy_control_plane_snapshots` | Gauge | Current number of active Envoy snapshots | - |
+
+---
+
+## Label Reference
+
+Common labels used across KubeLB metrics:
+
+| Label | Description |
+|-------|-------------|
+| `namespace` | Kubernetes namespace of the resource |
+| `tenant` | KubeLB tenant identifier |
+| `result` | Reconciliation result: `success`, `error`, or `skipped` |
+| `route_type` | Type of route: `ingress`, `gateway`, `httproute`, `grpcroute`, `tcproute`, `tlsroute`, `udproute` |
+| `topology` | Envoy proxy topology: `shared`, `dedicated`, `global` |
+| `operation` | Operation type for KubeLB cluster operations |
+| `snapshot_name` | Envoy xDS snapshot identifier |
+| `type_url` | Envoy xDS resource type URL |
