@@ -182,6 +182,11 @@ func (r *HTTPRouteReconciler) reconcile(ctx context.Context, log logr.Logger, ht
 				return err
 			}
 			original := httpRoute.DeepCopy()
+			for i := range status.Parents {
+				for j := range status.Parents[i].Conditions {
+					status.Parents[i].Conditions[j].ObservedGeneration = httpRoute.Generation
+				}
+			}
 			httpRoute.Status = status
 			if reflect.DeepEqual(original.Status, httpRoute.Status) {
 				return nil

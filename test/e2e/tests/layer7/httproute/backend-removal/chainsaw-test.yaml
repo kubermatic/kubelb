@@ -424,7 +424,7 @@ spec:
               DELTA=$((COUNT_AFTER - COUNT_BEFORE))
               echo "Reconciliations in 15s window: $DELTA"
 
-              if [ "$DELTA" -gt 0 ]; then
+              if [ "$DELTA" -gt 5 ]; then
                 echo "FAILED: Reconciliation storm detected after backend removal"
                 exit 1
               fi

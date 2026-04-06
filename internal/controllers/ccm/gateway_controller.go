@@ -179,6 +179,14 @@ func (r *GatewayReconciler) reconcile(ctx context.Context, log logr.Logger, gate
 				return err
 			}
 			original := gateway.DeepCopy()
+			for i := range status.Conditions {
+				status.Conditions[i].ObservedGeneration = gateway.Generation
+			}
+			for i := range status.Listeners {
+				for j := range status.Listeners[i].Conditions {
+					status.Listeners[i].Conditions[j].ObservedGeneration = gateway.Generation
+				}
+			}
 			gateway.Status = status
 			if reflect.DeepEqual(original.Status, gateway.Status) {
 				return nil
