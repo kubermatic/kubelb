@@ -30,7 +30,6 @@ RUN go mod download
 COPY cmd/ cmd/
 COPY api/ api/
 COPY internal/ internal/
-COPY VERSION VERSION
 COPY Makefile Makefile
 
 # Pass build arguments to make command
