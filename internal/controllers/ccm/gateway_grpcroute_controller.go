@@ -178,6 +178,11 @@ func (r *GRPCRouteReconciler) reconcile(ctx context.Context, log logr.Logger, gr
 				return err
 			}
 			original := grpcRoute.DeepCopy()
+			for i := range status.Parents {
+				for j := range status.Parents[i].Conditions {
+					status.Parents[i].Conditions[j].ObservedGeneration = grpcRoute.Generation
+				}
+			}
 			grpcRoute.Status = status
 			if reflect.DeepEqual(original.Status, grpcRoute.Status) {
 				return nil
