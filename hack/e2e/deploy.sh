@@ -42,6 +42,7 @@ SKIP_IMAGE_LOAD="${SKIP_IMAGE_LOAD:-false}"     # Skip image loading
 METALLB_IP_RANGE="${METALLB_IP_RANGE:-}"        # Override MetalLB IP range for cloud
 CONVERSION_MODE="${CONVERSION_MODE:-false}"     # Deploy CCM in standalone conversion mode
 ENABLE_STANDALONE="${ENABLE_STANDALONE:-false}" # Enable standalone cluster for conversion tests
+DEV_MODE="${DEV_MODE:-false}"                   # Minimal local-dev setup: kubelb + tenant1 only
 
 mkdir -p "${LOGS_DIR}"
 
@@ -68,11 +69,27 @@ get_helm_command() {
   fi
 }
 
+# Script-level TENANT_MAP. Populated once at init time below; functions just
+# read it. Avoids the bash dynamic-scoping subtlety of having each caller
+# `declare -A TENANT_MAP` and relying on assignment-from-callee semantics.
+declare -gA TENANT_MAP=()
+populate_tenant_map() {
+  TENANT_MAP=(["primary"]="tenant1")
+  if [[ "${DEV_MODE}" == "true" ]] || [[ "${CONVERSION_MODE}" == "true" ]]; then
+    return 0
+  fi
+  TENANT_MAP["secondary"]="tenant2"
+}
+populate_tenant_map
+
 #######################################
 # Verify prerequisites
 #######################################
 verify_kubeconfigs() {
-  local clusters="kubelb tenant1 tenant2"
+  local clusters="kubelb tenant1"
+  if [[ "${DEV_MODE}" != "true" ]]; then
+    clusters="${clusters} tenant2"
+  fi
   if [[ "${ENABLE_STANDALONE}" == "true" ]]; then
     clusters="${clusters} standalone"
   fi
@@ -154,7 +171,9 @@ load_images() {
   # standalone cluster: needs ccm image (standalone mode)
   kind load docker-image --name=kubelb "${KUBELB_IMAGE}" "${CCM_IMAGE}" &
   kind load docker-image --name=tenant1 "${CCM_IMAGE}" &
-  kind load docker-image --name=tenant2 "${CCM_IMAGE}" &
+  if [[ "${DEV_MODE}" != "true" ]]; then
+    kind load docker-image --name=tenant2 "${CCM_IMAGE}" &
+  fi
   if [[ "${ENABLE_STANDALONE}" == "true" ]]; then
     kind load docker-image --name=standalone "${CCM_IMAGE}" &
   fi
@@ -306,11 +325,6 @@ setup_tenants() {
 
   export KUBECONFIG="${KUBECONFIGS_DIR}/kubelb.kubeconfig"
 
-  declare -A TENANT_MAP=(
-    ["primary"]="tenant1"
-    ["secondary"]="tenant2"
-  )
-
   for tenant in "${!TENANT_MAP[@]}"; do
     echodate "Creating Tenant CR: ${tenant}"
     kubectl apply -f "${E2E_MANIFESTS_DIR}/tenants/${tenant}.yaml"
@@ -341,19 +355,6 @@ deploy_ccms() {
   local pull_policy="IfNotPresent"
   if is_kind_cluster && [[ -z "${IMAGE_REGISTRY}" ]]; then
     pull_policy="Never"
-  fi
-
-  declare -A TENANT_MAP=(
-    ["primary"]="tenant1"
-    ["secondary"]="tenant2"
-  )
-
-  # In standalone mode, only deploy to tenant1 with standalone settings
-  if [[ "${CONVERSION_MODE}" == "true" ]]; then
-    unset TENANT_MAP
-    declare -A TENANT_MAP=(
-      ["primary"]="tenant1"
-    )
   fi
 
   local ccm_pids=()
@@ -431,19 +432,6 @@ deploy_ccms() {
 wait_for_ready() {
   echodate "Verifying deployments in parallel..."
   local wait_start=$(nowms)
-
-  declare -A TENANT_MAP=(
-    ["primary"]="tenant1"
-    ["secondary"]="tenant2"
-  )
-
-  # In standalone mode, only wait for tenant1
-  if [[ "${CONVERSION_MODE}" == "true" ]]; then
-    unset TENANT_MAP
-    declare -A TENANT_MAP=(
-      ["primary"]="tenant1"
-    )
-  fi
 
   # Launch all wait operations in parallel (manager already waited in deploy_kubelb_manager)
   # CCMs in tenant clusters
@@ -676,11 +664,6 @@ configure_standalone_metallb_pool() {
 deploy_test_apps() {
   echodate "Deploying shared test apps to all clusters..."
 
-  declare -A TENANT_MAP=(
-    ["primary"]="tenant1"
-    ["secondary"]="tenant2"
-  )
-
   for tenant in "${!TENANT_MAP[@]}"; do
     local cluster="${TENANT_MAP[$tenant]}"
     KUBECONFIG="${KUBECONFIGS_DIR}/${cluster}.kubeconfig" \
@@ -784,8 +767,10 @@ deploy_test_apps
 echodate "Waiting for tenant envoy proxies..."
 KUBECONFIG="${KUBECONFIGS_DIR}/kubelb.kubeconfig" \
   wait_for_deployment_exist_and_ready tenant-primary envoy-tenant-primary 300 &
-KUBECONFIG="${KUBECONFIGS_DIR}/kubelb.kubeconfig" \
-  wait_for_deployment_exist_and_ready tenant-secondary envoy-tenant-secondary 300 &
+if [[ "${DEV_MODE}" != "true" ]]; then
+  KUBECONFIG="${KUBECONFIGS_DIR}/kubelb.kubeconfig" \
+    wait_for_deployment_exist_and_ready tenant-secondary envoy-tenant-secondary 300 &
+fi
 wait
 echodate "Tenant envoy proxies ready"
 
@@ -797,7 +782,9 @@ echodate ""
 echodate "Clusters ready:"
 echodate "  kubelb:     export KUBECONFIG=${KUBECONFIGS_DIR}/kubelb.kubeconfig"
 echodate "  tenant1:    export KUBECONFIG=${KUBECONFIGS_DIR}/tenant1.kubeconfig"
-echodate "  tenant2:    export KUBECONFIG=${KUBECONFIGS_DIR}/tenant2.kubeconfig"
+if [[ "${DEV_MODE}" != "true" ]]; then
+  echodate "  tenant2:    export KUBECONFIG=${KUBECONFIGS_DIR}/tenant2.kubeconfig"
+fi
 if [[ "${ENABLE_STANDALONE}" == "true" ]]; then
   echodate "  standalone: export KUBECONFIG=${KUBECONFIGS_DIR}/standalone.kubeconfig"
 fi

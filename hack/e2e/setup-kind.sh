@@ -26,7 +26,10 @@ cleanup() {
   set +e
   if [[ "${CLEANUP_ON_EXIT:-false}" == "true" ]] && [[ "${TEST_FAILED}" == "true" ]]; then
     echodate "Test failed, cleaning up clusters..."
-    local clusters="kubelb tenant1 tenant2"
+    local clusters="kubelb tenant1"
+    if [[ "${DEV_MODE:-false}" != "true" ]]; then
+      clusters="${clusters} tenant2"
+    fi
     if [[ "${ENABLE_STANDALONE}" == "true" ]]; then
       clusters="${clusters} standalone"
     fi
@@ -84,17 +87,24 @@ CHAINSAW_PID=$!
 
 KIND_IMAGE="${KIND_IMAGE:-kindest/node:v1.35.0}"
 ENABLE_STANDALONE="${ENABLE_STANDALONE:-false}"
+DEV_MODE="${DEV_MODE:-false}"
 
 # Cluster definitions: name -> type (empty = single node, multinode = 3 workers)
 # - kubelb: manager cluster (single-node)
 # - tenant1: normal CCM hub-and-spoke (multi-node for endpoint/node tests)
 # - tenant2: normal CCM hub-and-spoke (single-node for edge cases)
 # - standalone: standalone conversion CCM (single-node, opt-in via ENABLE_STANDALONE)
+#
+# DEV_MODE=true: only kubelb + tenant1 (single-node), no tenant2.
 declare -A CLUSTERS=(
   ["kubelb"]=""
   ["tenant1"]="multinode"
   ["tenant2"]=""
 )
+if [[ "${DEV_MODE}" == "true" ]]; then
+  unset 'CLUSTERS[tenant2]'
+  CLUSTERS["tenant1"]=""
+fi
 if [[ "${ENABLE_STANDALONE}" == "true" ]]; then
   CLUSTERS["standalone"]=""
 fi
