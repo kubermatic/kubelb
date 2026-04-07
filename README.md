@@ -47,6 +47,14 @@ Please refer to the [KubeLB Manager README](./charts/kubelb-manager/README.md) f
 
 Please refer to the [KubeLB CCM README](./charts/kubelb-ccm/README.md) for installation instructions.
 
+## Local Development
+
+For local development instructions, please refer to [docs/development.md](./docs/development.md).
+
+## Release Process
+
+Please refer to the [Release Process documentation](./docs/release-process.md) for instructions on how to cut a release.
+
 ## Troubleshooting
 
 If you encounter issues [file an issue][1] or talk to us on the [#kubermatic channel][6] on the [Kubermatic Slack][7].
