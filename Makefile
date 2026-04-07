@@ -153,18 +153,24 @@ build-%: fmt vet ## Build manager binary.
 		-ldflags "$(LDFLAGS)" \
 		-o bin/$* cmd/$*/main.go
 
-.PHONY: e2e-image-kubelb
-e2e-image-kubelb: ## Build kubelb e2e image (linux/amd64)
+.PHONY: e2e-binary-kubelb
+e2e-binary-kubelb: ## Build kubelb e2e binary only (linux/amd64, reproducible ldflags)
 	CGO_ENABLED=0 go build -v -tags e2e \
 		-ldflags "$(LDFLAGS)" \
 		-o bin/kubelb cmd/kubelb/main.go
-	docker build -q -t kubelb:e2e -f kubelb.goreleaser.dockerfile bin/
 
-.PHONY: e2e-image-ccm
-e2e-image-ccm: ## Build ccm e2e image (linux/amd64)
+.PHONY: e2e-binary-ccm
+e2e-binary-ccm: ## Build ccm e2e binary only (linux/amd64, reproducible ldflags)
 	CGO_ENABLED=0 go build -v -tags e2e \
 		-ldflags "$(LDFLAGS)" \
 		-o bin/ccm cmd/ccm/main.go
+
+.PHONY: e2e-image-kubelb
+e2e-image-kubelb: e2e-binary-kubelb ## Build kubelb e2e image (linux/amd64)
+	docker build -q -t kubelb:e2e -f kubelb.goreleaser.dockerfile bin/
+
+.PHONY: e2e-image-ccm
+e2e-image-ccm: e2e-binary-ccm ## Build ccm e2e image (linux/amd64)
 	docker build -q -t kubelb-ccm:e2e -f ccm.goreleaser.dockerfile bin/
 
 .PHONY: run
@@ -319,6 +325,73 @@ e2e: chainsaw ## Run all e2e tests (requires KUBECONFIGS_DIR or existing cluster
 .PHONY: e2e-select
 e2e-select: chainsaw ## Run e2e tests matching label selector (e.g., make e2e-select select=layer=layer4)
 	KUBECONFIG=$(KUBECONFIGS_DIR)/tenant1.kubeconfig $(CHAINSAW) test $(E2E_DIR)/tests $(CHAINSAW_FLAGS) --selector $(select)
+
+##@ Local Development
+# Minimal local-dev workflow: kubelb + tenant1 (single-node), no tenant2.
+# Reuses hack/e2e/* scripts via DEV_MODE=true and shares KUBECONFIGS_DIR with
+# e2e (kind cluster names are global on the host docker daemon, so a separate
+# dir would not isolate anything). Override KUBELB_KUBECONFIG /
+# TENANT_KUBECONFIG to run components against your own clusters (BYO).
+KUBELB_KUBECONFIG ?= $(KUBECONFIGS_DIR)/kubelb.kubeconfig
+TENANT_KUBECONFIG ?= $(KUBECONFIGS_DIR)/tenant1.kubeconfig
+# KUBELB_INTERNAL_KUBECONFIG: kubeconfig the CCM uses to reach the manager
+# cluster API. For local kind clusters this MUST point at the
+# kubelb-internal.kubeconfig (docker-bridge IP) — host-loopback URLs aren't
+# reachable from inside another kind cluster. For BYO/real clusters, just
+# pass any kubeconfig that resolves the manager API server.
+KUBELB_INTERNAL_KUBECONFIG ?= $(KUBECONFIGS_DIR)/kubelb-internal.kubeconfig
+CLUSTER_NAME ?= tenant1
+
+.PHONY: dev-setup
+dev-setup: ## Create minimal dev clusters and deploy KubeLB (kubelb + tenant1)
+	DEV_MODE=true KUBECONFIGS_DIR=$(KUBECONFIGS_DIR) ./hack/e2e/setup-kind.sh
+	DEV_MODE=true KUBECONFIGS_DIR=$(KUBECONFIGS_DIR) ./hack/e2e/deploy.sh
+
+.PHONY: dev-deploy
+dev-deploy: ## Re-run deploy (helm upgrade) against existing dev clusters
+	DEV_MODE=true KUBECONFIGS_DIR=$(KUBECONFIGS_DIR) ./hack/e2e/deploy.sh
+
+.PHONY: dev-reload
+dev-reload: ## Rebuild + redeploy manager and CCM in dev clusters (skips unchanged binaries)
+	DEV_MODE=true KUBECONFIGS_DIR=$(KUBECONFIGS_DIR) ./hack/e2e/reload.sh
+
+.PHONY: dev-cleanup
+dev-cleanup: e2e-cleanup-kind ## Delete kind clusters and kubeconfigs (alias for e2e-cleanup-kind)
+
+.PHONY: dev-tilt
+dev-tilt: ## Run Tilt (watches source, auto-rebuilds/redeploys manager and CCM in-cluster)
+	@command -v tilt >/dev/null 2>&1 || { echo "tilt not installed: https://docs.tilt.dev/install.html"; exit 1; }
+	KUBECONFIG=$(KUBELB_KUBECONFIG) KUBECONFIGS_DIR=$(KUBECONFIGS_DIR) tilt up
+
+# dev-run-{manager,ccm}: run the binary on your laptop, scale the in-cluster
+# deployment to 0 for the session, restore on exit. Prevents double-reconcile.
+# Manager's xDS dataplane will NOT work in local mode (see docs/development.md
+# for the envoycp limitation + ktunnel workaround).
+
+.PHONY: dev-run-manager
+dev-run-manager: ## Run kubelb-manager locally (scales in-cluster deploy to 0, restores on exit)
+	@bash -c 'set -e; \
+	  trap "echo; echo \"[dev-run-manager] scaling in-cluster deploy/kubelb back to 1\"; kubectl --kubeconfig=$(KUBELB_KUBECONFIG) -n kubelb scale deploy/kubelb --replicas=1 >/dev/null 2>&1 || true" EXIT INT TERM; \
+	  echo "[dev-run-manager] scaling in-cluster deploy/kubelb to 0"; \
+	  kubectl --kubeconfig=$(KUBELB_KUBECONFIG) -n kubelb scale deploy/kubelb --replicas=0 >/dev/null; \
+	  kubectl --kubeconfig=$(KUBELB_KUBECONFIG) -n kubelb wait --for=delete pod -l app.kubernetes.io/name=kubelb-manager --timeout=60s 2>/dev/null || true; \
+	  KUBECONFIG=$(KUBELB_KUBECONFIG) go run ./cmd/kubelb \
+	    --namespace=kubelb \
+	    --enable-leader-election=false \
+	    --debug'
+
+.PHONY: dev-run-ccm
+dev-run-ccm: ## Run kubelb-ccm locally (scales in-cluster deploy to 0, restores on exit; override CLUSTER_NAME / KUBELB_INTERNAL_KUBECONFIG for BYO)
+	@bash -c 'set -e; \
+	  trap "echo; echo \"[dev-run-ccm] scaling in-cluster deploy/kubelb-ccm back to 1\"; kubectl --kubeconfig=$(TENANT_KUBECONFIG) -n kubelb scale deploy/kubelb-ccm --replicas=1 >/dev/null 2>&1 || true" EXIT INT TERM; \
+	  echo "[dev-run-ccm] scaling in-cluster deploy/kubelb-ccm to 0"; \
+	  kubectl --kubeconfig=$(TENANT_KUBECONFIG) -n kubelb scale deploy/kubelb-ccm --replicas=0 >/dev/null; \
+	  kubectl --kubeconfig=$(TENANT_KUBECONFIG) -n kubelb wait --for=delete pod -l app.kubernetes.io/name=kubelb-ccm --timeout=60s 2>/dev/null || true; \
+	  KUBECONFIG=$(TENANT_KUBECONFIG) go run ./cmd/ccm \
+	    --cluster-name=$(CLUSTER_NAME) \
+	    --kubelb-kubeconfig=$(KUBELB_INTERNAL_KUBECONFIG) \
+	    --enable-leader-election=false \
+	    --enable-gateway-api'
 
 .PHONY: shfmt
 shfmt:

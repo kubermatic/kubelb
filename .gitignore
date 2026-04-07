@@ -22,6 +22,10 @@ dist/
 chainsaw-report.xml
 test/e2e/reports/*
 
+# Tilt (local dev)
+tilt_modules/
+.tiltbuild/
+
 ## AI generated files
 .claude
 prd.md

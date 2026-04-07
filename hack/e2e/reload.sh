@@ -30,13 +30,24 @@ IMAGE_TAG="${IMAGE_TAG:-e2e}"
 KUBELB_IMAGE="kubelb:${IMAGE_TAG}"
 CCM_IMAGE="kubelb-ccm:${IMAGE_TAG}"
 ENABLE_STANDALONE="${ENABLE_STANDALONE:-false}"
+DEV_MODE="${DEV_MODE:-false}"
+
+# Reproducible build flags - MUST match deploy.sh exactly so binary hashes are
+# identical across `make e2e-deploy` and `make e2e-reload`. Without this, the
+# first reload after a deploy always rebuilds because the ldflag values differ.
+GIT_VERSION="${GIT_VERSION:-e2e}"
+GIT_COMMIT="${GIT_COMMIT:-$(git rev-parse --short HEAD)}"
+BUILD_DATE="${BUILD_DATE:-e2e}"
 
 # Hash tracking for change detection
 HASH_DIR="${KUBECONFIGS_DIR}/.reload-hashes"
 mkdir -p "${HASH_DIR}"
 
 # Verify kubeconfigs exist
-clusters="kubelb tenant1 tenant2"
+clusters="kubelb tenant1"
+if [[ "${DEV_MODE}" != "true" ]]; then
+  clusters="${clusters} tenant2"
+fi
 if [[ "${ENABLE_STANDALONE}" == "true" ]]; then
   clusters="${clusters} standalone"
 fi
@@ -89,16 +100,16 @@ if [[ -f "${BIN_DIR}/ccm" ]] && ! is_linux_amd64 "${BIN_DIR}/ccm"; then
   arch_ok=false
 fi
 
-# Build binaries with e2e tags (Go cache makes unchanged builds fast)
-# Use fixed BUILD_DATE to ensure reproducible binaries for hash comparison
+# Build binaries via the same make targets deploy.sh uses, with identical
+# version ldflags. Go's build cache makes unchanged rebuilds fast.
+# Binary-only target (no docker build) so hash check below decides whether to
+# rebuild the image. -j2 builds kubelb and ccm in parallel; -s silences make's
+# directory chatter but keeps go build errors visible.
 echodate "Building binaries..."
-GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -v -tags e2e \
-  -ldflags "-X 'k8c.io/kubelb/internal/versioninfo.BuildDate=e2e'" \
-  -o "${BIN_DIR}/kubelb" "${ROOT_DIR}/cmd/kubelb/main.go" &
-GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -v -tags e2e \
-  -ldflags "-X 'k8c.io/kubelb/internal/versioninfo.BuildDate=e2e'" \
-  -o "${BIN_DIR}/ccm" "${ROOT_DIR}/cmd/ccm/main.go" &
-wait
+GOOS=linux GOARCH=amd64 make -s -j2 -C "${ROOT_DIR}" e2e-binary-kubelb e2e-binary-ccm \
+  GIT_VERSION="${GIT_VERSION}" \
+  GIT_COMMIT="${GIT_COMMIT}" \
+  BUILD_DATE="${BUILD_DATE}"
 
 # Check what changed
 kubelb_hash=$(get_binary_hash "kubelb")
@@ -148,7 +159,9 @@ if [[ "${ccm_changed}" == "true" ]]; then
 
   echodate "Loading ccm image into tenant clusters..."
   kind load docker-image --name=tenant1 "${CCM_IMAGE}" &
-  kind load docker-image --name=tenant2 "${CCM_IMAGE}" &
+  if [[ "${DEV_MODE}" != "true" ]]; then
+    kind load docker-image --name=tenant2 "${CCM_IMAGE}" &
+  fi
   if [[ "${ENABLE_STANDALONE}" == "true" ]]; then
     kind load docker-image --name=standalone "${CCM_IMAGE}" &
   fi
@@ -157,8 +170,10 @@ if [[ "${ccm_changed}" == "true" ]]; then
   echodate "Restarting CCM deployments..."
   kubectl --kubeconfig="${KUBECONFIGS_DIR}/tenant1.kubeconfig" \
     rollout restart deployment/kubelb-ccm -n kubelb &
-  kubectl --kubeconfig="${KUBECONFIGS_DIR}/tenant2.kubeconfig" \
-    rollout restart deployment/kubelb-ccm -n kubelb &
+  if [[ "${DEV_MODE}" != "true" ]]; then
+    kubectl --kubeconfig="${KUBECONFIGS_DIR}/tenant2.kubeconfig" \
+      rollout restart deployment/kubelb-ccm -n kubelb &
+  fi
   if [[ "${ENABLE_STANDALONE}" == "true" ]]; then
     kubectl --kubeconfig="${KUBECONFIGS_DIR}/standalone.kubeconfig" \
       rollout restart deployment/kubelb-ccm -n kubelb &
