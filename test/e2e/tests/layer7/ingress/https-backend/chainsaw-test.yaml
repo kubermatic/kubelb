@@ -1,0 +1,241 @@
+# Copyright 2026 The KubeLB Authors.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# HTTPS Backend Ingress Test
+# Regression for kubermatic/kubelb-ee#346: Ingress with backend-protocol HTTPS
+# returns 502 because kubelb's L7 envoy listener was interpreting raw TLS
+# bytes as HTTP. KubeLB must use a TCP passthrough listener so the upstream
+# nginx ingress controller can complete its own TLS handshake to the backend.
+apiVersion: chainsaw.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: https-backend-ingress
+  labels:
+    all:
+    test: https-backend
+    resource: ingress
+    layer: layer7
+spec:
+  description: |
+    Verifies that an Ingress with nginx.ingress.kubernetes.io/backend-protocol
+    HTTPS annotation correctly proxies traffic to an HTTPS backend through
+    kubelb's envoy proxy. Regression test for kubelb-ee#346.
+  bindings:
+    - name: name
+      value: https-backend
+    - name: kubelb_namespace
+      value: tenant-primary
+  steps:
+    - name: deploy-https-backend
+      cluster: tenant1
+      try:
+        - script:
+            timeout: 60s
+            content: |
+              set -e
+              openssl req -x509 -nodes -days 1 -newkey rsa:2048 \
+                -keyout /tmp/https-backend-tls.key \
+                -out /tmp/https-backend-tls.crt \
+                -subj "/CN=https-backend.test.local" 2>/dev/null
+
+              kubectl create secret tls https-backend-cert \
+                --cert=/tmp/https-backend-tls.crt \
+                --key=/tmp/https-backend-tls.key \
+                -n default --dry-run=client -o yaml | kubectl apply -f -
+
+              cat <<'EOF' | kubectl apply -f -
+              apiVersion: v1
+              kind: ConfigMap
+              metadata:
+                name: https-backend-conf
+                namespace: default
+              data:
+                nginx.conf: |
+                  events {}
+                  http {
+                    server {
+                      listen 8443 ssl;
+                      ssl_certificate /etc/nginx-tls/tls.crt;
+                      ssl_certificate_key /etc/nginx-tls/tls.key;
+                      location / { return 200 "hello-from-https-backend\n"; }
+                    }
+                  }
+              EOF
+            check:
+              ($error == null): true
+        - apply:
+            resource:
+              apiVersion: apps/v1
+              kind: Deployment
+              metadata:
+                name: https-backend
+                namespace: default
+              spec:
+                replicas: 1
+                selector:
+                  matchLabels:
+                    app: https-backend
+                template:
+                  metadata:
+                    labels:
+                      app: https-backend
+                  spec:
+                    containers:
+                      - name: nginx
+                        image: nginx:1.27-alpine
+                        ports:
+                          - containerPort: 8443
+                        readinessProbe:
+                          tcpSocket:
+                            port: 8443
+                          initialDelaySeconds: 1
+                          periodSeconds: 2
+                        volumeMounts:
+                          - name: conf
+                            mountPath: /etc/nginx/nginx.conf
+                            subPath: nginx.conf
+                          - name: tls
+                            mountPath: /etc/nginx-tls
+                            readOnly: true
+                    volumes:
+                      - name: conf
+                        configMap:
+                          name: https-backend-conf
+                      - name: tls
+                        secret:
+                          secretName: https-backend-cert
+        - apply:
+            resource:
+              apiVersion: v1
+              kind: Service
+              metadata:
+                name: https-backend
+                namespace: default
+              spec:
+                type: ClusterIP
+                selector:
+                  app: https-backend
+                ports:
+                  - name: https
+                    port: 443
+                    targetPort: 8443
+        - script:
+            timeout: 90s
+            content: |
+              kubectl wait --for=condition=Available --timeout=90s \
+                deployment/https-backend -n default
+            check:
+              ($error == null): true
+
+    - name: create-ingress
+      cluster: tenant1
+      try:
+        - apply:
+            resource:
+              apiVersion: networking.k8s.io/v1
+              kind: Ingress
+              metadata:
+                name: https-backend
+                namespace: default
+                annotations:
+                  nginx.ingress.kubernetes.io/backend-protocol: HTTPS
+              spec:
+                ingressClassName: kubelb
+                rules:
+                  - host: https-backend.test.local
+                    http:
+                      paths:
+                        - path: /
+                          pathType: Prefix
+                          backend:
+                            service:
+                              name: https-backend
+                              port:
+                                number: 443
+
+    - name: verify-route-crd
+      use:
+        template: ../../../../step-templates/common/verify-route-crd.yaml
+        with:
+          bindings:
+            - name: resource_name
+              value: https-backend
+            - name: expected_kind
+              value: Ingress.networking.k8s.io
+            - name: kubelb_namespace
+              value: tenant-primary
+
+    - name: verify-status
+      use:
+        template: ../../../../step-templates/ingress/verify-ingress-status.yaml
+        with:
+          bindings:
+            - name: ingress_name
+              value: https-backend
+
+    - name: verify-https-backend-traffic
+      cluster: tenant1
+      try:
+        - script:
+            timeout: 90s
+            content: |
+              set -e
+              IP=$(kubectl get ingress https-backend -n default \
+                -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+              EXPECTED="hello-from-https-backend"
+
+              for i in $(seq 1 30); do
+                RESPONSE=$(curl -s --max-time 5 \
+                  -H "Host: https-backend.test.local" \
+                  "http://${IP}/" 2>/dev/null || true)
+                if echo "$RESPONSE" | grep -q "$EXPECTED"; then
+                  echo "OK: $RESPONSE"
+                  exit 0
+                fi
+                sleep 2
+              done
+              echo "FAILED: expected '$EXPECTED', last response: '$RESPONSE'"
+              exit 1
+            check:
+              ($error == null): true
+
+    - name: cleanup
+      cluster: tenant1
+      try:
+        - script:
+            timeout: 60s
+            content: |
+              kubectl delete ingress https-backend -n default --wait=false
+            check:
+              ($error == null): true
+      finally:
+        - script:
+            cluster: tenant1
+            timeout: 60s
+            content: |
+              kubectl delete ingress https-backend -n default --ignore-not-found
+              kubectl delete service https-backend -n default --ignore-not-found
+              kubectl delete deployment https-backend -n default --ignore-not-found
+              kubectl delete configmap https-backend-conf -n default --ignore-not-found
+              kubectl delete secret https-backend-cert -n default --ignore-not-found
+
+    - name: verify-cleanup
+      use:
+        template: ../../../../step-templates/common/verify-route-cleanup.yaml
+        with:
+          bindings:
+            - name: resource_name
+              value: https-backend
+            - name: kubelb_namespace
+              value: tenant-primary
