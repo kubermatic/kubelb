@@ -99,14 +99,39 @@ type GatewayAPISettings struct {
 
 // TenantStatus defines the observed state of Tenant
 type TenantStatus struct {
-	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
-	// Important: Run "make" to regenerate code after modifying this file
+	// ObservedGeneration is the most recent generation observed for this Tenant by the controller.
+	// +optional
+	ObservedGeneration int64 `json:"observedGeneration,omitempty"`
+
+	// Phase is the current lifecycle phase of the Tenant.
+	// +optional
+	Phase TenantPhase `json:"phase,omitempty"`
+
+	// Conditions represents the latest available observations of the Tenant's state.
+	// +optional
+	Conditions []metav1.Condition `json:"conditions,omitempty"`
 }
+
+// TenantPhase represents the lifecycle phase of a Tenant.
+type TenantPhase string
+
+const (
+	// TenantPhasePending means the Tenant is being provisioned.
+	TenantPhasePending TenantPhase = "Pending"
+	// TenantPhaseReady means the Tenant has been successfully reconciled.
+	TenantPhaseReady TenantPhase = "Ready"
+	// TenantPhaseFailed means the Tenant reconciliation failed.
+	TenantPhaseFailed TenantPhase = "Failed"
+	// TenantPhaseTerminating means the Tenant is being deleted.
+	TenantPhaseTerminating TenantPhase = "Terminating"
+)
 
 // +kubebuilder:resource:scope=Cluster
 // +kubebuilder:object:generate=true
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
+// +kubebuilder:printcolumn:JSONPath=".status.phase",name="Phase",type="string"
+// +kubebuilder:printcolumn:JSONPath=".metadata.creationTimestamp",name="Age",type="date"
 
 // Tenant is the Schema for the tenants API
 type Tenant struct {

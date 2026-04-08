@@ -44,6 +44,7 @@ import (
 	discoveryv1 "k8s.io/api/discovery/v1"
 	"k8s.io/apimachinery/pkg/api/equality"
 	kerrors "k8s.io/apimachinery/pkg/api/errors"
+	apimeta "k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -53,6 +54,7 @@ import (
 	"k8s.io/client-go/tools/clientcmd"
 	clientcmdapi "k8s.io/client-go/tools/clientcmd/api"
 	"k8s.io/client-go/tools/events"
+	"k8s.io/client-go/util/retry"
 	ctrl "sigs.k8s.io/controller-runtime"
 	ctrlruntimeclient "sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
@@ -139,6 +141,9 @@ func (r *TenantReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 	// Resource is marked for deletion
 	if resource.DeletionTimestamp != nil {
 		if controllerutil.ContainsFinalizer(resource, CleanupFinalizer) {
+			if err := r.updateTenantStatus(ctx, resource, kubelbv1alpha1.TenantPhaseTerminating, "Terminating", "Tenant is being deleted", nil); err != nil {
+				log.Error(err, "failed to update Tenant status")
+			}
 			return r.cleanup(ctx, resource)
 		}
 		// Finalizer doesn't exist so clean up is already done
@@ -157,10 +162,18 @@ func (r *TenantReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 		}
 	}
 
-	err := r.reconcile(ctx, log, resource)
-	if err != nil {
-		log.Error(err, "reconciling failed")
+	reconcileErr := r.reconcile(ctx, log, resource)
+	if reconcileErr != nil {
+		log.Error(reconcileErr, "reconciling failed")
 		managermetrics.TenantReconcileTotal.WithLabelValues(metricsutil.ResultError).Inc()
+		if statusErr := r.updateTenantStatus(ctx, resource, kubelbv1alpha1.TenantPhaseFailed, "ReconciliationFailed", reconcileErr.Error(), reconcileErr); statusErr != nil {
+			log.Error(statusErr, "failed to update Tenant status")
+		}
+		return reconcile.Result{}, reconcileErr
+	}
+
+	if err := r.updateTenantStatus(ctx, resource, kubelbv1alpha1.TenantPhaseReady, "Reconciled", "Tenant reconciled successfully", nil); err != nil {
+		log.Error(err, "failed to update Tenant status")
 		return reconcile.Result{}, err
 	}
 
@@ -172,6 +185,39 @@ func (r *TenantReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 
 	managermetrics.TenantReconcileTotal.WithLabelValues(metricsutil.ResultSuccess).Inc()
 	return reconcile.Result{}, nil
+}
+
+func (r *TenantReconciler) updateTenantStatus(ctx context.Context, tenant *kubelbv1alpha1.Tenant, phase kubelbv1alpha1.TenantPhase, reason, message string, reconcileErr error) error {
+	key := ctrlruntimeclient.ObjectKeyFromObject(tenant)
+	return retry.RetryOnConflict(retry.DefaultRetry, func() error {
+		current := &kubelbv1alpha1.Tenant{}
+		if err := r.Get(ctx, key, current); err != nil {
+			return err
+		}
+
+		original := current.DeepCopy()
+
+		conditionStatus := metav1.ConditionTrue
+		if reconcileErr != nil {
+			conditionStatus = metav1.ConditionFalse
+		}
+
+		current.Status.ObservedGeneration = current.Generation
+		current.Status.Phase = phase
+		apimeta.SetStatusCondition(&current.Status.Conditions, metav1.Condition{
+			Type:               kubelbv1alpha1.ConditionReady,
+			Status:             conditionStatus,
+			Reason:             reason,
+			Message:            message,
+			ObservedGeneration: current.Generation,
+		})
+
+		if equality.Semantic.DeepEqual(original.Status, current.Status) {
+			return nil
+		}
+
+		return r.Status().Patch(ctx, current, ctrlruntimeclient.MergeFrom(original))
+	})
 }
 
 func (r *TenantReconciler) reconcile(ctx context.Context, log logr.Logger, tenant *kubelbv1alpha1.Tenant) error {

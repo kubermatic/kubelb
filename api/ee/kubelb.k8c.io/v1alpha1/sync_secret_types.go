@@ -27,8 +27,40 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
+// SyncSecretStatus defines the observed state of SyncSecret.
+type SyncSecretStatus struct {
+	// ObservedGeneration is the most recent generation observed for this SyncSecret by the controller.
+	// +optional
+	ObservedGeneration int64 `json:"observedGeneration,omitempty"`
+
+	// Phase is the current lifecycle phase of the SyncSecret.
+	// +optional
+	Phase SyncSecretPhase `json:"phase,omitempty"`
+
+	// Conditions represents the latest available observations of the SyncSecret's state.
+	// +optional
+	Conditions []metav1.Condition `json:"conditions,omitempty"`
+}
+
+// SyncSecretPhase represents the lifecycle phase of a SyncSecret.
+type SyncSecretPhase string
+
+const (
+	// SyncSecretPhasePending means the SyncSecret has not yet been synced.
+	SyncSecretPhasePending SyncSecretPhase = "Pending"
+	// SyncSecretPhaseSynced means the SyncSecret has been successfully synced to a Secret.
+	SyncSecretPhaseSynced SyncSecretPhase = "Synced"
+	// SyncSecretPhaseFailed means the SyncSecret sync failed.
+	SyncSecretPhaseFailed SyncSecretPhase = "Failed"
+	// SyncSecretPhaseTerminating means the SyncSecret is being deleted.
+	SyncSecretPhaseTerminating SyncSecretPhase = "Terminating"
+)
+
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
+// +kubebuilder:printcolumn:JSONPath=".type",name="Type",type="string"
+// +kubebuilder:printcolumn:JSONPath=".status.phase",name="Phase",type="string"
+// +kubebuilder:printcolumn:JSONPath=".metadata.creationTimestamp",name="Age",type="date"
 
 // SyncSecret is a wrapper over Kubernetes Secret object. This is used to sync secrets from tenants to the LB cluster in a controlled and secure way.
 type SyncSecret struct {
@@ -48,6 +80,9 @@ type SyncSecret struct {
 
 	// +optional
 	Type corev1.SecretType `json:"type,omitempty" protobuf:"bytes,3,opt,name=type,casttype=SecretType"`
+
+	// +optional
+	Status SyncSecretStatus `json:"status,omitempty"`
 }
 
 // +kubebuilder:object:root=true
