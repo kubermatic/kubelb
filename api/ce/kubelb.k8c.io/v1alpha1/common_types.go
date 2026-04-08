@@ -23,6 +23,11 @@ const (
 	DefaultAddressName = "default"
 	// CLIResourceAnnotation is the annotation key for the resource name in the CLI.
 	CLIResourceAnnotation = "kubelb.k8c.io/cli-generated"
+
+	// ConditionReady indicates a resource has been successfully reconciled.
+	ConditionReady = "Ready"
+	// ConditionSynced indicates a SyncSecret has been successfully propagated.
+	ConditionSynced = "Synced"
 )
 
 // LoadBalancerEndpoints is a group of addresses with a common set of ports. The

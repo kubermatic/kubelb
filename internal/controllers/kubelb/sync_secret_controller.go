@@ -30,9 +30,11 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/equality"
 	kerrors "k8s.io/apimachinery/pkg/api/errors"
+	apimeta "k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/tools/events"
+	"k8s.io/client-go/util/retry"
 	ctrl "sigs.k8s.io/controller-runtime"
 	ctrlclient "sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
@@ -71,6 +73,9 @@ func (r *SyncSecretReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 	// Resource is marked for deletion
 	if resource.DeletionTimestamp != nil {
 		if controllerutil.ContainsFinalizer(resource, CleanupFinalizer) {
+			if err := r.updateSyncSecretStatus(ctx, resource, kubelbv1alpha1.SyncSecretPhaseTerminating, "Terminating", "SyncSecret is being deleted", nil); err != nil {
+				log.Error(err, "failed to update SyncSecret status")
+			}
 			return r.cleanup(ctx, resource)
 		}
 		// Finalizer doesn't exist so clean up is already done
@@ -90,19 +95,60 @@ func (r *SyncSecretReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 	}
 
 	startTime := time.Now()
-	err := r.reconcile(ctx, log, resource)
+	reconcileErr := r.reconcile(ctx, log, resource)
 
 	// Track reconciliation duration
 	managermetrics.SyncSecretReconcileDuration.WithLabelValues(req.Namespace).Observe(time.Since(startTime).Seconds())
 
-	if err != nil {
-		log.Error(err, "reconciling failed")
+	if reconcileErr != nil {
+		log.Error(reconcileErr, "reconciling failed")
 		managermetrics.SyncSecretReconcileTotal.WithLabelValues(req.Namespace, metricsutil.ResultError).Inc()
+		if statusErr := r.updateSyncSecretStatus(ctx, resource, kubelbv1alpha1.SyncSecretPhaseFailed, "SyncFailed", reconcileErr.Error(), reconcileErr); statusErr != nil {
+			log.Error(statusErr, "failed to update SyncSecret status")
+		}
+		return reconcile.Result{}, reconcileErr
+	}
+
+	if err := r.updateSyncSecretStatus(ctx, resource, kubelbv1alpha1.SyncSecretPhaseSynced, "Synced", "Secret synced successfully", nil); err != nil {
+		log.Error(err, "failed to update SyncSecret status")
 		return reconcile.Result{}, err
 	}
 
 	managermetrics.SyncSecretReconcileTotal.WithLabelValues(req.Namespace, metricsutil.ResultSuccess).Inc()
 	return reconcile.Result{}, nil
+}
+
+func (r *SyncSecretReconciler) updateSyncSecretStatus(ctx context.Context, ss *kubelbv1alpha1.SyncSecret, phase kubelbv1alpha1.SyncSecretPhase, reason, message string, reconcileErr error) error {
+	key := ctrlclient.ObjectKeyFromObject(ss)
+	return retry.RetryOnConflict(retry.DefaultRetry, func() error {
+		current := &kubelbv1alpha1.SyncSecret{}
+		if err := r.Get(ctx, key, current); err != nil {
+			return err
+		}
+
+		original := current.DeepCopy()
+
+		conditionStatus := metav1.ConditionTrue
+		if reconcileErr != nil {
+			conditionStatus = metav1.ConditionFalse
+		}
+
+		current.Status.ObservedGeneration = current.Generation
+		current.Status.Phase = phase
+		apimeta.SetStatusCondition(&current.Status.Conditions, metav1.Condition{
+			Type:               kubelbv1alpha1.ConditionSynced,
+			Status:             conditionStatus,
+			Reason:             reason,
+			Message:            message,
+			ObservedGeneration: current.Generation,
+		})
+
+		if equality.Semantic.DeepEqual(original.Status, current.Status) {
+			return nil
+		}
+
+		return r.Status().Patch(ctx, current, ctrlclient.MergeFrom(original))
+	})
 }
 
 func (r *SyncSecretReconciler) reconcile(ctx context.Context, _ logr.Logger, object *kubelbv1alpha1.SyncSecret) error {

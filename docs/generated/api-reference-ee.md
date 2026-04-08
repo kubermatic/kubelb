@@ -139,9 +139,9 @@ _Appears in:_
 
 | Field | Description | Default | Validation |
 | --- | --- | --- | --- |
-| `propagatedAnnotations` _map[string]string_ | PropagatedAnnotations defines the list of annotations(key-value pairs) that will be propagated to the LoadBalancer service. Keep the `value` field empty in the key-value pair to allow any value.<br />Tenant configuration has higher precedence than the annotations specified at the Config level. |  | Optional: \{\} <br /> |
-| `propagateAllAnnotations` _boolean_ | PropagateAllAnnotations defines whether all annotations will be propagated to the LoadBalancer service. If set to true, PropagatedAnnotations will be ignored.<br />Tenant configuration has higher precedence than the value specified at the Config level. |  | Optional: \{\} <br /> |
-| `defaultAnnotations` _object (keys:[AnnotatedResource](#annotatedresource), values:[Annotations](#annotations))_ | DefaultAnnotations defines the list of annotations(key-value pairs) that will be set on the load balancing resources if not already present. A special key `all` can be used to apply the same<br />set of annotations to all resources.<br />Tenant configuration has higher precedence than the annotations specified at the Config level. |  | Optional: \{\} <br /> |
+| `propagatedAnnotations` _map[string]string_ | PropagatedAnnotations defines the list of annotations(key-value pairs) that will be propagated to the LoadBalancer service. Keep the `value` field empty in the key-value pair to allow any value.<br />Tenant configuration has higher precedence than the annotations specified at the Config level. |  |  |
+| `propagateAllAnnotations` _boolean_ | PropagateAllAnnotations defines whether all annotations will be propagated to the LoadBalancer service. If set to true, PropagatedAnnotations will be ignored.<br />Tenant configuration has higher precedence than the value specified at the Config level. |  |  |
+| `defaultAnnotations` _object (keys:[AnnotatedResource](#annotatedresource), values:[Annotations](#annotations))_ | DefaultAnnotations defines the list of annotations(key-value pairs) that will be set on the load balancing resources if not already present. A special key `all` can be used to apply the same<br />set of annotations to all resources.<br />Tenant configuration has higher precedence than the annotations specified at the Config level. |  |  |
 
 
 #### Annotations
@@ -192,12 +192,12 @@ _Appears in:_
 
 | Field | Description | Default | Validation |
 | --- | --- | --- | --- |
-| `maxConnections` _integer_ | MaxConnections is the maximum number of connections that Envoy will establish to all endpoints in the cluster.<br />If not specified, the default is 1024. |  | Maximum: 4.294967295e+09 <br />Minimum: 0 <br />Optional: \{\} <br /> |
-| `maxPendingRequests` _integer_ | MaxPendingRequests is the maximum number of pending requests that Envoy will queue to the cluster.<br />If not specified, the default is 1024. |  | Maximum: 4.294967295e+09 <br />Minimum: 0 <br />Optional: \{\} <br /> |
-| `maxParallelRequests` _integer_ | MaxParallelRequests is the maximum number of parallel requests that Envoy will make to the cluster.<br />This is applicable to HTTP/2 and gRPC connections.<br />If not specified, the default is 1024. |  | Maximum: 4.294967295e+09 <br />Minimum: 0 <br />Optional: \{\} <br /> |
-| `maxParallelRetries` _integer_ | MaxParallelRetries is the maximum number of parallel retries that Envoy will make to the cluster.<br />If not specified, the default is 3. |  | Maximum: 4.294967295e+09 <br />Minimum: 0 <br />Optional: \{\} <br /> |
-| `maxRequestsPerConnection` _integer_ | MaxRequestsPerConnection is the maximum number of requests that Envoy will make over a single connection<br />to the cluster. If not specified, there is no limit. |  | Maximum: 4.294967295e+09 <br />Minimum: 0 <br />Optional: \{\} <br /> |
-| `perEndpoint` _[PerEndpointCircuitBreaker](#perendpointcircuitbreaker)_ | PerEndpoint configures circuit breaker thresholds that apply to individual endpoints rather than the whole cluster. |  | Optional: \{\} <br /> |
+| `maxConnections` _integer_ | MaxConnections is the maximum number of connections that Envoy will establish to all endpoints in the cluster.<br />If not specified, the default is 1024. |  | Maximum: 4.294967295e+09 <br />Minimum: 0 <br /> |
+| `maxPendingRequests` _integer_ | MaxPendingRequests is the maximum number of pending requests that Envoy will queue to the cluster.<br />If not specified, the default is 1024. |  | Maximum: 4.294967295e+09 <br />Minimum: 0 <br /> |
+| `maxParallelRequests` _integer_ | MaxParallelRequests is the maximum number of parallel requests that Envoy will make to the cluster.<br />This is applicable to HTTP/2 and gRPC connections.<br />If not specified, the default is 1024. |  | Maximum: 4.294967295e+09 <br />Minimum: 0 <br /> |
+| `maxParallelRetries` _integer_ | MaxParallelRetries is the maximum number of parallel retries that Envoy will make to the cluster.<br />If not specified, the default is 3. |  | Maximum: 4.294967295e+09 <br />Minimum: 0 <br /> |
+| `maxRequestsPerConnection` _integer_ | MaxRequestsPerConnection is the maximum number of requests that Envoy will make over a single connection<br />to the cluster. If not specified, there is no limit. |  | Maximum: 4.294967295e+09 <br />Minimum: 0 <br /> |
+| `perEndpoint` _[PerEndpointCircuitBreaker](#perendpointcircuitbreaker)_ | PerEndpoint configures circuit breaker thresholds that apply to individual endpoints rather than the whole cluster. |  |  |
 
 
 
@@ -252,10 +252,10 @@ _Appears in:_
 | Field | Description | Default | Validation |
 | --- | --- | --- | --- |
 | `disable` _boolean_ | Disable is a flag that can be used to disable DNS automation globally for all the tenants. |  |  |
-| `wildcardDomain` _string_ | WildcardDomain is the domain that will be used as the base domain to create wildcard DNS records for DNS resources.<br />This is only used for determining the hostname for LoadBalancer and Tunnel resources. |  | Optional: \{\} <br /> |
-| `allowExplicitHostnames` _boolean_ | AllowExplicitHostnames is a flag that can be used to allow explicit hostnames to be used for DNS resources.<br />This is only used when LoadBalancer.Spec.Hostname or Tunnel.Spec.Hostname is set. |  | Optional: \{\} <br /> |
-| `useDNSAnnotations` _boolean_ | UseDNSAnnotations is a flag that can be used to add DNS annotations to DNS resources.<br />This is only used when LoadBalancer.Spec.Hostname or Tunnel.Spec.Hostname is set. |  | Optional: \{\} <br /> |
-| `useCertificateAnnotations` _boolean_ | UseCertificateAnnotations is a flag that can be used to add Certificate annotations to Certificate resources.<br />This is only used when LoadBalancer.Spec.Hostname or Tunnel.Spec.Hostname is set. |  | Optional: \{\} <br /> |
+| `wildcardDomain` _string_ | WildcardDomain is the domain that will be used as the base domain to create wildcard DNS records for DNS resources.<br />This is only used for determining the hostname for LoadBalancer and Tunnel resources. |  |  |
+| `allowExplicitHostnames` _boolean_ | AllowExplicitHostnames is a flag that can be used to allow explicit hostnames to be used for DNS resources.<br />This is only used when LoadBalancer.Spec.Hostname or Tunnel.Spec.Hostname is set. |  |  |
+| `useDNSAnnotations` _boolean_ | UseDNSAnnotations is a flag that can be used to add DNS annotations to DNS resources.<br />This is only used when LoadBalancer.Spec.Hostname or Tunnel.Spec.Hostname is set. |  |  |
+| `useCertificateAnnotations` _boolean_ | UseCertificateAnnotations is a flag that can be used to add Certificate annotations to Certificate resources.<br />This is only used when LoadBalancer.Spec.Hostname or Tunnel.Spec.Hostname is set. |  |  |
 
 
 #### ConfigList
@@ -289,9 +289,9 @@ _Appears in:_
 
 | Field | Description | Default | Validation |
 | --- | --- | --- | --- |
-| `propagatedAnnotations` _map[string]string_ | PropagatedAnnotations defines the list of annotations(key-value pairs) that will be propagated to the LoadBalancer service. Keep the `value` field empty in the key-value pair to allow any value.<br />Tenant configuration has higher precedence than the annotations specified at the Config level. |  | Optional: \{\} <br /> |
-| `propagateAllAnnotations` _boolean_ | PropagateAllAnnotations defines whether all annotations will be propagated to the LoadBalancer service. If set to true, PropagatedAnnotations will be ignored.<br />Tenant configuration has higher precedence than the value specified at the Config level. |  | Optional: \{\} <br /> |
-| `defaultAnnotations` _object (keys:[AnnotatedResource](#annotatedresource), values:[Annotations](#annotations))_ | DefaultAnnotations defines the list of annotations(key-value pairs) that will be set on the load balancing resources if not already present. A special key `all` can be used to apply the same<br />set of annotations to all resources.<br />Tenant configuration has higher precedence than the annotations specified at the Config level. |  | Optional: \{\} <br /> |
+| `propagatedAnnotations` _map[string]string_ | PropagatedAnnotations defines the list of annotations(key-value pairs) that will be propagated to the LoadBalancer service. Keep the `value` field empty in the key-value pair to allow any value.<br />Tenant configuration has higher precedence than the annotations specified at the Config level. |  |  |
+| `propagateAllAnnotations` _boolean_ | PropagateAllAnnotations defines whether all annotations will be propagated to the LoadBalancer service. If set to true, PropagatedAnnotations will be ignored.<br />Tenant configuration has higher precedence than the value specified at the Config level. |  |  |
+| `defaultAnnotations` _object (keys:[AnnotatedResource](#annotatedresource), values:[Annotations](#annotations))_ | DefaultAnnotations defines the list of annotations(key-value pairs) that will be set on the load balancing resources if not already present. A special key `all` can be used to apply the same<br />set of annotations to all resources.<br />Tenant configuration has higher precedence than the annotations specified at the Config level. |  |  |
 | `envoyProxy` _[EnvoyProxy](#envoyproxy)_ | EnvoyProxy defines the desired state of the Envoy Proxy |  |  |
 | `loadBalancer` _[LoadBalancerSettings](#loadbalancersettings)_ |  |  |  |
 | `ingress` _[IngressSettings](#ingresssettings)_ |  |  |  |
@@ -299,8 +299,8 @@ _Appears in:_
 | `dns` _[ConfigDNSSettings](#configdnssettings)_ |  |  |  |
 | `certificates` _[ConfigCertificatesSettings](#configcertificatessettings)_ |  |  |  |
 | `tunnel` _[TunnelSettings](#tunnelsettings)_ |  |  |  |
-| `circuitBreaker` _[CircuitBreaker](#circuitbreaker)_ | CircuitBreaker defines the default circuit breaker configuration for all Envoy clusters.<br />These settings can be overridden at the Tenant level. |  | Optional: \{\} <br /> |
-| `waf` _[WAFSettings](#wafsettings)_ | WAF defines WAF-related settings. |  | Optional: \{\} <br /> |
+| `circuitBreaker` _[CircuitBreaker](#circuitbreaker)_ | CircuitBreaker defines the default circuit breaker configuration for all Envoy clusters.<br />These settings can be overridden at the Tenant level. |  |  |
+| `waf` _[WAFSettings](#wafsettings)_ | WAF defines WAF-related settings. |  |  |
 
 
 #### DNSSettings
@@ -318,10 +318,10 @@ _Appears in:_
 | --- | --- | --- | --- |
 | `disable` _boolean_ | Disable is a flag that can be used to disable DNS automation for a tenant. |  |  |
 | `allowedDomains` _string array_ | AllowedDomains is a list of allowed domains for automated DNS management. Has a higher precedence than the value specified in the Config.<br />If empty, the value specified in `tenant.spec.allowedDomains` will be used.<br />Examples:<br />- ["*.example.com"] -> this allows subdomains at the root level such as example.com and test.example.com but won't allow domains at one level above like test.test.example.com<br />- ["**.example.com"] -> this allows all subdomains of example.com such as test.dns.example.com and dns.example.com<br />- ["example.com"] -> this allows only example.com<br />- ["**"] or ["*"] -> this allows all domains<br />Note: "**" was added as a special case to allow any levels of subdomains that come before it. "*" works for only 1 level. |  |  |
-| `wildcardDomain` _string_ | WildcardDomain is the domain that will be used as the base domain to create wildcard DNS records for DNS resources.<br />This is only used for determining the hostname for LoadBalancer and Tunnel resources. |  | Optional: \{\} <br /> |
-| `allowExplicitHostnames` _boolean_ | AllowExplicitHostnames is a flag that can be used to allow explicit hostnames to be used for DNS resources.<br />This is only used when LoadBalancer.Spec.Hostname or Tunnel.Spec.Hostname is set. |  | Optional: \{\} <br /> |
-| `useDNSAnnotations` _boolean_ | UseDNSAnnotations is a flag that can be used to add DNS annotations to DNS resources.<br />This is only used when LoadBalancer.Spec.Hostname or Tunnel.Spec.Hostname is set. |  | Optional: \{\} <br /> |
-| `useCertificateAnnotations` _boolean_ | UseCertificateAnnotations is a flag that can be used to add Certificate annotations to Certificate resources.<br />This is only used when LoadBalancer.Spec.Hostname or Tunnel.Spec.Hostname is set. |  | Optional: \{\} <br /> |
+| `wildcardDomain` _string_ | WildcardDomain is the domain that will be used as the base domain to create wildcard DNS records for DNS resources.<br />This is only used for determining the hostname for LoadBalancer and Tunnel resources. |  |  |
+| `allowExplicitHostnames` _boolean_ | AllowExplicitHostnames is a flag that can be used to allow explicit hostnames to be used for DNS resources.<br />This is only used when LoadBalancer.Spec.Hostname or Tunnel.Spec.Hostname is set. |  |  |
+| `useDNSAnnotations` _boolean_ | UseDNSAnnotations is a flag that can be used to add DNS annotations to DNS resources.<br />This is only used when LoadBalancer.Spec.Hostname or Tunnel.Spec.Hostname is set. |  |  |
+| `useCertificateAnnotations` _boolean_ | UseCertificateAnnotations is a flag that can be used to add Certificate annotations to Certificate resources.<br />This is only used when LoadBalancer.Spec.Hostname or Tunnel.Spec.Hostname is set. |  |  |
 
 
 #### EndpointAddress
@@ -339,7 +339,7 @@ _Appears in:_
 | Field | Description | Default | Validation |
 | --- | --- | --- | --- |
 | `ip` _string_ | The IP of the endpoint. This can be an IPv4 or IPv6 address.<br />The IP address must not be IP CIDR, Loopback (127.0.0.0/8), link-local (169.254.0.0/16), or link-local multicast ((224.0.0.0/24) addresses. |  |  |
-| `hostname` _string_ | The Hostname of this endpoint |  | Optional: \{\} <br /> |
+| `hostname` _string_ | The Hostname of this endpoint |  |  |
 
 
 #### EndpointPort
@@ -355,7 +355,7 @@ _Appears in:_
 
 | Field | Description | Default | Validation |
 | --- | --- | --- | --- |
-| `name` _string_ | The name of this port.  This must match the 'name' field in the<br />corresponding ServicePort.<br />Must be a DNS_LABEL.<br />Optional only if one port is defined. |  | Optional: \{\} <br /> |
+| `name` _string_ | The name of this port.  This must match the 'name' field in the<br />corresponding ServicePort.<br />Must be a DNS_LABEL.<br />Optional only if one port is defined. |  |  |
 | `port` _integer_ | The port number of the endpoint. |  |  |
 | `protocol` _[Protocol](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.30/#protocol-v1-core)_ | The IP protocol for this port. Defaults to "TCP". |  | Enum: [TCP UDP] <br /> |
 
@@ -373,18 +373,18 @@ _Appears in:_
 
 | Field | Description | Default | Validation |
 | --- | --- | --- | --- |
-| `topology` _[EnvoyProxyTopology](#envoyproxytopology)_ | Topology defines the deployment topology for Envoy Proxy. The only supported value is: shared.<br />DEPRECATION NOTICE: The values "dedicated" and "global" are deprecated and will be removed in a future release. Both will now default to shared topology. | shared | Enum: [shared dedicated global] <br />Optional: \{\} <br /> |
-| `useDaemonset` _boolean_ | UseDaemonset defines whether Envoy Proxy will run as daemonset. By default, Envoy Proxy will run as deployment.<br />If set to true, Replicas will be ignored. |  | Optional: \{\} <br /> |
-| `replicas` _integer_ | Replicas defines the number of replicas for Envoy Proxy. This field is ignored if UseDaemonset is set to true. | 3 | Minimum: 1 <br />Optional: \{\} <br /> |
-| `singlePodPerNode` _boolean_ | SinglePodPerNode defines whether Envoy Proxy pods will be spread across nodes. This ensures that multiple replicas are not running on the same node. |  | Optional: \{\} <br /> |
-| `nodeSelector` _object (keys:string, values:string)_ | NodeSelector is used to select nodes to run Envoy Proxy. If specified, the node must have all the indicated labels. |  | Optional: \{\} <br /> |
-| `tolerations` _[Toleration](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.30/#toleration-v1-core) array_ | Tolerations is used to schedule Envoy Proxy pods on nodes with matching taints. |  | Optional: \{\} <br /> |
-| `resources` _[ResourceRequirements](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.30/#resourcerequirements-v1-core)_ | Resources defines the resource requirements for Envoy Proxy. |  | Optional: \{\} <br /> |
-| `affinity` _[Affinity](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.30/#affinity-v1-core)_ | Affinity is used to schedule Envoy Proxy pods on nodes with matching affinity. |  | Optional: \{\} <br /> |
-| `image` _string_ | Image defines the Envoy Proxy image to use. |  | Optional: \{\} <br /> |
-| `gracefulShutdown` _[EnvoyProxyGracefulShutdown](#envoyproxygracefulshutdown)_ | GracefulShutdown defines the graceful shutdown configuration for Envoy Proxy. |  | Optional: \{\} <br /> |
-| `overloadManager` _[EnvoyProxyOverloadManager](#envoyproxyoverloadmanager)_ | OverloadManager defines the overload manager configuration for Envoy XDS bootstrap. |  | Optional: \{\} <br /> |
-| `podMonitor` _[EnvoyProxyPodMonitor](#envoyproxypodmonitor)_ | PodMonitor enables creation of PodMonitor resources for Envoy Proxy pods<br />to enable metrics scraping by Prometheus Operator. |  | Optional: \{\} <br /> |
+| `topology` _[EnvoyProxyTopology](#envoyproxytopology)_ | Topology defines the deployment topology for Envoy Proxy. The only supported value is: shared.<br />DEPRECATION NOTICE: The values "dedicated" and "global" are deprecated and will be removed in a future release. Both will now default to shared topology. | shared | Enum: [shared dedicated global] <br /> |
+| `useDaemonset` _boolean_ | UseDaemonset defines whether Envoy Proxy will run as daemonset. By default, Envoy Proxy will run as deployment.<br />If set to true, Replicas will be ignored. |  |  |
+| `replicas` _integer_ | Replicas defines the number of replicas for Envoy Proxy. This field is ignored if UseDaemonset is set to true. | 3 | Minimum: 1 <br /> |
+| `singlePodPerNode` _boolean_ | SinglePodPerNode defines whether Envoy Proxy pods will be spread across nodes. This ensures that multiple replicas are not running on the same node. |  |  |
+| `nodeSelector` _object (keys:string, values:string)_ | NodeSelector is used to select nodes to run Envoy Proxy. If specified, the node must have all the indicated labels. |  |  |
+| `tolerations` _[Toleration](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.30/#toleration-v1-core) array_ | Tolerations is used to schedule Envoy Proxy pods on nodes with matching taints. |  |  |
+| `resources` _[ResourceRequirements](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.30/#resourcerequirements-v1-core)_ | Resources defines the resource requirements for Envoy Proxy. |  |  |
+| `affinity` _[Affinity](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.30/#affinity-v1-core)_ | Affinity is used to schedule Envoy Proxy pods on nodes with matching affinity. |  |  |
+| `image` _string_ | Image defines the Envoy Proxy image to use. |  |  |
+| `gracefulShutdown` _[EnvoyProxyGracefulShutdown](#envoyproxygracefulshutdown)_ | GracefulShutdown defines the graceful shutdown configuration for Envoy Proxy. |  |  |
+| `overloadManager` _[EnvoyProxyOverloadManager](#envoyproxyoverloadmanager)_ | OverloadManager defines the overload manager configuration for Envoy XDS bootstrap. |  |  |
+| `podMonitor` _[EnvoyProxyPodMonitor](#envoyproxypodmonitor)_ | PodMonitor enables creation of PodMonitor resources for Envoy Proxy pods<br />to enable metrics scraping by Prometheus Operator. |  |  |
 
 
 #### EnvoyProxyGracefulShutdown
@@ -400,11 +400,11 @@ _Appears in:_
 
 | Field | Description | Default | Validation |
 | --- | --- | --- | --- |
-| `disabled` _boolean_ | Disabled controls whether graceful shutdown is disabled |  | Optional: \{\} <br /> |
-| `drainTimeout` _[Duration](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.30/#duration-v1-meta)_ | DrainTimeout is the maximum time to wait for connections to drain.<br />Defaults to 60s. Must be less than TerminationGracePeriodSeconds. | 60s | Optional: \{\} <br /> |
-| `minDrainDuration` _[Duration](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.30/#duration-v1-meta)_ | MinDrainDuration is the minimum time to wait before checking connection count.<br />This prevents premature termination. Defaults to 5s. | 5s | Optional: \{\} <br /> |
-| `terminationGracePeriodSeconds` _integer_ | TerminationGracePeriodSeconds is the grace period for pod termination.<br />Must be greater than DrainTimeout. Defaults to 300s. | 300 | Minimum: 30 <br />Optional: \{\} <br /> |
-| `shutdownManagerImage` _string_ | ShutdownManagerImage is the Docker image for the shutdown-manager sidecar.<br />Defaults to "docker.io/envoyproxy/gateway:v1.3.0" | docker.io/envoyproxy/gateway:v1.3.0 | Optional: \{\} <br /> |
+| `disabled` _boolean_ | Disabled controls whether graceful shutdown is disabled |  |  |
+| `drainTimeout` _[Duration](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.30/#duration-v1-meta)_ | DrainTimeout is the maximum time to wait for connections to drain.<br />Defaults to 60s. Must be less than TerminationGracePeriodSeconds. | 60s |  |
+| `minDrainDuration` _[Duration](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.30/#duration-v1-meta)_ | MinDrainDuration is the minimum time to wait before checking connection count.<br />This prevents premature termination. Defaults to 5s. | 5s |  |
+| `terminationGracePeriodSeconds` _integer_ | TerminationGracePeriodSeconds is the grace period for pod termination.<br />Must be greater than DrainTimeout. Defaults to 300s. | 300 | Minimum: 30 <br /> |
+| `shutdownManagerImage` _string_ | ShutdownManagerImage is the Docker image for the shutdown-manager sidecar.<br />Defaults to "docker.io/envoyproxy/gateway:v1.3.0" | docker.io/envoyproxy/gateway:v1.3.0 |  |
 
 
 #### EnvoyProxyOverloadManager
@@ -420,9 +420,9 @@ _Appears in:_
 
 | Field | Description | Default | Validation |
 | --- | --- | --- | --- |
-| `enabled` _boolean_ | Enabled controls whether overload manager is enabled |  | Optional: \{\} <br /> |
-| `maxActiveDownstreamConnections` _integer_ | MaxActiveDownstreamConnections is the maximum number of active downstream connections for the Envoy. |  | Optional: \{\} <br /> |
-| `maxHeapSizeBytes` _integer_ | MaxHeapSizeBytes is the maximum heap size for the Envoy in bytes. On reaching the limit, the Envoy will start to reject new connections. |  | Optional: \{\} <br /> |
+| `enabled` _boolean_ | Enabled controls whether overload manager is enabled |  |  |
+| `maxActiveDownstreamConnections` _integer_ | MaxActiveDownstreamConnections is the maximum number of active downstream connections for the Envoy. |  |  |
+| `maxHeapSizeBytes` _integer_ | MaxHeapSizeBytes is the maximum heap size for the Envoy in bytes. On reaching the limit, the Envoy will start to reject new connections. |  |  |
 
 
 #### EnvoyProxyPodMonitor
@@ -438,7 +438,7 @@ _Appears in:_
 
 | Field | Description | Default | Validation |
 | --- | --- | --- | --- |
-| `enabled` _boolean_ | Enabled controls whether a PodMonitor is created for Envoy Proxy pods. |  | Optional: \{\} <br /> |
+| `enabled` _boolean_ | Enabled controls whether a PodMonitor is created for Envoy Proxy pods. |  |  |
 
 
 #### EnvoyProxyTopology
@@ -473,9 +473,9 @@ _Appears in:_
 
 | Field | Description | Default | Validation |
 | --- | --- | --- | --- |
-| `class` _string_ | Class is the class of the gateway API to use. This can be used to specify a specific gateway API implementation.<br />This has higher precedence than the value specified in the Config. |  | Optional: \{\} <br /> |
+| `class` _string_ | Class is the class of the gateway API to use. This can be used to specify a specific gateway API implementation.<br />This has higher precedence than the value specified in the Config. |  |  |
 | `disable` _boolean_ | Disable is a flag that can be used to disable Gateway API for a tenant. |  |  |
-| `defaultGateway` _[ObjectReference](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.30/#objectreference-v1-core)_ | DefaultGateway is the default gateway reference to use for the tenant. This is only used for load balancer hostname and tunneling. |  | Optional: \{\} <br /> |
+| `defaultGateway` _[ObjectReference](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.30/#objectreference-v1-core)_ | DefaultGateway is the default gateway reference to use for the tenant. This is only used for load balancer hostname and tunneling. |  |  |
 | `gateway` _[GatewaySettings](#gatewaysettings)_ |  |  |  |
 | `disableHTTPRoute` _boolean_ |  |  |  |
 | `disableGRPCRoute` _boolean_ |  |  |  |
@@ -537,9 +537,9 @@ _Appears in:_
 
 | Field | Description | Default | Validation |
 | --- | --- | --- | --- |
-| `hostname` _string_ | Hostname contains the hostname of the load-balancer. |  | Optional: \{\} <br /> |
-| `tlsEnabled` _boolean_ | TLSEnabled is true if certificate is created for the hostname. |  | Optional: \{\} <br /> |
-| `dnsRecordCreated` _boolean_ | DNSRecordCreated is true if DNS record is created for the hostname. |  | Optional: \{\} <br /> |
+| `hostname` _string_ | Hostname contains the hostname of the load-balancer. |  |  |
+| `tlsEnabled` _boolean_ | TLSEnabled is true if certificate is created for the hostname. |  |  |
+| `dnsRecordCreated` _boolean_ | DNSRecordCreated is true if DNS record is created for the hostname. |  |  |
 
 
 #### IngressSettings
@@ -556,7 +556,7 @@ _Appears in:_
 
 | Field | Description | Default | Validation |
 | --- | --- | --- | --- |
-| `class` _string_ | Class is the class of the ingress to use.<br />This has higher precedence than the value specified in the Config. |  | Optional: \{\} <br /> |
+| `class` _string_ | Class is the class of the ingress to use.<br />This has higher precedence than the value specified in the Config. |  |  |
 | `disable` _boolean_ | Disable is a flag that can be used to disable Ingress for a tenant. |  |  |
 
 
@@ -573,7 +573,7 @@ _Appears in:_
 
 | Field | Description | Default | Validation |
 | --- | --- | --- | --- |
-| `resource` _[Unstructured](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.30/#unstructured-unstructured-v1)_ |  |  | EmbeddedResource: \{\} <br />Optional: \{\} <br /> |
+| `resource` _[Unstructured](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.30/#unstructured-unstructured-v1)_ |  |  | EmbeddedResource: \{\} <br /> |
 | `services` _[UpstreamService](#upstreamservice) array_ | Services contains the list of services that are used as the source for the Route. |  |  |
 
 
@@ -625,8 +625,8 @@ _Appears in:_
 | --- | --- | --- | --- |
 | `name` _string_ | Name is the name of the endpoints. |  |  |
 | `addresses` _[EndpointAddress](#endpointaddress) array_ | IP addresses which offer the related ports that are marked as ready. These endpoints<br />should be considered safe for load balancers and clients to utilize. |  | MinItems: 1 <br /> |
-| `addressesReference` _[ObjectReference](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.30/#objectreference-v1-core)_ | AddressesReference is a reference to the Addresses object that contains the IP addresses.<br />If this field is set, the Addresses field will be ignored. |  | Optional: \{\} <br /> |
-| `ports` _[EndpointPort](#endpointport) array_ | Port numbers available on the related IP addresses.<br />This field is ignored for routes that are using kubernetes resources as the source. |  | MinItems: 1 <br />Optional: \{\} <br /> |
+| `addressesReference` _[ObjectReference](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.30/#objectreference-v1-core)_ | AddressesReference is a reference to the Addresses object that contains the IP addresses.<br />If this field is set, the Addresses field will be ignored. |  |  |
+| `ports` _[EndpointPort](#endpointport) array_ | Port numbers available on the related IP addresses.<br />This field is ignored for routes that are using kubernetes resources as the source. |  | MinItems: 1 <br /> |
 
 
 #### LoadBalancerList
@@ -660,7 +660,7 @@ _Appears in:_
 
 | Field | Description | Default | Validation |
 | --- | --- | --- | --- |
-| `name` _string_ | The name of this port within the service. This must be a DNS_LABEL.<br />All ports within a Spec must have unique names. When considering<br />the endpoints for a Service, this must match the 'name' field in the<br />EndpointPort.<br />Optional if only one ServicePort is defined on this service. |  | Optional: \{\} <br /> |
+| `name` _string_ | The name of this port within the service. This must be a DNS_LABEL.<br />All ports within a Spec must have unique names. When considering<br />the endpoints for a Service, this must match the 'name' field in the<br />EndpointPort.<br />Optional if only one ServicePort is defined on this service. |  |  |
 | `protocol` _[Protocol](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.30/#protocol-v1-core)_ | The IP protocol for this port. Defaults to "TCP". |  | Enum: [TCP UDP] <br /> |
 | `port` _integer_ | The port that will be exposed by the LoadBalancer. |  |  |
 
@@ -679,7 +679,7 @@ _Appears in:_
 
 | Field | Description | Default | Validation |
 | --- | --- | --- | --- |
-| `class` _string_ | Class is the class of the load balancer to use.<br />This has higher precedence than the value specified in the Config. |  | Optional: \{\} <br /> |
+| `class` _string_ | Class is the class of the load balancer to use.<br />This has higher precedence than the value specified in the Config. |  |  |
 | `limit` _integer_ | Limit is the maximum number of load balancers to create.<br />If a lower limit is set than the number of reources that exist, the limit will be disallow creation of new resources but will not delete existing resources. The reason behind this<br />is that it is not possible for KubeLB to know which resources are safe to remove. |  |  |
 | `disable` _boolean_ | Disable is a flag that can be used to disable L4 load balancing for a tenant. |  |  |
 
@@ -697,11 +697,11 @@ _Appears in:_
 
 | Field | Description | Default | Validation |
 | --- | --- | --- | --- |
-| `endpoints` _[LoadBalancerEndpoints](#loadbalancerendpoints) array_ | Sets of addresses and ports that comprise an exposed user service on a cluster. |  | MinItems: 1 <br />Required: \{\} <br /> |
-| `ports` _[LoadBalancerPort](#loadbalancerport) array_ | The list of ports that are exposed by the load balancer service.<br />only needed for layer 4 |  | Optional: \{\} <br /> |
-| `hostname` _string_ | Hostname is the domain name at which the load balancer service will be accessible.<br />When hostname is set, KubeLB will create a route(ingress or httproute) for the service, and expose it with TLS on the given hostname. |  | Optional: \{\} <br /> |
-| `type` _[ServiceType](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.30/#servicetype-v1-core)_ | type determines how the Service is exposed. Defaults to ClusterIP. Valid<br />options are ExternalName, ClusterIP, NodePort, and LoadBalancer.<br />"ExternalName" maps to the specified externalName.<br />"ClusterIP" allocates a cluster-internal IP address for load-balancing to<br />endpoints. Endpoints are determined by the selector or if that is not<br />specified, by manual construction of an Endpoints object. If clusterIP is<br />"None", no virtual IP is allocated and the endpoints are published as a<br />set of endpoints rather than a stable IP.<br />"NodePort" builds on ClusterIP and allocates a port on every node which<br />routes to the clusterIP.<br />"LoadBalancer" builds on NodePort and creates an<br />external load-balancer (if supported in the current cloud) which routes<br />to the clusterIP.<br />More info: https://kubernetes.io/docs/concepts/services-networking/service/#publishing-services-service-types | ClusterIP | Optional: \{\} <br /> |
-| `externalTrafficPolicy` _[ServiceExternalTrafficPolicy](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.30/#serviceexternaltrafficpolicy-v1-core)_ | externalTrafficPolicy denotes if this Service desires to route external traffic to<br />node-local or cluster-wide endpoints. "Local" preserves the client source IP and avoids<br />a second hop for LoadBalancer and Nodeport type services, but risks potentially imbalanced<br />traffic spreading. "Cluster" obscures the client source IP and may cause a second hop to<br />another node, but should have good overall load-spreading. |  | Optional: \{\} <br /> |
+| `endpoints` _[LoadBalancerEndpoints](#loadbalancerendpoints) array_ | Sets of addresses and ports that comprise an exposed user service on a cluster. |  | MinItems: 1 <br /> |
+| `ports` _[LoadBalancerPort](#loadbalancerport) array_ | The list of ports that are exposed by the load balancer service.<br />only needed for layer 4 |  |  |
+| `hostname` _string_ | Hostname is the domain name at which the load balancer service will be accessible.<br />When hostname is set, KubeLB will create a route(ingress or httproute) for the service, and expose it with TLS on the given hostname. |  |  |
+| `type` _[ServiceType](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.30/#servicetype-v1-core)_ | type determines how the Service is exposed. Defaults to ClusterIP. Valid<br />options are ExternalName, ClusterIP, NodePort, and LoadBalancer.<br />"ExternalName" maps to the specified externalName.<br />"ClusterIP" allocates a cluster-internal IP address for load-balancing to<br />endpoints. Endpoints are determined by the selector or if that is not<br />specified, by manual construction of an Endpoints object. If clusterIP is<br />"None", no virtual IP is allocated and the endpoints are published as a<br />set of endpoints rather than a stable IP.<br />"NodePort" builds on ClusterIP and allocates a port on every node which<br />routes to the clusterIP.<br />"LoadBalancer" builds on NodePort and creates an<br />external load-balancer (if supported in the current cloud) which routes<br />to the clusterIP.<br />More info: https://kubernetes.io/docs/concepts/services-networking/service/#publishing-services-service-types | ClusterIP |  |
+| `externalTrafficPolicy` _[ServiceExternalTrafficPolicy](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.30/#serviceexternaltrafficpolicy-v1-core)_ | externalTrafficPolicy denotes if this Service desires to route external traffic to<br />node-local or cluster-wide endpoints. "Local" preserves the client source IP and avoids<br />a second hop for LoadBalancer and Nodeport type services, but risks potentially imbalanced<br />traffic spreading. "Cluster" obscures the client source IP and may cause a second hop to<br />another node, but should have good overall load-spreading. |  |  |
 
 
 #### LoadBalancerState
@@ -734,9 +734,9 @@ _Appears in:_
 
 | Field | Description | Default | Validation |
 | --- | --- | --- | --- |
-| `loadBalancer` _[LoadBalancerStatus](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.30/#loadbalancerstatus-v1-core)_ | LoadBalancer contains the current status of the load-balancer,<br />if one is present. |  | Optional: \{\} <br /> |
-| `service` _[ServiceStatus](#servicestatus)_ | Service contains the current status of the LB service. |  | Optional: \{\} <br /> |
-| `hostname` _[HostnameStatus](#hostnamestatus)_ | Hostname contains the status for hostname resources. |  | Optional: \{\} <br /> |
+| `loadBalancer` _[LoadBalancerStatus](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.30/#loadbalancerstatus-v1-core)_ | LoadBalancer contains the current status of the load-balancer,<br />if one is present. |  |  |
+| `service` _[ServiceStatus](#servicestatus)_ | Service contains the current status of the LB service. |  |  |
+| `hostname` _[HostnameStatus](#hostnamestatus)_ | Hostname contains the status for hostname resources. |  |  |
 
 
 #### PerEndpointCircuitBreaker
@@ -752,7 +752,7 @@ _Appears in:_
 
 | Field | Description | Default | Validation |
 | --- | --- | --- | --- |
-| `maxConnections` _integer_ | MaxConnections is the maximum number of connections that Envoy will establish to a single endpoint.<br />If not specified, the default is 1024. |  | Maximum: 4.294967295e+09 <br />Minimum: 0 <br />Optional: \{\} <br /> |
+| `maxConnections` _integer_ | MaxConnections is the maximum number of connections that Envoy will establish to a single endpoint.<br />If not specified, the default is 1024. |  | Maximum: 4.294967295e+09 <br />Minimum: 0 <br /> |
 
 
 #### ResourceState
@@ -884,8 +884,8 @@ _Appears in:_
 
 | Field | Description | Default | Validation |
 | --- | --- | --- | --- |
-| `endpoints` _[LoadBalancerEndpoints](#loadbalancerendpoints) array_ | Sets of addresses and ports that comprise an exposed user service on a cluster.<br />This field is required for Routes that represent traffic-forwarding resources (Ingress, Gateway routes).<br />It is optional for policy resources like BackendTrafficPolicy. |  | Optional: \{\} <br /> |
-| `source` _[RouteSource](#routesource)_ | Source contains the information about the source of the route. This is used when the route is created from external sources. |  | Optional: \{\} <br /> |
+| `endpoints` _[LoadBalancerEndpoints](#loadbalancerendpoints) array_ | Sets of addresses and ports that comprise an exposed user service on a cluster.<br />This field is required for Routes that represent traffic-forwarding resources (Ingress, Gateway routes).<br />It is optional for policy resources like BackendTrafficPolicy. |  |  |
+| `source` _[RouteSource](#routesource)_ | Source contains the information about the source of the route. This is used when the route is created from external sources. |  |  |
 
 
 #### RouteStatus
@@ -917,12 +917,12 @@ _Appears in:_
 
 | Field | Description | Default | Validation |
 | --- | --- | --- | --- |
-| `name` _string_ | The name of this port within the service. This must be a DNS_LABEL.<br />All ports within a ServiceSpec must have unique names. When considering<br />the endpoints for a Service, this must match the 'name' field in the<br />EndpointPort.<br />Optional if only one ServicePort is defined on this service. |  | Optional: \{\} <br /> |
-| `protocol` _[Protocol](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.30/#protocol-v1-core)_ | The IP protocol for this port. Supports "TCP", "UDP", and "SCTP".<br />Default is TCP. | TCP | Optional: \{\} <br /> |
-| `appProtocol` _string_ | The application protocol for this port.<br />This is used as a hint for implementations to offer richer behavior for protocols that they understand.<br />This field follows standard Kubernetes label syntax.<br />Valid values are either:<br />* Un-prefixed protocol names - reserved for IANA standard service names (as per<br />RFC-6335 and https://www.iana.org/assignments/service-names).<br />* Kubernetes-defined prefixed names:<br />  * 'kubernetes.io/h2c' - HTTP/2 prior knowledge over cleartext as described in https://www.rfc-editor.org/rfc/rfc9113.html#name-starting-http-2-with-prior-<br />  * 'kubernetes.io/ws'  - WebSocket over cleartext as described in https://www.rfc-editor.org/rfc/rfc6455<br />  * 'kubernetes.io/wss' - WebSocket over TLS as described in https://www.rfc-editor.org/rfc/rfc6455<br />* Other protocols should use implementation-defined prefixed names such as<br />mycompany.com/my-custom-protocol. |  | Optional: \{\} <br /> |
+| `name` _string_ | The name of this port within the service. This must be a DNS_LABEL.<br />All ports within a ServiceSpec must have unique names. When considering<br />the endpoints for a Service, this must match the 'name' field in the<br />EndpointPort.<br />Optional if only one ServicePort is defined on this service. |  |  |
+| `protocol` _[Protocol](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.30/#protocol-v1-core)_ | The IP protocol for this port. Supports "TCP", "UDP", and "SCTP".<br />Default is TCP. |  |  |
+| `appProtocol` _string_ | The application protocol for this port.<br />This is used as a hint for implementations to offer richer behavior for protocols that they understand.<br />This field follows standard Kubernetes label syntax.<br />Valid values are either:<br />* Un-prefixed protocol names - reserved for IANA standard service names (as per<br />RFC-6335 and https://www.iana.org/assignments/service-names).<br />* Kubernetes-defined prefixed names:<br />  * 'kubernetes.io/h2c' - HTTP/2 prior knowledge over cleartext as described in https://www.rfc-editor.org/rfc/rfc9113.html#name-starting-http-2-with-prior-<br />  * 'kubernetes.io/ws'  - WebSocket over cleartext as described in https://www.rfc-editor.org/rfc/rfc6455<br />  * 'kubernetes.io/wss' - WebSocket over TLS as described in https://www.rfc-editor.org/rfc/rfc6455<br />* Other protocols should use implementation-defined prefixed names such as<br />mycompany.com/my-custom-protocol. |  |  |
 | `port` _integer_ | The port that will be exposed by this service. |  |  |
-| `targetPort` _[IntOrString](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.30/#intorstring-intstr-util)_ | Number or name of the port to access on the pods targeted by the service.<br />Number must be in the range 1 to 65535. Name must be an IANA_SVC_NAME.<br />If this is a string, it will be looked up as a named port in the<br />target Pod's container ports. If this is not specified, the value<br />of the 'port' field is used (an identity map).<br />This field is ignored for services with clusterIP=None, and should be<br />omitted or set equal to the 'port' field.<br />More info: https://kubernetes.io/docs/concepts/services-networking/service/#defining-a-service |  | Optional: \{\} <br /> |
-| `nodePort` _integer_ | The port on each node on which this service is exposed when type is<br />NodePort or LoadBalancer.  Usually assigned by the system. If a value is<br />specified, in-range, and not in use it will be used, otherwise the<br />operation will fail.  If not specified, a port will be allocated if this<br />Service requires one.  If this field is specified when creating a<br />Service which does not need it, creation will fail. This field will be<br />wiped when updating a Service to no longer need it (e.g. changing type<br />from NodePort to ClusterIP).<br />More info: https://kubernetes.io/docs/concepts/services-networking/service/#type-nodeport |  | Optional: \{\} <br /> |
+| `targetPort` _[IntOrString](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.30/#intorstring-intstr-util)_ | Number or name of the port to access on the pods targeted by the service.<br />Number must be in the range 1 to 65535. Name must be an IANA_SVC_NAME.<br />If this is a string, it will be looked up as a named port in the<br />target Pod's container ports. If this is not specified, the value<br />of the 'port' field is used (an identity map).<br />This field is ignored for services with clusterIP=None, and should be<br />omitted or set equal to the 'port' field.<br />More info: https://kubernetes.io/docs/concepts/services-networking/service/#defining-a-service |  |  |
+| `nodePort` _integer_ | The port on each node on which this service is exposed when type is<br />NodePort or LoadBalancer.  Usually assigned by the system. If a value is<br />specified, in-range, and not in use it will be used, otherwise the<br />operation will fail.  If not specified, a port will be allocated if this<br />Service requires one.  If this field is specified when creating a<br />Service which does not need it, creation will fail. This field will be<br />wiped when updating a Service to no longer need it (e.g. changing type<br />from NodePort to ClusterIP).<br />More info: https://kubernetes.io/docs/concepts/services-networking/service/#type-nodeport |  |  |
 | `upstreamTargetPort` _integer_ |  |  |  |
 
 
@@ -958,10 +958,11 @@ _Appears in:_
 | `apiVersion` _string_ | `kubelb.k8c.io/v1alpha1` | | |
 | `kind` _string_ | `SyncSecret` | | |
 | `metadata` _[ObjectMeta](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.30/#objectmeta-v1-meta)_ | Refer to Kubernetes API documentation for fields of `metadata`. |  |  |
-| `immutable` _boolean_ |  |  | Optional: \{\} <br /> |
-| `data` _object (keys:string, values:integer array)_ |  |  | Optional: \{\} <br /> |
-| `stringData` _object (keys:string, values:string)_ |  |  | Optional: \{\} <br /> |
-| `type` _[SecretType](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.30/#secrettype-v1-core)_ |  |  | Optional: \{\} <br /> |
+| `immutable` _boolean_ |  |  |  |
+| `data` _object (keys:string, values:integer array)_ |  |  |  |
+| `stringData` _object (keys:string, values:string)_ |  |  |  |
+| `type` _[SecretType](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.30/#secrettype-v1-core)_ |  |  |  |
+| `status` _[SyncSecretStatus](#syncsecretstatus)_ |  |  |  |
 
 
 #### SyncSecretList
@@ -980,6 +981,43 @@ SyncSecretList contains a list of SyncSecrets
 | `kind` _string_ | `SyncSecretList` | | |
 | `metadata` _[ListMeta](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.30/#listmeta-v1-meta)_ | Refer to Kubernetes API documentation for fields of `metadata`. |  |  |
 | `items` _[SyncSecret](#syncsecret) array_ |  |  |  |
+
+
+#### SyncSecretPhase
+
+_Underlying type:_ _string_
+
+SyncSecretPhase represents the lifecycle phase of a SyncSecret.
+
+
+
+_Appears in:_
+- [SyncSecretStatus](#syncsecretstatus)
+
+| Field | Description |
+| --- | --- |
+| `Pending` | SyncSecretPhasePending means the SyncSecret has not yet been synced.<br /> |
+| `Synced` | SyncSecretPhaseSynced means the SyncSecret has been successfully synced to a Secret.<br /> |
+| `Failed` | SyncSecretPhaseFailed means the SyncSecret sync failed.<br /> |
+| `Terminating` | SyncSecretPhaseTerminating means the SyncSecret is being deleted.<br /> |
+
+
+#### SyncSecretStatus
+
+
+
+SyncSecretStatus defines the observed state of SyncSecret.
+
+
+
+_Appears in:_
+- [SyncSecret](#syncsecret)
+
+| Field | Description | Default | Validation |
+| --- | --- | --- | --- |
+| `observedGeneration` _integer_ | ObservedGeneration is the most recent generation observed for this SyncSecret by the controller. |  |  |
+| `phase` _[SyncSecretPhase](#syncsecretphase)_ | Phase is the current lifecycle phase of the SyncSecret. |  |  |
+| `conditions` _[Condition](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.30/#condition-v1-meta) array_ | Conditions represents the latest available observations of the SyncSecret's state. |  |  |
 
 
 #### Tenant
@@ -1020,6 +1058,25 @@ TenantList contains a list of Tenant
 | `items` _[Tenant](#tenant) array_ |  |  |  |
 
 
+#### TenantPhase
+
+_Underlying type:_ _string_
+
+TenantPhase represents the lifecycle phase of a Tenant.
+
+
+
+_Appears in:_
+- [TenantStatus](#tenantstatus)
+
+| Field | Description |
+| --- | --- |
+| `Pending` | TenantPhasePending means the Tenant is being provisioned.<br /> |
+| `Ready` | TenantPhaseReady means the Tenant has been successfully reconciled.<br /> |
+| `Failed` | TenantPhaseFailed means the Tenant reconciliation failed.<br /> |
+| `Terminating` | TenantPhaseTerminating means the Tenant is being deleted.<br /> |
+
+
 #### TenantSpec
 
 
@@ -1033,17 +1090,17 @@ _Appears in:_
 
 | Field | Description | Default | Validation |
 | --- | --- | --- | --- |
-| `propagatedAnnotations` _map[string]string_ | PropagatedAnnotations defines the list of annotations(key-value pairs) that will be propagated to the LoadBalancer service. Keep the `value` field empty in the key-value pair to allow any value.<br />Tenant configuration has higher precedence than the annotations specified at the Config level. |  | Optional: \{\} <br /> |
-| `propagateAllAnnotations` _boolean_ | PropagateAllAnnotations defines whether all annotations will be propagated to the LoadBalancer service. If set to true, PropagatedAnnotations will be ignored.<br />Tenant configuration has higher precedence than the value specified at the Config level. |  | Optional: \{\} <br /> |
-| `defaultAnnotations` _object (keys:[AnnotatedResource](#annotatedresource), values:[Annotations](#annotations))_ | DefaultAnnotations defines the list of annotations(key-value pairs) that will be set on the load balancing resources if not already present. A special key `all` can be used to apply the same<br />set of annotations to all resources.<br />Tenant configuration has higher precedence than the annotations specified at the Config level. |  | Optional: \{\} <br /> |
+| `propagatedAnnotations` _map[string]string_ | PropagatedAnnotations defines the list of annotations(key-value pairs) that will be propagated to the LoadBalancer service. Keep the `value` field empty in the key-value pair to allow any value.<br />Tenant configuration has higher precedence than the annotations specified at the Config level. |  |  |
+| `propagateAllAnnotations` _boolean_ | PropagateAllAnnotations defines whether all annotations will be propagated to the LoadBalancer service. If set to true, PropagatedAnnotations will be ignored.<br />Tenant configuration has higher precedence than the value specified at the Config level. |  |  |
+| `defaultAnnotations` _object (keys:[AnnotatedResource](#annotatedresource), values:[Annotations](#annotations))_ | DefaultAnnotations defines the list of annotations(key-value pairs) that will be set on the load balancing resources if not already present. A special key `all` can be used to apply the same<br />set of annotations to all resources.<br />Tenant configuration has higher precedence than the annotations specified at the Config level. |  |  |
 | `loadBalancer` _[LoadBalancerSettings](#loadbalancersettings)_ |  |  |  |
 | `ingress` _[IngressSettings](#ingresssettings)_ |  |  |  |
 | `gatewayAPI` _[GatewayAPISettings](#gatewayapisettings)_ |  |  |  |
 | `dns` _[DNSSettings](#dnssettings)_ |  |  |  |
 | `certificates` _[CertificatesSettings](#certificatessettings)_ |  |  |  |
 | `tunnel` _[TenantTunnelSettings](#tenanttunnelsettings)_ |  |  |  |
-| `circuitBreaker` _[CircuitBreaker](#circuitbreaker)_ | CircuitBreaker defines the circuit breaker configuration for this tenant's Envoy clusters.<br />Overrides Config-level settings. |  | Optional: \{\} <br /> |
-| `allowedDomains` _string array_ | List of allowed domains for the tenant. This is used to restrict the domains that can be used<br />for the tenant. If specified, applies on all the components such as Ingress, GatewayAPI, DNS, certificates, etc.<br />Examples:<br />- ["*.example.com"] -> this allows subdomains at the root level such as example.com and test.example.com but won't allow domains at one level above like test.test.example.com<br />- ["**.example.com"] -> this allows all subdomains of example.com such as test.dns.example.com and dns.example.com<br />- ["example.com"] -> this allows only example.com<br />- ["**"] or ["*"] -> this allows all domains<br />Note: "**" was added as a special case to allow any levels of subdomains that come before it. "*" works for only 1 level.<br />Default: value is ["**"] and all domains are allowed. | [**] | Optional: \{\} <br /> |
+| `circuitBreaker` _[CircuitBreaker](#circuitbreaker)_ | CircuitBreaker defines the circuit breaker configuration for this tenant's Envoy clusters.<br />Overrides Config-level settings. |  |  |
+| `allowedDomains` _string array_ | List of allowed domains for the tenant. This is used to restrict the domains that can be used<br />for the tenant. If specified, applies on all the components such as Ingress, GatewayAPI, DNS, certificates, etc.<br />Examples:<br />- ["*.example.com"] -> this allows subdomains at the root level such as example.com and test.example.com but won't allow domains at one level above like test.test.example.com<br />- ["**.example.com"] -> this allows all subdomains of example.com such as test.dns.example.com and dns.example.com<br />- ["example.com"] -> this allows only example.com<br />- ["**"] or ["*"] -> this allows all domains<br />Note: "**" was added as a special case to allow any levels of subdomains that come before it. "*" works for only 1 level.<br />Default: value is ["**"] and all domains are allowed. | [**] |  |
 
 
 #### TenantState
@@ -1129,6 +1186,11 @@ TenantStatus defines the observed state of Tenant
 _Appears in:_
 - [Tenant](#tenant)
 
+| Field | Description | Default | Validation |
+| --- | --- | --- | --- |
+| `observedGeneration` _integer_ | ObservedGeneration is the most recent generation observed for this Tenant by the controller. |  |  |
+| `phase` _[TenantPhase](#tenantphase)_ | Phase is the current lifecycle phase of the Tenant. |  |  |
+| `conditions` _[Condition](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.30/#condition-v1-meta) array_ | Conditions represents the latest available observations of the Tenant's state. |  |  |
 
 
 #### TenantTunnelSettings
@@ -1218,8 +1280,8 @@ _Appears in:_
 
 | Field | Description | Default | Validation |
 | --- | --- | --- | --- |
-| `serviceName` _string_ | ServiceName is the name of the service created for this tunnel |  | Optional: \{\} <br /> |
-| `routeRef` _[ObjectReference](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.30/#objectreference-v1-core)_ | RouteRef is a reference to the route (HTTPRoute or Ingress) created for this tunnel |  | Optional: \{\} <br /> |
+| `serviceName` _string_ | ServiceName is the name of the service created for this tunnel |  |  |
+| `routeRef` _[ObjectReference](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.30/#objectreference-v1-core)_ | RouteRef is a reference to the route (HTTPRoute or Ingress) created for this tunnel |  |  |
 
 
 #### TunnelSettings
@@ -1236,8 +1298,8 @@ _Appears in:_
 | Field | Description | Default | Validation |
 | --- | --- | --- | --- |
 | `limit` _integer_ | Limit is the maximum number of tunnels to create.<br />If a lower limit is set than the number of reources that exist, the limit will be disallow creation of new resources but will not delete existing resources. The reason behind this<br />is that it is not possible for KubeLB to know which resources are safe to remove. |  |  |
-| `connectionManagerURL` _string_ | ConnectionManagerURL is the URL of the connection manager service that handles tunnel connections.<br />This is required if tunneling is enabled.<br />For example: "https://con.example.com" |  | Optional: \{\} <br /> |
-| `disable` _boolean_ | Disable indicates whether tunneling feature should be disabled. |  | Optional: \{\} <br /> |
+| `connectionManagerURL` _string_ | ConnectionManagerURL is the URL of the connection manager service that handles tunnel connections.<br />This is required if tunneling is enabled.<br />For example: "https://con.example.com" |  |  |
+| `disable` _boolean_ | Disable indicates whether tunneling feature should be disabled. |  |  |
 
 
 #### TunnelSpec
@@ -1253,7 +1315,7 @@ _Appears in:_
 
 | Field | Description | Default | Validation |
 | --- | --- | --- | --- |
-| `hostname` _string_ | Hostname is the hostname of the tunnel. If not specified, the hostname will be generated by KubeLB. |  | Optional: \{\} <br /> |
+| `hostname` _string_ | Hostname is the hostname of the tunnel. If not specified, the hostname will be generated by KubeLB. |  |  |
 
 
 #### TunnelState
@@ -1287,12 +1349,12 @@ _Appears in:_
 
 | Field | Description | Default | Validation |
 | --- | --- | --- | --- |
-| `hostname` _string_ | Hostname contains the actual hostname assigned to the tunnel |  | Optional: \{\} <br /> |
-| `url` _string_ | URL contains the full URL to access the tunnel |  | Optional: \{\} <br /> |
-| `connectionManagerURL` _string_ | ConnectionManagerURL contains the URL that clients should use to establish tunnel connections |  | Optional: \{\} <br /> |
-| `phase` _[TunnelPhase](#tunnelphase)_ | Phase represents the current phase of the tunnel |  | Optional: \{\} <br /> |
-| `resources` _[TunnelResources](#tunnelresources)_ | Resources contains references to the resources created for this tunnel |  | Optional: \{\} <br /> |
-| `conditions` _[Condition](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.30/#condition-v1-meta) array_ | Conditions represents the current conditions of the tunnel |  | Optional: \{\} <br /> |
+| `hostname` _string_ | Hostname contains the actual hostname assigned to the tunnel |  |  |
+| `url` _string_ | URL contains the full URL to access the tunnel |  |  |
+| `connectionManagerURL` _string_ | ConnectionManagerURL contains the URL that clients should use to establish tunnel connections |  |  |
+| `phase` _[TunnelPhase](#tunnelphase)_ | Phase represents the current phase of the tunnel |  |  |
+| `resources` _[TunnelResources](#tunnelresources)_ | Resources contains references to the resources created for this tunnel |  |  |
+| `conditions` _[Condition](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.30/#condition-v1-meta) array_ | Conditions represents the current conditions of the tunnel |  |  |
 
 
 #### UpstreamService
@@ -1311,9 +1373,9 @@ _Appears in:_
 
 | Field | Description | Default | Validation |
 | --- | --- | --- | --- |
-| `metadata` _[ObjectMeta](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.30/#objectmeta-v1-meta)_ | Refer to Kubernetes API documentation for fields of `metadata`. |  | Optional: \{\} <br /> |
-| `spec` _[ServiceSpec](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.30/#servicespec-v1-core)_ | Spec defines the behavior of a service.<br />https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#spec-and-status |  | Optional: \{\} <br /> |
-| `status` _[ServiceStatus](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.30/#servicestatus-v1-core)_ | Most recently observed status of the service.<br />Populated by the system.<br />Read-only.<br />More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#spec-and-status |  | Optional: \{\} <br /> |
+| `metadata` _[ObjectMeta](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.30/#objectmeta-v1-meta)_ | Refer to Kubernetes API documentation for fields of `metadata`. |  |  |
+| `spec` _[ServiceSpec](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.30/#servicespec-v1-core)_ | Spec defines the behavior of a service.<br />https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#spec-and-status |  |  |
+| `status` _[ServiceStatus](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.30/#servicestatus-v1-core)_ | Most recently observed status of the service.<br />Populated by the system.<br />Read-only.<br />More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#spec-and-status |  |  |
 
 
 #### Version
@@ -1408,11 +1470,11 @@ _Appears in:_
 
 | Field | Description | Default | Validation |
 | --- | --- | --- | --- |
-| `global` _boolean_ | Global when set to true applies this policy to all routes for all tenants within a KubeLB installation.<br />Mutually exclusive with TargetRef and TargetSelector.<br />Policies without global, targetRef, or targetSelector are ignored. |  | Optional: \{\} <br /> |
-| `targetRef` _[WAFTargetRef](#waftargetref)_ | TargetRef identifies a specific route by name and optionally namespace.<br />Mutually exclusive with Global and TargetSelector. |  | Optional: \{\} <br /> |
-| `targetSelector` _[LabelSelector](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.30/#labelselector-v1-meta)_ | TargetSelector selects routes or HTTPRoute/GRPCRoute resources by label.<br />It checks whether the route has the labels or the labels of the HTTPRoute/GRPCRoute resource. In case of a<br />conflict, the labels of the Route resource takes precedence.<br />Mutually exclusive with Global and TargetRef. |  | Optional: \{\} <br /> |
-| `directives` _string array_ | Directives contains SecLang/ModSecurity directives passed to Coraza.<br />Reference: https://coraza.io/docs/seclang/directives/<br />If empty, the following OWASP CRS defaults are applied:<br />  - SecRuleEngine On<br />  - SecRequestBodyAccess On<br />  - SecRequestBodyLimit 13107200<br />  - Include @crs-setup-conf<br />  - Include @owasp_crs/*.conf |  | Optional: \{\} <br /> |
-| `failureMode` _[WAFFailureMode](#waffailuremode)_ | FailureMode defines behavior when WAF filter creation fails.<br />- Closed: Block traffic if WAF cannot be applied (default)<br />- Open: Allow traffic without WAF protection | Closed | Enum: [Open Closed] <br />Optional: \{\} <br /> |
+| `global` _boolean_ | Global when set to true applies this policy to all routes for all tenants within a KubeLB installation.<br />Mutually exclusive with TargetRef and TargetSelector.<br />Policies without global, targetRef, or targetSelector are ignored. |  |  |
+| `targetRef` _[WAFTargetRef](#waftargetref)_ | TargetRef identifies a specific route by name and optionally namespace.<br />Mutually exclusive with Global and TargetSelector. |  |  |
+| `targetSelector` _[LabelSelector](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.30/#labelselector-v1-meta)_ | TargetSelector selects routes or HTTPRoute/GRPCRoute resources by label.<br />It checks whether the route has the labels or the labels of the HTTPRoute/GRPCRoute resource. In case of a<br />conflict, the labels of the Route resource takes precedence.<br />Mutually exclusive with Global and TargetRef. |  |  |
+| `directives` _string array_ | Directives contains SecLang/ModSecurity directives passed to Coraza.<br />Reference: https://coraza.io/docs/seclang/directives/<br />If empty, the following OWASP CRS defaults are applied:<br />  - SecRuleEngine On<br />  - SecRequestBodyAccess On<br />  - SecRequestBodyLimit 13107200<br />  - Include @crs-setup-conf<br />  - Include @owasp_crs/*.conf |  |  |
+| `failureMode` _[WAFFailureMode](#waffailuremode)_ | FailureMode defines behavior when WAF filter creation fails.<br />- Closed: Block traffic if WAF cannot be applied (default)<br />- Open: Allow traffic without WAF protection | Closed | Enum: [Open Closed] <br /> |
 
 
 #### WAFPolicyStatus
@@ -1428,7 +1490,7 @@ _Appears in:_
 
 | Field | Description | Default | Validation |
 | --- | --- | --- | --- |
-| `conditions` _[Condition](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.30/#condition-v1-meta) array_ | Conditions describe the current state of the WAFPolicy. |  | Optional: \{\} <br /> |
+| `conditions` _[Condition](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.30/#condition-v1-meta) array_ | Conditions describe the current state of the WAFPolicy. |  |  |
 
 
 #### WAFSettings
@@ -1444,8 +1506,8 @@ _Appears in:_
 
 | Field | Description | Default | Validation |
 | --- | --- | --- | --- |
-| `wasmInitContainerImage` _string_ | WASMInitContainerImage overrides the image used for the WASM init container.<br />If empty, defaults to the kubelb-manager image detected at runtime. |  | Optional: \{\} <br /> |
-| `skipValidation` _boolean_ | SkipValidation skips directive validation for WAFPolicies.<br />When true, all WAFPolicies are marked as valid without parsing. |  | Optional: \{\} <br /> |
+| `wasmInitContainerImage` _string_ | WASMInitContainerImage overrides the image used for the WASM init container.<br />If empty, defaults to the kubelb-manager image detected at runtime. |  |  |
+| `skipValidation` _boolean_ | SkipValidation skips directive validation for WAFPolicies.<br />When true, all WAFPolicies are marked as valid without parsing. |  |  |
 
 
 #### WAFTargetRef
@@ -1462,7 +1524,7 @@ _Appears in:_
 | Field | Description | Default | Validation |
 | --- | --- | --- | --- |
 | `group` _string_ | Group is the API group of the target resource. | gateway.networking.k8s.io |  |
-| `namespace` _string_ | Namespace is the management cluster namespace (e.g., tenant-primary).<br />If omitted, matches across all namespaces. |  | Optional: \{\} <br /> |
+| `namespace` _string_ | Namespace is the management cluster namespace (e.g., tenant-primary).<br />If omitted, matches across all namespaces. |  |  |
 | `name` _string_ | Name is the name of the target resource which could either be the name of the resource in management cluster<br />that is generated by KubeLB or the `kubelb.k8c.io/origin-name` that is the original name of the resource in the tenant cluster. |  | MinLength: 1 <br /> |
 
 
