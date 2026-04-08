@@ -135,27 +135,22 @@ func MapSnapshot(ctx context.Context, client ctrlclient.Client, loadBalancers []
 			continue
 		}
 
-		// Determine route kind for listener type selection
+		// Determine listener type for the route once. HTTPS backends require
+		// raw TCP passthrough so the upstream client (e.g. nginx ingress with
+		// backend-protocol: HTTPS) can complete its own TLS handshake against
+		// the backend; the HTTP Connection Manager listener would otherwise
+		// interpret the TLS ClientHello as HTTP and break the handshake.
 		routeKind := getRouteKind(&route)
-		isHTTP := IsHTTPRoute(routeKind)
-
-		for i, routeendpoint := range route.Spec.Endpoints {
-			if routeendpoint.AddressesReference != nil {
-				// Check if map already contains the key
-				if val, ok := addressesMap[fmt.Sprintf(endpointAddressReferencePattern, route.Namespace, routeendpoint.AddressesReference.Name)]; ok {
-					route.Spec.Endpoints[i].Addresses = val
-					continue
-				}
-
-				// Load addresses from reference
-				var addresses kubelbv1alpha1.Addresses
-				if err := client.Get(ctx, ctrlclient.ObjectKey{Namespace: route.Namespace, Name: routeendpoint.AddressesReference.Name}, &addresses); err != nil {
-					return nil, fmt.Errorf("failed to get addresses: %w", err)
-				}
-				addressesMap[fmt.Sprintf(endpointAddressReferencePattern, route.Namespace, routeendpoint.AddressesReference.Name)] = addresses.Spec.Addresses
-				route.Spec.Endpoints[i].Addresses = addresses.Spec.Addresses
-			}
+		useHTTPListener := IsHTTPRoute(routeKind) && !isTLSBackend(&route)
+		clusterRouteKind := routeKind
+		if !useHTTPListener {
+			clusterRouteKind = ""
 		}
+
+		if err := resolveRouteAddresses(ctx, client, &route, addressesMap); err != nil {
+			return nil, err
+		}
+
 		source := route.Spec.Source.Kubernetes
 		originalRouteName := getOriginalRouteName(&route)
 		for _, svc := range source.Services {
@@ -176,24 +171,10 @@ func MapSnapshot(ctx context.Context, client ctrlclient.Client, loadBalancers []
 
 				key := fmt.Sprintf(kubelb.EnvoyRoutePortIdentifierPattern, route.Namespace, svc.Namespace, svc.Name, originalRouteName, svc.UID, port.Port, port.Protocol)
 
-				useHTTPListener := isHTTP && !isTLSBackend(&route)
-
-				switch port.Protocol {
-				case corev1.ProtocolTCP:
-					if useHTTPListener {
-						listener = append(listener, makeHTTPListener(key, key, listenerPort))
-					} else {
-						listener = append(listener, makeTCPListener(key, key, listenerPort))
-					}
-				case corev1.ProtocolUDP:
-					listener = append(listener, makeUDPListener(key, key, listenerPort))
+				if l := makeRouteListener(key, listenerPort, port.Protocol, useHTTPListener); l != nil {
+					listener = append(listener, l)
 				}
 				endpoints = append(endpoints, makeClusterLoadAssignment(key, lbEndpoints))
-
-				clusterRouteKind := routeKind
-				if !useHTTPListener {
-					clusterRouteKind = ""
-				}
 				cluster = append(cluster, makeCluster(key, port.Protocol, clusterRouteKind, false))
 			}
 		}
@@ -584,6 +565,43 @@ func IsHTTPRoute(routeKind string) bool {
 	default:
 		return false
 	}
+}
+
+// resolveRouteAddresses populates inline addresses on the Route's endpoints
+// from any AddressesReference, using addressesMap as a per-snapshot cache.
+func resolveRouteAddresses(ctx context.Context, client ctrlclient.Client, route *kubelbv1alpha1.Route, addressesMap map[string][]kubelbv1alpha1.EndpointAddress) error {
+	for i, routeendpoint := range route.Spec.Endpoints {
+		if routeendpoint.AddressesReference == nil {
+			continue
+		}
+		cacheKey := fmt.Sprintf(endpointAddressReferencePattern, route.Namespace, routeendpoint.AddressesReference.Name)
+		if val, ok := addressesMap[cacheKey]; ok {
+			route.Spec.Endpoints[i].Addresses = val
+			continue
+		}
+		var addresses kubelbv1alpha1.Addresses
+		if err := client.Get(ctx, ctrlclient.ObjectKey{Namespace: route.Namespace, Name: routeendpoint.AddressesReference.Name}, &addresses); err != nil {
+			return fmt.Errorf("failed to get addresses: %w", err)
+		}
+		addressesMap[cacheKey] = addresses.Spec.Addresses
+		route.Spec.Endpoints[i].Addresses = addresses.Spec.Addresses
+	}
+	return nil
+}
+
+// makeRouteListener returns the envoy listener for a given service port on a
+// Route. Returns nil for unsupported protocols.
+func makeRouteListener(key string, listenerPort uint32, protocol corev1.Protocol, useHTTPListener bool) *envoyListener.Listener {
+	switch protocol {
+	case corev1.ProtocolTCP:
+		if useHTTPListener {
+			return makeHTTPListener(key, key, listenerPort)
+		}
+		return makeTCPListener(key, key, listenerPort)
+	case corev1.ProtocolUDP:
+		return makeUDPListener(key, key, listenerPort)
+	}
+	return nil
 }
 
 // isTLSBackend reports whether the upstream for this Route is expected to
