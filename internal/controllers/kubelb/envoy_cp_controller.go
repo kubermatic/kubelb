@@ -298,6 +298,7 @@ func (r *EnvoyCPReconciler) ensureEnvoyProxy(ctx context.Context, namespace, app
 
 	desiredTemplate := r.getEnvoyProxyPodSpec(namespace, appName, snapshotName, tenant)
 	var originalTemplate corev1.PodTemplateSpec
+	var originalReplicas, desiredReplicas *int32
 	if r.Config.Spec.EnvoyProxy.UseDaemonset {
 		daemonset := envoyProxy.(*appsv1.DaemonSet)
 		originalTemplate = daemonset.Spec.Template
@@ -309,11 +310,13 @@ func (r *EnvoyCPReconciler) ensureEnvoyProxy(ctx context.Context, namespace, app
 	} else {
 		deployment := envoyProxy.(*appsv1.Deployment)
 		originalTemplate = deployment.Spec.Template
+		originalReplicas = deployment.Spec.Replicas
 		replicas := r.Config.Spec.EnvoyProxy.Replicas
 		if tenant.Spec.EnvoyProxy != nil && tenant.Spec.EnvoyProxy.Replicas != nil {
 			replicas = *tenant.Spec.EnvoyProxy.Replicas
 		}
-		deployment.Spec.Replicas = &replicas
+		desiredReplicas = &replicas
+		deployment.Spec.Replicas = desiredReplicas
 		deployment.Spec.Selector = &metav1.LabelSelector{
 			MatchLabels: map[string]string{kubelb.LabelAppKubernetesName: appName},
 		}
@@ -326,7 +329,7 @@ func (r *EnvoyCPReconciler) ensureEnvoyProxy(ctx context.Context, namespace, app
 			return err
 		}
 		envoycpmetrics.EnvoyProxyCreateTotal.WithLabelValues(namespace).Inc()
-	} else if podTemplateSpecNeedsUpdate(originalTemplate, desiredTemplate) {
+	} else if podTemplateSpecNeedsUpdate(originalTemplate, desiredTemplate) || replicasChanged(originalReplicas, desiredReplicas) {
 		if err := r.Update(ctx, envoyProxy); err != nil {
 			return fmt.Errorf("failed to update envoy proxy: %w", err)
 		}
@@ -609,6 +612,16 @@ func podTemplateSpecNeedsUpdate(original, desired corev1.PodTemplateSpec) bool {
 	}
 
 	return false
+}
+
+func replicasChanged(original, desired *int32) bool {
+	if original == nil && desired == nil {
+		return false
+	}
+	if original == nil || desired == nil {
+		return true
+	}
+	return *original != *desired
 }
 
 // enqueueLoadBalancers is a handler.MapFunc to be used to enqueue requests for reconciliation
