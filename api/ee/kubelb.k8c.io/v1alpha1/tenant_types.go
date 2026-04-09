@@ -30,6 +30,7 @@ import (
 // TenantEnvoyProxy defines tenant-level overrides for Envoy Proxy configuration.
 type TenantEnvoyProxy struct {
 	// Replicas is the number of Envoy Proxy replicas for this tenant.
+	// This field is ignored if Config.Spec.EnvoyProxy.UseDaemonset is true.
 	// +kubebuilder:validation:Minimum=1
 	// +optional
 	Replicas *int32 `json:"replicas,omitempty"`
