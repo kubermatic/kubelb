@@ -29,7 +29,7 @@ spec:
   concurrent: false
   description: |
     Test that Tenant.spec.envoyProxy.replicas overrides the Config default
-    and removing the override reverts to the Config default (3).
+    and removing the override reverts to the Config default (1 in e2e).
   steps:
     - name: reset-tenants
       use:
@@ -47,7 +47,7 @@ spec:
             content: |
               set -e
               NAMESPACE="tenant-secondary"
-              EXPECTED=3
+              EXPECTED=1
 
               for i in $(seq 1 15); do
                 DEPLOY=$(kubectl get deployment envoy-tenant-secondary -n "$NAMESPACE" -o name 2>/dev/null || true)
@@ -75,14 +75,14 @@ spec:
               kubectl patch tenant secondary --type=merge -p '{
                 "spec": {
                   "envoyProxy": {
-                    "replicas": 5
+                    "replicas": 3
                   }
                 }
               }'
             check:
               ($error == null): true
 
-    - name: verify-scaled-to-5
+    - name: verify-scaled-to-3
       cluster: kubelb
       try:
         - script:
@@ -90,7 +90,7 @@ spec:
             content: |
               set -e
               NAMESPACE="tenant-secondary"
-              EXPECTED=5
+              EXPECTED=3
 
               for i in $(seq 1 15); do
                 REPLICAS=$(kubectl get deployment envoy-tenant-secondary -n "$NAMESPACE" -o jsonpath='{.spec.replicas}' 2>/dev/null || echo "0")
@@ -116,7 +116,7 @@ spec:
             check:
               ($error == null): true
 
-    - name: verify-reverted-to-3
+    - name: verify-reverted-to-1
       cluster: kubelb
       try:
         - script:
@@ -124,7 +124,7 @@ spec:
             content: |
               set -e
               NAMESPACE="tenant-secondary"
-              EXPECTED=3
+              EXPECTED=1
 
               for i in $(seq 1 15); do
                 REPLICAS=$(kubectl get deployment envoy-tenant-secondary -n "$NAMESPACE" -o jsonpath='{.spec.replicas}' 2>/dev/null || echo "0")
