@@ -925,6 +925,23 @@ _Appears in:_
 | `status` _[TenantStatus](#tenantstatus)_ |  |  |  |
 
 
+#### TenantEnvoyProxy
+
+
+
+TenantEnvoyProxy defines tenant-level overrides for Envoy Proxy configuration.
+
+
+
+_Appears in:_
+- [TenantSpec](#tenantspec)
+
+| Field | Description | Default | Validation |
+| --- | --- | --- | --- |
+| `replicas` _integer_ | Replicas is the number of Envoy Proxy replicas for this tenant. |  | Minimum: 1 <br /> |
+| `resources` _[ResourceRequirements](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.30/#resourcerequirements-v1-core)_ | Resources defines the resource requirements for the Envoy Proxy container. |  |  |
+
+
 #### TenantList
 
 
@@ -978,6 +995,7 @@ _Appears in:_
 | `propagatedAnnotations` _map[string]string_ | PropagatedAnnotations defines the list of annotations(key-value pairs) that will be propagated to the LoadBalancer service. Keep the `value` field empty in the key-value pair to allow any value.<br />Tenant configuration has higher precedence than the annotations specified at the Config level. |  |  |
 | `propagateAllAnnotations` _boolean_ | PropagateAllAnnotations defines whether all annotations will be propagated to the LoadBalancer service. If set to true, PropagatedAnnotations will be ignored.<br />Tenant configuration has higher precedence than the value specified at the Config level. |  |  |
 | `defaultAnnotations` _object (keys:[AnnotatedResource](#annotatedresource), values:[Annotations](#annotations))_ | DefaultAnnotations defines the list of annotations(key-value pairs) that will be set on the load balancing resources if not already present. A special key `all` can be used to apply the same<br />set of annotations to all resources.<br />Tenant configuration has higher precedence than the annotations specified at the Config level. |  |  |
+| `envoyProxy` _[TenantEnvoyProxy](#tenantenvoyproxy)_ | EnvoyProxy defines tenant-level overrides for Envoy Proxy configuration.<br />Fields set here take precedence over Config.Spec.EnvoyProxy. |  |  |
 | `loadBalancer` _[LoadBalancerSettings](#loadbalancersettings)_ |  |  |  |
 | `ingress` _[IngressSettings](#ingresssettings)_ |  |  |  |
 | `gatewayAPI` _[GatewayAPISettings](#gatewayapisettings)_ |  |  |  |

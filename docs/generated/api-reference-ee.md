@@ -1040,6 +1040,23 @@ _Appears in:_
 | `status` _[TenantStatus](#tenantstatus)_ |  |  |  |
 
 
+#### TenantEnvoyProxy
+
+
+
+TenantEnvoyProxy defines tenant-level overrides for Envoy Proxy configuration.
+
+
+
+_Appears in:_
+- [TenantSpec](#tenantspec)
+
+| Field | Description | Default | Validation |
+| --- | --- | --- | --- |
+| `replicas` _integer_ | Replicas is the number of Envoy Proxy replicas for this tenant. |  | Minimum: 1 <br /> |
+| `resources` _[ResourceRequirements](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.30/#resourcerequirements-v1-core)_ | Resources defines the resource requirements for the Envoy Proxy container. |  |  |
+
+
 #### TenantList
 
 
@@ -1099,6 +1116,7 @@ _Appears in:_
 | `dns` _[DNSSettings](#dnssettings)_ |  |  |  |
 | `certificates` _[CertificatesSettings](#certificatessettings)_ |  |  |  |
 | `tunnel` _[TenantTunnelSettings](#tenanttunnelsettings)_ |  |  |  |
+| `envoyProxy` _[TenantEnvoyProxy](#tenantenvoyproxy)_ | EnvoyProxy defines tenant-level overrides for Envoy Proxy configuration.<br />Fields set here take precedence over Config.Spec.EnvoyProxy. |  |  |
 | `circuitBreaker` _[CircuitBreaker](#circuitbreaker)_ | CircuitBreaker defines the circuit breaker configuration for this tenant's Envoy clusters.<br />Overrides Config-level settings. |  |  |
 | `allowedDomains` _string array_ | List of allowed domains for the tenant. This is used to restrict the domains that can be used<br />for the tenant. If specified, applies on all the components such as Ingress, GatewayAPI, DNS, certificates, etc.<br />Examples:<br />- ["*.example.com"] -> this allows subdomains at the root level such as example.com and test.example.com but won't allow domains at one level above like test.test.example.com<br />- ["**.example.com"] -> this allows all subdomains of example.com such as test.dns.example.com and dns.example.com<br />- ["example.com"] -> this allows only example.com<br />- ["**"] or ["*"] -> this allows all domains<br />Note: "**" was added as a special case to allow any levels of subdomains that come before it. "*" works for only 1 level.<br />Default: value is ["**"] and all domains are allowed. | [**] |  |
 
