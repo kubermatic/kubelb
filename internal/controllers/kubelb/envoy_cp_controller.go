@@ -107,13 +107,18 @@ func (r *EnvoyCPReconciler) reconcile(ctx context.Context, req ctrl.Request) err
 
 	namespace := req.Namespace
 
+	tenant, err := GetTenant(ctx, r.Client, RemoveTenantPrefix(namespace))
+	if err != nil {
+		return fmt.Errorf("failed to retrieve tenant: %w", err)
+	}
+
 	if len(lbs) == 0 && len(routes) == 0 {
 		r.EnvoyCache.ClearSnapshot(snapshotName)
 		envoycpmetrics.CacheClearsTotal.WithLabelValues(snapshotName).Inc()
 		return r.cleanupEnvoyProxy(ctx, appName, namespace)
 	}
 
-	if err := r.ensureEnvoyProxy(ctx, namespace, appName, snapshotName); err != nil {
+	if err := r.ensureEnvoyProxy(ctx, namespace, appName, snapshotName, tenant); err != nil {
 		return fmt.Errorf("failed to update Envoy proxy: %w", err)
 	}
 	managermetrics.EnvoyProxiesTotal.WithLabelValues(namespace, "shared").Set(1)
@@ -258,7 +263,7 @@ func (r *EnvoyCPReconciler) cleanupEnvoyProxy(ctx context.Context, appName strin
 	return nil
 }
 
-func (r *EnvoyCPReconciler) ensureEnvoyProxy(ctx context.Context, namespace, appName, snapshotName string) error {
+func (r *EnvoyCPReconciler) ensureEnvoyProxy(ctx context.Context, namespace, appName, snapshotName string, tenant *kubelbv1alpha1.Tenant) error {
 	log := ctrl.LoggerFrom(ctx).WithValues("reconcile", "envoy-proxy")
 	log.V(2).Info("verify envoy-proxy")
 
@@ -291,7 +296,7 @@ func (r *EnvoyCPReconciler) ensureEnvoyProxy(ctx context.Context, namespace, app
 		return err
 	}
 
-	desiredTemplate := r.getEnvoyProxyPodSpec(namespace, appName, snapshotName)
+	desiredTemplate := r.getEnvoyProxyPodSpec(namespace, appName, snapshotName, tenant)
 	var originalTemplate corev1.PodTemplateSpec
 	if r.Config.Spec.EnvoyProxy.UseDaemonset {
 		daemonset := envoyProxy.(*appsv1.DaemonSet)
@@ -304,7 +309,10 @@ func (r *EnvoyCPReconciler) ensureEnvoyProxy(ctx context.Context, namespace, app
 	} else {
 		deployment := envoyProxy.(*appsv1.Deployment)
 		originalTemplate = deployment.Spec.Template
-		var replicas = r.Config.Spec.EnvoyProxy.Replicas
+		replicas := r.Config.Spec.EnvoyProxy.Replicas
+		if tenant.Spec.EnvoyProxy != nil && tenant.Spec.EnvoyProxy.Replicas != nil {
+			replicas = *tenant.Spec.EnvoyProxy.Replicas
+		}
 		deployment.Spec.Replicas = &replicas
 		deployment.Spec.Selector = &metav1.LabelSelector{
 			MatchLabels: map[string]string{kubelb.LabelAppKubernetesName: appName},
@@ -326,7 +334,7 @@ func (r *EnvoyCPReconciler) ensureEnvoyProxy(ctx context.Context, namespace, app
 	return nil
 }
 
-func (r *EnvoyCPReconciler) getEnvoyProxyPodSpec(namespace, appName, snapshotName string) corev1.PodTemplateSpec {
+func (r *EnvoyCPReconciler) getEnvoyProxyPodSpec(namespace, appName, snapshotName string, tenant *kubelbv1alpha1.Tenant) corev1.PodTemplateSpec {
 	envoyProxy := r.Config.Spec.EnvoyProxy
 
 	// Use configured image or fall back to default
@@ -519,7 +527,9 @@ func (r *EnvoyCPReconciler) getEnvoyProxyPodSpec(namespace, appName, snapshotNam
 		},
 	}
 
-	if envoyProxy.Resources != nil {
+	if tenant.Spec.EnvoyProxy != nil && tenant.Spec.EnvoyProxy.Resources != nil {
+		template.Spec.Containers[0].Resources = *tenant.Spec.EnvoyProxy.Resources
+	} else if envoyProxy.Resources != nil {
 		template.Spec.Containers[0].Resources = *envoyProxy.Resources
 	}
 
@@ -674,7 +684,13 @@ func tenantSpecChangedPredicate() predicate.Predicate {
 		UpdateFunc: func(e event.UpdateEvent) bool {
 			oldTenant := e.ObjectOld.(*kubelbv1alpha1.Tenant)
 			newTenant := e.ObjectNew.(*kubelbv1alpha1.Tenant)
-			return !reflect.DeepEqual(oldTenant.Spec.Ingress.Class, newTenant.Spec.Ingress.Class)
+			if !reflect.DeepEqual(oldTenant.Spec.Ingress.Class, newTenant.Spec.Ingress.Class) {
+				return true
+			}
+			if !reflect.DeepEqual(oldTenant.Spec.EnvoyProxy, newTenant.Spec.EnvoyProxy) {
+				return true
+			}
+			return false
 		},
 		CreateFunc:  func(_ event.CreateEvent) bool { return false },
 		DeleteFunc:  func(_ event.DeleteEvent) bool { return false },
