@@ -107,15 +107,15 @@ func (r *EnvoyCPReconciler) reconcile(ctx context.Context, req ctrl.Request) err
 
 	namespace := req.Namespace
 
-	tenant, err := GetTenant(ctx, r.Client, RemoveTenantPrefix(namespace))
-	if err != nil {
-		return fmt.Errorf("failed to retrieve tenant: %w", err)
-	}
-
 	if len(lbs) == 0 && len(routes) == 0 {
 		r.EnvoyCache.ClearSnapshot(snapshotName)
 		envoycpmetrics.CacheClearsTotal.WithLabelValues(snapshotName).Inc()
 		return r.cleanupEnvoyProxy(ctx, appName, namespace)
+	}
+
+	tenant, err := GetTenant(ctx, r.Client, RemoveTenantPrefix(namespace))
+	if err != nil {
+		return fmt.Errorf("failed to retrieve tenant: %w", err)
 	}
 
 	if err := r.ensureEnvoyProxy(ctx, namespace, appName, snapshotName, tenant); err != nil {
