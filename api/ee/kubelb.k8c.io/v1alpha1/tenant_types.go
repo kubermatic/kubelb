@@ -27,6 +27,19 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
+// TenantEnvoyProxy defines tenant-level overrides for Envoy Proxy configuration.
+type TenantEnvoyProxy struct {
+	// Replicas is the number of Envoy Proxy replicas for this tenant.
+	// This field is ignored if Config.Spec.EnvoyProxy.UseDaemonset is true.
+	// +kubebuilder:validation:Minimum=1
+	// +optional
+	Replicas *int32 `json:"replicas,omitempty"`
+
+	// Resources defines the resource requirements for the Envoy Proxy container.
+	// +optional
+	Resources *corev1.ResourceRequirements `json:"resources,omitempty"`
+}
+
 // TenantSpec defines the desired state of Tenant
 type TenantSpec struct {
 	AnnotationSettings `json:",inline"`
@@ -36,6 +49,11 @@ type TenantSpec struct {
 	DNS                DNSSettings          `json:"dns,omitempty"`
 	Certificates       CertificatesSettings `json:"certificates,omitempty"`
 	Tunnel             TenantTunnelSettings `json:"tunnel,omitempty"`
+
+	// EnvoyProxy defines tenant-level overrides for Envoy Proxy configuration.
+	// Fields set here take precedence over Config.Spec.EnvoyProxy.
+	// +optional
+	EnvoyProxy *TenantEnvoyProxy `json:"envoyProxy,omitempty"`
 
 	// CircuitBreaker defines the circuit breaker configuration for this tenant's Envoy clusters.
 	// Overrides Config-level settings.
