@@ -308,7 +308,7 @@ configure_metallb_pool() {
     # Auto-detect from Kind's Docker network (IPv4 only, filter out nulls and IPv6)
     local metallb_gw
     metallb_gw=$(docker network inspect -f json kind | jq --raw-output '.[].IPAM.Config[].Gateway | select(. != null) | select(contains(":") | not)' | sed -e 's/\(.*\..*\).*\..*\..*/\1/')
-    metallb_ip_range="${metallb_gw}.255.200-${metallb_gw}.255.250"
+    metallb_ip_range="${metallb_gw}.255.50-${metallb_gw}.255.149"
   fi
 
   echodate "MetalLB IP pool: ${metallb_ip_range}"
