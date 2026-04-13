@@ -938,7 +938,7 @@ _Appears in:_
 
 | Field | Description | Default | Validation |
 | --- | --- | --- | --- |
-| `replicas` _integer_ | Replicas is the number of Envoy Proxy replicas for this tenant. |  | Minimum: 1 <br /> |
+| `replicas` _integer_ | Replicas is the number of Envoy Proxy replicas for this tenant.<br />This field is ignored if Config.Spec.EnvoyProxy.UseDaemonset is true. |  | Minimum: 1 <br /> |
 | `resources` _[ResourceRequirements](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.30/#resourcerequirements-v1-core)_ | Resources defines the resource requirements for the Envoy Proxy container. |  |  |
 
 
