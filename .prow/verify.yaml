@@ -14,7 +14,7 @@
 
 ---
 presubmits:
-  - name: pull-kubelb-mod-verify
+  - name: pull-kubelb-verify
     always_run: true
     decorate: true
     clone_uri: "ssh://git@github.com/kubermatic/kubelb.git"
@@ -24,12 +24,11 @@ presubmits:
       containers:
         - image: golang:1.26
           command:
-            - make
-          args:
-            - check-dependencies
+            - ./hack/ci/verify.sh
           resources:
             requests:
-              cpu: 1
+              memory: 2Gi
+              cpu: 2
 
   - name: pull-kubelb-lint
     always_run: true
@@ -41,75 +40,16 @@ presubmits:
       containers:
         - image: golangci/golangci-lint:v2.10.1
           command:
-            - make
+            - bash
           args:
-            - lint
+            - -c
+            - |
+              make download-gocache
+              make lint
           resources:
             requests:
-              cpu: 1
+              cpu: 4
               memory: 6Gi
-
-  - name: pull-kubelb-yamllint
-    always_run: true
-    decorate: true
-    clone_uri: "ssh://git@github.com/kubermatic/kubelb.git"
-    labels:
-      preset-goproxy: "true"
-    spec:
-      containers:
-        - image: quay.io/kubermatic/build:go-1.26-node-22-kind-0.31-1
-          command:
-            - make
-          args:
-            - yamllint
-          resources:
-            requests:
-              cpu: 200m
-
-  - name: pull-kubelb-verify-boilerplate
-    always_run: true
-    decorate: true
-    clone_uri: "ssh://git@github.com/kubermatic/kubelb.git"
-    spec:
-      containers:
-        - image: quay.io/kubermatic/build:go-1.26-node-22-kind-0.31-1
-          command:
-            - make
-          args:
-            - verify-boilerplate
-
-  - name: pull-kubelb-verify-imports
-    always_run: true
-    decorate: true
-    clone_uri: "ssh://git@github.com/kubermatic/kubelb.git"
-    spec:
-      containers:
-        - image: quay.io/kubermatic/build:go-1.26-node-22-kind-0.31-1
-          command:
-            - make
-          args:
-            - verify-imports
-
-  - name: pull-kubelb-build
-    always_run: true
-    decorate: true
-    clone_uri: "ssh://git@github.com/kubermatic/kubelb.git"
-    labels:
-      preset-goproxy: "true"
-    spec:
-      containers:
-        - image: golang:1.26
-          command:
-            - make
-          args:
-            - build
-          resources:
-            requests:
-              memory: 1Gi
-              cpu: 1
-            limits:
-              memory: 2Gi
-              cpu: 2
 
   - name: pull-kubelb-unit-tests
     always_run: true
@@ -121,9 +61,12 @@ presubmits:
       containers:
         - image: golang:1.26
           command:
-            - make
+            - bash
           args:
-            - test
+            - -c
+            - |
+              make download-gocache
+              make test
           resources:
             requests:
               memory: 4Gi
@@ -183,50 +126,6 @@ presubmits:
               memory: 16Gi
               cpu: 4
 
-  - name: pull-kubelb-verify-shfmt
-    run_if_changed: "^hack/"
-    decorate: true
-    clone_uri: "ssh://git@github.com/kubermatic/kubelb.git"
-    spec:
-      containers:
-        - image: quay.io/kubermatic/build:go-1.26-node-22-kind-0.31-1
-          command:
-            - shfmt
-          args:
-            #   -l        list files whose formatting differs from shfmt's
-            #   -d        error with a diff when the formatting differs
-            #   -i uint   indent: 0 for tabs (default), >0 for number of spaces
-            #   -sr       redirect operators will be followed by a space
-            - "-l"
-            - "-sr"
-            - "-i"
-            - "2"
-            - "-d"
-            - "hack"
-          resources:
-            requests:
-              memory: 32Mi
-              cpu: 50m
-            limits:
-              memory: 256Mi
-              cpu: 250m
-
-  - name: pull-kubelb-license-validation
-    always_run: true
-    decorate: true
-    clone_uri: "ssh://git@github.com/kubermatic/kubelb.git"
-    labels:
-      preset-goproxy: "true"
-    spec:
-      containers:
-        - image: quay.io/kubermatic/build:go-1.26-node-22-kind-0.31-1
-          command:
-            - ./hack/verify-licenses.sh
-          resources:
-            requests:
-              memory: 2Gi
-              cpu: 2
-
   - name: pull-kubelb-gorelease-verify
     run_if_changed: "^(\\.goreleaser\\.ya?ml|go\\.(mod|sum))$|Dockerfile|\\.dockerfile$"
     decorate: true
@@ -235,7 +134,7 @@ presubmits:
       preset-goproxy: "true"
     spec:
       containers:
-        - image: quay.io/kubermatic/build:go-1.26-node-22-kind-0.31-1
+        - image: goreleaser/goreleaser:v2.15.2
           command:
             - goreleaser
           args:
