@@ -180,15 +180,23 @@ type EnvoyProxyGracefulShutdown struct {
 	ShutdownManagerImage string `json:"shutdownManagerImage,omitempty"`
 }
 
+// ConfigStatus defines the observed state of the Config.
+type ConfigStatus struct {
+	Version Version `json:"version,omitempty"`
+}
+
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
+// +kubebuilder:printcolumn:JSONPath=".status.version.edition",name="Edition",type="string"
+// +kubebuilder:printcolumn:JSONPath=".status.version.gitVersion",name="Version",type="string"
 
 // Config is the object that represents the Config for the KubeLB management controller.
 type Config struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 
-	Spec ConfigSpec `json:"spec,omitempty"`
+	Spec   ConfigSpec   `json:"spec,omitempty"`
+	Status ConfigStatus `json:"status,omitempty"`
 }
 
 func (c *Config) GetEnvoyProxyTopology() EnvoyProxyTopology {

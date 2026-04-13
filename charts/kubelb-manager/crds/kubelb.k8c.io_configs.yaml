@@ -14,7 +14,14 @@ spec:
     singular: config
   scope: Namespaced
   versions:
-  - name: v1alpha1
+  - additionalPrinterColumns:
+    - jsonPath: .status.version.edition
+      name: Edition
+      type: string
+    - jsonPath: .status.version.gitVersion
+      name: Version
+      type: string
+    name: v1alpha1
     schema:
       openAPIV3Schema:
         description: Config is the object that represents the Config for the KubeLB
@@ -1310,6 +1317,21 @@ spec:
                 description: |-
                   PropagatedAnnotations defines the list of annotations(key-value pairs) that will be propagated to the LoadBalancer service. Keep the `value` field empty in the key-value pair to allow any value.
                   Tenant configuration has higher precedence than the annotations specified at the Config level.
+                type: object
+            type: object
+          status:
+            description: ConfigStatus defines the observed state of the Config.
+            properties:
+              version:
+                properties:
+                  buildDate:
+                    type: string
+                  edition:
+                    type: string
+                  gitCommit:
+                    type: string
+                  gitVersion:
+                    type: string
                 type: object
             type: object
         type: object

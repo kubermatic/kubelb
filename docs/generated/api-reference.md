@@ -191,6 +191,7 @@ _Appears in:_
 | `kind` _string_ | `Config` | | |
 | `metadata` _[ObjectMeta](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.30/#objectmeta-v1-meta)_ | Refer to Kubernetes API documentation for fields of `metadata`. |  |  |
 | `spec` _[ConfigSpec](#configspec)_ |  |  |  |
+| `status` _[ConfigStatus](#configstatus)_ |  |  |  |
 
 
 #### ConfigDNSSettings
@@ -252,6 +253,22 @@ _Appears in:_
 | `gatewayAPI` _[GatewayAPISettings](#gatewayapisettings)_ |  |  |  |
 | `dns` _[ConfigDNSSettings](#configdnssettings)_ |  |  |  |
 | `certificates` _[CertificatesSettings](#certificatessettings)_ |  |  |  |
+
+
+#### ConfigStatus
+
+
+
+ConfigStatus defines the observed state of the Config.
+
+
+
+_Appears in:_
+- [Config](#config)
+
+| Field | Description | Default | Validation |
+| --- | --- | --- | --- |
+| `version` _[Version](#version)_ |  |  |  |
 
 
 #### DNSSettings
@@ -938,7 +955,7 @@ _Appears in:_
 
 | Field | Description | Default | Validation |
 | --- | --- | --- | --- |
-| `replicas` _integer_ | Replicas is the number of Envoy Proxy replicas for this tenant. |  | Minimum: 1 <br /> |
+| `replicas` _integer_ | Replicas is the number of Envoy Proxy replicas for this tenant.<br />This field is ignored if Config.Spec.EnvoyProxy.UseDaemonset is true. |  | Minimum: 1 <br /> |
 | `resources` _[ResourceRequirements](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.30/#resourcerequirements-v1-core)_ | Resources defines the resource requirements for the Envoy Proxy container. |  |  |
 
 
@@ -1121,6 +1138,7 @@ _Appears in:_
 
 
 _Appears in:_
+- [ConfigStatus](#configstatus)
 - [TenantStateStatus](#tenantstatestatus)
 
 | Field | Description | Default | Validation |
