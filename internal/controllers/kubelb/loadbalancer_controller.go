@@ -250,6 +250,7 @@ func (r *LoadBalancerReconciler) reconcileService(ctx context.Context, loadBalan
 
 	labels := map[string]string{
 		kubelb.LabelAppKubernetesName:     appName,
+		kubelb.LabelManagedBy:             kubelb.LabelControllerName,
 		kubelb.LabelLoadBalancerName:      loadBalancer.Name,
 		kubelb.LabelLoadBalancerNamespace: loadBalancer.Namespace,
 		kubelb.LabelOriginNamespace:       loadBalancer.Labels[kubelb.LabelOriginNamespace],

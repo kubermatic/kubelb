@@ -293,6 +293,10 @@ func (r *TenantReconciler) reconcile(ctx context.Context, log logr.Logger, tenan
 		return fmt.Errorf("failed to reconcile TenantState: %w", err)
 	}
 
+	if err := r.reconcileConfigStatus(ctx); err != nil {
+		return fmt.Errorf("failed to reconcile Config status: %w", err)
+	}
+
 	if err := r.reconcilePodMonitor(ctx, namespace); err != nil {
 		return fmt.Errorf("failed to reconcile PodMonitor: %w", err)
 	}
@@ -646,6 +650,26 @@ func (r *TenantReconciler) shouldUpdateStatus(current, newTenantStatus kubelbv1a
 	}
 
 	return false
+}
+
+func (r *TenantReconciler) reconcileConfigStatus(ctx context.Context) error {
+	config, err := GetConfig(ctx, r.Client, r.Namespace)
+	if err != nil {
+		return err
+	}
+
+	// Config might be a default (not persisted) — skip status update
+	if config.Name == "" {
+		return nil
+	}
+
+	currentVersion := versioninfo.GetVersion()
+	if config.Status.Version == currentVersion {
+		return nil
+	}
+
+	config.Status.Version = currentVersion
+	return r.Status().Update(ctx, config)
 }
 
 func (r *TenantReconciler) SetupWithManager(mgr ctrl.Manager) error {
