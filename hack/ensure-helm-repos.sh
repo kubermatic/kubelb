@@ -96,8 +96,12 @@ for pid in "${add_pids[@]}"; do
   wait $pid 2> /dev/null || true
 done
 
-# Update all repositories
-echo "Updating Helm repositories..."
-helm repo update
+# Update all repositories (only if any exist)
+if helm repo list &> /dev/null; then
+  echo "Updating Helm repositories..."
+  helm repo update
+else
+  echo "No Helm repositories configured, skipping update"
+fi
 
 echo "Helm repositories setup complete!"

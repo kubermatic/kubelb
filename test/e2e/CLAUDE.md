@@ -26,6 +26,7 @@ Tests live in `test/e2e/tests/{layer4,layer7}/{resource}/{test-name}/chainsaw-te
 Templates live in `test/e2e/step-templates/{common,gateway,layer4,layer7,ingress,conversion,isolated}/`.
 
 Standard L7 test pattern:
+
 1. Deploy backend(s) via `deploy-echo-backend` template
 2. Create Gateway via `create-http-gateway` template
 3. Create route (HTTPRoute/GRPCRoute/Ingress) — usually inline script (needs Gateway IP for nip.io hostnames)
@@ -37,10 +38,13 @@ Standard L7 test pattern:
 ## Chainsaw Pitfalls
 
 ### `$namespace` is reserved
+
 Chainsaw sets `$namespace` to auto-generated test namespace. Never use `namespace` as a binding name. Hardcode `default` directly.
 
 ### `use.with.bindings` must be hardcoded
+
 JMESPath refs (`($var)`) silently resolve to empty. Always pass literal strings:
+
 ```yaml
 # WRONG — silently empty
 - name: gateway_name
@@ -52,23 +56,29 @@ JMESPath refs (`($var)`) silently resolve to empty. Always pass literal strings:
 ```
 
 ### StepTemplates use `try`, never `finally`
+
 `finally` is invalid in StepTemplate spec. Tests that call templates handle cleanup themselves.
 
 ### StepTemplate `spec.bindings` — hardcoded defaults only
+
 Cannot reference other bindings. Use bash defaults for optional params:
+
 ```yaml
 content: |
   SERVICE_NAME="${SERVICE_NAME:-$INGRESS_NAME}"
 ```
 
 ### `catch` blocks don't support `use`
+
 Only inline operations work in `catch`. Cleanup templates must be called as regular steps.
 
 ### `assert` is strict
+
 - Ports must be int, not string
 - Don't assert partial arrays (must match full length)
 
 ### JMESPath limitations
+
 No `??` operator. Use bash defaults instead.
 
 ## Writing a New L7 Test
@@ -270,23 +280,27 @@ spec:
 ## Debugging Failures
 
 Run a failing test in isolation:
+
 ```bash
 make e2e-select select=test=basic
 ```
 
 Kubeconfigs in `.e2e-kubeconfigs/`:
+
 ```bash
 export KUBELB_KUBECONFIG=.e2e-kubeconfigs/kubelb.kubeconfig
 export TENANT1_KUBECONFIG=.e2e-kubeconfigs/tenant1.kubeconfig
 ```
 
 Check logs:
+
 ```bash
 kubectl --kubeconfig=$TENANT1_KUBECONFIG logs -n kubelb -l app.kubernetes.io/name=kubelb-ccm -f
 kubectl --kubeconfig=$KUBELB_KUBECONFIG logs -n kubelb -l app.kubernetes.io/name=kubelb-manager -f
 ```
 
 Check resources:
+
 ```bash
 kubectl --kubeconfig=$KUBELB_KUBECONFIG get routes.kubelb.k8c.io -A
 kubectl --kubeconfig=$KUBELB_KUBECONFIG get gateway,httproute -A
