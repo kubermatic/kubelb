@@ -1,24 +1,24 @@
 dependencies:
 - name: ingress-nginx
   repository: https://kubernetes.github.io/ingress-nginx
-  version: 4.15.0
+  version: 4.15.1
 - name: gateway-helm
   repository: oci://docker.io/envoyproxy
   version: 1.7.1
 - name: cert-manager
-  repository: https://charts.jetstack.io
-  version: v1.20.0
+  repository: oci://quay.io/jetstack/charts
+  version: v1.20.2
 - name: external-dns
   repository: https://kubernetes-sigs.github.io/external-dns
   version: 1.20.0
 - name: metallb
-  repository: https://metallb.github.io/metallb
+  repository: oci://quay.io/metallb/chart
   version: 0.15.3
 - name: kgateway-crds
   repository: oci://cr.kgateway.dev/kgateway-dev/charts
-  version: v2.1.2
+  version: v2.2.3
 - name: kgateway
   repository: oci://cr.kgateway.dev/kgateway-dev/charts
-  version: v2.1.2
-digest: sha256:f0f8d9682f7b432d4df6f9dfa62c5f7e06afcdf83fa6c0ab681453c22e33ecdf
-generated: "2026-03-17T12:22:07.406273785Z"
+  version: v2.2.3
+digest: sha256:aa15d148097f3a35b9cae7ea3d374fc3137e462a1d1d2bf0e42b2dfd3983a900
+generated: "2026-04-14T15:01:57.332989+05:00"
