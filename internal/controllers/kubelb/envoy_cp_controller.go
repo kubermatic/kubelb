@@ -340,17 +340,10 @@ func (r *EnvoyCPReconciler) ensureEnvoyProxy(ctx context.Context, namespace, app
 func (r *EnvoyCPReconciler) getEnvoyProxyPodSpec(namespace, appName, snapshotName string, tenant *kubelbv1alpha1.Tenant) corev1.PodTemplateSpec {
 	envoyProxy := r.Config.Spec.EnvoyProxy
 
-	// Use configured image or fall back to default
-	image := envoyProxy.Image
-	if image == "" {
-		image = envoyImage
-	}
-
 	// Extract graceful shutdown configuration
 	gracefulShutdownEnabled := true
 	drainTimeout := int64(envoycp.DefaultEnvoyDrainTimeout)
 	terminationGracePeriod := int64(envoycp.DefaultEnvoyTerminationGracePeriod)
-	shutdownManagerImage := envoycp.DefaultShutdownManagerImage
 
 	if envoyProxy.GracefulShutdown != nil {
 		if envoyProxy.GracefulShutdown.Disabled {
@@ -362,15 +355,12 @@ func (r *EnvoyCPReconciler) getEnvoyProxyPodSpec(namespace, appName, snapshotNam
 		if envoyProxy.GracefulShutdown.TerminationGracePeriodSeconds != nil {
 			terminationGracePeriod = *envoyProxy.GracefulShutdown.TerminationGracePeriodSeconds
 		}
-		if envoyProxy.GracefulShutdown.ShutdownManagerImage != "" {
-			shutdownManagerImage = envoyProxy.GracefulShutdown.ShutdownManagerImage
-		}
 	}
 
 	// Build envoy proxy container
 	envoyContainer := corev1.Container{
 		Name:  envoyProxyContainerName,
-		Image: image,
+		Image: envoyImage,
 		Args: []string{
 			"--config-yaml", r.EnvoyServer.GenerateBootstrap(),
 			"--service-node", snapshotName,
@@ -451,7 +441,7 @@ func (r *EnvoyCPReconciler) getEnvoyProxyPodSpec(namespace, appName, snapshotNam
 	if gracefulShutdownEnabled {
 		shutdownManagerContainer := corev1.Container{
 			Name:    shutdownManagerContainerName,
-			Image:   shutdownManagerImage,
+			Image:   envoycp.DefaultShutdownManagerImage,
 			Command: []string{"envoy-gateway"},
 			Args: []string{
 				"envoy",

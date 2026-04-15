@@ -88,11 +88,11 @@ These are the default values to use when Gateway API is disabled for KubeLB in f
 | Repository | Name | Version |
 |------------|------|---------|
 | https://kubernetes-sigs.github.io/external-dns | external-dns | 1.20.0 |
-| https://kubernetes.github.io/ingress-nginx | ingress-nginx | 4.15.0 |
-| oci://cr.kgateway.dev/kgateway-dev/charts | kgateway | v2.1.2 |
-| oci://cr.kgateway.dev/kgateway-dev/charts | kgateway-crds | v2.1.2 |
+| https://kubernetes.github.io/ingress-nginx | ingress-nginx | 4.15.1 |
+| oci://cr.kgateway.dev/kgateway-dev/charts | kgateway | v2.2.3 |
+| oci://cr.kgateway.dev/kgateway-dev/charts | kgateway-crds | v2.2.3 |
 | oci://docker.io/envoyproxy | envoy-gateway(gateway-helm) | 1.7.1 |
-| oci://quay.io/jetstack/charts | cert-manager | 1.20.0 |
+| oci://quay.io/jetstack/charts | cert-manager | v1.20.2 |
 | oci://quay.io/metallb/chart | metallb | 0.15.3 |
 
 ## Values

@@ -1033,12 +1033,6 @@ spec:
                           MinDrainDuration is the minimum time to wait before checking connection count.
                           This prevents premature termination. Defaults to 5s.
                         type: string
-                      shutdownManagerImage:
-                        default: docker.io/envoyproxy/gateway:v1.3.0
-                        description: |-
-                          ShutdownManagerImage is the Docker image for the shutdown-manager sidecar.
-                          Defaults to "docker.io/envoyproxy/gateway:v1.3.0"
-                        type: string
                       terminationGracePeriodSeconds:
                         default: 300
                         description: |-
@@ -1048,9 +1042,6 @@ spec:
                         minimum: 30
                         type: integer
                     type: object
-                  image:
-                    description: Image defines the Envoy Proxy image to use.
-                    type: string
                   nodeSelector:
                     additionalProperties:
                       type: string

@@ -16,7 +16,7 @@
 # Verifies:
 # - Config.spec.envoyProxy.gracefulShutdown enables shutdown-manager sidecar
 # - terminationGracePeriodSeconds defaults to 300
-# - shutdownManagerImage defaults to docker.io/envoyproxy/gateway:v1.3.0
+# - shutdown-manager sidecar is added to Envoy pods
 # - Cleanup reverts to default
 apiVersion: chainsaw.kyverno.io/v1alpha1
 kind: Test
@@ -96,14 +96,8 @@ spec:
                     exit 1
                   fi
 
-                  IMG=$(kubectl get $POD -n tenant-primary -o jsonpath='{.spec.containers[?(@.name=="shutdown-manager")].image}')
-                  if [ "$IMG" = "docker.io/envoyproxy/gateway:v1.3.0" ]; then
-                    echo "shutdown-manager sidecar found with correct image and terminationGracePeriodSeconds"
-                    exit 0
-                  else
-                    echo "shutdown-manager image is '$IMG', expected docker.io/envoyproxy/gateway:v1.3.0"
-                    exit 1
-                  fi
+                  echo "shutdown-manager sidecar found with correct terminationGracePeriodSeconds"
+                  exit 0
                 fi
 
                 sleep 2
