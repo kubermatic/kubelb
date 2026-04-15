@@ -137,7 +137,7 @@ presubmits:
       preset-goproxy: "true"
     spec:
       containers:
-        - image: goreleaser/goreleaser:v2.15.2
+        - image: goreleaser/goreleaser:v2.15.3
           command:
             - goreleaser
           args:
