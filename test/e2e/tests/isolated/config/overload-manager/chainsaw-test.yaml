@@ -16,7 +16,7 @@
 # Verifies:
 # - Config.spec.envoyProxy.overloadManager enables overload management
 # - Envoy bootstrap contains overloadManager section
-# - Custom shutdownManagerImage is applied to shutdown-manager sidecar
+# - Graceful shutdown sidecar is present when enabled
 apiVersion: chainsaw.kyverno.io/v1alpha1
 kind: Test
 metadata:
@@ -30,8 +30,8 @@ spec:
   concurrent: false
   description: |
     Test that enabling overload manager in Config.spec.envoyProxy.overloadManager
-    adds overloadManager section to Envoy bootstrap config. Also verifies custom
-    shutdownManagerImage is applied when gracefulShutdown is enabled.
+    adds overloadManager section to Envoy bootstrap config and that
+    shutdown-manager sidecar is present when gracefulShutdown is enabled.
   steps:
     - name: reset-configs
       use:
@@ -87,8 +87,7 @@ spec:
                       "maxHeapSizeBytes": 1073741824
                     },
                     "gracefulShutdown": {
-                      "disabled": false,
-                      "shutdownManagerImage": "docker.io/envoyproxy/gateway:v1.6.1"
+                      "disabled": false
                     }
                   }
                 }
@@ -105,17 +104,16 @@ spec:
               set -e
               NAMESPACE="tenant-primary"
               DEPLOY="envoy-tenant-primary"
-              EXPECTED_IMAGE="docker.io/envoyproxy/gateway:v1.6.1"
 
               for i in $(seq 1 24); do
                 ARGS=$(kubectl get deployment "$DEPLOY" -n "$NAMESPACE" \
                   -o jsonpath='{.spec.template.spec.containers[0].args[1]}' 2>/dev/null || true)
 
-                SHUTDOWN_IMG=$(kubectl get deployment "$DEPLOY" -n "$NAMESPACE" \
-                  -o jsonpath='{.spec.template.spec.containers[?(@.name=="shutdown-manager")].image}' 2>/dev/null || true)
+                SIDECAR=$(kubectl get deployment "$DEPLOY" -n "$NAMESPACE" \
+                  -o jsonpath='{.spec.template.spec.containers[?(@.name=="shutdown-manager")].name}' 2>/dev/null || true)
 
-                if echo "$ARGS" | grep -q "overloadManager" && [ "$SHUTDOWN_IMG" = "$EXPECTED_IMAGE" ]; then
-                  echo "Deployment has overloadManager and shutdown-manager image $EXPECTED_IMAGE"
+                if echo "$ARGS" | grep -q "overloadManager" && [ "$SIDECAR" = "shutdown-manager" ]; then
+                  echo "Deployment has overloadManager and shutdown-manager sidecar"
                   kubectl rollout status deployment/"$DEPLOY" -n "$NAMESPACE" --timeout=60s
                   exit 0
                 fi
@@ -123,9 +121,9 @@ spec:
                 sleep 5
               done
 
-              echo "Deployment not updated with overloadManager and/or shutdown-manager image"
+              echo "Deployment not updated with overloadManager and/or shutdown-manager sidecar"
               echo "overloadManager check: $(echo "$ARGS" | grep -o 'overloadManager' || echo 'not found')"
-              echo "Current shutdown-manager image: $SHUTDOWN_IMG (expected: $EXPECTED_IMAGE)"
+              echo "shutdown-manager sidecar: ${SIDECAR:-not found}"
               exit 1
             check:
               ($error == null): true

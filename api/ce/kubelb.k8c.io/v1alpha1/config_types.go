@@ -108,10 +108,6 @@ type EnvoyProxy struct {
 	// +optional
 	Affinity *corev1.Affinity `json:"affinity,omitempty"`
 
-	// Image defines the Envoy Proxy image to use.
-	// +optional
-	Image string `json:"image,omitempty"`
-
 	// GracefulShutdown defines the graceful shutdown configuration for Envoy Proxy.
 	// +optional
 	GracefulShutdown *EnvoyProxyGracefulShutdown `json:"gracefulShutdown,omitempty"`
@@ -172,12 +168,6 @@ type EnvoyProxyGracefulShutdown struct {
 	// +kubebuilder:validation:Minimum=30
 	// +optional
 	TerminationGracePeriodSeconds *int64 `json:"terminationGracePeriodSeconds,omitempty"`
-
-	// ShutdownManagerImage is the Docker image for the shutdown-manager sidecar.
-	// Defaults to "docker.io/envoyproxy/gateway:v1.3.0"
-	// +kubebuilder:default="docker.io/envoyproxy/gateway:v1.3.0"
-	// +optional
-	ShutdownManagerImage string `json:"shutdownManagerImage,omitempty"`
 }
 
 // ConfigStatus defines the observed state of the Config.
