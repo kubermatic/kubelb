@@ -132,6 +132,9 @@ verify-boilerplate:  ## Run verify-boilerplate code.
 verify-imports:  ## Run verify-imports code.
 	./hack/verify-import-order.sh
 
+verify-helm-lock:  ## Verify Helm chart lock files are in sync.
+	./hack/verify-helm-lock.sh
+
 clean:  ## Clean binaries
 	rm -rf bin/*
 	@cd cli && $(MAKE) clean
