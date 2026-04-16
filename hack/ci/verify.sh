@@ -27,6 +27,7 @@ SUMMARY=
 echodate "Installing tools..."
 
 apt-get update -qq && apt-get install -y -qq yamllint > /dev/null 2>&1 &
+curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | DESIRED_VERSION=v3.17.0 bash > /dev/null 2>&1 &
 go install mvdan.cc/sh/v3/cmd/shfmt@v3.13.1 &
 go install go.xrstf.de/gimps@v0.6.2 &
 go install github.com/kubermatic-labs/boilerplate@v0.3.0 &
@@ -70,6 +71,7 @@ try() {
   echo
 }
 
+try "Verify Helm lock" ./hack/verify-helm-lock.sh
 try "Verify go.mod" make check-dependencies
 try "Verify YAML" yamllint -c .yamllint.conf .
 try "Verify boilerplate" make verify-boilerplate
