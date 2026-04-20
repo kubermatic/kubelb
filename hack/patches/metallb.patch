@@ -1,0 +1,295 @@
+diff -ruN --exclude=README.md --exclude=README.md.gotmpl a/metallb/charts/frr-k8s/templates/_helpers.tpl b/metallb/charts/frr-k8s/templates/_helpers.tpl
+--- a/metallb/charts/frr-k8s/templates/_helpers.tpl	2025-12-04 20:20:55
++++ b/metallb/charts/frr-k8s/templates/_helpers.tpl	2026-04-14 12:05:23
+@@ -61,3 +61,18 @@
+ {{- default "default" .Values.frrk8s.serviceAccount.name }}
+ {{- end }}
+ {{- end }}
++
++{{/*
++Rewrite a repository to the configured global mirror registry.
++*/}}
++{{- define "frrk8s.imageRepository" -}}
++{{- $repository := .repository -}}
++{{- if .context.Values.global.imageRegistry -}}
++  {{- $parts := splitList "/" $repository -}}
++  {{- if and (gt (len $parts) 1) (or (contains "." (index $parts 0)) (contains ":" (index $parts 0))) -}}
++    {{- $repository = join "/" (slice $parts 1) -}}
++  {{- end -}}
++  {{- $repository = printf "%s/%s" (trimSuffix "/" .context.Values.global.imageRegistry) $repository -}}
++{{- end -}}
++{{- $repository -}}
++{{- end }}
+diff -ruN --exclude=README.md --exclude=README.md.gotmpl a/metallb/charts/frr-k8s/templates/controller.yaml b/metallb/charts/frr-k8s/templates/controller.yaml
+--- a/metallb/charts/frr-k8s/templates/controller.yaml	2025-12-04 20:20:55
++++ b/metallb/charts/frr-k8s/templates/controller.yaml	2026-04-14 12:05:23
+@@ -132,7 +132,7 @@
+       {{- if .Values.frrk8s.runtimeClassName }}
+       runtimeClassName: {{ .Values.frrk8s.runtimeClassName }}
+       {{- end }}
+-      {{- with .Values.imagePullSecrets }}
++      {{- with (coalesce .Values.global.imagePullSecrets .Values.imagePullSecrets) }}
+       imagePullSecrets:
+         {{- toYaml . | nindent 8 }}
+       {{- end }}
+@@ -161,7 +161,7 @@
+       initContainers:
+         # Copies the initial config files with the right permissions to the shared volume.
+         - name: cp-frr-files
+-          image: {{ .Values.frrk8s.frr.image.repository }}:{{ .Values.frrk8s.frr.image.tag | default .Chart.AppVersion }}
++          image: {{ include "frrk8s.imageRepository" (dict "repository" .Values.frrk8s.frr.image.repository "context" .) }}:{{ .Values.frrk8s.frr.image.tag | default .Chart.AppVersion }}
+           securityContext:
+             runAsUser: 100
+             runAsGroup: 101
+@@ -173,20 +173,20 @@
+               mountPath: /etc/frr
+         # Copies the reloader to the shared volume between the speaker and reloader.
+         - name: cp-reloader
+-          image: {{ .Values.frrk8s.image.repository }}:{{ .Values.frrk8s.image.tag | default .Chart.AppVersion }}
++          image: {{ include "frrk8s.imageRepository" (dict "repository" .Values.frrk8s.image.repository "context" .) }}:{{ .Values.frrk8s.image.tag | default .Chart.AppVersion }}
+           command: ["/bin/sh", "-c", "cp -f /frr-reloader.sh /etc/frr_reloader/"]
+           volumeMounts:
+             - name: reloader
+               mountPath: /etc/frr_reloader
+         # Copies the metrics exporter
+         - name: cp-metrics
+-          image: {{ .Values.frrk8s.image.repository }}:{{ .Values.frrk8s.image.tag | default .Chart.AppVersion }}
++          image: {{ include "frrk8s.imageRepository" (dict "repository" .Values.frrk8s.image.repository "context" .) }}:{{ .Values.frrk8s.image.tag | default .Chart.AppVersion }}
+           command: ["/bin/sh", "-c", "cp -f /frr-metrics /etc/frr_metrics/"]
+           volumeMounts:
+             - name: metrics
+               mountPath: /etc/frr_metrics
+         - name: cp-frr-status
+-          image: {{ .Values.frrk8s.image.repository }}:{{ .Values.frrk8s.image.tag | default .Chart.AppVersion }}
++          image: {{ include "frrk8s.imageRepository" (dict "repository" .Values.frrk8s.image.repository "context" .) }}:{{ .Values.frrk8s.image.tag | default .Chart.AppVersion }}
+           command: ["/bin/sh", "-c", "cp -f /frr-status /etc/frr_status/"]
+           volumeMounts:
+             - name: frr-status
+@@ -194,7 +194,7 @@
+       shareProcessNamespace: true
+       containers:
+       - name: controller
+-        image: {{ .Values.frrk8s.image.repository }}:{{ .Values.frrk8s.image.tag | default .Chart.AppVersion }}
++        image: {{ include "frrk8s.imageRepository" (dict "repository" .Values.frrk8s.image.repository "context" .) }}:{{ .Values.frrk8s.image.tag | default .Chart.AppVersion }}
+         {{- if .Values.frrk8s.image.pullPolicy }}
+         imagePullPolicy: {{ .Values.frrk8s.image.pullPolicy }}
+         {{- end }}
+@@ -273,7 +273,7 @@
+             - NET_RAW
+             - SYS_ADMIN
+             - NET_BIND_SERVICE
+-        image: {{ .Values.frrk8s.frr.image.repository }}:{{ .Values.frrk8s.frr.image.tag | default .Chart.AppVersion }}
++        image: {{ include "frrk8s.imageRepository" (dict "repository" .Values.frrk8s.frr.image.repository "context" .) }}:{{ .Values.frrk8s.frr.image.tag | default .Chart.AppVersion }}
+         {{- if .Values.frrk8s.frr.image.pullPolicy }}
+         imagePullPolicy: {{ .Values.frrk8s.frr.image.pullPolicy }}
+         {{- end }}
+@@ -322,7 +322,7 @@
+           periodSeconds: {{ .Values.frrk8s.startupProbe.periodSeconds }}
+         {{- end }}
+       - name: reloader
+-        image: {{ .Values.frrk8s.frr.image.repository }}:{{ .Values.frrk8s.frr.image.tag | default .Chart.AppVersion }}
++        image: {{ include "frrk8s.imageRepository" (dict "repository" .Values.frrk8s.frr.image.repository "context" .) }}:{{ .Values.frrk8s.frr.image.tag | default .Chart.AppVersion }}
+         {{- if .Values.frrk8s.frr.image.pullPolicy }}
+         imagePullPolicy: {{ .Values.frrk8s.frr.image.pullPolicy }}
+         {{- end }}
+@@ -339,7 +339,7 @@
+           {{- toYaml . | nindent 12 }}
+         {{- end }}
+       - name: frr-metrics
+-        image: {{ .Values.frrk8s.frr.image.repository }}:{{ .Values.frrk8s.frr.image.tag | default .Chart.AppVersion }}
++        image: {{ include "frrk8s.imageRepository" (dict "repository" .Values.frrk8s.frr.image.repository "context" .) }}:{{ .Values.frrk8s.frr.image.tag | default .Chart.AppVersion }}
+         command: ["/etc/frr_metrics/frr-metrics"]
+         args:
+           - --metrics-port={{ .Values.frrk8s.frr.metricsPort }}
+@@ -381,7 +381,7 @@
+             valueFrom:
+               fieldRef:
+                 fieldPath: metadata.name
+-        image: {{ .Values.frrk8s.frr.image.repository }}:{{ .Values.frrk8s.frr.image.tag | default .Chart.AppVersion }}
++        image: {{ include "frrk8s.imageRepository" (dict "repository" .Values.frrk8s.frr.image.repository "context" .) }}:{{ .Values.frrk8s.frr.image.tag | default .Chart.AppVersion }}
+         volumeMounts:
+           - mountPath: /var/run/frr
+             name: frr-sockets
+@@ -394,7 +394,7 @@
+           {{- toYaml . | nindent 12 }}
+         {{- end }}
+       - name: kube-rbac-proxy
+-        image: {{ .Values.prometheus.rbacProxy.repository }}:{{ .Values.prometheus.rbacProxy.tag }}
++        image: {{ include "frrk8s.imageRepository" (dict "repository" .Values.prometheus.rbacProxy.repository "context" .) }}:{{ .Values.prometheus.rbacProxy.tag }}
+         imagePullPolicy: {{ .Values.prometheus.rbacProxy.pullPolicy }}
+         args:
+           - --logtostderr
+@@ -420,7 +420,7 @@
+             readOnly: true
+         {{- end }}
+       - name: kube-rbac-proxy-frr
+-        image: {{ .Values.prometheus.rbacProxy.repository }}:{{ .Values.prometheus.rbacProxy.tag | default .Chart.AppVersion }}
++        image: {{ include "frrk8s.imageRepository" (dict "repository" .Values.prometheus.rbacProxy.repository "context" .) }}:{{ .Values.prometheus.rbacProxy.tag | default .Chart.AppVersion }}
+         imagePullPolicy: {{ .Values.prometheus.rbacProxy.pullPolicy }}
+         args:
+           - --logtostderr
+diff -ruN --exclude=README.md --exclude=README.md.gotmpl a/metallb/charts/frr-k8s/templates/status-cleaner.yaml b/metallb/charts/frr-k8s/templates/status-cleaner.yaml
+--- a/metallb/charts/frr-k8s/templates/status-cleaner.yaml	2025-12-04 20:20:55
++++ b/metallb/charts/frr-k8s/templates/status-cleaner.yaml	2026-04-14 12:05:23
+@@ -23,7 +23,7 @@
+       {{- if .Values.frrk8s.runtimeClassName }}
+       runtimeClassName: {{ .Values.frrk8s.runtimeClassName }}
+       {{- end }}
+-      {{- with .Values.imagePullSecrets }}
++      {{- with (coalesce .Values.global.imagePullSecrets .Values.imagePullSecrets) }}
+       imagePullSecrets:
+         {{- toYaml . | nindent 8 }}
+       {{- end }}
+@@ -47,7 +47,7 @@
+           valueFrom:
+             fieldRef:
+               fieldPath: metadata.namespace
+-        image: {{ .Values.frrk8s.image.repository }}:{{ .Values.frrk8s.image.tag | default .Chart.AppVersion }}
++        image: {{ include "frrk8s.imageRepository" (dict "repository" .Values.frrk8s.image.repository "context" .) }}:{{ .Values.frrk8s.image.tag | default .Chart.AppVersion }}
+         {{- if .Values.frrk8s.image.pullPolicy }}
+         imagePullPolicy: {{ .Values.frrk8s.image.pullPolicy }}
+         {{- end }}
+diff -ruN --exclude=README.md --exclude=README.md.gotmpl a/metallb/templates/_helpers.tpl b/metallb/templates/_helpers.tpl
+--- a/metallb/templates/_helpers.tpl	2025-12-04 20:20:55
++++ b/metallb/templates/_helpers.tpl	2026-04-14 12:05:23
+@@ -112,3 +112,17 @@
+ {{- end }}
+ {{- end }}
+ 
++{{/*
++Rewrite a repository to the configured global mirror registry.
++*/}}
++{{- define "metallb.imageRepository" -}}
++{{- $repository := .repository -}}
++{{- if .context.Values.global.imageRegistry -}}
++  {{- $parts := splitList "/" $repository -}}
++  {{- if and (gt (len $parts) 1) (or (contains "." (index $parts 0)) (contains ":" (index $parts 0))) -}}
++    {{- $repository = join "/" (slice $parts 1) -}}
++  {{- end -}}
++  {{- $repository = printf "%s/%s" (trimSuffix "/" .context.Values.global.imageRegistry) $repository -}}
++{{- end -}}
++{{- $repository -}}
++{{- end }}
+diff -ruN --exclude=README.md --exclude=README.md.gotmpl a/metallb/templates/controller.yaml b/metallb/templates/controller.yaml
+--- a/metallb/templates/controller.yaml	2025-12-04 20:20:55
++++ b/metallb/templates/controller.yaml	2026-04-14 12:05:23
+@@ -40,7 +40,7 @@
+       {{- with .Values.controller.runtimeClassName }}
+       runtimeClassName: {{ . | quote }}
+       {{- end }}
+-      {{- with .Values.imagePullSecrets }}
++      {{- with (coalesce .Values.global.imagePullSecrets .Values.imagePullSecrets) }}
+       imagePullSecrets:
+         {{- toYaml . | nindent 8 }}
+       {{- end }}
+@@ -52,7 +52,7 @@
+ {{- end }}
+       containers:
+       - name: controller
+-        image: {{ .Values.controller.image.repository }}:{{ .Values.controller.image.tag | default .Chart.AppVersion }}
++        image: {{ include "metallb.imageRepository" (dict "repository" .Values.controller.image.repository "context" .) }}:{{ .Values.controller.image.tag | default .Chart.AppVersion }}
+         {{- if .Values.controller.image.pullPolicy }}
+         imagePullPolicy: {{ .Values.controller.image.pullPolicy }}
+         {{- end }}
+@@ -138,7 +138,7 @@
+             - ALL
+       {{- if .Values.prometheus.secureMetricsPort }}
+       - name: kube-rbac-proxy
+-        image: {{ .Values.prometheus.rbacProxy.repository }}:{{ .Values.prometheus.rbacProxy.tag }}
++        image: {{ include "metallb.imageRepository" (dict "repository" .Values.prometheus.rbacProxy.repository "context" .) }}:{{ .Values.prometheus.rbacProxy.tag }}
+         imagePullPolicy: {{ .Values.prometheus.rbacProxy.pullPolicy }}
+         securityContext:
+           readOnlyRootFilesystem: true
+diff -ruN --exclude=README.md --exclude=README.md.gotmpl a/metallb/templates/speaker.yaml b/metallb/templates/speaker.yaml
+--- a/metallb/templates/speaker.yaml	2025-12-04 20:20:55
++++ b/metallb/templates/speaker.yaml	2026-04-14 12:05:23
+@@ -162,7 +162,7 @@
+       {{- if .Values.speaker.runtimeClassName }}
+       runtimeClassName: {{ .Values.speaker.runtimeClassName }}
+       {{- end }}
+-      {{- with .Values.imagePullSecrets }}
++      {{- with (coalesce .Values.global.imagePullSecrets .Values.imagePullSecrets) }}
+       imagePullSecrets:
+         {{- toYaml . | nindent 8 }}
+       {{- end }}
+@@ -212,7 +212,7 @@
+       initContainers:
+         # Copies the initial config files with the right permissions to the shared volume.
+         - name: cp-frr-files
+-          image: {{ .Values.speaker.frr.image.repository }}:{{ .Values.speaker.frr.image.tag | default .Chart.AppVersion }}
++          image: {{ include "metallb.imageRepository" (dict "repository" .Values.speaker.frr.image.repository "context" .) }}:{{ .Values.speaker.frr.image.tag | default .Chart.AppVersion }}
+           securityContext:
+             runAsUser: 100
+             runAsGroup: 101
+@@ -228,7 +228,7 @@
+           {{- end }}
+         # Copies the reloader to the shared volume between the speaker and reloader.
+         - name: cp-reloader
+-          image: {{ .Values.speaker.image.repository }}:{{ .Values.speaker.image.tag | default .Chart.AppVersion }}
++          image: {{ include "metallb.imageRepository" (dict "repository" .Values.speaker.image.repository "context" .) }}:{{ .Values.speaker.image.tag | default .Chart.AppVersion }}
+           command: ["/cp-tool","/frr-reloader.sh","/etc/frr_reloader/frr-reloader.sh"]
+           volumeMounts:
+             - name: reloader
+@@ -239,7 +239,7 @@
+           {{- end }}
+         # Copies the metrics exporter
+         - name: cp-metrics
+-          image: {{ .Values.speaker.image.repository }}:{{ .Values.speaker.image.tag | default .Chart.AppVersion }}
++          image: {{ include "metallb.imageRepository" (dict "repository" .Values.speaker.image.repository "context" .) }}:{{ .Values.speaker.image.tag | default .Chart.AppVersion }}
+           command: ["/cp-tool","/frr-metrics","/etc/frr_metrics/frr-metrics"]
+           volumeMounts:
+             - name: metrics
+@@ -252,7 +252,7 @@
+       {{- end }}
+       containers:
+       - name: speaker
+-        image: {{ .Values.speaker.image.repository }}:{{ .Values.speaker.image.tag | default .Chart.AppVersion }}
++        image: {{ include "metallb.imageRepository" (dict "repository" .Values.speaker.image.repository "context" .) }}:{{ .Values.speaker.image.tag | default .Chart.AppVersion }}
+         {{- if .Values.speaker.image.pullPolicy }}
+         imagePullPolicy: {{ .Values.speaker.image.pullPolicy }}
+         {{- end }}
+@@ -399,7 +399,7 @@
+             - NET_RAW
+             - SYS_ADMIN
+             - NET_BIND_SERVICE
+-        image: {{ .Values.speaker.frr.image.repository }}:{{ .Values.speaker.frr.image.tag | default .Chart.AppVersion }}
++        image: {{ include "metallb.imageRepository" (dict "repository" .Values.speaker.frr.image.repository "context" .) }}:{{ .Values.speaker.frr.image.tag | default .Chart.AppVersion }}
+         {{- if .Values.speaker.frr.image.pullPolicy }}
+         imagePullPolicy: {{ .Values.speaker.frr.image.pullPolicy }}
+         {{- end }}
+@@ -459,7 +459,7 @@
+           periodSeconds: {{ .Values.speaker.startupProbe.periodSeconds }}
+         {{- end }}
+       - name: reloader
+-        image: {{ .Values.speaker.frr.image.repository }}:{{ .Values.speaker.frr.image.tag | default .Chart.AppVersion }}
++        image: {{ include "metallb.imageRepository" (dict "repository" .Values.speaker.frr.image.repository "context" .) }}:{{ .Values.speaker.frr.image.tag | default .Chart.AppVersion }}
+         {{- if .Values.speaker.frr.image.pullPolicy }}
+         imagePullPolicy: {{ .Values.speaker.frr.image.pullPolicy }}
+         {{- end }}
+@@ -481,7 +481,7 @@
+           {{- toYaml . | nindent 12 }}
+         {{- end }}
+       - name: frr-metrics
+-        image: {{ .Values.speaker.frr.image.repository }}:{{ .Values.speaker.frr.image.tag | default .Chart.AppVersion }}
++        image: {{ include "metallb.imageRepository" (dict "repository" .Values.speaker.frr.image.repository "context" .) }}:{{ .Values.speaker.frr.image.tag | default .Chart.AppVersion }}
+         securityContext:
+           readOnlyRootFilesystem: true
+           allowPrivilegeEscalation: false
+@@ -511,7 +511,7 @@
+       {{- end }}
+       {{- if .Values.prometheus.secureMetricsPort }}
+       - name: kube-rbac-proxy
+-        image: {{ .Values.prometheus.rbacProxy.repository }}:{{ .Values.prometheus.rbacProxy.tag }}
++        image: {{ include "metallb.imageRepository" (dict "repository" .Values.prometheus.rbacProxy.repository "context" .) }}:{{ .Values.prometheus.rbacProxy.tag }}
+         imagePullPolicy: {{ .Values.prometheus.rbacProxy.pullPolicy }}
+         securityContext:
+           readOnlyRootFilesystem: true
+@@ -543,7 +543,7 @@
+       {{- if .Values.speaker.frr.enabled }}
+       {{- if .Values.speaker.frr.secureMetricsPort }}
+       - name: kube-rbac-proxy-frr
+-        image: {{ .Values.prometheus.rbacProxy.repository }}:{{ .Values.prometheus.rbacProxy.tag | default .Chart.AppVersion }}
++        image: {{ include "metallb.imageRepository" (dict "repository" .Values.prometheus.rbacProxy.repository "context" .) }}:{{ .Values.prometheus.rbacProxy.tag | default .Chart.AppVersion }}
+         imagePullPolicy: {{ .Values.prometheus.rbacProxy.pullPolicy }}
+         securityContext:
+           readOnlyRootFilesystem: true
