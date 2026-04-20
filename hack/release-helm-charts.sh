@@ -78,7 +78,7 @@ if [ "$RELEASE_ADDONS_ONLY" = "true" ]; then
 
   echodate "Packaging helm chart ${CHART_PACKAGE_ADDONS}"
 
-  helm dependency build charts/${ADDONS}
+  ./hack/build-addons-chart-deps.sh charts/${ADDONS}
   helm package charts/${ADDONS} --version ${CHART_VERSION} --destination ./
 
   echodate "Publishing helm chart to OCI registry ${REGISTRY_HOST}/${REPOSITORY_PREFIX}"
