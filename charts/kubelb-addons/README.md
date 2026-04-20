@@ -125,8 +125,10 @@ These are the default values to use when Gateway API is disabled for KubeLB in f
 | external-dns.sources[5] | string | `"gateway-tcproute"` |  |
 | external-dns.sources[6] | string | `"gateway-udproute"` |  |
 | external-dns.txtOwnerId | string | `"kubelb-management"` |  |
-| gatewayClass.create | bool | `false` |  |
-| ingress-nginx | object | `{"enabled":false}` | ---------------------------------------------------------- Ingress Nginx |
+| gatewayClass | object | `{"create":false}` | ---------------------------------------------------------- |
+| global.imagePullSecrets | list | `[]` | Global image pull secrets propagated to supported addon charts. |
+| global.imageRegistry | string | `""` | Override the registry for all images (prefix replacement). When set, all supported addon images are rewritten to this registry host. |
+| ingress-nginx | object | `{"enabled":false}` | ---------------------------------------------------------- |
 | kgateway-crds.enabled | bool | `false` |  |
 | kgateway.agentgateway.enabled | bool | `false` |  |
 | kgateway.enabled | bool | `false` |  |
