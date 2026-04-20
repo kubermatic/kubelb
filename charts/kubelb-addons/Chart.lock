@@ -14,11 +14,11 @@ dependencies:
 - name: metallb
   repository: oci://quay.io/metallb/chart
   version: 0.15.3
-- name: kgateway-crds
-  repository: oci://cr.kgateway.dev/kgateway-dev/charts
-  version: v2.2.3
-- name: kgateway
-  repository: oci://cr.kgateway.dev/kgateway-dev/charts
-  version: v2.2.3
-digest: sha256:aa15d148097f3a35b9cae7ea3d374fc3137e462a1d1d2bf0e42b2dfd3983a900
-generated: "2026-04-14T15:01:57.332989+05:00"
+- name: agentgateway-crds
+  repository: oci://cr.agentgateway.dev/charts
+  version: v1.1.0
+- name: agentgateway
+  repository: oci://cr.agentgateway.dev/charts
+  version: v1.1.0
+digest: sha256:2ebd80c43542c56667d162d8eda7f086078f3e62cc2028a582ab29aa90d24ef0
+generated: "2026-04-20T14:27:34.343734+05:00"
