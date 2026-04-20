@@ -1,0 +1,37 @@
+diff -ruN --exclude=README.md --exclude=README.md.gotmpl a/external-dns/templates/_helpers.tpl b/external-dns/templates/_helpers.tpl
+--- a/external-dns/templates/_helpers.tpl	2026-01-02 20:35:00
++++ b/external-dns/templates/_helpers.tpl	2026-04-14 12:05:22
+@@ -68,7 +68,15 @@
+ The image to use
+ */}}
+ {{- define "external-dns.image" -}}
+-{{- printf "%s:%s" .Values.image.repository (default (printf "v%s" .Chart.AppVersion) .Values.image.tag) }}
++{{- $repository := .Values.image.repository -}}
++{{- if .Values.global.imageRegistry -}}
++  {{- $parts := splitList "/" $repository -}}
++  {{- if and (gt (len $parts) 1) (or (contains "." (index $parts 0)) (contains ":" (index $parts 0))) -}}
++    {{- $repository = join "/" (slice $parts 1) -}}
++  {{- end -}}
++  {{- $repository = printf "%s/%s" (trimSuffix "/" .Values.global.imageRegistry) $repository -}}
++{{- end -}}
++{{- printf "%s:%s" $repository (default (printf "v%s" .Chart.AppVersion) .Values.image.tag) }}
+ {{- end }}
+ 
+ {{/*
+@@ -91,7 +99,15 @@
+ {{- if or (empty .repository) (empty .tag) }}
+ {{- fail "ERROR: webhook provider needs an image repository and a tag" }}
+ {{- end }}
+-{{- printf "%s:%s" .repository .tag }}
++{{- $repository := .repository -}}
++{{- if $.Values.global.imageRegistry -}}
++  {{- $parts := splitList "/" $repository -}}
++  {{- if and (gt (len $parts) 1) (or (contains "." (index $parts 0)) (contains ":" (index $parts 0))) -}}
++    {{- $repository = join "/" (slice $parts 1) -}}
++  {{- end -}}
++  {{- $repository = printf "%s/%s" (trimSuffix "/" $.Values.global.imageRegistry) $repository -}}
++{{- end -}}
++{{- printf "%s:%s" $repository .tag }}
+ {{- end }}
+ {{- end }}
+ 

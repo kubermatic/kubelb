@@ -1,0 +1,128 @@
+diff -ruN --exclude=README.md --exclude=README.md.gotmpl a/cert-manager/templates/_helpers.tpl b/cert-manager/templates/_helpers.tpl
+--- a/cert-manager/templates/_helpers.tpl	2026-04-16 16:54:14
++++ b/cert-manager/templates/_helpers.tpl	2026-04-16 16:54:54
+@@ -190,7 +190,7 @@
+ usage through tuple/variable indirection.
+ */ -}}
+ 
+-{{- if ne (len .) 4 -}}
++{{- if lt (len .) 4 -}}
+     {{- fail (printf "ERROR: template \"image\" expects (tuple <imageValues> <imageRegistry> <imageNamespace> <defaultReference>), got %d arguments" (len .)) -}}
+ {{- end -}}
+ 
+@@ -199,15 +199,28 @@
+ {{- $imageNamespace := index . 2 | default "" -}}
+ {{- $defaultReference := index . 3 -}}
+ 
++{{- $globalRegistry := "" -}}
++{{- if ge (len .) 5 -}}
++  {{- $root := index . 4 -}}
++  {{- if and $root.Values $root.Values.global $root.Values.global.imageRegistry -}}
++    {{- $globalRegistry = trimSuffix "/" $root.Values.global.imageRegistry -}}
++  {{- end -}}
++{{- end -}}
++
+ {{- $repository := "" -}}
+ {{- if $image.repository -}}
+     {{- $repository = $image.repository -}}
+ 
+-    {{- /*
+-        Backwards compatibility: if image.registry is set, additionally prefix the repository with this registry.
+-    */ -}}
+-    {{- if $image.registry -}}
+-        {{- $repository = printf "%s/%s" $image.registry $repository -}}
++    {{- if $globalRegistry -}}
++        {{- $parts := splitList "/" $repository -}}
++        {{- if and (gt (len $parts) 1) (or (contains "." (index $parts 0)) (contains ":" (index $parts 0))) -}}
++            {{- $repository = join "/" (slice $parts 1) -}}
++        {{- end -}}
++        {{- $repository = printf "%s/%s" $globalRegistry $repository -}}
++    {{- else -}}
++        {{- if $image.registry -}}
++            {{- $repository = printf "%s/%s" $image.registry $repository -}}
++        {{- end -}}
+     {{- end -}}
+ {{- else -}}
+     {{- $name := required "ERROR: image.name must be set when image.repository is empty" $image.name -}}
+@@ -217,15 +230,15 @@
+         {{- $repository = printf "%s/%s" $imageNamespace $repository -}}
+     {{- end -}}
+ 
+-    {{- if $imageRegistry -}}
+-        {{- $repository = printf "%s/%s" $imageRegistry $repository -}}
+-    {{- end -}}
+-
+-    {{- /*
+-        Backwards compatibility: if image.registry is set, additionally prefix the repository with this registry.
+-    */ -}}
+-    {{- if $image.registry -}}
+-        {{- $repository = printf "%s/%s" $image.registry $repository -}}
++    {{- if $globalRegistry -}}
++        {{- $repository = printf "%s/%s" $globalRegistry $repository -}}
++    {{- else -}}
++        {{- if $imageRegistry -}}
++            {{- $repository = printf "%s/%s" $imageRegistry $repository -}}
++        {{- end -}}
++        {{- if $image.registry -}}
++            {{- $repository = printf "%s/%s" $image.registry $repository -}}
++        {{- end -}}
+     {{- end -}}
+ {{- end -}}
+ 
+diff -ruN --exclude=README.md --exclude=README.md.gotmpl a/cert-manager/templates/cainjector-deployment.yaml b/cert-manager/templates/cainjector-deployment.yaml
+--- a/cert-manager/templates/cainjector-deployment.yaml	2026-04-16 16:54:14
++++ b/cert-manager/templates/cainjector-deployment.yaml	2026-04-16 16:55:11
+@@ -76,7 +76,7 @@
+       {{- end }}
+       containers:
+         - name: {{ .Chart.Name }}-cainjector
+-          image: "{{ template "image" (tuple .Values.cainjector.image .Values.imageRegistry .Values.imageNamespace (printf ":%s" .Chart.AppVersion)) }}"
++          image: "{{ template "image" (tuple .Values.cainjector.image .Values.imageRegistry .Values.imageNamespace (printf ":%s" .Chart.AppVersion) $) }}"
+           imagePullPolicy: {{ .Values.cainjector.image.pullPolicy }}
+           args:
+           {{- /* The if statement below is equivalent to {{- if $value }} but will also return true for 0. */ -}}
+diff -ruN --exclude=README.md --exclude=README.md.gotmpl a/cert-manager/templates/deployment.yaml b/cert-manager/templates/deployment.yaml
+--- a/cert-manager/templates/deployment.yaml	2026-04-16 16:54:14
++++ b/cert-manager/templates/deployment.yaml	2026-04-16 16:55:11
+@@ -86,7 +86,7 @@
+       {{- end }}
+       containers:
+         - name: {{ .Chart.Name }}-controller
+-          image: "{{ template "image" (tuple .Values.image .Values.imageRegistry .Values.imageNamespace (printf ":%s" .Chart.AppVersion)) }}"
++          image: "{{ template "image" (tuple .Values.image .Values.imageRegistry .Values.imageNamespace (printf ":%s" .Chart.AppVersion) $) }}"
+           imagePullPolicy: {{ .Values.image.pullPolicy }}
+           args:
+           {{- /* The if statement below is equivalent to {{- if $value }} but will also return true for 0. */ -}}
+@@ -114,7 +114,7 @@
+           - --leader-election-retry-period={{ .retryPeriod }}
+           {{- end }}
+           {{- end }}
+-          - --acme-http01-solver-image={{ template "image" (tuple .Values.acmesolver.image .Values.imageRegistry .Values.imageNamespace (printf ":%s" .Chart.AppVersion)) }}
++          - --acme-http01-solver-image={{ template "image" (tuple .Values.acmesolver.image .Values.imageRegistry .Values.imageNamespace (printf ":%s" .Chart.AppVersion) $) }}
+           {{- with .Values.extraArgs }}
+           {{- toYaml . | nindent 10 }}
+           {{- end }}
+diff -ruN --exclude=README.md --exclude=README.md.gotmpl a/cert-manager/templates/startupapicheck-job.yaml b/cert-manager/templates/startupapicheck-job.yaml
+--- a/cert-manager/templates/startupapicheck-job.yaml	2026-04-16 16:54:14
++++ b/cert-manager/templates/startupapicheck-job.yaml	2026-04-16 16:55:11
+@@ -54,7 +54,7 @@
+       {{- end }}
+       containers:
+         - name: {{ .Chart.Name }}-startupapicheck
+-          image: "{{ template "image" (tuple .Values.startupapicheck.image .Values.imageRegistry .Values.imageNamespace (printf ":%s" .Chart.AppVersion)) }}"
++          image: "{{ template "image" (tuple .Values.startupapicheck.image .Values.imageRegistry .Values.imageNamespace (printf ":%s" .Chart.AppVersion) $) }}"
+           imagePullPolicy: {{ .Values.startupapicheck.image.pullPolicy }}
+           args:
+           - check
+diff -ruN --exclude=README.md --exclude=README.md.gotmpl a/cert-manager/templates/webhook-deployment.yaml b/cert-manager/templates/webhook-deployment.yaml
+--- a/cert-manager/templates/webhook-deployment.yaml	2026-04-16 16:54:14
++++ b/cert-manager/templates/webhook-deployment.yaml	2026-04-16 16:55:11
+@@ -81,7 +81,7 @@
+       {{- end }}
+       containers:
+         - name: {{ .Chart.Name }}-webhook
+-          image: "{{ template "image" (tuple .Values.webhook.image .Values.imageRegistry .Values.imageNamespace (printf ":%s" .Chart.AppVersion)) }}"
++          image: "{{ template "image" (tuple .Values.webhook.image .Values.imageRegistry .Values.imageNamespace (printf ":%s" .Chart.AppVersion) $) }}"
+           imagePullPolicy: {{ .Values.webhook.image.pullPolicy }}
+           args:
+           {{- /* The if statement below is equivalent to {{- if $value }} but will also return true for 0. */ -}}
