@@ -1,3 +1,10 @@
+global:
+  # -- Override the registry for all images (prefix replacement).
+  # When set, all supported addon images are rewritten to this registry host.
+  imageRegistry: ""
+  # -- Global image pull secrets propagated to supported addon charts.
+  imagePullSecrets: []
+
 # ------------------------------------------------------------
 # Addons configuration
 # ------------------------------------------------------------
@@ -9,15 +16,12 @@ gatewayClass:
 # Upstream Addons configuration
 # ------------------------------------------------------------
 
-# Ingress Nginx
 ingress-nginx:
   enabled: false
 
-# Envoy Gateway
 envoy-gateway:
   enabled: false
 
-# Cert Manager
 cert-manager:
   enabled: false
   crds:
@@ -27,7 +31,6 @@ cert-manager:
     kind: ControllerConfiguration
     enableGatewayAPI: true
 
-# External DNS
 external-dns:
   enabled: false
   # do not allow any domain that are now below these base domains
@@ -57,8 +60,6 @@ external-dns:
     - gateway-tlsroute
     - gateway-tcproute
     - gateway-udproute
-
-# Metallb
 metallb:
   enabled: false
 
