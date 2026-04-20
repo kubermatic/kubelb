@@ -34,7 +34,7 @@ This chart packages commonly used networking and certificate management tools th
 - **envoy-gateway**: Modern cloud native API gateway
 - **cert-manager**: Automatic TLS certificate management
 - **external-dns**: Synchronize exposed services with DNS providers
-- **kgateway**: Kubernetes Gateway API implementation
+- **agentgateway**: Agentgateway data plane for AI agents, MCP, and Kubernetes Gateway API
 - **metallb**: LoadBalancer implementation for Kubernetes
 
 ## Configuration
@@ -89,8 +89,8 @@ These are the default values to use when Gateway API is disabled for KubeLB in f
 |------------|------|---------|
 | https://kubernetes-sigs.github.io/external-dns | external-dns | 1.20.0 |
 | https://kubernetes.github.io/ingress-nginx | ingress-nginx | 4.15.1 |
-| oci://cr.kgateway.dev/kgateway-dev/charts | kgateway | v2.2.3 |
-| oci://cr.kgateway.dev/kgateway-dev/charts | kgateway-crds | v2.2.3 |
+| oci://cr.agentgateway.dev/charts | agentgateway | v1.1.0 |
+| oci://cr.agentgateway.dev/charts | agentgateway-crds | v1.1.0 |
 | oci://docker.io/envoyproxy | envoy-gateway(gateway-helm) | 1.7.1 |
 | oci://quay.io/jetstack/charts | cert-manager | v1.20.2 |
 | oci://quay.io/metallb/chart | metallb | 0.15.3 |
@@ -99,6 +99,8 @@ These are the default values to use when Gateway API is disabled for KubeLB in f
 
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
+| agentgateway-crds.enabled | bool | `false` |  |
+| agentgateway.enabled | bool | `false` |  |
 | cert-manager.config.apiVersion | string | `"controller.config.cert-manager.io/v1alpha1"` |  |
 | cert-manager.config.enableGatewayAPI | bool | `true` |  |
 | cert-manager.config.kind | string | `"ControllerConfiguration"` |  |
@@ -129,10 +131,6 @@ These are the default values to use when Gateway API is disabled for KubeLB in f
 | global.imagePullSecrets | list | `[]` | Global image pull secrets propagated to supported addon charts. |
 | global.imageRegistry | string | `""` | Override the registry for all images (prefix replacement). When set, all supported addon images are rewritten to this registry host. |
 | ingress-nginx | object | `{"enabled":false}` | ---------------------------------------------------------- |
-| kgateway-crds.enabled | bool | `false` |  |
-| kgateway.agentgateway.enabled | bool | `false` |  |
-| kgateway.enabled | bool | `false` |  |
-| kgateway.gateway.aiExtension.enabled | bool | `true` |  |
 | metallb.enabled | bool | `false` |  |
 
 ## Maintainers
