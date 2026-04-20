@@ -31,11 +31,11 @@ dependencies:
     repository: oci://quay.io/metallb/chart
     condition: metallb.enabled
     version: 0.15.3
-  - name: kgateway-crds
-    repository: oci://cr.kgateway.dev/kgateway-dev/charts
-    condition: kgateway.crds.enabled
-    version: v2.2.3
-  - name: kgateway
-    repository: oci://cr.kgateway.dev/kgateway-dev/charts
-    condition: kgateway.enabled
-    version: v2.2.3
+  - name: agentgateway-crds
+    repository: oci://cr.agentgateway.dev/charts
+    condition: agentgateway-crds.enabled
+    version: v1.1.0
+  - name: agentgateway
+    repository: oci://cr.agentgateway.dev/charts
+    condition: agentgateway.enabled
+    version: v1.1.0

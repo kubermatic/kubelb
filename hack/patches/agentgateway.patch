@@ -1,0 +1,65 @@
+diff -ruN --exclude=README.md --exclude=README.md.gotmpl a/agentgateway/templates/_helpers.tpl b/agentgateway/templates/_helpers.tpl
+--- a/agentgateway/templates/_helpers.tpl	2026-04-20 00:00:00
++++ b/agentgateway/templates/_helpers.tpl	2026-04-20 00:00:00
+@@ -94,4 +94,31 @@
+ {{- $tag -}}
+ {{- end -}}
+ {{- end }}
++
++{{/*
++Resolve a mirrored image registry value. Takes a dict with:
++  registry: source registry (e.g. .Values.controller.image.registry | default .Values.image.registry)
++  global:   value of .Values.global.imageRegistry (may be empty)
++When global is set and registry's first segment looks like a host (contains
++"." or ":"), strips that segment and prepends global. Otherwise returns
++registry unchanged. Used to thread global.imageRegistry through air-gapped
++deployments for both controller and proxy images.
++*/}}
++{{- define "agentgateway.imageRegistry" -}}
++{{- $registry := .registry -}}
++{{- if .global -}}
++  {{- $parts := splitList "/" $registry -}}
++  {{- $path := $registry -}}
++  {{- if or (contains "." (index $parts 0)) (contains ":" (index $parts 0)) -}}
++    {{- $path = join "/" (slice $parts 1) -}}
++  {{- end -}}
++  {{- if $path -}}
++    {{- printf "%s/%s" (trimSuffix "/" .global) $path -}}
++  {{- else -}}
++    {{- trimSuffix "/" .global -}}
++  {{- end -}}
++{{- else -}}
++  {{- $registry -}}
++{{- end -}}
++{{- end }}
+
+diff -ruN --exclude=README.md --exclude=README.md.gotmpl a/agentgateway/templates/deployment.yaml b/agentgateway/templates/deployment.yaml
+--- a/agentgateway/templates/deployment.yaml	2026-04-20 00:00:00
++++ b/agentgateway/templates/deployment.yaml	2026-04-20 00:00:00
+@@ -27,7 +27,7 @@
+       labels:
+         {{- include "agentgateway.selectorLabels" . | nindent 8 }}
+     spec:
+-      {{- with .Values.imagePullSecrets }}
++      {{- with (coalesce .Values.global.imagePullSecrets .Values.imagePullSecrets) }}
+       imagePullSecrets:
+         {{- toYaml . | nindent 8 }}
+       {{- end }}
+@@ -53,7 +53,7 @@
+               drop:
+               - ALL
+           {{- end }}
+-          image: "{{ .Values.controller.image.registry | default .Values.image.registry }}/{{ .Values.controller.image.repository }}:{{ include "agentgateway.imageTag" (.Values.controller.image.tag | default .Values.image.tag | default .Chart.AppVersion) }}"
++          image: "{{ include "agentgateway.imageRegistry" (dict "registry" (.Values.controller.image.registry | default .Values.image.registry) "global" .Values.global.imageRegistry) }}/{{ .Values.controller.image.repository }}:{{ include "agentgateway.imageTag" (.Values.controller.image.tag | default .Values.image.tag | default .Chart.AppVersion) }}"
+           imagePullPolicy: {{ .Values.controller.image.pullPolicy | default .Values.image.pullPolicy }}
+           ports:
+             - containerPort: {{ .Values.controller.service.ports.agwGrpc }}
+@@ -90,7 +90,7 @@
+                 resourceFieldRef:
+                   divisor: "1"
+                   resource: limits.cpu
+-            {{- with (.Values.proxy.image.registry | default .Values.image.registry) }}
++            {{- with (include "agentgateway.imageRegistry" (dict "registry" (.Values.proxy.image.registry | default .Values.image.registry) "global" .Values.global.imageRegistry)) }}
+             - name: AGW_PROXY_IMAGE_REGISTRY
+               value: {{ . }}
+              {{- end }}

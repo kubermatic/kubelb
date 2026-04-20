@@ -43,16 +43,11 @@ external-dns:
 metallb:
   enabled: false
 
-## KGateway Integration
-## KGateway CRDs
-kgateway-crds:
+## Agentgateway Integration
+## Agentgateway CRDs
+agentgateway-crds:
   enabled: false
 
-## KGateway
-kgateway:
+## Agentgateway
+agentgateway:
   enabled: false
-  gateway:
-    aiExtension:
-      enabled: true
-  agentgateway:
-    enabled: false
