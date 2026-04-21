@@ -25,6 +25,11 @@ on:
         description: "Target release branch (e.g. release/v1.4)"
         required: true
         type: string
+      prev_tag:
+        description: "Previous tag/SHA to diff against (optional; leave empty for auto-detect). Auto-detect: minors (vX.Y.0) use vX.(Y-1).0, patches use the highest ancestor tag."
+        required: false
+        type: string
+        default: ""
 
 permissions: {}
 
@@ -155,7 +160,12 @@ jobs:
             done
 
             go mod download
-            go run ./internal/metricsutil/metricsdocs > "${WORKSPACE}/docs/generated/metrics-ee.md" || echo "::warning::EE metrics generation failed"
+            mkdir -p docs/generated
+            if make generate-metricsdocs; then
+              cp docs/generated/metrics.md "${WORKSPACE}/docs/generated/metrics-ee.md"
+            else
+              echo "::warning::EE metrics generation failed"
+            fi
             make generate-helm-docs || echo "::warning::EE helm docs generation failed"
             cd "${WORKSPACE}"
             ./hack/release/extract-helm-values.sh /tmp/kubelb-ee/charts ./docs/generated "-ee"
@@ -175,19 +185,43 @@ jobs:
           GH_TOKEN: ${{ secrets.KUBELB_EE_TOKEN }}
           GITHUB_TOKEN: ${{ secrets.KUBELB_EE_TOKEN }}
           VERSION: ${{ inputs.version }}
+          BRANCH: ${{ inputs.branch }}
+          PREV_TAG_OVERRIDE: ${{ inputs.prev_tag }}
         run: |
+          MINOR=$(echo "$VERSION" | grep -oE 'v[0-9]+\.[0-9]+')
           PREV_TAG=""
-          for tag in $(git tag --sort=-v:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$'); do
-            if git log "${tag}..HEAD" --oneline -1 >/dev/null 2>&1; then
-              PREV_TAG="$tag"
-              break
+          if [ -n "$PREV_TAG_OVERRIDE" ]; then
+            PREV_TAG="$PREV_TAG_OVERRIDE"
+            echo "Previous tag (from input): $PREV_TAG"
+          elif [[ "$VERSION" =~ ^v([0-9]+)\.([0-9]+)\.0$ ]] && [ "${BASH_REMATCH[2]}" -gt 0 ]; then
+            # Minor release: use previous minor's .0 tag so notes cover the
+            # full previous-minor series. Ancestor walk would pick the most
+            # recent ancestor tag (e.g. v1.3.1), which truncates the range.
+            CAND="v${BASH_REMATCH[1]}.$((BASH_REMATCH[2] - 1)).0"
+            if git rev-parse "$CAND" > /dev/null 2>&1; then
+              PREV_TAG="$CAND"
+              echo "Previous tag (auto-detected for minor): $PREV_TAG"
+            else
+              echo "::warning::Expected previous minor tag $CAND not found; falling back to ancestor walk"
             fi
-          done
-          echo "Previous tag: ${PREV_TAG:-none}"
+          fi
+          if [ -z "$PREV_TAG" ]; then
+            # Patch release (or minor fallback): highest semver tag reachable
+            # from HEAD. `git log tag..HEAD` exits 0 for any range, so it
+            # cannot distinguish ancestry — use merge-base --is-ancestor.
+            for tag in $(git tag --sort=-v:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$'); do
+              if git merge-base --is-ancestor "$tag" HEAD 2>/dev/null; then
+                PREV_TAG="$tag"
+                break
+              fi
+            done
+            echo "Previous tag (auto-detected): ${PREV_TAG:-none}"
+          fi
 
           if [ -n "$PREV_TAG" ]; then
             ./hack/release/generate-notes.sh "$VERSION" "$PREV_TAG" \
-              --ee-repo kubermatic/kubelb-ee --ee-path /tmp/kubelb-ee \
+              --branch "$BRANCH" \
+              --ee-repo kubermatic/kubelb-ee --ee-path /tmp/kubelb-ee --ee-branch "release/${MINOR}" \
               kubermatic/kubelb || echo "::warning::Release notes generation failed (non-fatal). Notes may need manual creation."
           else
             echo "::notice::No reachable previous tag found, skipping release notes generation"
