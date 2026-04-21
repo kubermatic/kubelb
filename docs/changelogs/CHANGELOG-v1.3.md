@@ -1,5 +1,158 @@
 ## Kubermatic KubeLB v1.3
 
+## v1.3.10
+
+**GitHub release: [v1.3.10](https://github.com/kubermatic/kubelb/releases/tag/v1.3.10)**
+
+
+### Bug or Regression
+
+- Fix 502 Bad Gateway for Ingress resources annotated with `nginx.ingress.kubernetes.io/backend-protocol: HTTPS` (or `GRPCS`) when the backend speaks TLS. Restores 1.2.x raw TCP passthrough for this specific case so the upstream nginx ingress controller can complete its TLS handshake against the backend through kubelb. ([#376](https://github.com/kubermatic/kubelb/pull/376))
+
+### Release Artifacts
+
+#### Community Edition
+
+For Community Edition, the release artifacts are available on [GitHub Releases](https://github.com/kubermatic/kubelb/releases/tag/v1.3.10).
+
+#### Enterprise Edition
+
+<details>
+<summary><b>Docker Images</b></summary>
+
+```bash
+# Login to registry
+docker login quay.io -u <username> -p <password>
+
+# kubelb manager
+docker pull quay.io/kubermatic/kubelb-manager-ee:v1.3.10
+
+# ccm
+docker pull quay.io/kubermatic/kubelb-ccm-ee:v1.3.10
+
+# connection-manager
+docker pull quay.io/kubermatic/kubelb-connection-manager-ee:v1.3.10
+```
+
+</details>
+
+<details>
+<summary><b>Helm Charts</b></summary>
+
+```bash
+# kubelb-manager
+helm pull oci://quay.io/kubermatic/helm-charts/kubelb-manager-ee --version v1.3.10
+
+# kubelb-ccm
+helm pull oci://quay.io/kubermatic/helm-charts/kubelb-ccm-ee --version v1.3.10
+
+# kubelb-addons
+helm pull oci://quay.io/kubermatic/helm-charts/kubelb-addons --version v0.3.2
+```
+
+</details>
+
+<details>
+<summary><b>SBOMs</b></summary>
+
+Container image SBOMs are attached as OCI artifacts and attested with cosign.
+
+**Pull SBOM:**
+
+```bash
+# Login to registry
+oras login quay.io -u <username> -p <password>
+
+## kubelb-manager
+SBOM_DIGEST=$(oras discover --format json --artifact-type application/spdx+json \
+  quay.io/kubermatic/kubelb-manager-ee:v1.3.10 | jq -r '.referrers[0].digest')
+oras pull quay.io/kubermatic/kubelb-manager-ee@${SBOM_DIGEST} --output sbom/
+
+## kubelb-ccm
+SBOM_DIGEST=$(oras discover --format json --artifact-type application/spdx+json \
+  quay.io/kubermatic/kubelb-ccm-ee:v1.3.10 | jq -r '.referrers[0].digest')
+oras pull quay.io/kubermatic/kubelb-ccm-ee@${SBOM_DIGEST} --output sbom/
+
+## kubelb-connection-manager
+SBOM_DIGEST=$(oras discover --format json --artifact-type application/spdx+json \
+  quay.io/kubermatic/kubelb-connection-manager-ee:v1.3.10 | jq -r '.referrers[0].digest')
+oras pull quay.io/kubermatic/kubelb-connection-manager-ee@${SBOM_DIGEST} --output sbom/
+```
+
+**Verify SBOM attestation:**
+
+```bash
+cosign verify-attestation quay.io/kubermatic/kubelb-manager-ee:v1.3.10 \
+  --type spdxjson \
+  --certificate-identity-regexp="^https://github.com/kubermatic/kubelb-ee/.github/workflows/release.yml@refs/tags/v.*" \
+  --certificate-oidc-issuer=https://token.actions.githubusercontent.com
+
+cosign verify-attestation quay.io/kubermatic/kubelb-ccm-ee:v1.3.10 \
+  --type spdxjson \
+  --certificate-identity-regexp="^https://github.com/kubermatic/kubelb-ee/.github/workflows/release.yml@refs/tags/v.*" \
+  --certificate-oidc-issuer=https://token.actions.githubusercontent.com
+
+cosign verify-attestation quay.io/kubermatic/kubelb-connection-manager-ee:v1.3.10 \
+  --type spdxjson \
+  --certificate-identity-regexp="^https://github.com/kubermatic/kubelb-ee/.github/workflows/release.yml@refs/tags/v.*" \
+  --certificate-oidc-issuer=https://token.actions.githubusercontent.com
+```
+
+</details>
+
+<details>
+<summary><b>Verify Signatures</b></summary>
+
+**Docker images:**
+
+```bash
+cosign verify quay.io/kubermatic/kubelb-manager-ee:v1.3.10 \
+  --certificate-identity-regexp="^https://github.com/kubermatic/kubelb-ee/.github/workflows/release.yml@refs/tags/v.*" \
+  --certificate-oidc-issuer=https://token.actions.githubusercontent.com
+
+cosign verify quay.io/kubermatic/kubelb-ccm-ee:v1.3.10 \
+  --certificate-identity-regexp="^https://github.com/kubermatic/kubelb-ee/.github/workflows/release.yml@refs/tags/v.*" \
+  --certificate-oidc-issuer=https://token.actions.githubusercontent.com
+
+cosign verify quay.io/kubermatic/kubelb-connection-manager-ee:v1.3.10 \
+  --certificate-identity-regexp="^https://github.com/kubermatic/kubelb-ee/.github/workflows/release.yml@refs/tags/v.*" \
+  --certificate-oidc-issuer=https://token.actions.githubusercontent.com
+```
+
+**Helm charts:**
+
+```bash
+cosign verify quay.io/kubermatic/helm-charts/kubelb-manager-ee:v1.3.10 \
+  --certificate-identity-regexp="^https://github.com/kubermatic/kubelb-ee/.github/workflows/release.yml@refs/tags/v.*" \
+  --certificate-oidc-issuer=https://token.actions.githubusercontent.com
+
+cosign verify quay.io/kubermatic/helm-charts/kubelb-ccm-ee:v1.3.10 \
+  --certificate-identity-regexp="^https://github.com/kubermatic/kubelb-ee/.github/workflows/release.yml@refs/tags/v.*" \
+  --certificate-oidc-issuer=https://token.actions.githubusercontent.com
+
+cosign verify quay.io/kubermatic/helm-charts/kubelb-addons:v0.3.2 \
+  --certificate-identity-regexp="^https://github.com/kubermatic/kubelb/.github/workflows/release.yml@refs/tags/addons-v.*" \
+  --certificate-oidc-issuer=https://token.actions.githubusercontent.com
+```
+
+**Release checksums (requires repository access):**
+
+```bash
+cosign verify-blob --bundle checksums.txt.sigstore.json checksums.txt \
+  --certificate-identity-regexp="^https://github.com/kubermatic/kubelb-ee/.github/workflows/release.yml@refs/tags/v.*" \
+  --certificate-oidc-issuer=https://token.actions.githubusercontent.com
+```
+
+</details>
+
+<details>
+<summary><b>Tools</b></summary>
+
+- [Cosign](https://github.com/sigstore/cosign) - Container signing
+- [ORAS](https://oras.land) - OCI Registry As Storage
+
+</details>
+
 - [v1.3.0](#v130)
   - [Community Edition](#community-edition)
   - [Enterprise Edition](#enterprise-edition)
