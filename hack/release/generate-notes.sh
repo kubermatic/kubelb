@@ -37,6 +37,8 @@ shift
 EE_REPO=""
 EE_PATH=""
 CE_REPO="kubermatic/kubelb"
+CE_BRANCH="main"
+EE_BRANCH="main"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -46,6 +48,14 @@ while [[ $# -gt 0 ]]; do
     ;;
   --ee-path)
     EE_PATH="${2:?--ee-path requires a value}"
+    shift 2
+    ;;
+  --branch)
+    CE_BRANCH="${2:?--branch requires a value}"
+    shift 2
+    ;;
+  --ee-branch)
+    EE_BRANCH="${2:?--ee-branch requires a value}"
     shift 2
     ;;
   *)
@@ -88,11 +98,12 @@ prefix_ee_headings() {
 }
 
 find_upstream_head() {
-  local org="$1" repo="$2"
-  # Get the upstream repo's default branch HEAD SHA via API.
-  # This avoids issues when the local repo has fork-only commits.
+  local org="$1" repo="$2" branch="$3"
+  # Get the upstream repo's branch HEAD SHA via API. Using a branch-specific
+  # endpoint is required for release branches — walking main would include
+  # commits never backported to the release branch.
   local upstream_sha
-  upstream_sha=$(gh api "repos/${org}/${repo}/commits/main" --jq '.sha' 2> /dev/null || echo "")
+  upstream_sha=$(gh api "repos/${org}/${repo}/commits/${branch}" --jq '.sha' 2> /dev/null || echo "")
   if [[ -n "$upstream_sha" ]]; then
     echo "$upstream_sha"
     return
@@ -101,10 +112,10 @@ find_upstream_head() {
 }
 
 run_release_notes() {
-  local org="$1" repo="$2" repo_path="$3" outfile="$4"
+  local org="$1" repo="$2" repo_path="$3" outfile="$4" branch="$5"
   local end_sha log_file rp_flag
-  end_sha=$(find_upstream_head "$org" "$repo")
-  echo "  Using end SHA: ${end_sha:0:12}" >&2
+  end_sha=$(find_upstream_head "$org" "$repo" "$branch")
+  echo "  Using branch: ${branch}, end SHA: ${end_sha:0:12}" >&2
 
   log_file=$(mktemp)
   rp_flag=""
@@ -126,7 +137,7 @@ run_release_notes() {
   release-notes \
     --org "$org" \
     --repo "$repo" \
-    --branch main \
+    --branch "$branch" \
     --start-rev "$PREV_TAG" \
     --end-sha "$end_sha" \
     --dependencies=false \
@@ -150,9 +161,9 @@ extract_note_texts() {
   { grep '^- ' || true; } | strip_pr_refs | sort
 }
 
-echo "Generating CE release notes (${CE_REPO})..." >&2
+echo "Generating CE release notes (${CE_REPO} @ ${CE_BRANCH})..." >&2
 CE_FILE=$(mktemp)
-run_release_notes "$CE_ORG" "$CE_NAME" "$REPO_ROOT" "$CE_FILE"
+run_release_notes "$CE_ORG" "$CE_NAME" "$REPO_ROOT" "$CE_FILE" "$CE_BRANCH"
 CE_NOTES=$(cat "$CE_FILE" | strip_author | strip_wrapper)
 rm -f "$CE_FILE"
 
@@ -162,9 +173,9 @@ if [[ -n "$EE_REPO" && -n "$EE_PATH" ]]; then
   EE_ORG="${EE_REPO%%/*}"
   EE_NAME="${EE_REPO##*/}"
 
-  echo "Generating EE release notes (${EE_REPO})..." >&2
+  echo "Generating EE release notes (${EE_REPO} @ ${EE_BRANCH})..." >&2
   EE_FILE=$(mktemp)
-  run_release_notes "$EE_ORG" "$EE_NAME" "$EE_PATH" "$EE_FILE"
+  run_release_notes "$EE_ORG" "$EE_NAME" "$EE_PATH" "$EE_FILE" "$EE_BRANCH"
   EE_NOTES_RAW=$(cat "$EE_FILE" | strip_author | strip_pr_links | strip_wrapper)
   rm -f "$EE_FILE"
 
