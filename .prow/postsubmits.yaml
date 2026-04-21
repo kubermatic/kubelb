@@ -28,14 +28,16 @@ postsubmits:
       preset-goproxy: "true"
     spec:
       containers:
-        - image: quay.io/kubermatic/build:go-1.26-node-22-kind-0.31-1
+        - image: golang:1.26
           command:
             - /bin/bash
             - -c
             - |
-              set -euo pipefail &&
-              start-docker.sh
-              docker login -u $QUAY_IO_USERNAME -p $QUAY_IO_PASSWORD quay.io &&
+              set -euo pipefail
+              VERSION=29.4.0 curl -fsSL https://get.docker.com | sh
+              (dockerd --storage-driver=vfs &>/dev/null &)
+              timeout 30 bash -c 'while ! docker info &>/dev/null; do sleep 0.5; done'
+              docker login -u $QUAY_IO_USERNAME -p $QUAY_IO_PASSWORD quay.io
               make download-gocache docker-image-publish
           # docker-in-docker needs privileged mode
           securityContext:
@@ -58,7 +60,7 @@ postsubmits:
       preset-goproxy: "true"
     spec:
       containers:
-        - image: quay.io/kubermatic/build:go-1.26-node-22-kind-0.31-1
+        - image: golang:1.26
           command:
             - "./hack/ci/upload-gocache.sh"
           resources:
