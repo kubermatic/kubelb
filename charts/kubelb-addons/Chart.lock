@@ -4,7 +4,7 @@ dependencies:
   version: 4.15.1
 - name: gateway-helm
   repository: oci://docker.io/envoyproxy
-  version: 1.7.1
+  version: 1.7.2
 - name: cert-manager
   repository: oci://quay.io/jetstack/charts
   version: v1.20.2
@@ -20,5 +20,5 @@ dependencies:
 - name: agentgateway
   repository: oci://cr.agentgateway.dev/charts
   version: v1.1.0
-digest: sha256:2ebd80c43542c56667d162d8eda7f086078f3e62cc2028a582ab29aa90d24ef0
-generated: "2026-04-20T14:27:34.343734+05:00"
+digest: sha256:995dcc8928f683afcc9595f8321a9c9af0ccf3ef3fb3c48ddbdfba3dc9b32375
+generated: "2026-04-22T10:05:37.704831+05:00"

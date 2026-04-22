@@ -18,7 +18,7 @@ CRD_CODE_GEN_PATH = "./api/ce/..."
 RECONCILE_HELPER_PATH = "internal/resources/reconciling/zz_generated_reconcile.go"
 
 GATEWAY_RELEASE_CHANNEL ?= standard
-GATEWAY_API_VERSION ?= v1.4.1
+GATEWAY_API_VERSION ?= v1.5.1
 KUBELB_ADDONS_CHART_VERSION ?= v0.3.2
 
 export GOPATH?=$(shell go env GOPATH)

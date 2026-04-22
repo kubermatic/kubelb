@@ -18,7 +18,9 @@ package ccm
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"io"
 	"path/filepath"
 
 	"github.com/go-logr/logr"
@@ -128,17 +130,18 @@ func loadGatewayAPICRDs(channel GatewayAPIChannel) (CRDMap, error) {
 		return nil, fmt.Errorf("failed to read CRDs directory: %w", err)
 	}
 
-	var gatewayCRDs = make(CRDMap, len(crdFiles))
+	gatewayCRDs := CRDMap{}
 	for _, crdFile := range crdFiles {
 		filename := crdFile.Name()
 
-		crd, err := parseCRDFile(crdDir, filename)
+		parsed, err := parseCRDFile(crdDir, filename)
 		if err != nil {
 			return nil, fmt.Errorf("failed to read CRD %s: %w", filename, err)
 		}
 
-		// Use CRD name as the key
-		gatewayCRDs[crd.Name] = crd
+		for _, crd := range parsed {
+			gatewayCRDs[crd.Name] = crd
+		}
 	}
 
 	return gatewayCRDs, nil
@@ -155,20 +158,33 @@ func getGatewayAPICRDsPath(channel GatewayAPIChannel) (string, error) {
 	}
 }
 
-func parseCRDFile(dir, filename string) (*apiextensionsv1.CustomResourceDefinition, error) {
+// parseCRDFile decodes a YAML file that may contain multiple documents and
+// returns only CustomResourceDefinition objects. Non-CRD documents (e.g.,
+// ValidatingAdmissionPolicy) are skipped so upstream Gateway API bundles that
+// ship admission policies alongside CRDs can be consumed as-is.
+func parseCRDFile(dir, filename string) ([]*apiextensionsv1.CustomResourceDefinition, error) {
 	content, err := crds.FS.Open(filepath.Join(dir, filename))
 	if err != nil {
 		return nil, err
 	}
 	defer content.Close()
 
-	crd := &apiextensionsv1.CustomResourceDefinition{}
+	var result []*apiextensionsv1.CustomResourceDefinition
 	dec := yaml.NewYAMLOrJSONDecoder(content, 1024)
-	if err := dec.Decode(crd); err != nil {
-		return nil, err
+	for {
+		crd := &apiextensionsv1.CustomResourceDefinition{}
+		if err := dec.Decode(crd); err != nil {
+			if errors.Is(err, io.EOF) {
+				break
+			}
+			return nil, err
+		}
+		if crd.Kind != "CustomResourceDefinition" {
+			continue
+		}
+		result = append(result, crd)
 	}
-
-	return crd, nil
+	return result, nil
 }
 
 func (r *GatewayCRDReconciler) resourceFilter() predicate.Predicate {
