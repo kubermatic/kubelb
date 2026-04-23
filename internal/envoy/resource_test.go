@@ -113,8 +113,33 @@ func TestIsTLSBackend(t *testing.T) {
 			want:  true,
 		},
 		{
+			name:  "ingress ssl-passthrough true",
+			route: routeOfKind("Ingress", map[string]string{"nginx.ingress.kubernetes.io/ssl-passthrough": "true"}),
+			want:  true,
+		},
+		{
+			name:  "ingress ssl-passthrough True mixed case",
+			route: routeOfKind("Ingress", map[string]string{"nginx.ingress.kubernetes.io/ssl-passthrough": "True"}),
+			want:  true,
+		},
+		{
+			name:  "ingress ssl-passthrough false",
+			route: routeOfKind("Ingress", map[string]string{"nginx.ingress.kubernetes.io/ssl-passthrough": "false"}),
+			want:  false,
+		},
+		{
+			name:  "ingress ssl-passthrough true overrides missing backend-protocol",
+			route: routeOfKind("Ingress", map[string]string{"nginx.ingress.kubernetes.io/ssl-passthrough": "true", "nginx.ingress.kubernetes.io/backend-protocol": "HTTP"}),
+			want:  true,
+		},
+		{
 			name:  "httproute with backend-protocol HTTPS annotation is ignored",
 			route: routeOfKind("HTTPRoute", map[string]string{"nginx.ingress.kubernetes.io/backend-protocol": "HTTPS"}),
+			want:  false,
+		},
+		{
+			name:  "httproute with ssl-passthrough annotation is ignored",
+			route: routeOfKind("HTTPRoute", map[string]string{"nginx.ingress.kubernetes.io/ssl-passthrough": "true"}),
 			want:  false,
 		},
 		{
