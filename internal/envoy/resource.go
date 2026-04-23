@@ -583,13 +583,18 @@ func makeRouteListener(key string, listenerPort uint32, protocol corev1.Protocol
 // the backend untouched (the HTTP Connection Manager would otherwise
 // interpret the TLS ClientHello as HTTP and break the handshake).
 //
-// The only signal we trust is the nginx ingress backend-protocol annotation
-// on an Ingress resource: it is the explicit user intent that nginx will
-// open a TLS connection to the upstream. appProtocol, port name and port
-// number are intentionally NOT used — they are informational and do not
-// change wire behavior, so trusting them would silently strip L7 features
-// from routes whose backends only happen to live on port 443 / be named
-// "https".
+// The only signals we trust are nginx ingress annotations on an Ingress
+// resource that encode explicit user intent for nginx to open a TLS
+// connection to the upstream:
+//   - backend-protocol: HTTPS / GRPCS — nginx terminates client TLS and
+//     re-encrypts to the backend.
+//   - ssl-passthrough: "true" — nginx forwards the client TLS stream
+//     directly to the backend without terminating it.
+//
+// appProtocol, port name and port number are intentionally NOT used — they
+// are informational and do not change wire behavior, so trusting them would
+// silently strip L7 features from routes whose backends only happen to live
+// on port 443 / be named "https".
 func isTLSBackend(route *kubelbv1alpha1.Route) bool {
 	if route == nil || route.Spec.Source.Kubernetes == nil {
 		return false
@@ -597,11 +602,12 @@ func isTLSBackend(route *kubelbv1alpha1.Route) bool {
 	if getRouteKind(route) != "Ingress" {
 		return false
 	}
-	switch strings.ToUpper(route.Spec.Source.Kubernetes.Route.GetAnnotations()["nginx.ingress.kubernetes.io/backend-protocol"]) {
+	annotations := route.Spec.Source.Kubernetes.Route.GetAnnotations()
+	switch strings.ToUpper(annotations["nginx.ingress.kubernetes.io/backend-protocol"]) {
 	case "HTTPS", "GRPCS":
 		return true
 	}
-	return false
+	return strings.EqualFold(annotations["nginx.ingress.kubernetes.io/ssl-passthrough"], "true")
 }
 
 func getRouteKind(route *kubelbv1alpha1.Route) string {
