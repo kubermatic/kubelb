@@ -9,9 +9,9 @@ maintainers:
     url: https://kubermatic.com
 
 # Helm chart Version.
-version: v1.3.10
+version: v1.3.11
 # Application version to be deployed.
-appVersion: v1.3.10
+appVersion: v1.3.11
 
 dependencies:
   - name: kubelb-addons
