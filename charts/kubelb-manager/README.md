@@ -47,7 +47,7 @@ cosign verify quay.io/kubermatic/kubelb-manager:v1.3.5 \
 
 | Repository | Name | Version |
 |------------|------|---------|
-| oci://quay.io/kubermatic/helm-charts | kubelb-addons | v0.3.2 |
+| oci://quay.io/kubermatic/helm-charts | kubelb-addons | v0.4.0 |
 
 ## Values
 
