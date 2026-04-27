@@ -21,12 +21,14 @@ import (
 	"fmt"
 	"math/rand"
 	"slices"
+	"sort"
 	"sync"
 
 	kubelbv1alpha1 "k8c.io/kubelb/api/ce/kubelb.k8c.io/v1alpha1"
 	"k8c.io/kubelb/internal/kubelb"
 	managermetrics "k8c.io/kubelb/internal/metrics/manager"
 
+	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
@@ -131,6 +133,11 @@ func (pa *PortAllocator) allocatePort() int {
 	for {
 		port := rand.Intn(endPort-startPort) + startPort
 		if _, exists := pa.portLookupReverse[port]; !exists {
+			// Mark the port as used immediately so subsequent allocations within
+			// the same AllocatePorts batch can't pick it too. recomputeAvailablePorts
+			// runs only at the end of AllocatePorts; without this write, two keys
+			// in the same call can collide on the same random value.
+			pa.portLookupReverse[port] = true
 			return port
 		}
 	}
@@ -170,9 +177,24 @@ func (pa *PortAllocator) LoadState(ctx context.Context, apiReader client.Reader)
 
 			for _, lbEndpointPort := range lbEndpoint.Ports {
 				portKey := fmt.Sprintf(kubelb.EnvoyListenerPattern, lbEndpointPort.Port, lbEndpointPort.Protocol)
+				// Match by Name+Protocol when Name is set on either side; otherwise by
+				// UpstreamTargetPort+Protocol. The previous predicate required all three of
+				// (Name, Protocol, UpstreamTargetPort) to match, which silently failed for
+				// multi-port LBs whose status was written by the pre-fix updateLoadBalancerStatus
+				// (Name and UpstreamTargetPort were indexed against parallel arrays sorted
+				// differently). Falling back to Name-only lets historically corrupt statuses
+				// heal instead of triggering a fresh random allocation.
 				for _, port := range lb.Status.Service.Ports {
-					// Name is not guaranteed to be set, so we need to check for port and protocol as well.
-					if port.UpstreamTargetPort == lbEndpointPort.Port && port.Protocol == lbEndpointPort.Protocol && port.Name == lbEndpointPort.Name {
+					if port.Protocol != lbEndpointPort.Protocol {
+						continue
+					}
+					var match bool
+					if lbEndpointPort.Name != "" || port.Name != "" {
+						match = port.Name == lbEndpointPort.Name
+					} else {
+						match = port.UpstreamTargetPort == lbEndpointPort.Port
+					}
+					if match {
 						lookupTable[endpointKey][portKey] = port.TargetPort.IntValue()
 						break
 					}
@@ -216,7 +238,43 @@ func (pa *PortAllocator) LoadState(ctx context.Context, apiReader client.Reader)
 			}
 		}
 	}
+	// Heal duplicate port assignments across endpointKeys. Two different
+	// endpointKeys owning the same port value cause duplicate Envoy listeners
+	// (and NACK spam). This happens on upgrade where Routes that shared a
+	// backend Service seed the same port into each of their distinct
+	// per-route endpointKeys. Keep the first owner in sorted key order and
+	// clear duplicates so the next reconcile allocates fresh ports for them.
+	healLoadStateCollisions(lookupTable)
+
 	pa.portLookup = lookupTable
 	pa.recomputeAvailablePorts()
 	return nil
+}
+
+func healLoadStateCollisions(lookupTable LookupTable) {
+	log := ctrl.Log.WithName("port-allocator")
+	owners := make(map[int]string)
+	endpointKeys := make([]string, 0, len(lookupTable))
+	for k := range lookupTable {
+		endpointKeys = append(endpointKeys, k)
+	}
+	sort.Strings(endpointKeys)
+	for _, endpointKey := range endpointKeys {
+		portKeys := make([]string, 0, len(lookupTable[endpointKey]))
+		for k := range lookupTable[endpointKey] {
+			portKeys = append(portKeys, k)
+		}
+		sort.Strings(portKeys)
+		for _, portKey := range portKeys {
+			port := lookupTable[endpointKey][portKey]
+			if owner, exists := owners[port]; exists && owner != endpointKey {
+				log.Info("detected duplicate port allocation; clearing to force reallocation",
+					"port", port, "keeping", owner, "clearing", endpointKey, "portKey", portKey)
+				delete(lookupTable[endpointKey], portKey)
+				managermetrics.PortAllocatorCollisionsHealed.Inc()
+				continue
+			}
+			owners[port] = endpointKey
+		}
+	}
 }
