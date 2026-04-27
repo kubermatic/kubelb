@@ -20,12 +20,26 @@ import (
 	"testing"
 
 	envoyEndpoint "github.com/envoyproxy/go-control-plane/envoy/config/endpoint/v3"
+	"github.com/envoyproxy/go-control-plane/pkg/cache/types"
+	dto "github.com/prometheus/client_model/go"
 
 	kubelbv1alpha1 "k8c.io/kubelb/api/ce/kubelb.k8c.io/v1alpha1"
+	managermetrics "k8c.io/kubelb/internal/metrics/manager"
 
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 )
+
+func counterValue(t *testing.T, c interface {
+	Write(*dto.Metric) error
+}) float64 {
+	t.Helper()
+	m := &dto.Metric{}
+	if err := c.Write(m); err != nil {
+		t.Fatalf("counter Write failed: %v", err)
+	}
+	return m.GetCounter().GetValue()
+}
 
 func TestMakeCluster_ProxyProtocol(t *testing.T) {
 	endpoints := []*envoyEndpoint.LbEndpoint{
@@ -161,5 +175,79 @@ func TestIsTLSBackend(t *testing.T) {
 				t.Errorf("isTLSBackend() = %v, want %v", got, tt.want)
 			}
 		})
+	}
+}
+
+func dedupListenersByAddressTestHelper(listeners []types.Resource) []types.Resource {
+	return dedupListenersByAddress(listeners, "test-ns")
+}
+
+func TestDedupListenersByAddress(t *testing.T) {
+	l1 := makeTCPListener("cluster-a", "listener-a", 10001)
+	l2 := makeTCPListener("cluster-b", "listener-b", 10001)
+	l3 := makeTCPListener("cluster-c", "listener-c", 10002)
+
+	out := dedupListenersByAddressTestHelper([]types.Resource{l1, l2, l3})
+
+	if got, want := len(out), 2; got != want {
+		t.Fatalf("expected %d listeners after dedup, got %d", want, got)
+	}
+	if out[0] != l1 {
+		t.Errorf("expected first listener to be kept")
+	}
+	if out[1] != l3 {
+		t.Errorf("expected non-colliding listener to be preserved")
+	}
+}
+
+func TestDedupListenersByAddress_DistinctProtocols(t *testing.T) {
+	tcp := makeTCPListener("cluster-tcp", "listener-tcp", 10001)
+	udp := makeUDPListener("cluster-udp", "listener-udp", 10001)
+
+	out := dedupListenersByAddressTestHelper([]types.Resource{tcp, udp})
+	if len(out) != 2 {
+		t.Fatalf("TCP and UDP on same port must not be deduped; got %d", len(out))
+	}
+}
+
+func TestDedupListenersByAddress_ShortCircuits(t *testing.T) {
+	if out := dedupListenersByAddressTestHelper(nil); out != nil {
+		t.Fatalf("nil input should pass through, got %v", out)
+	}
+	single := []types.Resource{makeTCPListener("c", "l", 10001)}
+	if out := dedupListenersByAddressTestHelper(single); len(out) != 1 {
+		t.Fatalf("single listener should pass through, got %d", len(out))
+	}
+}
+
+// TestDedupListenersByAddress_NoMetricIncrementWithoutDuplicates asserts the
+// dedup counter stays flat when the input has no collisions.
+func TestDedupListenersByAddress_NoMetricIncrementWithoutDuplicates(t *testing.T) {
+	m := managermetrics.EnvoyDuplicateListenersDropped.WithLabelValues("ns-clean")
+	before := counterValue(t, m)
+
+	listeners := []types.Resource{
+		makeTCPListener("c1", "l1", 10001),
+		makeTCPListener("c2", "l2", 10002),
+		makeUDPListener("c3", "l3", 10003),
+	}
+	dedupListenersByAddress(listeners, "ns-clean")
+
+	if after := counterValue(t, m); after != before {
+		t.Fatalf("dedup counter incremented without duplicates: before=%v after=%v", before, after)
+	}
+}
+
+func TestDedupListenersByAddress_LabelCardinalityMatches(t *testing.T) {
+	defer func() {
+		if r := recover(); r != nil {
+			t.Fatalf("WithLabelValues panicked: %v (label cardinality drift)", r)
+		}
+	}()
+	l1 := makeTCPListener("cluster-a", "listener-a", 10010)
+	l2 := makeTCPListener("cluster-b", "listener-b", 10010)
+	out := dedupListenersByAddress([]types.Resource{l1, l2}, "tenant-bb8")
+	if len(out) != 1 {
+		t.Fatalf("expected 1 listener kept, got %d", len(out))
 	}
 }
