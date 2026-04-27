@@ -1,9 +1,26 @@
 ## Kubermatic KubeLB v1.3
 
+- [v1.3.11](#v1311)
+- [v1.3.10](#v1310)
+- [v1.3.9](#v139)
+- [v1.3.8](#v138)
+- [v1.3.7](#v137)
+- [v1.3.6](#v136)
+- [v1.3.5](#v135)
+- [v1.3.4](#v134)
+- [v1.3.3](#v133)
+  - [Enterprise Edition](#enterprise-edition)
+- [v1.3.2](#v132)
+  - [Community Edition](#community-edition)
+  - [Enterprise Edition](#enterprise-edition)
+- [v1.3.1](#v131)
+- [v1.3.0](#v130)
+  - [Community Edition](#community-edition)
+  - [Enterprise Edition](#enterprise-edition)
+
 ## v1.3.11
 
 **GitHub release: [v1.3.11](https://github.com/kubermatic/kubelb/releases/tag/v1.3.11)**
-
 
 ### Bug or Regression
 
@@ -161,7 +178,6 @@ cosign verify-blob --bundle checksums.txt.sigstore.json checksums.txt \
 
 **GitHub release: [v1.3.10](https://github.com/kubermatic/kubelb/releases/tag/v1.3.10)**
 
-
 ### Bug or Regression
 
 - Fix 502 Bad Gateway for Ingress resources annotated with `nginx.ingress.kubernetes.io/backend-protocol: HTTPS` (or `GRPCS`) when the backend speaks TLS. Restores 1.2.x raw TCP passthrough for this specific case so the upstream nginx ingress controller can complete its TLS handshake against the backend through kubelb. ([#376](https://github.com/kubermatic/kubelb/pull/376))
@@ -309,19 +325,6 @@ cosign verify-blob --bundle checksums.txt.sigstore.json checksums.txt \
 - [ORAS](https://oras.land) - OCI Registry As Storage
 
 </details>
-
-- [v1.3.0](#v130)
-  - [Community Edition](#community-edition)
-  - [Enterprise Edition](#enterprise-edition)
-- [v1.3.1](#v131)
-- [v1.3.2](#v132)
-- [v1.3.3](#v133)
-- [v1.3.4](#v134)
-- [v1.3.5](#v135)
-- [v1.3.6](#v136)
-- [v1.3.7](#v137)
-- [v1.3.8](#v138)
-- [v1.3.9](#v139)
 
 ## v1.3.9
 

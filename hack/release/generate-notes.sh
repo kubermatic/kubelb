@@ -113,23 +113,64 @@ find_upstream_head() {
 
 run_release_notes() {
   local org="$1" repo="$2" repo_path="$3" outfile="$4" branch="$5"
-  local end_sha log_file rp_flag
+  local end_sha start_sha log_file rp_flag start_flag
   end_sha=$(find_upstream_head "$org" "$repo" "$branch")
-  echo "  Using branch: ${branch}, end SHA: ${end_sha:0:12}" >&2
+  # Resolve PREV_TAG against the upstream repo via the GitHub API rather than
+  # the local clone. release-notes' internal MergeBase walk is otherwise
+  # vulnerable to local history rewrites (e.g. an `origin` pointing at a stale
+  # fork, followed by `git pull --rebase`): first-parent ancestry no longer
+  # reaches the tag commit and the walk silently falls back to a much deeper
+  # ancestor, polluting the notes with pre-PREV_TAG PRs.
+  start_sha=$(gh api "repos/${org}/${repo}/commits/${PREV_TAG}" --jq '.sha' 2> /dev/null || echo "")
+  if [[ -n "$start_sha" ]]; then
+    start_flag="--start-sha $start_sha"
+    echo "  Using branch: ${branch}, start SHA: ${start_sha:0:12} (${PREV_TAG}), end SHA: ${end_sha:0:12}" >&2
+  else
+    start_flag="--start-rev $PREV_TAG"
+    echo "  WARNING: could not resolve ${PREV_TAG} via gh api; falling back to --start-rev" >&2
+    echo "  Using branch: ${branch}, end SHA: ${end_sha:0:12}" >&2
+  fi
 
   log_file=$(mktemp)
   rp_flag=""
   # Only use --repo-path for external clones (EE), never for the workspace.
   # Using --repo-path on the workspace causes the tool to run `git pull --rebase`
   # which can fail (no tracking) and `git stash` which destroys uncommitted prep changes.
+  # Additionally, if the external clone's `origin` does not point at the
+  # upstream repo (e.g. local dev using a fork), the tool's internal
+  # `git pull --rebase` would rebase onto the fork and corrupt the history the
+  # MergeBase walk depends on — silently polluting notes with commits from
+  # far before PREV_TAG. In that case, fall back to a fresh clone of the
+  # upstream into a temp dir and use that as --repo-path. This mirrors what
+  # the release-prep GitHub Actions workflow does.
   if [[ "$repo_path" != "$REPO_ROOT" && -d "${repo_path}/.git" ]]; then
-    git -C "$repo_path" stash --quiet 2> /dev/null || true
-    local current_branch
-    current_branch=$(git -C "$repo_path" rev-parse --abbrev-ref HEAD 2> /dev/null || echo "")
-    if [[ -n "$current_branch" && "$current_branch" != "HEAD" ]]; then
-      git -C "$repo_path" branch --set-upstream-to="origin/${current_branch}" "$current_branch" 2> /dev/null || true
+    local origin_url
+    origin_url=$(git -C "$repo_path" remote get-url origin 2> /dev/null || echo "")
+    if [[ "$origin_url" == *"${org}/${repo}"* ]]; then
+      git -C "$repo_path" stash --quiet 2> /dev/null || true
+      local current_branch
+      current_branch=$(git -C "$repo_path" rev-parse --abbrev-ref HEAD 2> /dev/null || echo "")
+      if [[ -n "$current_branch" && "$current_branch" != "HEAD" ]]; then
+        git -C "$repo_path" branch --set-upstream-to="origin/${current_branch}" "$current_branch" 2> /dev/null || true
+      fi
+      rp_flag="--repo-path ${repo_path}"
+    else
+      local fresh_clone clone_url
+      fresh_clone=$(mktemp -d -t "release-notes-${repo}.XXXXXX")
+      if [[ -n "${GH_TOKEN:-${GITHUB_TOKEN:-}}" ]]; then
+        clone_url="https://x-access-token:${GH_TOKEN:-$GITHUB_TOKEN}@github.com/${org}/${repo}.git"
+      else
+        clone_url="https://github.com/${org}/${repo}.git"
+      fi
+      echo "  NOTICE: ${repo_path} origin='${origin_url}' does not match ${org}/${repo}; cloning upstream fresh to ${fresh_clone}" >&2
+      if git clone --quiet --branch "$branch" "$clone_url" "$fresh_clone" 2> /dev/null; then
+        git -C "$fresh_clone" fetch --quiet --tags 2> /dev/null || true
+        git -C "$fresh_clone" branch --set-upstream-to="origin/${branch}" "$branch" 2> /dev/null || true
+        rp_flag="--repo-path ${fresh_clone}"
+      else
+        echo "  WARNING: fresh clone of ${org}/${repo}#${branch} failed; letting release-notes attempt its own clone" >&2
+      fi
     fi
-    rp_flag="--repo-path ${repo_path}"
   fi
 
   set +e
@@ -138,7 +179,7 @@ run_release_notes() {
     --org "$org" \
     --repo "$repo" \
     --branch "$branch" \
-    --start-rev "$PREV_TAG" \
+    $start_flag \
     --end-sha "$end_sha" \
     --dependencies=false \
     --output "$outfile" \
@@ -334,5 +375,45 @@ echo "" >> "$TMPFILE"
 printf '%b' "$OUTPUT" >> "$TMPFILE"
 tail -n +2 "$CHANGELOG" >> "$TMPFILE"
 mv "$TMPFILE" "$CHANGELOG"
+
+# Rebuild TOC at the top of the changelog
+TITLE_LINE=$(head -1 "$CHANGELOG")
+TOC=""
+while IFS= read -r heading; do
+  ver="${heading#\#\# }"
+  anchor=$(echo "$ver" | tr -d '.')
+  TOC+="- [${ver}](#${anchor})\n"
+  in_block=false
+  has_ce=false
+  has_ee=false
+  while IFS= read -r line; do
+    if [[ "$line" == "## ${ver}" ]]; then
+      in_block=true
+      continue
+    fi
+    if $in_block && [[ "$line" =~ ^##\  ]]; then
+      break
+    fi
+    if $in_block && [[ "$line" == "### Community Edition" ]]; then
+      has_ce=true
+    fi
+    if $in_block && [[ "$line" == "### Enterprise Edition" ]]; then
+      has_ee=true
+    fi
+  done < "$CHANGELOG"
+  if $has_ce; then
+    TOC+="  - [Community Edition](#community-edition)\n"
+  fi
+  if $has_ee; then
+    TOC+="  - [Enterprise Edition](#enterprise-edition)\n"
+  fi
+done < <(grep '^## v' "$CHANGELOG")
+
+TOCFILE=$(mktemp)
+echo "$TITLE_LINE" > "$TOCFILE"
+echo "" >> "$TOCFILE"
+printf '%b' "$TOC" >> "$TOCFILE"
+sed -n '/^## v/,$p' "$CHANGELOG" >> "$TOCFILE"
+mv "$TOCFILE" "$CHANGELOG"
 
 printf '%b' "$OUTPUT"
