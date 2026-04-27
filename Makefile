@@ -19,7 +19,7 @@ RECONCILE_HELPER_PATH = "internal/resources/reconciling/zz_generated_reconcile.g
 
 GATEWAY_RELEASE_CHANNEL ?= standard
 GATEWAY_API_VERSION ?= v1.5.1
-KUBELB_ADDONS_CHART_VERSION ?= v0.3.2
+KUBELB_ADDONS_CHART_VERSION ?= v0.4.0
 
 export GOPATH?=$(shell go env GOPATH)
 export CGO_ENABLED=0
