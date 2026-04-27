@@ -150,6 +150,15 @@ var (
 		"port_allocator_endpoints",
 		"Current number of endpoints tracked by the port allocator",
 	)
+
+	// PortAllocatorCollisionsHealed counts duplicate port assignments detected
+	// and cleared by LoadState. Non-zero on manager start typically indicates
+	// an upgrade path that seeded colliding ports into the allocator;
+	// subsequent reconciles allocate fresh ports for the cleared endpointKeys.
+	PortAllocatorCollisionsHealed = factory.NewCounter(
+		"port_allocator_collisions_healed_total",
+		"Total number of duplicate port assignments detected and cleared by the port allocator on load",
+	)
 )
 
 // EnvoyCP snapshot metrics.
@@ -181,6 +190,16 @@ var (
 		"Current number of endpoints in the Envoy snapshot",
 		[]string{"snapshot_name"},
 	)
+
+	// EnvoyDuplicateListenersDropped counts listeners dropped from the xDS snapshot
+	// because their bind address collided with another listener. Non-zero means
+	// something upstream produced two listeners with the same 0.0.0.0:<port>/<protocol>.
+	// The snapshot sent to Envoy keeps only the first one.
+	EnvoyDuplicateListenersDropped = factory.NewCounterVec(
+		"envoy_duplicate_listeners_dropped_total",
+		"Total number of listeners dropped from the Envoy snapshot due to duplicate bind addresses",
+		[]string{"snapshot_name"},
+	)
 )
 
 // allCollectors returns all metrics collectors for registration.
@@ -206,11 +225,13 @@ func allCollectors() []prometheus.Collector {
 		// Port allocator
 		PortAllocatorAllocatedPorts,
 		PortAllocatorEndpoints,
+		PortAllocatorCollisionsHealed,
 		// EnvoyCP snapshot
 		EnvoyCPSnapshotUpdatesTotal,
 		EnvoyCPClusters,
 		EnvoyCPListeners,
 		EnvoyCPEndpoints,
+		EnvoyDuplicateListenersDropped,
 	}
 }
 

@@ -25,6 +25,8 @@ import (
 	"reflect"
 	"time"
 
+	"github.com/go-logr/logr"
+
 	kubelbv1alpha1 "k8c.io/kubelb/api/ce/kubelb.k8c.io/v1alpha1"
 	utils "k8c.io/kubelb/internal/controllers"
 	"k8c.io/kubelb/internal/kubelb"
@@ -392,15 +394,7 @@ func (r *LoadBalancerReconciler) updateLoadBalancerStatus(ctx context.Context, l
 		return nil
 	}
 
-	updatedPorts := []kubelbv1alpha1.ServicePort{}
-	for i, port := range service.Spec.Ports {
-		targetPort := loadBalancer.Spec.Endpoints[0].Ports[i].Port
-		updatedPorts = append(updatedPorts, kubelbv1alpha1.ServicePort{
-			ServicePort: port,
-			// In case of global topology, this will be different from the targetPort. Otherwise it will be the same.
-			UpstreamTargetPort: targetPort,
-		})
-	}
+	updatedPorts := buildServicePortStatus(log, service.Spec.Ports, loadBalancer.Spec.Endpoints[0].Ports)
 
 	// Create the updated status
 	updatedLoadBalancerStatus := kubelbv1alpha1.LoadBalancerStatus{
@@ -464,6 +458,36 @@ func (r *LoadBalancerReconciler) updateLoadBalancerStatus(ctx context.Context, l
 		// update the status
 		return r.Status().Patch(ctx, lb, ctrlruntimeclient.MergeFrom(original))
 	})
+}
+
+// buildServicePortStatus pairs the generated Service's ports with the LoadBalancer's
+// endpoint ports by Name+Protocol. CreateServicePorts sorts service.Spec.Ports
+// alphabetically by Name while Spec.Endpoints[0].Ports retain user-provided order;
+// a parallel index-based pairing would scramble UpstreamTargetPort against Name for
+// multi-port LBs and prevent PortAllocator.LoadState from matching on restart.
+func buildServicePortStatus(log logr.Logger, svcPorts []corev1.ServicePort, endpointPorts []kubelbv1alpha1.EndpointPort) []kubelbv1alpha1.ServicePort {
+	updated := make([]kubelbv1alpha1.ServicePort, 0, len(svcPorts))
+	for _, svcPort := range svcPorts {
+		var targetPort int32
+		matched := false
+		for _, epPort := range endpointPorts {
+			if epPort.Name == svcPort.Name && epPort.Protocol == svcPort.Protocol {
+				targetPort = epPort.Port
+				matched = true
+				break
+			}
+		}
+		if !matched {
+			log.Info("no endpoint port matches service port; UpstreamTargetPort will be zero",
+				"portName", svcPort.Name, "port", svcPort.Port, "protocol", svcPort.Protocol,
+				"svcPortCount", len(svcPorts), "endpointPortCount", len(endpointPorts))
+		}
+		updated = append(updated, kubelbv1alpha1.ServicePort{
+			ServicePort:        svcPort,
+			UpstreamTargetPort: targetPort,
+		})
+	}
+	return updated
 }
 
 func (r *LoadBalancerReconciler) cleanup(ctx context.Context, lb kubelbv1alpha1.LoadBalancer, resourceNamespace string) error {

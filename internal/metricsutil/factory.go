@@ -73,6 +73,18 @@ func (f *MetricFactory) NewGauge(name, help string) prometheus.Gauge {
 	return NewGauge(f.subsystem, name, help)
 }
 
+// NewCounter creates a Counter and captures its description.
+func (f *MetricFactory) NewCounter(name, help string) prometheus.Counter {
+	f.descriptions = append(f.descriptions, MetricDescription{
+		Name:      f.subsystem + "_" + name,
+		Help:      help,
+		Type:      MetricTypeCounter,
+		Labels:    []string{},
+		Component: f.component,
+	})
+	return NewCounter(f.subsystem, name, help)
+}
+
 // NewHistogramVec creates a HistogramVec and captures its description.
 // If buckets is nil, DefaultBuckets will be used.
 func (f *MetricFactory) NewHistogramVec(name, help string, labels []string, buckets []float64) *prometheus.HistogramVec {
