@@ -49,9 +49,11 @@ import (
 
 	kubelbv1alpha1 "k8c.io/kubelb/api/ce/kubelb.k8c.io/v1alpha1"
 	"k8c.io/kubelb/internal/kubelb"
+	managermetrics "k8c.io/kubelb/internal/metricsutil/manager"
 	portlookup "k8c.io/kubelb/internal/port-lookup"
 
 	corev1 "k8s.io/api/core/v1"
+	ctrl "sigs.k8s.io/controller-runtime"
 	ctrlclient "sigs.k8s.io/controller-runtime/pkg/client"
 )
 
@@ -73,7 +75,7 @@ const (
 	accessLogFormat = "[%START_TIME%] \"%REQ(:METHOD)% %REQ(X-ENVOY-ORIGINAL-PATH?:PATH)% %PROTOCOL%\" %RESPONSE_CODE% %RESPONSE_FLAGS% %BYTES_RECEIVED% %BYTES_SENT% %DURATION% %RESP(X-ENVOY-UPSTREAM-SERVICE-TIME)% \"%DOWNSTREAM_REMOTE_ADDRESS%\" \"%REQ(USER-AGENT)%\" \"%REQ(X-REQUEST-ID)%\" \"%REQ(:AUTHORITY)%\" \"%UPSTREAM_HOST%\"\n"
 )
 
-func MapSnapshot(ctx context.Context, client ctrlclient.Client, loadBalancers []kubelbv1alpha1.LoadBalancer, routes []kubelbv1alpha1.Route, portAllocator *portlookup.PortAllocator) (*envoycache.Snapshot, error) {
+func MapSnapshot(ctx context.Context, client ctrlclient.Client, loadBalancers []kubelbv1alpha1.LoadBalancer, routes []kubelbv1alpha1.Route, portAllocator *portlookup.PortAllocator, snapshotName string) (*envoycache.Snapshot, error) {
 	var listener []types.Resource
 	var cluster []types.Resource
 	var endpoints []types.Resource
@@ -179,6 +181,8 @@ func MapSnapshot(ctx context.Context, client ctrlclient.Client, loadBalancers []
 			}
 		}
 	}
+
+	listener = dedupListenersByAddress(listener, snapshotName)
 
 	var content []byte
 	var resources []types.Resource
@@ -547,6 +551,41 @@ func makeHTTPListener(listenerName string, clusterName string, listenerPort uint
 			}},
 		}},
 	}
+}
+
+// dedupListenersByAddress drops listeners with duplicate bind addresses before
+// building the xDS snapshot. Envoy NACKs snapshots containing two listeners on
+// the same address. This should never happen if the port allocator is consistent,
+// but defend here so a bug upstream can't cascade into unbounded log volume.
+// snapshotName is used only for metric labeling.
+func dedupListenersByAddress(listeners []types.Resource, snapshotName string) []types.Resource {
+	if len(listeners) < 2 {
+		return listeners
+	}
+	seen := make(map[string]string, len(listeners))
+	deduped := make([]types.Resource, 0, len(listeners))
+	for _, r := range listeners {
+		l, ok := r.(*envoyListener.Listener)
+		if !ok {
+			deduped = append(deduped, r)
+			continue
+		}
+		sa := l.GetAddress().GetSocketAddress()
+		if sa == nil {
+			deduped = append(deduped, r)
+			continue
+		}
+		key := fmt.Sprintf("%s:%d/%s", sa.GetAddress(), sa.GetPortValue(), sa.GetProtocol())
+		if prev, exists := seen[key]; exists {
+			ctrl.Log.WithName("envoy").Info("dropping duplicate listener from snapshot",
+				"snapshot", snapshotName, "address", key, "kept", prev, "dropped", l.GetName())
+			managermetrics.EnvoyDuplicateListenersDropped.WithLabelValues(snapshotName).Inc()
+			continue
+		}
+		seen[key] = l.GetName()
+		deduped = append(deduped, r)
+	}
+	return deduped
 }
 
 func MustMarshalAny(pb proto.Message) *anypb.Any {

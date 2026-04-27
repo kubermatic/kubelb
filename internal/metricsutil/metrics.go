@@ -91,6 +91,15 @@ func NewGauge(subsystem, name, help string) prometheus.Gauge {
 	})
 }
 
+// NewCounter creates a new Counter with the KubeLB namespace.
+func NewCounter(subsystem, name, help string) prometheus.Counter {
+	return prometheus.NewCounter(prometheus.CounterOpts{
+		Subsystem: subsystem,
+		Name:      name,
+		Help:      help,
+	})
+}
+
 // NewHistogramVec creates a new HistogramVec with the KubeLB namespace.
 // If buckets is nil, DefaultBuckets will be used.
 func NewHistogramVec(subsystem, name, help string, labels []string, buckets []float64) *prometheus.HistogramVec {
