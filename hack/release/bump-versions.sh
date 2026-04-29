@@ -15,27 +15,60 @@
 
 #!/usr/bin/env bash
 # Bump Chart.yaml version/appVersion and values.yaml image tag for kubelb-manager and kubelb-ccm.
-# Usage: bump-versions.sh [--dry-run] <VERSION>
+# Usage: bump-versions.sh [--dry-run] [--target-dir <dir>] <VERSION>
 # VERSION must be semver with v prefix: v1.4.0, v1.4.0-rc.1
+#
+# --target-dir <dir>: bump charts under <dir>/charts/ instead of the CE workspace.
+#   Used by release workflows to bump a freshly-cloned kubelb-ee in /tmp without
+#   committing the bump back. Defaults to the CE workspace root.
+#
+# When --target-dir is given:
+#   - The local-tag-exists check is skipped (the target may be a transient clone).
+#   - The git-tag check still runs against the CE workspace if invoked from there.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 
 DRY_RUN=false
-if [[ "${1:-}" == "--dry-run" ]]; then
-  DRY_RUN=true
-  shift
-fi
+TARGET_DIR=""
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --dry-run)
+      DRY_RUN=true
+      shift
+      ;;
+    --target-dir)
+      TARGET_DIR="${2:?--target-dir requires a value}"
+      shift 2
+      ;;
+    -*)
+      echo "ERROR: unknown flag: $1" >&2
+      echo "Usage: bump-versions.sh [--dry-run] [--target-dir <dir>] <VERSION>" >&2
+      exit 1
+      ;;
+    *)
+      break
+      ;;
+  esac
+done
 
-VERSION="${1:?Usage: bump-versions.sh [--dry-run] <VERSION>}"
+VERSION="${1:?Usage: bump-versions.sh [--dry-run] [--target-dir <dir>] <VERSION>}"
+TARGET_DIR="${TARGET_DIR:-$REPO_ROOT}"
+
+if [[ ! -d "$TARGET_DIR/charts" ]]; then
+  echo "ERROR: charts directory not found: $TARGET_DIR/charts" >&2
+  exit 1
+fi
 
 if [[ ! "$VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?$ ]]; then
   echo "ERROR: Invalid version format: $VERSION (expected vX.Y.Z or vX.Y.Z-rc.N)" >&2
   exit 1
 fi
 
-if git tag -l "$VERSION" | grep -q .; then
+# The local tag check only makes sense for the CE workspace. External clones
+# (e.g. /tmp/kubelb-ee in CI) are throw-away — re-bumping them is fine.
+if [[ "$TARGET_DIR" == "$REPO_ROOT" ]] && git tag -l "$VERSION" | grep -q .; then
   echo "ERROR: Tag $VERSION already exists" >&2
   exit 1
 fi
@@ -51,8 +84,13 @@ if [[ "$(uname)" == "Darwin" ]]; then
 fi
 
 for chart in "${CHARTS[@]}"; do
-  CHART_YAML="${REPO_ROOT}/charts/${chart}/Chart.yaml"
-  VALUES_YAML="${REPO_ROOT}/charts/${chart}/values.yaml"
+  CHART_YAML="${TARGET_DIR}/charts/${chart}/Chart.yaml"
+  VALUES_YAML="${TARGET_DIR}/charts/${chart}/values.yaml"
+
+  if [[ ! -f "$CHART_YAML" ]]; then
+    echo "  skip ${chart}: ${CHART_YAML} not found"
+    continue
+  fi
 
   if [[ "$DRY_RUN" == "true" ]]; then
     echo "=== ${chart}/Chart.yaml ==="
@@ -66,4 +104,4 @@ for chart in "${CHARTS[@]}"; do
   fi
 done
 
-echo "Bumped charts to ${VERSION}"
+echo "Bumped charts in ${TARGET_DIR} to ${VERSION}"

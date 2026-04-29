@@ -135,12 +135,11 @@ jobs:
             "https://x-access-token:${KUBELB_EE_TOKEN}@github.com/kubermatic/kubelb-ee.git" /tmp/kubelb-ee
           cd /tmp/kubelb-ee
           git fetch --tags
-          for chart in kubelb-manager kubelb-ccm; do
-            [ -f "charts/${chart}/Chart.yaml" ] || continue
-            sed -i "s/^version:.*/version: ${VERSION}/" "charts/${chart}/Chart.yaml"
-            sed -i "s/^appVersion:.*/appVersion: ${VERSION}/" "charts/${chart}/Chart.yaml"
-            sed -i "0,/^  tag:/{s/^  tag:.*/  tag: ${VERSION}/}" "charts/${chart}/values.yaml"
-          done
+          # Bump EE chart values in /tmp clone only — never committed back.
+          # EE keeps its release branch values frozen at the last shipped
+          # version; the bump happens transiently in CI per release.
+          cd "${GITHUB_WORKSPACE}"
+          ./hack/release/bump-versions.sh --target-dir /tmp/kubelb-ee "$VERSION"
 
       - name: Generate artifacts (CE codegen + EE docs)
         env:
