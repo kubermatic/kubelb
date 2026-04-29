@@ -125,60 +125,29 @@ jobs:
           VERSION: ${{ inputs.version }}
         run: ./hack/release/bump-versions.sh "$VERSION"
 
-      - name: Generate artifacts (CE codegen + EE clone in parallel)
+      - name: Clone and bump EE
         env:
           KUBELB_EE_TOKEN: ${{ secrets.KUBELB_EE_TOKEN }}
           VERSION: ${{ inputs.version }}
-          WORKSPACE: ${{ github.workspace }}
         run: |
           MINOR=$(echo "$VERSION" | grep -oE 'v[0-9]+\.[0-9]+')
+          git clone --branch "release/${MINOR}" \
+            "https://x-access-token:${KUBELB_EE_TOKEN}@github.com/kubermatic/kubelb-ee.git" /tmp/kubelb-ee
+          cd /tmp/kubelb-ee
+          git fetch --tags
+          for chart in kubelb-manager kubelb-ccm; do
+            [ -f "charts/${chart}/Chart.yaml" ] || continue
+            sed -i "s/^version:.*/version: ${VERSION}/" "charts/${chart}/Chart.yaml"
+            sed -i "s/^appVersion:.*/appVersion: ${VERSION}/" "charts/${chart}/Chart.yaml"
+            sed -i "0,/^  tag:/{s/^  tag:.*/  tag: ${VERSION}/}" "charts/${chart}/values.yaml"
+          done
 
-          # --- CE artifacts (background) ---
-          (
-            echo "::group::CE: helm docs + codegen"
-            make helm-lint helm-dependency-update generate-helm-docs
-            make update-codegen generate-crd-docs generate-crd-docs-ee
-            ./hack/release/extract-helm-values.sh ./charts ./docs/generated
-            echo "::endgroup::"
-          ) &
-          CE_PID=$!
-
-          # --- EE artifacts (background) ---
-          (
-            echo "::group::EE: clone + generate"
-            git clone --branch "release/${MINOR}" \
-              "https://x-access-token:${KUBELB_EE_TOKEN}@github.com/kubermatic/kubelb-ee.git" /tmp/kubelb-ee
-
-            cd /tmp/kubelb-ee
-            git fetch --tags
-
-            for chart in kubelb-manager kubelb-ccm; do
-              [ -f "charts/${chart}/Chart.yaml" ] || continue
-              sed -i "s/^version:.*/version: ${VERSION}/" "charts/${chart}/Chart.yaml"
-              sed -i "s/^appVersion:.*/appVersion: ${VERSION}/" "charts/${chart}/Chart.yaml"
-              sed -i "0,/^  tag:/{s/^  tag:.*/  tag: ${VERSION}/}" "charts/${chart}/values.yaml"
-            done
-
-            go mod download
-            mkdir -p docs/generated
-            if make generate-metricsdocs; then
-              cp docs/generated/metrics.md "${WORKSPACE}/docs/generated/metrics-ee.md"
-            else
-              echo "::warning::EE metrics generation failed"
-            fi
-            make generate-helm-docs || echo "::warning::EE helm docs generation failed"
-            cd "${WORKSPACE}"
-            ./hack/release/extract-helm-values.sh /tmp/kubelb-ee/charts ./docs/generated "-ee"
-            echo "::endgroup::"
-          ) &
-          EE_PID=$!
-
-          CE_EXIT=0; EE_EXIT=0
-          wait $CE_PID || CE_EXIT=$?
-          wait $EE_PID || EE_EXIT=$?
-
-          if [ $CE_EXIT -ne 0 ]; then echo "::error::CE artifact generation failed"; exit 1; fi
-          if [ $EE_EXIT -ne 0 ]; then echo "::warning::EE artifact generation failed (non-fatal)"; fi
+      - name: Generate artifacts (CE codegen + EE docs)
+        env:
+          KUBELB_EE_PATH: /tmp/kubelb-ee
+        run: |
+          make helm-lint helm-dependency-update update-codegen
+          ./hack/release/generate-docs.sh --ee-only
 
       - name: Generate release notes
         env:
@@ -222,7 +191,7 @@ jobs:
             ./hack/release/generate-notes.sh "$VERSION" "$PREV_TAG" \
               --branch "$BRANCH" \
               --ee-repo kubermatic/kubelb-ee --ee-path /tmp/kubelb-ee --ee-branch "release/${MINOR}" \
-              kubermatic/kubelb || echo "::warning::Release notes generation failed (non-fatal). Notes may need manual creation."
+              kubermatic/kubelb
           else
             echo "::notice::No reachable previous tag found, skipping release notes generation"
           fi

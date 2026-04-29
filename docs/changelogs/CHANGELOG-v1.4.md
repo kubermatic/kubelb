@@ -12,7 +12,7 @@
 
 #### KubeLB Dashboard
 
-KubeLB v1.4 ships with a brand-new **[KubeLB Dashboard]({{< relref "../dashboard" >}})** — a web UI for browsing tenants, LoadBalancers, Routes,  WAF policies etc. across the fleet. A single chart and binary cover both Community and Enterprise editions; the edition is detected internally at runtime.
+KubeLB v1.4 ships with a brand-new **[KubeLB Dashboard](https://docs.kubermatic.com/kubelb/v1.4/dashboard/)** — a web UI for browsing tenants, LoadBalancers, Routes,  WAF policies etc. across the fleet. A single chart and binary cover both Community and Enterprise editions; the edition is detected internally at runtime.
 
 - Install via OCI Helm chart: `oci://quay.io/kubermatic/helm-charts/kubelb-dashboard`
 - OIDC authentication opt-in, optional out-of-cluster kubeconfig
