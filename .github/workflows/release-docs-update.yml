@@ -172,33 +172,57 @@ jobs:
           MARKERS["kubelb-manager-ee"]="docs/generated/helm-values-kubelb-manager-ee.md"
           MARKERS["kubelb-ccm-ee"]="docs/generated/helm-values-kubelb-ccm-ee.md"
 
+          declare -A MATCHED
+          for marker in "${!MARKERS[@]}"; do MATCHED[$marker]=0; done
+
           for marker in "${!MARKERS[@]}"; do
             REMOTE_FILE="${MARKERS[$marker]}"
-            RAW_URL="https://raw.githubusercontent.com/${KUBELB_REPO}/refs/tags/${VERSION}/${REMOTE_FILE}"
+            # Fetch from the release branch HEAD, not the immutable tag.
+            # The v1.4.0 tag was created with broken EE artifacts; the fix
+            # landed on release/v1.4 post-tag. Branch-based source means the
+            # docs always reflect the latest fixes for that minor (which is
+            # what users on that minor would actually install). Tags can be
+            # frozen with bugs; release branches are the live source of truth.
+            RAW_URL="https://raw.githubusercontent.com/${KUBELB_REPO}/refs/heads/release/${MINOR}/${REMOTE_FILE}"
             TABLE=$(curl -sfL "$RAW_URL" || echo "")
 
             if [ -z "$TABLE" ]; then
-              echo "::warning::Could not fetch ${REMOTE_FILE} for ${VERSION}, skipping ${marker}"
+              echo "::warning::Could not fetch ${REMOTE_FILE} from release/${MINOR}, skipping ${marker}"
               continue
             fi
 
             START_MARKER="<!-- helm-values-${marker} start -->"
             END_MARKER="<!-- helm-values-${marker} end -->"
 
-            find "${DOCS_DIR}" -name "*.md" -type f | while read -r file; do
+            while IFS= read -r file; do
               if grep -q "$START_MARKER" "$file"; then
-                # Replace content between markers (keep markers intact)
                 sed -i "/${START_MARKER}/,/${END_MARKER}/{
                   /${START_MARKER}/!{
                     /${END_MARKER}/!d
                   }
                 }" "$file"
-                # Insert new table after start marker
                 sed -i "/${START_MARKER}/r /dev/stdin" "$file" <<< "$TABLE"
                 echo "  Updated ${marker} in ${file}"
+                MATCHED[$marker]=$((MATCHED[$marker] + 1))
               fi
-            done
+            done < <(find "${DOCS_DIR}" -name "*.md" -type f)
           done
+
+          # Fail loudly if any of the expected markers were never matched.
+          # The original `find | while` pipeline scoped the increment to a
+          # subshell, so the count was lost across iterations; switching to
+          # process substitution preserves it.
+          MISSING=()
+          for marker in "${!MARKERS[@]}"; do
+            if [ "${MATCHED[$marker]}" -eq 0 ]; then
+              MISSING+=("$marker")
+            fi
+          done
+          if [ "${#MISSING[@]}" -gt 0 ]; then
+            echo "::error::No docs page contains markers for: ${MISSING[*]}"
+            echo "::error::Expected <!-- helm-values-<marker> start --> / end --> in ${DOCS_DIR}"
+            exit 1
+          fi
 
       - name: Create PR
         id: create-pr
