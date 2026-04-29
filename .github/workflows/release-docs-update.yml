@@ -188,21 +188,39 @@ jobs:
         run: |
           DOCS_DIR="content/kubelb/${MINOR}"
 
-          PREV_VERSION=$(grep -ohE 'version=v[0-9]+\.[0-9]+\.[0-9]+' "${DOCS_DIR}/installation/management-cluster/_index.en.md" | head -1 | cut -d= -f2)
+          # Histogram all vX.Y.Z references across the docs tree and pick the
+          # most frequent (excluding the target VERSION itself). More robust
+          # than grepping a single file for `version=vX.Y.Z`: catches `:vX.Y.Z`
+          # image tags, bare prose mentions, --version=vX.Y.Z helm flags, etc.
+          PREV_VERSION=$(
+            grep -rohE 'v[0-9]+\.[0-9]+\.[0-9]+' "$DOCS_DIR" 2>/dev/null \
+              | grep -v "^${VERSION}\$" \
+              | sort | uniq -c | sort -rn \
+              | head -1 | awk '{print $2}'
+          )
 
           if [ -z "$PREV_VERSION" ]; then
-            echo "::warning::Could not detect previous version in docs, skipping version update"
+            echo "::warning::No vX.Y.Z references found in ${DOCS_DIR}; skipping version sweep"
+            exit 0
+          fi
+
+          if [ "$PREV_VERSION" = "$VERSION" ]; then
+            echo "::notice::Most-frequent version equals target ${VERSION}; nothing to update"
             exit 0
           fi
 
           echo "Updating ${PREV_VERSION} → ${VERSION} in ${DOCS_DIR}"
 
-          find "${DOCS_DIR}" -name "*.md" -type f | while read -r file; do
+          UPDATED=0
+          while IFS= read -r file; do
             if grep -q "${PREV_VERSION}" "$file"; then
               sed -i "s/${PREV_VERSION}/${VERSION}/g" "$file"
               echo "  Updated: $file"
+              UPDATED=$((UPDATED + 1))
             fi
-          done
+          done < <(find "${DOCS_DIR}" -name "*.md" -type f)
+
+          echo "::notice::Rewrote ${PREV_VERSION} → ${VERSION} in ${UPDATED} file(s)"
 
       - name: Replace helm values tables between marker comments
         env:
