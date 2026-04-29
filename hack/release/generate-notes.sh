@@ -15,10 +15,16 @@
 
 #!/usr/bin/env bash
 # Generate combined CE+EE release notes using the k8s release-notes tool.
-# Usage: generate-notes.sh <VERSION> <PREV_TAG> [--ee-repo <owner/repo> --ee-path <path>] [CE_REPO]
+# Usage: generate-notes.sh <VERSION> <PREV_TAG> [--branch <ref>] [--ee-branch <ref>]
+#                          [--ee-repo <owner/repo>] [--ee-path <path>] [--no-ee] [CE_REPO]
+#
+# Defaults: CE_REPO=kubermatic/kubelb, --ee-repo=kubermatic/kubelb-ee, branches=main.
+# --ee-path is the (optional) local disk path to a pre-existing EE clone; when
+# omitted (or pointing to a non-git dir), EE is cloned fresh from upstream.
+# --no-ee skips EE notes entirely (use when you don't have EE repo access).
 #
 # Requires: k8s.io/release/cmd/release-notes (go install k8s.io/release/cmd/release-notes@latest)
-# Requires: GITHUB_TOKEN env var set
+# Requires: GITHUB_TOKEN env var set (read access to CE; required for EE)
 #
 # Behavior:
 # - Generates CE notes with PR links (public repo)
@@ -29,16 +35,17 @@
 # - Writes to docs/changelogs/CHANGELOG-v{MINOR}.md
 set -euo pipefail
 
-VERSION="${1:?Usage: generate-notes.sh <VERSION> <PREV_TAG> [--ee-repo <owner/repo> --ee-path <path>] [CE_REPO]}"
+VERSION="${1:?Usage: generate-notes.sh <VERSION> <PREV_TAG> [flags] [CE_REPO]}"
 shift
-PREV_TAG="${1:?Usage: generate-notes.sh <VERSION> <PREV_TAG> [--ee-repo <owner/repo> --ee-path <path>] [CE_REPO]}"
+PREV_TAG="${1:?Usage: generate-notes.sh <VERSION> <PREV_TAG> [flags] [CE_REPO]}"
 shift
 
-EE_REPO=""
+EE_REPO="kubermatic/kubelb-ee"
 EE_PATH=""
 CE_REPO="kubermatic/kubelb"
 CE_BRANCH="main"
 EE_BRANCH="main"
+INCLUDE_EE=true
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -49,6 +56,10 @@ while [[ $# -gt 0 ]]; do
   --ee-path)
     EE_PATH="${2:?--ee-path requires a value}"
     shift 2
+    ;;
+  --no-ee)
+    INCLUDE_EE=false
+    shift
     ;;
   --branch)
     CE_BRANCH="${2:?--branch requires a value}"
@@ -65,14 +76,23 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-if [[ -n "$EE_REPO" && -z "$EE_PATH" ]] || [[ -z "$EE_REPO" && -n "$EE_PATH" ]]; then
-  echo "Error: --ee-repo and --ee-path must be provided together" >&2
-  exit 1
-fi
-
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 MINOR=$(echo "$VERSION" | grep -oE 'v[0-9]+\.[0-9]+')
+
+# release-notes tool reads GITHUB_TOKEN directly; gh CLI uses its keyring.
+# Bridge them so users only need to be logged in via `gh auth login`.
+if [[ -z "${GITHUB_TOKEN:-}" ]]; then
+  if [[ -n "${GH_TOKEN:-}" ]]; then
+    export GITHUB_TOKEN="$GH_TOKEN"
+  elif command -v gh > /dev/null 2>&1 && GH_AUTH_TOKEN="$(gh auth token 2> /dev/null)" && [[ -n "$GH_AUTH_TOKEN" ]]; then
+    export GITHUB_TOKEN="$GH_AUTH_TOKEN"
+  else
+    echo "Error: GITHUB_TOKEN/GH_TOKEN not set and 'gh auth token' unavailable." >&2
+    echo "  Run 'gh auth login' or 'export GITHUB_TOKEN=<token>'" >&2
+    exit 1
+  fi
+fi
 
 CE_ORG="${CE_REPO%%/*}"
 CE_NAME="${CE_REPO##*/}"
@@ -133,16 +153,20 @@ run_release_notes() {
 
   log_file=$(mktemp)
   rp_flag=""
-  # Only use --repo-path for external clones (EE), never for the workspace.
-  # Using --repo-path on the workspace causes the tool to run `git pull --rebase`
-  # which can fail (no tracking) and `git stash` which destroys uncommitted prep changes.
-  # Additionally, if the external clone's `origin` does not point at the
-  # upstream repo (e.g. local dev using a fork), the tool's internal
-  # `git pull --rebase` would rebase onto the fork and corrupt the history the
-  # MergeBase walk depends on — silently polluting notes with commits from
-  # far before PREV_TAG. In that case, fall back to a fresh clone of the
-  # upstream into a temp dir and use that as --repo-path. This mirrors what
-  # the release-prep GitHub Actions workflow does.
+  # The release-notes tool needs a local clone to walk commits offline; without
+  # one it exits with "repository does not exist". Decide whether the caller's
+  # repo_path is safe to point the tool at:
+  #
+  # - REPO_ROOT (workspace): never. The tool runs `git stash`/`git pull --rebase`
+  #   internally, which clobbers uncommitted prep changes.
+  # - external clone with origin matching upstream: safe to reuse.
+  # - external clone with origin pointing elsewhere (e.g. a local fork): unsafe.
+  #   The tool's rebase would land commits onto the fork and corrupt the
+  #   MergeBase walk, silently polluting notes with pre-PREV_TAG history.
+  #
+  # In the unsafe cases, fall back to a fresh clone of the upstream into a
+  # temp dir and use that as --repo-path.
+  local use_external_repo=false
   if [[ "$repo_path" != "$REPO_ROOT" && -d "${repo_path}/.git" ]]; then
     local origin_url
     origin_url=$(git -C "$repo_path" remote get-url origin 2> /dev/null || echo "")
@@ -154,22 +178,30 @@ run_release_notes() {
         git -C "$repo_path" branch --set-upstream-to="origin/${current_branch}" "$current_branch" 2> /dev/null || true
       fi
       rp_flag="--repo-path ${repo_path}"
+      use_external_repo=true
     else
-      local fresh_clone clone_url
-      fresh_clone=$(mktemp -d -t "release-notes-${repo}.XXXXXX")
-      if [[ -n "${GH_TOKEN:-${GITHUB_TOKEN:-}}" ]]; then
-        clone_url="https://x-access-token:${GH_TOKEN:-$GITHUB_TOKEN}@github.com/${org}/${repo}.git"
-      else
-        clone_url="https://github.com/${org}/${repo}.git"
-      fi
-      echo "  NOTICE: ${repo_path} origin='${origin_url}' does not match ${org}/${repo}; cloning upstream fresh to ${fresh_clone}" >&2
-      if git clone --quiet --branch "$branch" "$clone_url" "$fresh_clone" 2> /dev/null; then
-        git -C "$fresh_clone" fetch --quiet --tags 2> /dev/null || true
-        git -C "$fresh_clone" branch --set-upstream-to="origin/${branch}" "$branch" 2> /dev/null || true
-        rp_flag="--repo-path ${fresh_clone}"
-      else
-        echo "  WARNING: fresh clone of ${org}/${repo}#${branch} failed; letting release-notes attempt its own clone" >&2
-      fi
+      echo "  NOTICE: ${repo_path} origin='${origin_url}' does not match ${org}/${repo}; will clone upstream fresh" >&2
+    fi
+  fi
+
+  if ! $use_external_repo; then
+    local fresh_clone clone_url
+    fresh_clone=$(mktemp -d -t "release-notes-${repo}.XXXXXX")
+    if [[ -n "${GH_TOKEN:-${GITHUB_TOKEN:-}}" ]]; then
+      clone_url="https://x-access-token:${GH_TOKEN:-$GITHUB_TOKEN}@github.com/${org}/${repo}.git"
+    else
+      clone_url="https://github.com/${org}/${repo}.git"
+    fi
+    echo "  Cloning ${org}/${repo}#${branch} to ${fresh_clone}" >&2
+    if git clone --quiet --branch "$branch" "$clone_url" "$fresh_clone" 2> /dev/null; then
+      git -C "$fresh_clone" fetch --quiet --tags 2> /dev/null || true
+      git -C "$fresh_clone" branch --set-upstream-to="origin/${branch}" "$branch" 2> /dev/null || true
+      rp_flag="--repo-path ${fresh_clone}"
+    else
+      echo "  ERROR: fresh clone of ${org}/${repo}#${branch} failed" >&2
+      rm -rf "$fresh_clone"
+      rm -f "$log_file"
+      return 1
     fi
   fi
 
@@ -190,9 +222,10 @@ run_release_notes() {
   set -e
 
   if [ $rc -ne 0 ]; then
-    echo "  WARNING: release-notes tool exited with code $rc" >&2
+    echo "  ERROR: release-notes tool exited with code $rc" >&2
     grep "^level=fatal" "$log_file" >&2 || true
-    echo "" > "$outfile"
+    rm -f "$log_file"
+    return $rc
   fi
   rm -f "$log_file"
 }
@@ -210,12 +243,13 @@ rm -f "$CE_FILE"
 
 EE_NOTES=""
 EE_HAS_UNIQUE=false
-if [[ -n "$EE_REPO" && -n "$EE_PATH" ]]; then
+if $INCLUDE_EE && [[ -n "$EE_REPO" ]]; then
   EE_ORG="${EE_REPO%%/*}"
   EE_NAME="${EE_REPO##*/}"
 
   echo "Generating EE release notes (${EE_REPO} @ ${EE_BRANCH})..." >&2
   EE_FILE=$(mktemp)
+  # Empty EE_PATH triggers fresh-clone in run_release_notes (the -d check fails).
   run_release_notes "$EE_ORG" "$EE_NAME" "$EE_PATH" "$EE_FILE" "$EE_BRANCH"
   EE_NOTES_RAW=$(cat "$EE_FILE" | strip_author | strip_pr_links | strip_wrapper)
   rm -f "$EE_FILE"
