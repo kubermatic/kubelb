@@ -189,42 +189,46 @@ jobs:
         run: |
           DOCS_DIR="content/kubelb/${MINOR}"
 
-          # Anchor-driven rewrite: only `vX.Y.Z` tokens that appear next to a
-          # kubelb-owned reference are bumped to ${VERSION}. A previous
-          # histogram-of-all-versions heuristic both corrupted unrelated
-          # references (envoy-gateway helm chart, compat-matrix rows) and
-          # silently missed kubelb-context lines whose version differed from
-          # the most-frequent token. Anchors are explicit so the failure mode
-          # for a new kubelb URL pattern is "silently not updated" (recover by
-          # adding the anchor) rather than "silently corrupted".
+          # Per-file rules: each known kubelb page lists exactly the perl
+          # expressions allowed to bump it. A previous find-sweep applied
+          # broad anchor patterns against every .md file in DOCS_DIR — that
+          # either corrupted unrelated references when anchors were too loose
+          # or silently missed legitimate ones when they were too tight.
+          # Scoping per file lets us write narrow regexes safely.
           #
-          # Each pattern keeps its kubelb anchor in a capture group and
-          # rewrites only the version segment. Patterns must not overlap each
-          # other for the same input substring.
-          PATTERNS=(
-            # quay.io image / chart tags: kubelb-manager, kubelb-ccm, EE variants,
-            # helm-charts/kubelb-*, connection-manager, etc.
-            's{(quay\.io/kubermatic/(?:helm-charts/)?kubelb[A-Za-z0-9-]*:)v\d+\.\d+\.\d+}{${1}'"${VERSION}"'}g'
-            # helm pull/install --version= for kubelb OCI charts
-            's{(oci://quay\.io/kubermatic/helm-charts/kubelb[A-Za-z0-9-]*\s+--version=)v\d+\.\d+\.\d+}{${1}'"${VERSION}"'}g'
-            # github release asset URLs
-            's{(github\.com/kubermatic/kubelb/releases/download/)v\d+\.\d+\.\d+}{${1}'"${VERSION}"'}g'
-            # sbom/checksum filenames embedded in URLs or prose: kubelb_vX.Y.Z_...
-            's{\bkubelb_v\d+\.\d+\.\d+_}{kubelb_'"${VERSION}"'_}g'
-          )
+          # A missing file is treated as a warning, not a fatal error: pages
+          # may legitimately not exist on every release branch (e.g. a doc
+          # added on main after the minor was cut), and we'd rather skip
+          # than block the release on a renamed/moved entry.
+          #
+          # Rules use `perl -0777` (slurp) so multi-line patterns and ^/m
+          # anchors work. Multiple s/// statements per file are joined with `;`.
+          declare -A FILE_RULES
+          FILE_RULES["installation/management-cluster/_index.en.md"]='s{(oci://quay\.io/kubermatic/helm-charts/kubelb-manager(?:-ee)?\s+--version=)v\d+\.\d+\.\d+}{${1}'"${VERSION}"'}g'
+          FILE_RULES["installation/tenant-cluster/_index.en.md"]='s{(oci://quay\.io/kubermatic/helm-charts/kubelb-ccm(?:-ee)?\s+--version=)v\d+\.\d+\.\d+}{${1}'"${VERSION}"'}g'
+          FILE_RULES["ingress-to-gateway-api/kubelb-automation/_index.en.md"]='s{(oci://quay\.io/kubermatic/helm-charts/kubelb-ccm(?:-ee)?\s+--version=)v\d+\.\d+\.\d+}{${1}'"${VERSION}"'}g'
+          # airgap: shell var, image/chart tag refs (host-agnostic so the
+          # quay.io source column and mirror.internal example column both
+          # bump together), and multi-line `--version vX.Y.Z` scoped to
+          # kubelb-manager/ccm charts only — kubelb-addons has its own
+          # version line in the same doc and must not bump with kubelb.
+          FILE_RULES["tutorials/airgap-installation/_index.en.md"]='s{^VERSION=v\d+\.\d+\.\d+$}{VERSION='"${VERSION}"'}gm; s{(kubermatic/(?:helm-charts/)?kubelb-(?:manager|ccm)(?:-ee)?:)v\d+\.\d+\.\d+}{${1}'"${VERSION}"'}g; s{(oci://[^\s`]+kubelb-(?:manager|ccm)(?:-ee)?\s+\\\s*\n\s*--version[ =])v\d+\.\d+\.\d+}{${1}'"${VERSION}"'}g'
 
           UPDATED=0
-          while IFS= read -r file; do
+          for relpath in "${!FILE_RULES[@]}"; do
+            file="${DOCS_DIR}/${relpath}"
+            if [ ! -f "$file" ]; then
+              echo "::warning::Skipping ${relpath}: file does not exist in ${DOCS_DIR}"
+              continue
+            fi
             BEFORE=$(sha256sum "$file" | awk '{print $1}')
-            for expr in "${PATTERNS[@]}"; do
-              perl -i -pe "$expr" "$file"
-            done
+            perl -i -0777 -pe "${FILE_RULES[$relpath]}" "$file"
             AFTER=$(sha256sum "$file" | awk '{print $1}')
             if [ "$BEFORE" != "$AFTER" ]; then
               echo "  Updated: $file"
               UPDATED=$((UPDATED + 1))
             fi
-          done < <(find "${DOCS_DIR}" -name "*.md" -type f)
+          done
 
           echo "::notice::Bumped kubelb-context versions to ${VERSION} in ${UPDATED} file(s)"
 
