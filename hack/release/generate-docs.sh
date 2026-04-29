@@ -86,11 +86,15 @@ if [[ ! -d "$EE_PATH" ]]; then
 fi
 
 echo "==> Generating EE docs from ${EE_PATH}"
+# Do NOT swallow these failures with `|| echo`. A failed make produces
+# stale chart README.md / metrics.md, which extract-helm-values.sh then
+# happily reads — silently shipping wrong docs/generated/*-ee.md. This
+# is exactly the cascade that produced the broken v1.4.0 EE artifacts.
 (
   cd "$EE_PATH"
   go mod download
-  make generate-metricsdocs || echo "::warning::EE generate-metricsdocs failed"
-  make generate-helm-docs || echo "::warning::EE generate-helm-docs failed"
+  make generate-metricsdocs
+  make generate-helm-docs
 )
 
 # EE Makefile vintage may emit metrics to either docs/generated/metrics.md or docs/metrics.md.

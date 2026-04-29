@@ -36,6 +36,8 @@ on:
     secrets:
       KUBERMATIC_DOCS_TOKEN:
         required: true
+      KUBELB_EE_TOKEN:
+        required: true
   workflow_dispatch:
     inputs:
       version:
@@ -57,6 +59,7 @@ permissions: {}
 env:
   DOCS_REPO: kubermatic/docs
   KUBELB_REPO: kubermatic/kubelb
+  EE_REPO: kubermatic/kubelb-ee
 
 jobs:
   update-docs:
@@ -70,6 +73,49 @@ jobs:
         with:
           repository: ${{ env.DOCS_REPO }}
           token: ${{ secrets.KUBERMATIC_DOCS_TOKEN || secrets.GITHUB_TOKEN }}
+
+      - name: Checkout kubelb-ce hack/release scripts
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          repository: ${{ env.KUBELB_REPO }}
+          ref: release/${{ inputs.minor }}
+          path: kubelb-ce
+          sparse-checkout: |
+            hack/release
+            go.mod
+
+      - name: Setup Go
+        uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6.4.0
+        with:
+          go-version-file: kubelb-ce/go.mod
+
+      - name: Regenerate EE helm-values from bumped EE clone
+        env:
+          KUBELB_EE_TOKEN: ${{ secrets.KUBELB_EE_TOKEN }}
+          VERSION: ${{ inputs.version }}
+          MINOR: ${{ inputs.minor }}
+        run: |
+          # EE chart values stay frozen on the EE release branch (we never
+          # commit the bump back). To produce helm-values markdown that
+          # reflects ${VERSION}, clone EE fresh, bump it transiently, and
+          # regenerate. This decouples docs from any prior release-prep
+          # state — broken or stale CE release-branch artifacts no longer
+          # cause incorrect docs.
+          git clone --depth 1 --branch "release/${MINOR}" \
+            "https://x-access-token:${KUBELB_EE_TOKEN}@github.com/${EE_REPO}.git" /tmp/kubelb-ee
+
+          ./kubelb-ce/hack/release/bump-versions.sh --target-dir /tmp/kubelb-ee "$VERSION"
+
+          # Generate chart README.md tables (helm-docs auto-installs via the
+          # EE Makefile). go.mod / go.sum in /tmp/kubelb-ee drives the install.
+          (cd /tmp/kubelb-ee && go mod download && make generate-helm-docs)
+
+          # Extract just the values tables to a known location.
+          mkdir -p /tmp/ee-helm-values
+          ./kubelb-ce/hack/release/extract-helm-values.sh \
+            /tmp/kubelb-ee/charts /tmp/ee-helm-values "-ee"
+
+          ls -la /tmp/ee-helm-values/
 
       - name: Setup for minor release
         if: inputs.is_patch == 'false'
@@ -107,18 +153,33 @@ jobs:
           {{< render_external_markdown "https://raw.githubusercontent.com/${KUBELB_REPO}/refs/heads/release/${MINOR}/docs/changelogs/CHANGELOG-${MINOR}.md" >}}
           EOF
 
-          if ! grep -q "release: ${MINOR}" data/products.yaml; then
+          # Add v${MINOR} to the kubelb versions list, idempotently. The check
+          # MUST be scoped to the kubelb section: a global grep matches
+          # unrelated products that share version numbers (e.g. kubeone v1.4)
+          # and silently skips the insert. v1.4.0 release shipped without a
+          # kubelb v1.4 entry in products.yaml because of exactly this.
+          HAS_MINOR=$(awk -v minor="${MINOR}" '
+            /^kubelb:[[:space:]]*$/ { in_section=1; next }
+            /^[a-zA-Z][a-zA-Z0-9_-]*:[[:space:]]*$/ { in_section=0 }
+            in_section && $0 ~ "release: " minor "$" { print "yes"; exit }
+          ' data/products.yaml)
+
+          if [ "$HAS_MINOR" != "yes" ]; then
             awk -v minor="${MINOR}" '
-              /^kubelb:/{found=1}
-              found && /name: main/{
+              /^kubelb:[[:space:]]*$/ { in_kubelb=1; print; next }
+              /^[a-zA-Z][a-zA-Z0-9_-]*:[[:space:]]*$/ { in_kubelb=0 }
+              in_kubelb && /name: main$/ && !inserted {
                 print
                 printf "    - release: %s\n      name: %s\n", minor, minor
-                found=0
+                inserted=1
                 next
               }
-              {print}
+              { print }
             ' data/products.yaml > data/products.yaml.tmp
             mv data/products.yaml.tmp data/products.yaml
+            echo "::notice::Added kubelb v${MINOR} entry to data/products.yaml"
+          else
+            echo "::notice::kubelb v${MINOR} already in data/products.yaml; skipping"
           fi
 
       - name: Update version strings in installation pages
@@ -128,21 +189,39 @@ jobs:
         run: |
           DOCS_DIR="content/kubelb/${MINOR}"
 
-          PREV_VERSION=$(grep -ohE 'version=v[0-9]+\.[0-9]+\.[0-9]+' "${DOCS_DIR}/installation/management-cluster/_index.en.md" | head -1 | cut -d= -f2)
+          # Histogram all vX.Y.Z references across the docs tree and pick the
+          # most frequent (excluding the target VERSION itself). More robust
+          # than grepping a single file for `version=vX.Y.Z`: catches `:vX.Y.Z`
+          # image tags, bare prose mentions, --version=vX.Y.Z helm flags, etc.
+          PREV_VERSION=$(
+            grep -rohE 'v[0-9]+\.[0-9]+\.[0-9]+' "$DOCS_DIR" 2>/dev/null \
+              | grep -v "^${VERSION}\$" \
+              | sort | uniq -c | sort -rn \
+              | head -1 | awk '{print $2}'
+          )
 
           if [ -z "$PREV_VERSION" ]; then
-            echo "::warning::Could not detect previous version in docs, skipping version update"
+            echo "::warning::No vX.Y.Z references found in ${DOCS_DIR}; skipping version sweep"
+            exit 0
+          fi
+
+          if [ "$PREV_VERSION" = "$VERSION" ]; then
+            echo "::notice::Most-frequent version equals target ${VERSION}; nothing to update"
             exit 0
           fi
 
           echo "Updating ${PREV_VERSION} → ${VERSION} in ${DOCS_DIR}"
 
-          find "${DOCS_DIR}" -name "*.md" -type f | while read -r file; do
+          UPDATED=0
+          while IFS= read -r file; do
             if grep -q "${PREV_VERSION}" "$file"; then
               sed -i "s/${PREV_VERSION}/${VERSION}/g" "$file"
               echo "  Updated: $file"
+              UPDATED=$((UPDATED + 1))
             fi
-          done
+          done < <(find "${DOCS_DIR}" -name "*.md" -type f)
+
+          echo "::notice::Rewrote ${PREV_VERSION} → ${VERSION} in ${UPDATED} file(s)"
 
       - name: Replace helm values tables between marker comments
         env:
@@ -151,39 +230,83 @@ jobs:
         run: |
           DOCS_DIR="content/kubelb/${MINOR}"
 
+          # Map each marker to (source_kind, source_location):
+          #   url:<path>   — fetch from refs/heads/release/${MINOR}/<path>
+          #   file:<path>  — read from local <path> (regenerated EE artifacts)
+          #
+          # CE charts are bumped on the CE release branch by release-prep, so
+          # docs/generated/helm-values-kubelb-{manager,ccm}.md on that branch
+          # is the live source of truth. Fetch via raw URL.
+          #
+          # EE chart values stay frozen on the EE release branch — release-prep
+          # bumps a transient /tmp clone and never commits back. To get
+          # ${VERSION}-correct EE helm-values we regenerated locally in the
+          # previous step; read those files directly. This decouples EE docs
+          # from any prior release-prep state.
           declare -A MARKERS
-          MARKERS["kubelb-manager"]="docs/generated/helm-values-kubelb-manager.md"
-          MARKERS["kubelb-ccm"]="docs/generated/helm-values-kubelb-ccm.md"
-          MARKERS["kubelb-manager-ee"]="docs/generated/helm-values-kubelb-manager-ee.md"
-          MARKERS["kubelb-ccm-ee"]="docs/generated/helm-values-kubelb-ccm-ee.md"
+          MARKERS["kubelb-manager"]="url:docs/generated/helm-values-kubelb-manager.md"
+          MARKERS["kubelb-ccm"]="url:docs/generated/helm-values-kubelb-ccm.md"
+          MARKERS["kubelb-manager-ee"]="file:/tmp/ee-helm-values/helm-values-kubelb-manager-ee.md"
+          MARKERS["kubelb-ccm-ee"]="file:/tmp/ee-helm-values/helm-values-kubelb-ccm-ee.md"
+
+          declare -A MATCHED
+          for marker in "${!MARKERS[@]}"; do MATCHED[$marker]=0; done
 
           for marker in "${!MARKERS[@]}"; do
-            REMOTE_FILE="${MARKERS[$marker]}"
-            RAW_URL="https://raw.githubusercontent.com/${KUBELB_REPO}/refs/tags/${VERSION}/${REMOTE_FILE}"
-            TABLE=$(curl -sfL "$RAW_URL" || echo "")
+            SPEC="${MARKERS[$marker]}"
+            KIND="${SPEC%%:*}"
+            SRC="${SPEC#*:}"
 
-            if [ -z "$TABLE" ]; then
-              echo "::warning::Could not fetch ${REMOTE_FILE} for ${VERSION}, skipping ${marker}"
-              continue
-            fi
+            case "$KIND" in
+              url)
+                RAW_URL="https://raw.githubusercontent.com/${KUBELB_REPO}/refs/heads/release/${MINOR}/${SRC}"
+                TABLE=$(curl -sfL "$RAW_URL" || echo "")
+                if [ -z "$TABLE" ]; then
+                  echo "::error::Could not fetch ${SRC} from release/${MINOR}"
+                  exit 1
+                fi
+                ;;
+              file)
+                if [ ! -f "$SRC" ]; then
+                  echo "::error::Local helm-values file not found: ${SRC}"
+                  exit 1
+                fi
+                TABLE=$(cat "$SRC")
+                ;;
+            esac
 
             START_MARKER="<!-- helm-values-${marker} start -->"
             END_MARKER="<!-- helm-values-${marker} end -->"
 
-            find "${DOCS_DIR}" -name "*.md" -type f | while read -r file; do
+            while IFS= read -r file; do
               if grep -q "$START_MARKER" "$file"; then
-                # Replace content between markers (keep markers intact)
                 sed -i "/${START_MARKER}/,/${END_MARKER}/{
                   /${START_MARKER}/!{
                     /${END_MARKER}/!d
                   }
                 }" "$file"
-                # Insert new table after start marker
                 sed -i "/${START_MARKER}/r /dev/stdin" "$file" <<< "$TABLE"
                 echo "  Updated ${marker} in ${file}"
+                MATCHED[$marker]=$((MATCHED[$marker] + 1))
               fi
-            done
+            done < <(find "${DOCS_DIR}" -name "*.md" -type f)
           done
+
+          # Fail loudly if any of the expected markers were never matched.
+          # The original `find | while` pipeline scoped the increment to a
+          # subshell, so the count was lost across iterations; switching to
+          # process substitution preserves it.
+          MISSING=()
+          for marker in "${!MARKERS[@]}"; do
+            if [ "${MATCHED[$marker]}" -eq 0 ]; then
+              MISSING+=("$marker")
+            fi
+          done
+          if [ "${#MISSING[@]}" -gt 0 ]; then
+            echo "::error::No docs page contains markers for: ${MISSING[*]}"
+            echo "::error::Expected <!-- helm-values-<marker> start --> / end --> in ${DOCS_DIR}"
+            exit 1
+          fi
 
       - name: Create PR
         id: create-pr
@@ -196,9 +319,28 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
           BRANCH="chore/kubelb-${VERSION}-docs"
+
+          # If a prior run already pushed this branch, close any associated
+          # open PR and delete the remote branch so we can recreate cleanly.
+          # Without this, a re-run hits non-fast-forward push failure with no
+          # recovery path short of manual cleanup.
+          if git ls-remote --exit-code --heads origin "$BRANCH" > /dev/null 2>&1; then
+            echo "::notice::Branch ${BRANCH} already exists on origin; cleaning up prior run"
+            EXISTING_PR=$(gh pr list --repo "${{ env.DOCS_REPO }}" --head "$BRANCH" --state open --json number --jq '.[0].number')
+            if [ -n "$EXISTING_PR" ]; then
+              echo "::notice::Closing existing PR #${EXISTING_PR}"
+              gh pr close "$EXISTING_PR" --repo "${{ env.DOCS_REPO }}" --delete-branch
+            else
+              git push origin --delete "$BRANCH"
+            fi
+          fi
+
           git checkout -b "${BRANCH}"
           git add -A
-          git commit -s -m "docs: update KubeLB docs for ${VERSION}" || exit 0
+          if ! git commit -s -m "docs: update KubeLB docs for ${VERSION}"; then
+            echo "::notice::No changes to commit; skipping PR creation"
+            exit 0
+          fi
           git push -u origin "${BRANCH}"
 
           BODY="Update KubeLB documentation for release ${VERSION}."
