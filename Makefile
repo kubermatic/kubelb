@@ -95,7 +95,7 @@ manifests: generate controller-gen ## Generate WebhookConfiguration, ClusterRole
 generate: controller-gen ## Generate code containing DeepCopy, DeepCopyInto, and DeepCopyObject method implementations.
 	$(CONTROLLER_GEN) object:headerFile="hack/boilerplate/boilerplate.go.txt" paths="./..."
 
-update-codegen: generate controller-gen manifests reconciler-gen generate-helm-docs generate-metricsdocs generate-crd-docs generate-crd-docs-ee extract-helm-values fmt vet go-mod-tidy
+update-codegen: generate controller-gen manifests reconciler-gen update-docs fmt vet go-mod-tidy
 
 helm-dependency-update:
 	./hack/ensure-helm-repos.sh && \
@@ -385,6 +385,9 @@ generate-metricsdocs: ## Generate metrics reference documentation.
 .PHONY: extract-helm-values
 extract-helm-values: generate-helm-docs ## Extract helm values tables from chart READMEs.
 	./hack/release/extract-helm-values.sh ./charts ./docs/generated
+
+.PHONY: update-docs
+update-docs: generate-helm-docs generate-metricsdocs generate-crd-docs generate-crd-docs-ee extract-helm-values ## Regenerate CE docs/generated content. For EE: run hack/release/generate-docs.sh --ee-only with KUBELB_EE_PATH or KUBELB_EE_TOKEN set.
 
 .PHONY: update-gateway-api-crds
 update-gateway-api-crds:
