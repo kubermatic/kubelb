@@ -222,7 +222,7 @@ jobs:
             ./hack/release/generate-notes.sh "$VERSION" "$PREV_TAG" \
               --branch "$BRANCH" \
               --ee-repo kubermatic/kubelb-ee --ee-path /tmp/kubelb-ee --ee-branch "release/${MINOR}" \
-              kubermatic/kubelb || echo "::warning::Release notes generation failed (non-fatal). Notes may need manual creation."
+              kubermatic/kubelb
           else
             echo "::notice::No reachable previous tag found, skipping release notes generation"
           fi
