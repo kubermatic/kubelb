@@ -107,18 +107,33 @@ jobs:
           {{< render_external_markdown "https://raw.githubusercontent.com/${KUBELB_REPO}/refs/heads/release/${MINOR}/docs/changelogs/CHANGELOG-${MINOR}.md" >}}
           EOF
 
-          if ! grep -q "release: ${MINOR}" data/products.yaml; then
+          # Add v${MINOR} to the kubelb versions list, idempotently. The check
+          # MUST be scoped to the kubelb section: a global grep matches
+          # unrelated products that share version numbers (e.g. kubeone v1.4)
+          # and silently skips the insert. v1.4.0 release shipped without a
+          # kubelb v1.4 entry in products.yaml because of exactly this.
+          HAS_MINOR=$(awk -v minor="${MINOR}" '
+            /^kubelb:[[:space:]]*$/ { in_section=1; next }
+            /^[a-zA-Z][a-zA-Z0-9_-]*:[[:space:]]*$/ { in_section=0 }
+            in_section && $0 ~ "release: " minor "$" { print "yes"; exit }
+          ' data/products.yaml)
+
+          if [ "$HAS_MINOR" != "yes" ]; then
             awk -v minor="${MINOR}" '
-              /^kubelb:/{found=1}
-              found && /name: main/{
+              /^kubelb:[[:space:]]*$/ { in_kubelb=1; print; next }
+              /^[a-zA-Z][a-zA-Z0-9_-]*:[[:space:]]*$/ { in_kubelb=0 }
+              in_kubelb && /name: main$/ && !inserted {
                 print
                 printf "    - release: %s\n      name: %s\n", minor, minor
-                found=0
+                inserted=1
                 next
               }
-              {print}
+              { print }
             ' data/products.yaml > data/products.yaml.tmp
             mv data/products.yaml.tmp data/products.yaml
+            echo "::notice::Added kubelb v${MINOR} entry to data/products.yaml"
+          else
+            echo "::notice::kubelb v${MINOR} already in data/products.yaml; skipping"
           fi
 
       - name: Update version strings in installation pages
