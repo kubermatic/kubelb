@@ -126,6 +126,7 @@ jobs:
         run: ./hack/release/bump-versions.sh "$VERSION"
 
       - name: Clone and bump EE
+        id: ee-clone
         env:
           KUBELB_EE_TOKEN: ${{ secrets.KUBELB_EE_TOKEN }}
           VERSION: ${{ inputs.version }}
@@ -135,6 +136,13 @@ jobs:
             "https://x-access-token:${KUBELB_EE_TOKEN}@github.com/kubermatic/kubelb-ee.git" /tmp/kubelb-ee
           cd /tmp/kubelb-ee
           git fetch --tags
+          # Capture EE HEAD SHA at prep time. release-auto-tag pins the EE
+          # tag to this exact SHA so that an EE push between prep PR creation
+          # and merge cannot cause CE/EE tags to diverge from what was
+          # reviewed in the prep PR.
+          EE_HEAD_SHA=$(git rev-parse HEAD)
+          echo "ee_head_sha=${EE_HEAD_SHA}" >> "$GITHUB_OUTPUT"
+          echo "::notice::EE prep SHA: ${EE_HEAD_SHA}"
           # Bump EE chart values in /tmp clone only — never committed back.
           # EE keeps its release branch values frozen at the last shipped
           # version; the bump happens transiently in CI per release.
@@ -250,6 +258,8 @@ jobs:
           - [ ] Vulnerability scan passed
           - [ ] CI green
           - [ ] Cherry-picks complete
+
+          <!-- EE-SHA: ${{ steps.ee-clone.outputs.ee_head_sha }} -->
 
           <details>
           <summary><b>Release Notes Preview</b></summary>
