@@ -8,7 +8,9 @@
 
 **GitHub release: [v1.4.1](https://github.com/kubermatic/kubelb/releases/tag/v1.4.1)**
 
-No notable changes.
+#### Other (Cleanup, Flake, or Chore)
+
+- Add missing checksum in release artifacts 
 
 ### Release Artifacts
 
