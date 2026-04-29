@@ -189,39 +189,44 @@ jobs:
         run: |
           DOCS_DIR="content/kubelb/${MINOR}"
 
-          # Histogram all vX.Y.Z references across the docs tree and pick the
-          # most frequent (excluding the target VERSION itself). More robust
-          # than grepping a single file for `version=vX.Y.Z`: catches `:vX.Y.Z`
-          # image tags, bare prose mentions, --version=vX.Y.Z helm flags, etc.
-          PREV_VERSION=$(
-            grep -rohE 'v[0-9]+\.[0-9]+\.[0-9]+' "$DOCS_DIR" 2>/dev/null \
-              | grep -v "^${VERSION}\$" \
-              | sort | uniq -c | sort -rn \
-              | head -1 | awk '{print $2}'
+          # Anchor-driven rewrite: only `vX.Y.Z` tokens that appear next to a
+          # kubelb-owned reference are bumped to ${VERSION}. A previous
+          # histogram-of-all-versions heuristic both corrupted unrelated
+          # references (envoy-gateway helm chart, compat-matrix rows) and
+          # silently missed kubelb-context lines whose version differed from
+          # the most-frequent token. Anchors are explicit so the failure mode
+          # for a new kubelb URL pattern is "silently not updated" (recover by
+          # adding the anchor) rather than "silently corrupted".
+          #
+          # Each pattern keeps its kubelb anchor in a capture group and
+          # rewrites only the version segment. Patterns must not overlap each
+          # other for the same input substring.
+          PATTERNS=(
+            # quay.io image / chart tags: kubelb-manager, kubelb-ccm, EE variants,
+            # helm-charts/kubelb-*, connection-manager, etc.
+            's{(quay\.io/kubermatic/(?:helm-charts/)?kubelb[A-Za-z0-9-]*:)v\d+\.\d+\.\d+}{${1}'"${VERSION}"'}g'
+            # helm pull/install --version= for kubelb OCI charts
+            's{(oci://quay\.io/kubermatic/helm-charts/kubelb[A-Za-z0-9-]*\s+--version=)v\d+\.\d+\.\d+}{${1}'"${VERSION}"'}g'
+            # github release asset URLs
+            's{(github\.com/kubermatic/kubelb/releases/download/)v\d+\.\d+\.\d+}{${1}'"${VERSION}"'}g'
+            # sbom/checksum filenames embedded in URLs or prose: kubelb_vX.Y.Z_...
+            's{\bkubelb_v\d+\.\d+\.\d+_}{kubelb_'"${VERSION}"'_}g'
           )
-
-          if [ -z "$PREV_VERSION" ]; then
-            echo "::warning::No vX.Y.Z references found in ${DOCS_DIR}; skipping version sweep"
-            exit 0
-          fi
-
-          if [ "$PREV_VERSION" = "$VERSION" ]; then
-            echo "::notice::Most-frequent version equals target ${VERSION}; nothing to update"
-            exit 0
-          fi
-
-          echo "Updating ${PREV_VERSION} → ${VERSION} in ${DOCS_DIR}"
 
           UPDATED=0
           while IFS= read -r file; do
-            if grep -q "${PREV_VERSION}" "$file"; then
-              sed -i "s/${PREV_VERSION}/${VERSION}/g" "$file"
+            BEFORE=$(sha256sum "$file" | awk '{print $1}')
+            for expr in "${PATTERNS[@]}"; do
+              perl -i -pe "$expr" "$file"
+            done
+            AFTER=$(sha256sum "$file" | awk '{print $1}')
+            if [ "$BEFORE" != "$AFTER" ]; then
               echo "  Updated: $file"
               UPDATED=$((UPDATED + 1))
             fi
           done < <(find "${DOCS_DIR}" -name "*.md" -type f)
 
-          echo "::notice::Rewrote ${PREV_VERSION} → ${VERSION} in ${UPDATED} file(s)"
+          echo "::notice::Bumped kubelb-context versions to ${VERSION} in ${UPDATED} file(s)"
 
       - name: Replace helm values tables between marker comments
         env:
@@ -336,7 +341,14 @@ jobs:
           fi
 
           git checkout -b "${BRANCH}"
-          git add -A
+          # Stage only paths this workflow owns. `git add -A` previously
+          # picked up the kubelb-ce sparse-checkout dir as a submodule
+          # gitlink, polluting the PR. data/products.yaml is only modified
+          # on minor releases.
+          git add "content/kubelb/${MINOR}"
+          if [ "${IS_PATCH}" = "false" ]; then
+            git add data/products.yaml
+          fi
           if ! git commit -s -m "docs: update KubeLB docs for ${VERSION}"; then
             echo "::notice::No changes to commit; skipping PR creation"
             exit 0
