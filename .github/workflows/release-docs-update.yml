@@ -318,9 +318,28 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
           BRANCH="chore/kubelb-${VERSION}-docs"
+
+          # If a prior run already pushed this branch, close any associated
+          # open PR and delete the remote branch so we can recreate cleanly.
+          # Without this, a re-run hits non-fast-forward push failure with no
+          # recovery path short of manual cleanup.
+          if git ls-remote --exit-code --heads origin "$BRANCH" > /dev/null 2>&1; then
+            echo "::notice::Branch ${BRANCH} already exists on origin; cleaning up prior run"
+            EXISTING_PR=$(gh pr list --repo "${{ env.DOCS_REPO }}" --head "$BRANCH" --state open --json number --jq '.[0].number')
+            if [ -n "$EXISTING_PR" ]; then
+              echo "::notice::Closing existing PR #${EXISTING_PR}"
+              gh pr close "$EXISTING_PR" --repo "${{ env.DOCS_REPO }}" --delete-branch
+            else
+              git push origin --delete "$BRANCH"
+            fi
+          fi
+
           git checkout -b "${BRANCH}"
           git add -A
-          git commit -s -m "docs: update KubeLB docs for ${VERSION}" || exit 0
+          if ! git commit -s -m "docs: update KubeLB docs for ${VERSION}"; then
+            echo "::notice::No changes to commit; skipping PR creation"
+            exit 0
+          fi
           git push -u origin "${BRANCH}"
 
           BODY="Update KubeLB documentation for release ${VERSION}."
