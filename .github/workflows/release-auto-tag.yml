@@ -73,6 +73,7 @@ jobs:
       is_patch: ${{ needs.auto-tag.outputs.is_patch }}
     secrets:
       KUBERMATIC_DOCS_TOKEN: ${{ secrets.KUBERMATIC_DOCS_TOKEN }}
+      KUBELB_EE_TOKEN: ${{ secrets.KUBELB_EE_TOKEN }}
 
   notify:
     needs: [auto-tag, docs-update]

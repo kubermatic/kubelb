@@ -36,6 +36,8 @@ on:
     secrets:
       KUBERMATIC_DOCS_TOKEN:
         required: true
+      KUBELB_EE_TOKEN:
+        required: true
   workflow_dispatch:
     inputs:
       version:
@@ -70,6 +72,49 @@ jobs:
         with:
           repository: ${{ env.DOCS_REPO }}
           token: ${{ secrets.KUBERMATIC_DOCS_TOKEN || secrets.GITHUB_TOKEN }}
+
+      - name: Checkout kubelb-ce hack/release scripts
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          repository: ${{ env.KUBELB_REPO }}
+          ref: release/${{ inputs.minor }}
+          path: kubelb-ce
+          sparse-checkout: |
+            hack/release
+            go.mod
+
+      - name: Setup Go
+        uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6.4.0
+        with:
+          go-version-file: kubelb-ce/go.mod
+
+      - name: Regenerate EE helm-values from bumped EE clone
+        env:
+          KUBELB_EE_TOKEN: ${{ secrets.KUBELB_EE_TOKEN }}
+          VERSION: ${{ inputs.version }}
+          MINOR: ${{ inputs.minor }}
+        run: |
+          # EE chart values stay frozen on the EE release branch (we never
+          # commit the bump back). To produce helm-values markdown that
+          # reflects ${VERSION}, clone EE fresh, bump it transiently, and
+          # regenerate. This decouples docs from any prior release-prep
+          # state — broken or stale CE release-branch artifacts no longer
+          # cause incorrect docs.
+          git clone --depth 1 --branch "release/${MINOR}" \
+            "https://x-access-token:${KUBELB_EE_TOKEN}@github.com/kubermatic/kubelb-ee.git" /tmp/kubelb-ee
+
+          ./kubelb-ce/hack/release/bump-versions.sh --target-dir /tmp/kubelb-ee "$VERSION"
+
+          # Generate chart README.md tables (helm-docs auto-installs via the
+          # EE Makefile). go.mod / go.sum in /tmp/kubelb-ee drives the install.
+          (cd /tmp/kubelb-ee && go mod download && make generate-helm-docs)
+
+          # Extract just the values tables to a known location.
+          mkdir -p /tmp/ee-helm-values
+          ./kubelb-ce/hack/release/extract-helm-values.sh \
+            /tmp/kubelb-ee/charts /tmp/ee-helm-values "-ee"
+
+          ls -la /tmp/ee-helm-values/
 
       - name: Setup for minor release
         if: inputs.is_patch == 'false'
@@ -166,30 +211,50 @@ jobs:
         run: |
           DOCS_DIR="content/kubelb/${MINOR}"
 
+          # Map each marker to (source_kind, source_location):
+          #   url:<path>   — fetch from refs/heads/release/${MINOR}/<path>
+          #   file:<path>  — read from local <path> (regenerated EE artifacts)
+          #
+          # CE charts are bumped on the CE release branch by release-prep, so
+          # docs/generated/helm-values-kubelb-{manager,ccm}.md on that branch
+          # is the live source of truth. Fetch via raw URL.
+          #
+          # EE chart values stay frozen on the EE release branch — release-prep
+          # bumps a transient /tmp clone and never commits back. To get
+          # ${VERSION}-correct EE helm-values we regenerated locally in the
+          # previous step; read those files directly. This decouples EE docs
+          # from any prior release-prep state.
           declare -A MARKERS
-          MARKERS["kubelb-manager"]="docs/generated/helm-values-kubelb-manager.md"
-          MARKERS["kubelb-ccm"]="docs/generated/helm-values-kubelb-ccm.md"
-          MARKERS["kubelb-manager-ee"]="docs/generated/helm-values-kubelb-manager-ee.md"
-          MARKERS["kubelb-ccm-ee"]="docs/generated/helm-values-kubelb-ccm-ee.md"
+          MARKERS["kubelb-manager"]="url:docs/generated/helm-values-kubelb-manager.md"
+          MARKERS["kubelb-ccm"]="url:docs/generated/helm-values-kubelb-ccm.md"
+          MARKERS["kubelb-manager-ee"]="file:/tmp/ee-helm-values/helm-values-kubelb-manager-ee.md"
+          MARKERS["kubelb-ccm-ee"]="file:/tmp/ee-helm-values/helm-values-kubelb-ccm-ee.md"
 
           declare -A MATCHED
           for marker in "${!MARKERS[@]}"; do MATCHED[$marker]=0; done
 
           for marker in "${!MARKERS[@]}"; do
-            REMOTE_FILE="${MARKERS[$marker]}"
-            # Fetch from the release branch HEAD, not the immutable tag.
-            # The v1.4.0 tag was created with broken EE artifacts; the fix
-            # landed on release/v1.4 post-tag. Branch-based source means the
-            # docs always reflect the latest fixes for that minor (which is
-            # what users on that minor would actually install). Tags can be
-            # frozen with bugs; release branches are the live source of truth.
-            RAW_URL="https://raw.githubusercontent.com/${KUBELB_REPO}/refs/heads/release/${MINOR}/${REMOTE_FILE}"
-            TABLE=$(curl -sfL "$RAW_URL" || echo "")
+            SPEC="${MARKERS[$marker]}"
+            KIND="${SPEC%%:*}"
+            SRC="${SPEC#*:}"
 
-            if [ -z "$TABLE" ]; then
-              echo "::warning::Could not fetch ${REMOTE_FILE} from release/${MINOR}, skipping ${marker}"
-              continue
-            fi
+            case "$KIND" in
+              url)
+                RAW_URL="https://raw.githubusercontent.com/${KUBELB_REPO}/refs/heads/release/${MINOR}/${SRC}"
+                TABLE=$(curl -sfL "$RAW_URL" || echo "")
+                if [ -z "$TABLE" ]; then
+                  echo "::error::Could not fetch ${SRC} from release/${MINOR}"
+                  exit 1
+                fi
+                ;;
+              file)
+                if [ ! -f "$SRC" ]; then
+                  echo "::error::Local helm-values file not found: ${SRC}"
+                  exit 1
+                fi
+                TABLE=$(cat "$SRC")
+                ;;
+            esac
 
             START_MARKER="<!-- helm-values-${marker} start -->"
             END_MARKER="<!-- helm-values-${marker} end -->"

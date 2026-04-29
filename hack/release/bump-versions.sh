@@ -34,22 +34,22 @@ DRY_RUN=false
 TARGET_DIR=""
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --dry-run)
-      DRY_RUN=true
-      shift
-      ;;
-    --target-dir)
-      TARGET_DIR="${2:?--target-dir requires a value}"
-      shift 2
-      ;;
-    -*)
-      echo "ERROR: unknown flag: $1" >&2
-      echo "Usage: bump-versions.sh [--dry-run] [--target-dir <dir>] <VERSION>" >&2
-      exit 1
-      ;;
-    *)
-      break
-      ;;
+  --dry-run)
+    DRY_RUN=true
+    shift
+    ;;
+  --target-dir)
+    TARGET_DIR="${2:?--target-dir requires a value}"
+    shift 2
+    ;;
+  -*)
+    echo "ERROR: unknown flag: $1" >&2
+    echo "Usage: bump-versions.sh [--dry-run] [--target-dir <dir>] <VERSION>" >&2
+    exit 1
+    ;;
+  *)
+    break
+    ;;
   esac
 done
 
