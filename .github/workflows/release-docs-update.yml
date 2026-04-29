@@ -93,6 +93,20 @@ jobs:
             -e "s|refs/heads/main|refs/heads/release/${MINOR}|g" \
             -e "s|/kubelb/main/|/kubelb/${MINOR}/|g"
 
+          # release-notes/_index.en.md on main is a hand-written placeholder,
+          # not a render_external_markdown shortcode, so the sed rewrite above
+          # does not produce a usable page. Overwrite it with a shortcode that
+          # renders the per-minor CHANGELOG from the release branch.
+          cat > "${DEST}/release-notes/_index.en.md" <<EOF
+          +++
+          title = "Release Notes"
+          date = $(date -u +%Y-%m-%dT%H:%M:%S+00:00)
+          weight = 60
+          +++
+
+          {{< render_external_markdown "https://raw.githubusercontent.com/${KUBELB_REPO}/refs/heads/release/${MINOR}/docs/changelogs/CHANGELOG-${MINOR}.md" >}}
+          EOF
+
           if ! grep -q "release: ${MINOR}" data/products.yaml; then
             awk -v minor="${MINOR}" '
               /^kubelb:/{found=1}
