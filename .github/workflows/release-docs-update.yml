@@ -76,12 +76,22 @@ jobs:
         env:
           MINOR: ${{ inputs.minor }}
         run: |
-          if [ -d "content/kubelb/${MINOR}" ]; then
-            echo "::notice::Version directory content/kubelb/${MINOR} already exists, skipping copy"
-          else
-            PREVIOUS_MINOR=$(ls -d content/kubelb/v* | sort -V | tail -1 | xargs basename)
-            cp -r "content/kubelb/${PREVIOUS_MINOR}" "content/kubelb/${MINOR}"
+          DEST="content/kubelb/${MINOR}"
+          if [ ! -d "content/kubelb/main" ]; then
+            echo "::error::content/kubelb/main not found; cannot seed ${MINOR}"
+            exit 1
           fi
+          # main is the canonical trunk for the next minor: always reseed
+          # from main and rewrite branch/path refs so URLs point at the
+          # release branch. Re-running the workflow produces a deterministic
+          # result; manual edits should be made on main, not on the versioned
+          # copy. New sections added to main (e.g. dashboards) flow in
+          # automatically.
+          rm -rf "$DEST"
+          cp -r content/kubelb/main "$DEST"
+          find "$DEST" -name "*.md" -type f -print0 | xargs -0 sed -i \
+            -e "s|refs/heads/main|refs/heads/release/${MINOR}|g" \
+            -e "s|/kubelb/main/|/kubelb/${MINOR}/|g"
 
           if ! grep -q "release: ${MINOR}" data/products.yaml; then
             awk -v minor="${MINOR}" '
@@ -96,71 +106,6 @@ jobs:
             ' data/products.yaml > data/products.yaml.tmp
             mv data/products.yaml.tmp data/products.yaml
           fi
-
-          cat > "content/kubelb/${MINOR}/release-notes/_index.en.md" << 'RNEOF'
-            +++
-            title = "Release Notes"
-            date = 2026-01-15T00:00:00+01:00
-            weight = 60
-            +++
-
-            {{< render_external_markdown "https://raw.githubusercontent.com/KUBELB_REPO_PLACEHOLDER/refs/heads/release/MINOR_PLACEHOLDER/docs/changelogs/CHANGELOG-MINOR_PLACEHOLDER.md" >}}
-          RNEOF
-          sed -i 's/^  //' "content/kubelb/${MINOR}/release-notes/_index.en.md"
-          sed -i "s|KUBELB_REPO_PLACEHOLDER|${KUBELB_REPO}|g; s|MINOR_PLACEHOLDER|${MINOR}|g" \
-            "content/kubelb/${MINOR}/release-notes/_index.en.md"
-
-          cat > "content/kubelb/${MINOR}/references/ce/_index.en.md" << 'CEEOF'
-            +++
-            title = "Community Edition"
-            date = 2026-01-15T00:00:00+01:00
-            weight = 10
-            +++
-
-            {{< render_external_markdown "https://raw.githubusercontent.com/KUBELB_REPO_PLACEHOLDER/refs/heads/release/MINOR_PLACEHOLDER/docs/generated/api-reference.md" >}}
-          CEEOF
-          sed -i 's/^  //' "content/kubelb/${MINOR}/references/ce/_index.en.md"
-          sed -i "s|KUBELB_REPO_PLACEHOLDER|${KUBELB_REPO}|g; s|MINOR_PLACEHOLDER|${MINOR}|g" \
-            "content/kubelb/${MINOR}/references/ce/_index.en.md"
-
-          cat > "content/kubelb/${MINOR}/references/ee/_index.en.md" << 'EEEOF'
-            +++
-            title = "Enterprise Edition"
-            date = 2026-01-15T00:00:00+01:00
-            weight = 20
-            +++
-
-            {{< render_external_markdown "https://raw.githubusercontent.com/KUBELB_REPO_PLACEHOLDER/refs/heads/release/MINOR_PLACEHOLDER/docs/generated/api-reference-ee.md" >}}
-          EEEOF
-          sed -i 's/^  //' "content/kubelb/${MINOR}/references/ee/_index.en.md"
-          sed -i "s|KUBELB_REPO_PLACEHOLDER|${KUBELB_REPO}|g; s|MINOR_PLACEHOLDER|${MINOR}|g" \
-            "content/kubelb/${MINOR}/references/ee/_index.en.md"
-
-          cat > "content/kubelb/${MINOR}/tutorials/observability/metrics-and-dashboards/references/ce/_index.en.md" << 'MCEOF'
-            +++
-            title = "Community Edition"
-            linkTitle = "Community Edition"
-            weight = 10
-            +++
-
-            {{< render_external_markdown "https://raw.githubusercontent.com/KUBELB_REPO_PLACEHOLDER/refs/heads/release/MINOR_PLACEHOLDER/docs/generated/metrics.md" >}}
-          MCEOF
-          sed -i 's/^            //' "content/kubelb/${MINOR}/tutorials/observability/metrics-and-dashboards/references/ce/_index.en.md"
-          sed -i "s|KUBELB_REPO_PLACEHOLDER|${KUBELB_REPO}|g; s|MINOR_PLACEHOLDER|${MINOR}|g" \
-            "content/kubelb/${MINOR}/tutorials/observability/metrics-and-dashboards/references/ce/_index.en.md"
-
-          cat > "content/kubelb/${MINOR}/tutorials/observability/metrics-and-dashboards/references/ee/_index.en.md" << 'MEEOF'
-            +++
-            title = "Enterprise Edition"
-            linkTitle = "Enterprise Edition"
-            weight = 20
-            +++
-
-            {{< render_external_markdown "https://raw.githubusercontent.com/KUBELB_REPO_PLACEHOLDER/refs/heads/release/MINOR_PLACEHOLDER/docs/generated/metrics-ee.md" >}}
-          MEEOF
-          sed -i 's/^            //' "content/kubelb/${MINOR}/tutorials/observability/metrics-and-dashboards/references/ee/_index.en.md"
-          sed -i "s|KUBELB_REPO_PLACEHOLDER|${KUBELB_REPO}|g; s|MINOR_PLACEHOLDER|${MINOR}|g" \
-            "content/kubelb/${MINOR}/tutorials/observability/metrics-and-dashboards/references/ee/_index.en.md"
 
       - name: Update version strings in installation pages
         env:
