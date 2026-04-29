@@ -59,6 +59,7 @@ permissions: {}
 env:
   DOCS_REPO: kubermatic/docs
   KUBELB_REPO: kubermatic/kubelb
+  EE_REPO: kubermatic/kubelb-ee
 
 jobs:
   update-docs:
@@ -101,7 +102,7 @@ jobs:
           # state — broken or stale CE release-branch artifacts no longer
           # cause incorrect docs.
           git clone --depth 1 --branch "release/${MINOR}" \
-            "https://x-access-token:${KUBELB_EE_TOKEN}@github.com/kubermatic/kubelb-ee.git" /tmp/kubelb-ee
+            "https://x-access-token:${KUBELB_EE_TOKEN}@github.com/${EE_REPO}.git" /tmp/kubelb-ee
 
           ./kubelb-ce/hack/release/bump-versions.sh --target-dir /tmp/kubelb-ee "$VERSION"
 

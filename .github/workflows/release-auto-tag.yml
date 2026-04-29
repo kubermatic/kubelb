@@ -8,6 +8,9 @@ on:
 
 permissions: {}
 
+env:
+  EE_REPO: kubermatic/kubelb-ee
+
 jobs:
   auto-tag:
     if: github.event.pull_request.merged == true && startsWith(github.event.pull_request.head.ref, 'chore/prepare-v')
@@ -68,7 +71,7 @@ jobs:
           # Need full history (not --depth 1) so we can tag an arbitrary SHA
           # that may not be branch HEAD anymore.
           git clone --branch "release/${MINOR}" \
-            "https://x-access-token:${KUBELB_EE_TOKEN}@github.com/kubermatic/kubelb-ee.git" /tmp/kubelb-ee
+            "https://x-access-token:${KUBELB_EE_TOKEN}@github.com/${EE_REPO}.git" /tmp/kubelb-ee
 
           cd /tmp/kubelb-ee
           if [ -n "$EE_SHA" ]; then
@@ -108,7 +111,7 @@ jobs:
         run: |
           BODY="### Release ${VERSION} — post-merge summary\n\n"
           BODY+="- **CE tag:** [\`${VERSION}\`](https://github.com/${REPO}/releases/tag/${VERSION})\n"
-          BODY+="- **EE tag:** [\`${VERSION}\`](https://github.com/kubermatic/kubelb-ee/releases/tag/${VERSION})\n"
+          BODY+="- **EE tag:** [\`${VERSION}\`](https://github.com/${EE_REPO}/releases/tag/${VERSION})\n"
 
           if [ -n "$DOCS_PR" ]; then
             BODY+="- **Docs PR:** ${DOCS_PR} ← **review and merge**\n"
