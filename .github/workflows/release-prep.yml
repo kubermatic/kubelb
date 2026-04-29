@@ -30,8 +30,16 @@ on:
         required: false
         type: string
         default: ""
+      dry_run:
+        description: "Dry run: bump charts and generate artifacts but skip all writes (no branch creation, no commits pushed, no PR opened)."
+        required: false
+        type: boolean
+        default: false
 
 permissions: {}
+
+env:
+  EE_REPO: kubermatic/kubelb-ee
 
 jobs:
   prep:
@@ -70,7 +78,6 @@ jobs:
           VERSION: ${{ inputs.version }}
         run: |
           MINOR=$(echo "$VERSION" | grep -oE 'v[0-9]+\.[0-9]+')
-          EE_REPO="kubermatic/kubelb-ee"
           if gh api "repos/${EE_REPO}/branches/release/${MINOR}" --jq '.name' >/dev/null 2>&1; then
             echo "::notice::EE release branch release/${MINOR} already exists"
           else
@@ -133,7 +140,7 @@ jobs:
         run: |
           MINOR=$(echo "$VERSION" | grep -oE 'v[0-9]+\.[0-9]+')
           git clone --branch "release/${MINOR}" \
-            "https://x-access-token:${KUBELB_EE_TOKEN}@github.com/kubermatic/kubelb-ee.git" /tmp/kubelb-ee
+            "https://x-access-token:${KUBELB_EE_TOKEN}@github.com/${EE_REPO}.git" /tmp/kubelb-ee
           cd /tmp/kubelb-ee
           git fetch --tags
           # Capture EE HEAD SHA at prep time. release-auto-tag pins the EE
@@ -197,7 +204,7 @@ jobs:
           if [ -n "$PREV_TAG" ]; then
             ./hack/release/generate-notes.sh "$VERSION" "$PREV_TAG" \
               --branch "$BRANCH" \
-              --ee-repo kubermatic/kubelb-ee --ee-path /tmp/kubelb-ee --ee-branch "release/${MINOR}" \
+              --ee-repo "${EE_REPO}" --ee-path /tmp/kubelb-ee --ee-branch "release/${MINOR}" \
               kubermatic/kubelb
           else
             echo "::notice::No reachable previous tag found, skipping release notes generation"
