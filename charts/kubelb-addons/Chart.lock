@@ -10,7 +10,7 @@ dependencies:
   version: v1.20.2
 - name: external-dns
   repository: https://kubernetes-sigs.github.io/external-dns
-  version: 1.20.0
+  version: 1.21.1
 - name: metallb
   repository: oci://quay.io/metallb/chart
   version: 0.15.3
@@ -20,5 +20,5 @@ dependencies:
 - name: agentgateway
   repository: oci://cr.agentgateway.dev/charts
   version: v1.1.0
-digest: sha256:995dcc8928f683afcc9595f8321a9c9af0ccf3ef3fb3c48ddbdfba3dc9b32375
-generated: "2026-04-22T10:05:37.704831+05:00"
+digest: sha256:06f163f1b80bb3c2a0b33f8ccf1b6021eff42d00a2467fef8138962fee425277
+generated: "2026-05-04T01:21:38.979654867Z"
