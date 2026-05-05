@@ -1,0 +1,258 @@
+# Copyright 2026 The KubeLB Authors.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+apiVersion: chainsaw.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: service-source-ip-persistence
+  labels:
+    all:
+    test: source-ip-persistence
+    layer: layer4
+    resource: service
+    feature: source-ip-persistence
+spec:
+  description: |
+    Verifies that SourceIP persistence is accepted by the KubeLB LoadBalancer
+    API and that repeated traffic from the same observed source remains stable
+    across a multi-endpoint backend pool.
+  bindings:
+    - name: loadbalancer_name
+      value: source-ip-persistence
+    - name: kubelb_namespace
+      value: tenant-primary
+  steps:
+    - name: cleanup-stale-resources
+      try:
+        - script:
+            cluster: kubelb
+            content: |
+              kubectl delete loadbalancers.kubelb.k8c.io source-ip-persistence -n tenant-primary --ignore-not-found
+        - script:
+            cluster: tenant1
+            content: |
+              kubectl delete daemonset source-ip-persistence-backend -n default --ignore-not-found
+
+    - name: create-hostnetwork-backends
+      cluster: tenant1
+      try:
+        - apply:
+            resource:
+              apiVersion: apps/v1
+              kind: DaemonSet
+              metadata:
+                name: source-ip-persistence-backend
+                namespace: default
+              spec:
+                selector:
+                  matchLabels:
+                    app: source-ip-persistence-backend
+                template:
+                  metadata:
+                    labels:
+                      app: source-ip-persistence-backend
+                  spec:
+                    hostNetwork: true
+                    dnsPolicy: ClusterFirstWithHostNet
+                    containers:
+                      - name: echo
+                        image: hashicorp/http-echo:1.0
+                        args:
+                          - "-listen=:18080"
+                          - "-text=$(NODE_NAME)"
+                        env:
+                          - name: NODE_NAME
+                            valueFrom:
+                              fieldRef:
+                                fieldPath: spec.nodeName
+                        ports:
+                          - containerPort: 18080
+                            hostPort: 18080
+                            protocol: TCP
+        - script:
+            timeout: 120s
+            content: |
+              set -e
+              for i in $(seq 1 60); do
+                READY=$(kubectl get ds source-ip-persistence-backend -n default -o jsonpath='{.status.numberReady}' 2>/dev/null || echo 0)
+                if [ "${READY:-0}" -ge 2 ]; then
+                  echo "DaemonSet has $READY ready backends"
+                  exit 0
+                fi
+                sleep 2
+              done
+              kubectl get pods -n default -l app=source-ip-persistence-backend -o wide
+              echo "expected at least 2 ready hostNetwork backends"
+              exit 1
+            check:
+              ($error == null): true
+
+    - name: create-persistent-loadbalancer
+      cluster: kubelb
+      try:
+        - script:
+            timeout: 90s
+            env:
+              - name: LB_NAME
+                value: ($loadbalancer_name)
+              - name: LB_NS
+                value: ($kubelb_namespace)
+            content: |
+              set -e
+              ROOT_DIR="$(git rev-parse --show-toplevel)"
+              KUBECONFIGS_DIR="${ROOT_DIR}/.e2e-kubeconfigs"
+
+              ADDRESSES=$(KUBECONFIG="${KUBECONFIGS_DIR}/tenant1.kubeconfig" \
+                kubectl get pods -n default -l app=source-ip-persistence-backend \
+                -o jsonpath='{range .items[?(@.status.phase=="Running")]}{.status.hostIP}{"\n"}{end}' \
+                | sort -u)
+
+              COUNT=$(echo "$ADDRESSES" | sed '/^$/d' | wc -l | tr -d ' ')
+              if [ "$COUNT" -lt 2 ]; then
+                echo "expected at least 2 backend node IPs, got $COUNT"
+                echo "$ADDRESSES"
+                exit 1
+              fi
+
+              RESPONSES=""
+              for address in $ADDRESSES; do
+                RESPONSE=$(curl -s --max-time 5 "http://${address}:18080/" || true)
+                if [ -z "$RESPONSE" ]; then
+                  echo "backend ${address}:18080 did not respond"
+                  exit 1
+                fi
+                RESPONSES="${RESPONSES}${RESPONSE}\n"
+              done
+              RESPONSE_COUNT=$(printf "%b" "$RESPONSES" | sed '/^$/d' | sort -u | wc -l | tr -d ' ')
+              if [ "$RESPONSE_COUNT" -lt 2 ]; then
+                echo "expected at least 2 distinct backend responses, got $RESPONSE_COUNT"
+                printf "%b" "$RESPONSES"
+                exit 1
+              fi
+
+              {
+                cat <<EOF
+              apiVersion: kubelb.k8c.io/v1alpha1
+              kind: LoadBalancer
+              metadata:
+                name: ${LB_NAME}
+                namespace: ${LB_NS}
+              spec:
+                endpoints:
+                  - addresses:
+              EOF
+                for address in $ADDRESSES; do
+                  echo "                      - ip: ${address}"
+                done
+                cat <<EOF
+                    ports:
+                      - name: http
+                        port: 18080
+                        protocol: TCP
+                ports:
+                  - name: http
+                    port: 18080
+                    protocol: TCP
+                type: LoadBalancer
+                persistence:
+                  type: SourceIP
+              EOF
+              } | kubectl apply -f -
+        - assert:
+            timeout: 60s
+            resource:
+              apiVersion: kubelb.k8c.io/v1alpha1
+              kind: LoadBalancer
+              metadata:
+                name: ($loadbalancer_name)
+                namespace: ($kubelb_namespace)
+              spec:
+                persistence:
+                  type: SourceIP
+
+    - name: verify-observed-source-stability
+      cluster: kubelb
+      try:
+        - script:
+            timeout: 180s
+            env:
+              - name: LB_NAME
+                value: ($loadbalancer_name)
+              - name: LB_NS
+                value: ($kubelb_namespace)
+            content: |
+              set -e
+              ROOT_DIR="$(git rev-parse --show-toplevel)"
+              KUBECONFIGS_DIR="${ROOT_DIR}/.e2e-kubeconfigs"
+              ALLOWED_RESPONSES=$(KUBECONFIG="${KUBECONFIGS_DIR}/tenant1.kubeconfig" \
+                kubectl get pods -n default -l app=source-ip-persistence-backend \
+                -o jsonpath='{range .items[?(@.status.phase=="Running")]}{.spec.nodeName}{"\n"}{end}' \
+                | sort -u)
+              is_backend_response() {
+                printf "%s\n" "$ALLOWED_RESPONSES" | grep -Fxq "$1"
+              }
+
+              SVC_NAME="envoy-${LB_NAME}"
+              IP=""
+              for i in $(seq 1 60); do
+                IP=$(kubectl get svc "$SVC_NAME" -n "$LB_NS" -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || true)
+                if [ -n "$IP" ]; then
+                  break
+                fi
+                sleep 2
+              done
+              if [ -z "$IP" ]; then
+                kubectl get svc "$SVC_NAME" -n "$LB_NS" -o yaml || true
+                echo "LoadBalancer service never received an IP"
+                exit 1
+              fi
+
+              FIRST=""
+              for i in $(seq 1 60); do
+                FIRST=$(curl -fsS --max-time 5 "http://${IP}:18080/" || true)
+                if [ -n "$FIRST" ] && is_backend_response "$FIRST"; then
+                  break
+                fi
+                sleep 2
+              done
+              if [ -z "$FIRST" ] || ! is_backend_response "$FIRST"; then
+                echo "Service never returned a known backend response"
+                echo "Got: $FIRST"
+                echo "Allowed:"
+                printf "%s\n" "$ALLOWED_RESPONSES"
+                exit 1
+              fi
+
+              for i in $(seq 1 20); do
+                NEXT=$(curl -fsS --max-time 5 "http://${IP}:18080/" || true)
+                if ! is_backend_response "$NEXT"; then
+                  echo "Expected known backend response, got '$NEXT'"
+                  exit 1
+                fi
+                if [ "$NEXT" != "$FIRST" ]; then
+                  echo "Expected stable response '$FIRST', got '$NEXT'"
+                  exit 1
+                fi
+              done
+            check:
+              ($error == null): true
+      finally:
+        - script:
+            cluster: tenant1
+            content: |
+              kubectl delete daemonset source-ip-persistence-backend -n default --ignore-not-found
+        - script:
+            cluster: kubelb
+            content: |
+              kubectl delete loadbalancers.kubelb.k8c.io source-ip-persistence -n tenant-primary --ignore-not-found

@@ -25,3 +25,5 @@ spec:
     - name: b-port
       port: 8081
       protocol: TCP
+  persistence:
+    type: SourceIP

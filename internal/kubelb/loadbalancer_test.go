@@ -18,7 +18,104 @@ package kubelb
 
 import (
 	"testing"
+
+	kubelbiov1alpha1 "k8c.io/kubelb/api/ce/kubelb.k8c.io/v1alpha1"
+
+	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
+
+func TestMapLoadBalancerMapsClientIPSessionAffinity(t *testing.T) {
+	userService := &corev1.Service{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "sticky",
+			Namespace: "default",
+			UID:       "sticky-uid",
+		},
+		Spec: corev1.ServiceSpec{
+			Type:            corev1.ServiceTypeLoadBalancer,
+			SessionAffinity: corev1.ServiceAffinityClientIP,
+			Ports: []corev1.ServicePort{{
+				Name:     "http",
+				Port:     80,
+				NodePort: 30080,
+				Protocol: corev1.ProtocolTCP,
+			}},
+		},
+	}
+
+	lb := MapLoadBalancer(userService, []kubelbiov1alpha1.EndpointAddress{{IP: "10.0.0.1"}}, false, "tenant-primary")
+
+	if lb.Spec.Persistence == nil {
+		t.Fatal("expected persistence to be set")
+	}
+	if lb.Spec.Persistence.Type != kubelbiov1alpha1.LoadBalancerPersistenceTypeSourceIP {
+		t.Fatalf("persistence type = %q, want %q", lb.Spec.Persistence.Type, kubelbiov1alpha1.LoadBalancerPersistenceTypeSourceIP)
+	}
+}
+
+func TestMapLoadBalancerKeepsDefaultPersistenceUnset(t *testing.T) {
+	userService := &corev1.Service{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "default",
+			Namespace: "default",
+			UID:       "default-uid",
+		},
+		Spec: corev1.ServiceSpec{
+			Type: corev1.ServiceTypeLoadBalancer,
+			Ports: []corev1.ServicePort{{
+				Name:     "http",
+				Port:     80,
+				NodePort: 30080,
+				Protocol: corev1.ProtocolTCP,
+			}},
+		},
+	}
+
+	lb := MapLoadBalancer(userService, []kubelbiov1alpha1.EndpointAddress{{IP: "10.0.0.1"}}, false, "tenant-primary")
+
+	if lb.Spec.Persistence != nil {
+		t.Fatalf("expected persistence to be nil, got %#v", lb.Spec.Persistence)
+	}
+}
+
+func TestLoadBalancerIsDesiredStateComparesPersistence(t *testing.T) {
+	base := func() *kubelbiov1alpha1.LoadBalancer {
+		return &kubelbiov1alpha1.LoadBalancer{
+			Spec: kubelbiov1alpha1.LoadBalancerSpec{
+				Type: corev1.ServiceTypeLoadBalancer,
+				Ports: []kubelbiov1alpha1.LoadBalancerPort{{
+					Port:     80,
+					Protocol: corev1.ProtocolTCP,
+				}},
+				Endpoints: []kubelbiov1alpha1.LoadBalancerEndpoints{{
+					Addresses: []kubelbiov1alpha1.EndpointAddress{{IP: "10.0.0.1"}},
+					Ports: []kubelbiov1alpha1.EndpointPort{{
+						Port:     30080,
+						Protocol: corev1.ProtocolTCP,
+					}},
+				}},
+			},
+		}
+	}
+
+	actual := base()
+	desired := actual.DeepCopy()
+	desired.Spec.Persistence = &kubelbiov1alpha1.LoadBalancerPersistence{
+		Type: kubelbiov1alpha1.LoadBalancerPersistenceTypeSourceIP,
+	}
+
+	if LoadBalancerIsDesiredState(actual, desired) {
+		t.Fatal("expected persistence mismatch to make load balancer undesired")
+	}
+
+	actual.Spec.Persistence = &kubelbiov1alpha1.LoadBalancerPersistence{
+		Type: kubelbiov1alpha1.LoadBalancerPersistenceTypeSourceIP,
+	}
+	if !LoadBalancerIsDesiredState(actual, desired) {
+		t.Fatal("expected matching persistence to be desired")
+	}
+}
 
 func TestIsValidHostname(t *testing.T) {
 	tests := []struct {

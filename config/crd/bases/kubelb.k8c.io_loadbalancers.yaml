@@ -180,6 +180,24 @@ spec:
                   Hostname is the domain name at which the load balancer service will be accessible.
                   When hostname is set, KubeLB will create a route(ingress or httproute) for the service, and expose it with TLS on the given hostname. Currently, only HTTP protocol is supported
                 type: string
+              persistence:
+                description: |-
+                  Persistence configures backend endpoint persistence. When omitted,
+                  KubeLB keeps the default non-sticky load balancing behavior.
+                  SourceIP persistence is based on the source IP observed by KubeLB Envoy
+                  for TCP and UDP traffic, which may be a gateway, node, or NAT address in
+                  proxied topologies.
+                properties:
+                  type:
+                    description: |-
+                      Type selects the persistence strategy.
+                      SourceIP uses the downstream source IP as observed by KubeLB Envoy.
+                    enum:
+                    - SourceIP
+                    type: string
+                required:
+                - type
+                type: object
               ports:
                 description: |-
                   The list of ports that are exposed by the load balancer service.

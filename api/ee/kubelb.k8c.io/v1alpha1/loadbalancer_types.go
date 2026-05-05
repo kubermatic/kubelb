@@ -90,6 +90,23 @@ type LoadBalancerPort struct {
 	Port int32 `json:"port" protobuf:"varint,3,opt,name=port"`
 }
 
+// LoadBalancerPersistenceType defines the supported backend persistence modes.
+// +kubebuilder:validation:Enum=SourceIP
+type LoadBalancerPersistenceType string
+
+const (
+	// LoadBalancerPersistenceTypeSourceIP routes connections from the same
+	// observed source IP to the same healthy backend endpoint when possible.
+	LoadBalancerPersistenceTypeSourceIP LoadBalancerPersistenceType = "SourceIP"
+)
+
+// LoadBalancerPersistence configures backend persistence for a LoadBalancer.
+type LoadBalancerPersistence struct {
+	// Type selects the persistence strategy.
+	// SourceIP uses the downstream source IP as observed by KubeLB Envoy.
+	Type LoadBalancerPersistenceType `json:"type"`
+}
+
 // LoadBalancerSpec defines the desired state of LoadBalancer
 type LoadBalancerSpec struct {
 	// Important: Run "make" to regenerate code after modifying this file
@@ -134,6 +151,14 @@ type LoadBalancerSpec struct {
 	// another node, but should have good overall load-spreading.
 	// +optional
 	ExternalTrafficPolicy corev1.ServiceExternalTrafficPolicy `json:"externalTrafficPolicy,omitempty"`
+
+	// Persistence configures backend endpoint persistence. When omitted,
+	// KubeLB keeps the default non-sticky load balancing behavior.
+	// SourceIP persistence is based on the source IP observed by KubeLB Envoy
+	// for TCP and UDP traffic, which may be a gateway, node, or NAT address in
+	// proxied topologies.
+	// +optional
+	Persistence *LoadBalancerPersistence `json:"persistence,omitempty"`
 }
 
 // +kubebuilder:object:root=true

@@ -37,6 +37,36 @@ spec:
       protocol: TCP
 ```
 
+### Source IP Persistence
+
+KubeLB can keep repeated TCP or UDP traffic from the same observed source IP on
+the same healthy backend endpoint. Enable this with:
+
+```yaml
+spec:
+  persistence:
+    type: SourceIP
+```
+
+Source IP persistence uses the downstream source address observed by KubeLB
+Envoy. If traffic reaches KubeLB through Envoy Gateway, another proxy, node
+SNAT, or NAT, the observed source may be the proxy pod, node, or NAT address
+rather than the original client. In those topologies the feature still provides
+observed-source stickiness, but not guaranteed per-user stickiness.
+
+For services propagated from tenant clusters, `sessionAffinity: ClientIP` maps to
+this observed-source persistence mode. Kubernetes
+`sessionAffinityConfig.clientIP.timeoutSeconds` has no KubeLB equivalent and is
+not propagated; Envoy's source-IP hashing remains stable while the backend set is
+stable. With `externalTrafficPolicy: Cluster`, Kubernetes may SNAT traffic before
+it reaches the backend NodePort, so persistence is only guaranteed at the source
+address observed by KubeLB. Use `externalTrafficPolicy: Local` when the topology
+must preserve the original client source IP to the backend node.
+
+When the selected endpoint becomes unhealthy, Envoy remaps new connections to a
+healthy endpoint. When the endpoint recovers, it rejoins the pool. Omitting
+`spec.persistence` keeps the default non-sticky load-balancing behavior.
+
 ## Layer 7
 
 While Layer 4 load balancing is sufficient for many use cases, Layer 7 load balancing provides additional features such as path-based routing, header-based routing, and SSL termination.
