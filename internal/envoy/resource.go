@@ -446,6 +446,11 @@ func makeHTTPListener(listenerName string, clusterName string, listenerPort uint
 				Action: &envoyRoute.Route_Route{
 					Route: &envoyRoute.RouteAction{
 						ClusterSpecifier: &envoyRoute.RouteAction_Cluster{Cluster: clusterName},
+						// Disable per-request timeout. Envoy's 15s default cuts off
+						// streaming/large-file workloads (object-storage downloads,
+						// model artifacts). Edge proxies enforce request bounds in
+						// front of KubeLB.
+						Timeout: durationpb.New(0),
 					},
 				},
 			}},
@@ -484,10 +489,15 @@ func makeHTTPListener(listenerName string, clusterName string, listenerPort uint
 			InitialStreamWindowSize:     wrapperspb.UInt32(math.MaxInt32),
 			InitialConnectionWindowSize: wrapperspb.UInt32(math.MaxInt32),
 		},
-		// Common HTTP protocol options
+		// Common HTTP protocol options. Idle timeout raised from 60s to 1h
+		// so long-lived HTTP connections (websockets, SSE, gRPC streams)
+		// aren't cycled mid-flight.
 		CommonHttpProtocolOptions: &envoyCore.HttpProtocolOptions{
-			IdleTimeout: durationpb.New(60 * time.Second),
+			IdleTimeout: durationpb.New(time.Hour),
 		},
+		// Stream idle timeout raised from Envoy's 5m default to 1h to
+		// match streaming-friendly idle handling.
+		StreamIdleTimeout: durationpb.New(time.Hour),
 		UpgradeConfigs: []*envoyHttpManager.HttpConnectionManager_UpgradeConfig{
 			{UpgradeType: "websocket"},
 		},
