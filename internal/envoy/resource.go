@@ -37,7 +37,7 @@ import (
 	envoyProxyProtocol "github.com/envoyproxy/go-control-plane/envoy/extensions/transport_sockets/proxy_protocol/v3"
 	envoyRawBuffer "github.com/envoyproxy/go-control-plane/envoy/extensions/transport_sockets/raw_buffer/v3"
 	envoyUpstreams "github.com/envoyproxy/go-control-plane/envoy/extensions/upstreams/http/v3"
-	envoytypev3 "github.com/envoyproxy/go-control-plane/envoy/type/v3"
+	envoyType "github.com/envoyproxy/go-control-plane/envoy/type/v3"
 	"github.com/envoyproxy/go-control-plane/pkg/cache/types"
 	envoycache "github.com/envoyproxy/go-control-plane/pkg/cache/v3"
 	"github.com/envoyproxy/go-control-plane/pkg/resource/v3"
@@ -121,13 +121,13 @@ func MapSnapshot(ctx context.Context, client ctrlclient.Client, loadBalancers []
 
 				switch lbEndpointPort.Protocol {
 				case corev1.ProtocolTCP:
-					listener = append(listener, makeTCPListener(key, key, port))
+					listener = append(listener, makeTCPListener(key, key, port, lb.Spec.Persistence))
 				case corev1.ProtocolUDP:
-					listener = append(listener, makeUDPListener(key, key, port))
+					listener = append(listener, makeUDPListener(key, key, port, lb.Spec.Persistence))
 				}
 				proxyProtocol := lbEndpointPort.Protocol == corev1.ProtocolTCP && lb.Annotations[kubelb.AnnotationProxyProtocol] == "v2"
 				endpoints = append(endpoints, makeClusterLoadAssignment(key, lbEndpoints))
-				cluster = append(cluster, makeCluster(key, lbEndpointPort.Protocol, "", proxyProtocol))
+				cluster = append(cluster, makeCluster(key, lbEndpointPort.Protocol, "", proxyProtocol, lb.Spec.Persistence))
 			}
 		}
 	}
@@ -177,7 +177,7 @@ func MapSnapshot(ctx context.Context, client ctrlclient.Client, loadBalancers []
 					listener = append(listener, l)
 				}
 				endpoints = append(endpoints, makeClusterLoadAssignment(key, lbEndpoints))
-				cluster = append(cluster, makeCluster(key, port.Protocol, clusterRouteKind, false))
+				cluster = append(cluster, makeCluster(key, port.Protocol, clusterRouteKind, false, nil))
 			}
 		}
 	}
@@ -208,7 +208,7 @@ func MapSnapshot(ctx context.Context, client ctrlclient.Client, loadBalancers []
 	)
 }
 
-func makeCluster(clusterName string, protocol corev1.Protocol, routeKind string, proxyProtocol bool) *envoyCluster.Cluster {
+func makeCluster(clusterName string, protocol corev1.Protocol, routeKind string, proxyProtocol bool, persistence *kubelbv1alpha1.LoadBalancerPersistence) *envoyCluster.Cluster {
 	defaultHealthCheck := []*envoyCore.HealthCheck{
 		{
 			Timeout:            &durationpb.Duration{Seconds: defaultHealthCheckTimeoutSeconds},
@@ -258,8 +258,15 @@ func makeCluster(clusterName string, protocol corev1.Protocol, routeKind string,
 		DnsLookupFamily: envoyCluster.Cluster_AUTO,
 		HealthChecks:    defaultHealthCheck,
 		CommonLbConfig: &envoyCluster.Cluster_CommonLbConfig{
-			HealthyPanicThreshold: &envoytypev3.Percent{Value: 0},
+			HealthyPanicThreshold: &envoyType.Percent{Value: 0},
 		},
+	}
+
+	if persistenceType(persistence) == kubelbv1alpha1.LoadBalancerPersistenceTypeSourceIP && (protocol == corev1.ProtocolTCP || protocol == corev1.ProtocolUDP) {
+		cluster.LbPolicy = envoyCluster.Cluster_MAGLEV
+		cluster.LbConfig = &envoyCluster.Cluster_MaglevLbConfig_{
+			MaglevLbConfig: &envoyCluster.Cluster_MaglevLbConfig{},
+		}
 	}
 
 	// gRPC requires HTTP/2, while HTTPRoute/Ingress use HTTP/1.1 for NodePort backends
@@ -360,7 +367,7 @@ func makeFileAccessLog() *envoyFileAccessLog.FileAccessLog {
 	}
 }
 
-func makeTCPListener(clusterName string, listenerName string, listenerPort uint32) *envoyListener.Listener {
+func makeTCPListener(clusterName string, listenerName string, listenerPort uint32, persistence *kubelbv1alpha1.LoadBalancerPersistence) *envoyListener.Listener {
 	tcpProxyAccessLogAny := marshalAny(makeFileAccessLog())
 	tcpProxy := &envoyTcpProxy.TcpProxy{
 		StatPrefix: listenerName,
@@ -375,6 +382,15 @@ func makeTCPListener(clusterName string, listenerName string, listenerPort uint3
 				},
 			},
 		},
+	}
+	if persistenceType(persistence) == kubelbv1alpha1.LoadBalancerPersistenceTypeSourceIP {
+		tcpProxy.HashPolicy = []*envoyType.HashPolicy{
+			{
+				PolicySpecifier: &envoyType.HashPolicy_SourceIp_{
+					SourceIp: &envoyType.HashPolicy_SourceIp{},
+				},
+			},
+		}
 	}
 	pbst := marshalAny(tcpProxy)
 
@@ -402,7 +418,7 @@ func makeTCPListener(clusterName string, listenerName string, listenerPort uint3
 	}
 }
 
-func makeUDPListener(clusterName string, listenerName string, listenerPort uint32) *envoyListener.Listener {
+func makeUDPListener(clusterName string, listenerName string, listenerPort uint32, persistence *kubelbv1alpha1.LoadBalancerPersistence) *envoyListener.Listener {
 	udpAccessLogAny := marshalAny(makeFileAccessLog())
 	udpProxy := &envoyUdpProxy.UdpProxyConfig{
 		StatPrefix: listenerName,
@@ -417,6 +433,15 @@ func makeUDPListener(clusterName string, listenerName string, listenerPort uint3
 				},
 			},
 		},
+	}
+	if persistenceType(persistence) == kubelbv1alpha1.LoadBalancerPersistenceTypeSourceIP {
+		udpProxy.HashPolicies = []*envoyUdpProxy.UdpProxyConfig_HashPolicy{
+			{
+				PolicySpecifier: &envoyUdpProxy.UdpProxyConfig_HashPolicy_SourceIp{
+					SourceIp: true,
+				},
+			},
+		}
 	}
 
 	pbst := marshalAny(udpProxy)
@@ -636,11 +661,18 @@ func makeRouteListener(key string, listenerPort uint32, protocol corev1.Protocol
 		if useHTTPListener {
 			return makeHTTPListener(key, key, listenerPort)
 		}
-		return makeTCPListener(key, key, listenerPort)
+		return makeTCPListener(key, key, listenerPort, nil)
 	case corev1.ProtocolUDP:
-		return makeUDPListener(key, key, listenerPort)
+		return makeUDPListener(key, key, listenerPort, nil)
 	}
 	return nil
+}
+
+func persistenceType(persistence *kubelbv1alpha1.LoadBalancerPersistence) kubelbv1alpha1.LoadBalancerPersistenceType {
+	if persistence == nil {
+		return ""
+	}
+	return persistence.Type
 }
 
 // isTLSBackend reports whether the upstream for this Route is expected to

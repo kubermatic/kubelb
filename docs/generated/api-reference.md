@@ -565,6 +565,39 @@ LoadBalancerList contains a list of LoadBalancer
 | `items` _[LoadBalancer](#loadbalancer) array_ |  |  |  |
 
 
+#### LoadBalancerPersistence
+
+
+
+LoadBalancerPersistence configures backend persistence for a LoadBalancer.
+
+
+
+_Appears in:_
+- [LoadBalancerSpec](#loadbalancerspec)
+
+| Field | Description | Default | Validation |
+| --- | --- | --- | --- |
+| `type` _[LoadBalancerPersistenceType](#loadbalancerpersistencetype)_ | Type selects the persistence strategy.<br />SourceIP uses the downstream source IP as observed by KubeLB Envoy. |  | Enum: [SourceIP] <br /> |
+
+
+#### LoadBalancerPersistenceType
+
+_Underlying type:_ _string_
+
+LoadBalancerPersistenceType defines the supported backend persistence modes.
+
+_Validation:_
+- Enum: [SourceIP]
+
+_Appears in:_
+- [LoadBalancerPersistence](#loadbalancerpersistence)
+
+| Field | Description |
+| --- | --- |
+| `SourceIP` | LoadBalancerPersistenceTypeSourceIP routes connections from the same<br />observed source IP to the same healthy backend endpoint when possible.<br /> |
+
+
 #### LoadBalancerPort
 
 
@@ -619,6 +652,7 @@ _Appears in:_
 | `hostname` _string_ | Hostname is the domain name at which the load balancer service will be accessible.<br />When hostname is set, KubeLB will create a route(ingress or httproute) for the service, and expose it with TLS on the given hostname. Currently, only HTTP protocol is supported |  |  |
 | `type` _[ServiceType](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.30/#servicetype-v1-core)_ | type determines how the Service is exposed. Defaults to ClusterIP. Valid<br />options are ExternalName, ClusterIP, NodePort, and LoadBalancer.<br />"ExternalName" maps to the specified externalName.<br />"ClusterIP" allocates a cluster-internal IP address for load-balancing to<br />endpoints. Endpoints are determined by the selector or if that is not<br />specified, by manual construction of an Endpoints object. If clusterIP is<br />"None", no virtual IP is allocated and the endpoints are published as a<br />set of endpoints rather than a stable IP.<br />"NodePort" builds on ClusterIP and allocates a port on every node which<br />routes to the clusterIP.<br />"LoadBalancer" builds on NodePort and creates an<br />external load-balancer (if supported in the current cloud) which routes<br />to the clusterIP.<br />More info: https://kubernetes.io/docs/concepts/services-networking/service/#publishing-services-service-types | ClusterIP |  |
 | `externalTrafficPolicy` _[ServiceExternalTrafficPolicy](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.30/#serviceexternaltrafficpolicy-v1-core)_ | externalTrafficPolicy denotes if this Service desires to route external traffic to<br />node-local or cluster-wide endpoints. "Local" preserves the client source IP and avoids<br />a second hop for LoadBalancer and Nodeport type services, but risks potentially imbalanced<br />traffic spreading. "Cluster" obscures the client source IP and may cause a second hop to<br />another node, but should have good overall load-spreading. |  |  |
+| `persistence` _[LoadBalancerPersistence](#loadbalancerpersistence)_ | Persistence configures backend endpoint persistence. When omitted,<br />KubeLB keeps the default non-sticky load balancing behavior.<br />SourceIP persistence is based on the source IP observed by KubeLB Envoy<br />for TCP and UDP traffic, which may be a gateway, node, or NAT address in<br />proxied topologies. |  |  |
 
 
 #### LoadBalancerState

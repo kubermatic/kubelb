@@ -30,6 +30,7 @@ import (
 	k8sutils "k8c.io/kubelb/internal/util/kubernetes"
 
 	corev1 "k8s.io/api/core/v1"
+	apiequality "k8s.io/apimachinery/pkg/api/equality"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
 )
@@ -80,6 +81,13 @@ func MapLoadBalancer(userService *corev1.Service, clusterEndpoints []kubelbiov1a
 		delete(annotations, corev1.LastAppliedConfigAnnotation)
 	}
 
+	var persistence *kubelbiov1alpha1.LoadBalancerPersistence
+	if userService.Spec.SessionAffinity == corev1.ServiceAffinityClientIP {
+		persistence = &kubelbiov1alpha1.LoadBalancerPersistence{
+			Type: kubelbiov1alpha1.LoadBalancerPersistenceTypeSourceIP,
+		}
+	}
+
 	return &kubelbiov1alpha1.LoadBalancer{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      string(userService.UID),
@@ -96,6 +104,7 @@ func MapLoadBalancer(userService *corev1.Service, clusterEndpoints []kubelbiov1a
 			Endpoints:             lbEndpointSubsets,
 			Type:                  userService.Spec.Type,
 			ExternalTrafficPolicy: userService.Spec.ExternalTrafficPolicy,
+			Persistence:           persistence,
 		},
 	}
 }
@@ -106,6 +115,10 @@ func LoadBalancerIsDesiredState(actual, desired *kubelbiov1alpha1.LoadBalancer) 
 	}
 
 	if actual.Spec.ExternalTrafficPolicy != desired.Spec.ExternalTrafficPolicy {
+		return false
+	}
+
+	if !apiequality.Semantic.DeepEqual(actual.Spec.Persistence, desired.Spec.Persistence) {
 		return false
 	}
 
