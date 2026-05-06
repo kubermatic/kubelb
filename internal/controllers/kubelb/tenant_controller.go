@@ -469,6 +469,9 @@ func (r *TenantReconciler) reconcilePodMonitor(ctx context.Context, namespace st
 	existing := &unstructured.Unstructured{}
 	existing.SetGroupVersionKind(desired.GroupVersionKind())
 	err = r.Get(ctx, types.NamespacedName{Name: podMonitorName, Namespace: namespace}, existing)
+	if apimeta.IsNoMatchError(err) {
+		return nil
+	}
 	if kerrors.IsNotFound(err) {
 		return r.Create(ctx, desired)
 	}
@@ -486,7 +489,7 @@ func (r *TenantReconciler) deletePodMonitor(ctx context.Context, namespace strin
 	obj.SetGroupVersionKind(podMonitorGVK())
 	obj.SetName(podMonitorName)
 	obj.SetNamespace(namespace)
-	if err := r.Delete(ctx, obj); err != nil && !kerrors.IsNotFound(err) {
+	if err := r.Delete(ctx, obj); err != nil && !kerrors.IsNotFound(err) && !apimeta.IsNoMatchError(err) {
 		return err
 	}
 	return nil
