@@ -18,6 +18,7 @@ package envoy
 
 import (
 	"testing"
+	"time"
 
 	envoyCluster "github.com/envoyproxy/go-control-plane/envoy/config/cluster/v3"
 	envoyListener "github.com/envoyproxy/go-control-plane/envoy/config/listener/v3"
@@ -102,7 +103,7 @@ func TestMakeCluster_ProxyProtocol(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			cluster := makeCluster("test-cluster", corev1.ProtocolTCP, "", tt.proxyProtocol, nil)
+			cluster := makeCluster("test-cluster", corev1.ProtocolTCP, "", tt.proxyProtocol, nil, envoyCluster.Cluster_EDS, nil)
 
 			if tt.wantTransport && cluster.TransportSocket == nil {
 				t.Error("expected TransportSocket to be set for proxy protocol v2")
@@ -146,7 +147,7 @@ func TestMakeCluster_Persistence(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			cluster := makeCluster("test-cluster", tt.protocol, "", false, tt.persistence)
+			cluster := makeCluster("test-cluster", tt.protocol, "", false, tt.persistence, envoyCluster.Cluster_EDS, nil)
 			if cluster.GetLbPolicy() != tt.wantPolicy {
 				t.Fatalf("LbPolicy = %v, want %v", cluster.GetLbPolicy(), tt.wantPolicy)
 			}
@@ -390,4 +391,109 @@ func TestDedupListenersByAddress_LabelCardinalityMatches(t *testing.T) {
 	if len(out) != 1 {
 		t.Fatalf("expected 1 listener kept, got %d", len(out))
 	}
+}
+
+func TestResolveEndpointLiteral(t *testing.T) {
+	const (
+		testIP   = "10.0.0.1"
+		testFQDN = "node.example.com"
+	)
+	tests := []struct {
+		name        string
+		addr        kubelbv1alpha1.EndpointAddress
+		wantLiteral string
+		wantIsIP    bool
+	}{
+		{name: "ipv4 in IP field", addr: kubelbv1alpha1.EndpointAddress{IP: testIP}, wantLiteral: testIP, wantIsIP: true},
+		{name: "ipv6 in IP field", addr: kubelbv1alpha1.EndpointAddress{IP: "::1"}, wantLiteral: "::1", wantIsIP: true},
+		{name: "fqdn in IP field", addr: kubelbv1alpha1.EndpointAddress{IP: testFQDN}, wantLiteral: testFQDN, wantIsIP: false},
+		{name: "hostname only", addr: kubelbv1alpha1.EndpointAddress{Hostname: testFQDN}, wantLiteral: testFQDN, wantIsIP: false},
+		{name: "ip in hostname field", addr: kubelbv1alpha1.EndpointAddress{Hostname: testIP}, wantLiteral: testIP, wantIsIP: true},
+		{name: "both set, IP wins", addr: kubelbv1alpha1.EndpointAddress{IP: testIP, Hostname: testFQDN}, wantLiteral: testIP, wantIsIP: true},
+		{name: "empty", addr: kubelbv1alpha1.EndpointAddress{}, wantLiteral: "", wantIsIP: false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			gotLiteral, gotIsIP := resolveEndpointLiteral(tt.addr)
+			if gotLiteral != tt.wantLiteral || gotIsIP != tt.wantIsIP {
+				t.Errorf("resolveEndpointLiteral(%+v) = (%q, %v), want (%q, %v)", tt.addr, gotLiteral, gotIsIP, tt.wantLiteral, tt.wantIsIP)
+			}
+		})
+	}
+}
+
+func TestPickClusterDiscoveryType(t *testing.T) {
+	const (
+		testIP   = "10.0.0.1"
+		testFQDN = "node.example.com"
+	)
+	tests := []struct {
+		name  string
+		addrs []kubelbv1alpha1.EndpointAddress
+		want  envoyCluster.Cluster_DiscoveryType
+	}{
+		{
+			name:  "all IPs in IP field",
+			addrs: []kubelbv1alpha1.EndpointAddress{{IP: testIP}, {IP: "10.0.0.2"}},
+			want:  envoyCluster.Cluster_EDS,
+		},
+		{
+			name:  "any FQDN in IP field forces STRICT_DNS",
+			addrs: []kubelbv1alpha1.EndpointAddress{{IP: testIP}, {IP: testFQDN}},
+			want:  envoyCluster.Cluster_STRICT_DNS,
+		},
+		{
+			name:  "hostname only",
+			addrs: []kubelbv1alpha1.EndpointAddress{{Hostname: testFQDN}},
+			want:  envoyCluster.Cluster_STRICT_DNS,
+		},
+		{
+			name:  "mixed IP and hostname",
+			addrs: []kubelbv1alpha1.EndpointAddress{{IP: testIP}, {Hostname: testFQDN}},
+			want:  envoyCluster.Cluster_STRICT_DNS,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := pickClusterDiscoveryType(tt.addrs); got != tt.want {
+				t.Errorf("pickClusterDiscoveryType() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestMakeCluster_DiscoveryType(t *testing.T) {
+	cla := makeClusterLoadAssignment("test-cluster", nil)
+
+	t.Run("EDS keeps EdsClusterConfig and no inline LoadAssignment", func(t *testing.T) {
+		c := makeCluster("test-cluster", corev1.ProtocolTCP, "", false, nil, envoyCluster.Cluster_EDS, cla)
+		if c.GetType() != envoyCluster.Cluster_EDS {
+			t.Errorf("type = %v, want EDS", c.GetType())
+		}
+		if c.EdsClusterConfig == nil {
+			t.Error("EdsClusterConfig should be set for EDS")
+		}
+		if c.LoadAssignment != nil {
+			t.Error("LoadAssignment should be nil for EDS (delivered via separate xDS resource)")
+		}
+	})
+
+	t.Run("STRICT_DNS sets inline LoadAssignment and drops EdsClusterConfig", func(t *testing.T) {
+		c := makeCluster("test-cluster", corev1.ProtocolTCP, "", false, nil, envoyCluster.Cluster_STRICT_DNS, cla)
+		if c.GetType() != envoyCluster.Cluster_STRICT_DNS {
+			t.Errorf("type = %v, want STRICT_DNS", c.GetType())
+		}
+		if c.EdsClusterConfig != nil {
+			t.Error("EdsClusterConfig must be nil for STRICT_DNS")
+		}
+		if c.LoadAssignment == nil {
+			t.Error("LoadAssignment must be set inline for STRICT_DNS")
+		}
+		if c.DnsRefreshRate == nil || c.DnsRefreshRate.AsDuration() != 30*time.Second { //nolint:staticcheck // SA1019
+			t.Errorf("DnsRefreshRate = %v, want 30s", c.DnsRefreshRate) //nolint:staticcheck // SA1019
+		}
+		if !c.RespectDnsTtl { //nolint:staticcheck // SA1019
+			t.Error("RespectDnsTtl must be true for STRICT_DNS")
+		}
+	})
 }

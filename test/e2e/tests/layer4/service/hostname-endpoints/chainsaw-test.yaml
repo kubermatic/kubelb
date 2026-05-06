@@ -1,0 +1,222 @@
+# Copyright 2026 The KubeLB Authors.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# Hostname-endpoint LoadBalancer Test
+# Verifies the manager correctly translates hostname-bearing endpoints into
+# Envoy clusters with discovery type STRICT_DNS (not EDS, which only accepts
+# IPs and would reject the entire ClusterLoadAssignment).
+#
+# Two scenarios, both authored directly in the manager cluster (no CCM):
+#   1. hostname-only — uses the Hostname field.
+#   2. fqdn-in-ip    — places an FQDN in the IP field, mirroring a customer
+#                      manifest that slipped past the (now-relaxed) schema.
+apiVersion: chainsaw.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: hostname-endpoints-loadbalancer
+  labels:
+    all:
+    test: hostname-endpoints
+    resource: service
+    layer: layer4
+spec:
+  description: |
+    Apply LoadBalancer CRDs directly in the kubelb cluster with hostname-bearing
+    endpoints and verify Envoy xDS produces STRICT_DNS clusters (not EDS).
+  bindings:
+    - name: kubelb_namespace
+      value: tenant-primary
+  steps:
+    - name: create-lb-hostname-only
+      description: Hostname-only endpoint via the Hostname field
+      cluster: kubelb
+      try:
+        - apply:
+            resource:
+              apiVersion: kubelb.k8c.io/v1alpha1
+              kind: LoadBalancer
+              metadata:
+                name: lb-hostname-only
+                namespace: tenant-primary
+              spec:
+                type: ClusterIP
+                endpoints:
+                  - name: backend
+                    addresses:
+                      - hostname: nginx.example.com
+                    ports:
+                      - name: http
+                        port: 8181
+                        protocol: TCP
+                ports:
+                  - name: http
+                    port: 8181
+                    protocol: TCP
+        - assert:
+            timeout: 60s
+            resource:
+              apiVersion: kubelb.k8c.io/v1alpha1
+              kind: LoadBalancer
+              metadata:
+                name: lb-hostname-only
+                namespace: tenant-primary
+
+    - name: create-lb-fqdn-in-ip
+      description: Customer scenario — FQDN placed in the IP field
+      cluster: kubelb
+      try:
+        - apply:
+            resource:
+              apiVersion: kubelb.k8c.io/v1alpha1
+              kind: LoadBalancer
+              metadata:
+                name: lb-fqdn-in-ip
+                namespace: tenant-primary
+              spec:
+                type: ClusterIP
+                endpoints:
+                  - name: backend
+                    addresses:
+                      - ip: backend.example.com
+                    ports:
+                      - name: http
+                        port: 8182
+                        protocol: TCP
+                ports:
+                  - name: http
+                    port: 8182
+                    protocol: TCP
+        - assert:
+            timeout: 60s
+            resource:
+              apiVersion: kubelb.k8c.io/v1alpha1
+              kind: LoadBalancer
+              metadata:
+                name: lb-fqdn-in-ip
+                namespace: tenant-primary
+
+    - name: verify-strict-dns-in-xds
+      description: Both clusters must be STRICT_DNS in Envoy config_dump
+      cluster: kubelb
+      try:
+        - script:
+            timeout: 180s
+            content: |
+              set -e
+              NAMESPACE="tenant-primary"
+
+              POD=$(kubectl get pods -n "$NAMESPACE" -l app.kubernetes.io/name="$NAMESPACE" -o name 2>/dev/null | head -1)
+              [ -z "$POD" ] && { echo "No Envoy pod found in $NAMESPACE"; exit 1; }
+
+              kubectl port-forward -n "$NAMESPACE" $POD 29032:9001 >/dev/null 2>&1 &
+              PF_PID=$!
+              trap "kill $PF_PID 2>/dev/null || true" EXIT
+              sleep 3
+
+              for i in $(seq 1 30); do
+                DUMP=$(curl -s --max-time 5 http://127.0.0.1:29032/config_dump 2>/dev/null || true)
+
+                HOSTNAME_ONLY_TYPE=$(printf '%s' "$DUMP" | jq -r '
+                  [.configs[]
+                    | select(.["@type"] | contains("ClustersConfigDump"))
+                    | .dynamic_active_clusters[].cluster
+                    | select(.name | contains("lb-hostname-only"))
+                  ] | .[0].type // empty
+                ' 2>/dev/null || true)
+
+                FQDN_IN_IP_TYPE=$(printf '%s' "$DUMP" | jq -r '
+                  [.configs[]
+                    | select(.["@type"] | contains("ClustersConfigDump"))
+                    | .dynamic_active_clusters[].cluster
+                    | select(.name | contains("lb-fqdn-in-ip"))
+                  ] | .[0].type // empty
+                ' 2>/dev/null || true)
+
+                if [ "$HOSTNAME_ONLY_TYPE" = "STRICT_DNS" ] && [ "$FQDN_IN_IP_TYPE" = "STRICT_DNS" ]; then
+                  echo "Both clusters reported STRICT_DNS in xDS"
+                  exit 0
+                fi
+                sleep 3
+              done
+              echo "expected STRICT_DNS for both clusters; got hostname-only=$HOSTNAME_ONLY_TYPE fqdn-in-ip=$FQDN_IN_IP_TYPE"
+              echo "--- config_dump excerpt ---"
+              printf '%s' "$DUMP" | jq '[.configs[]
+                | select(.["@type"] | contains("ClustersConfigDump"))
+                | .dynamic_active_clusters[].cluster
+                | select(.name | test("lb-(hostname-only|fqdn-in-ip)"))
+                | {name: .name, type: .type, load_assignment: .load_assignment}
+              ]'
+              exit 1
+            check:
+              ($error == null): true
+
+    - name: verify-load-assignment-inline
+      description: STRICT_DNS clusters must carry an inline LoadAssignment (no EDS resource)
+      cluster: kubelb
+      try:
+        - script:
+            timeout: 60s
+            content: |
+              set -e
+              NAMESPACE="tenant-primary"
+
+              POD=$(kubectl get pods -n "$NAMESPACE" -l app.kubernetes.io/name="$NAMESPACE" -o name 2>/dev/null | head -1)
+              [ -z "$POD" ] && { echo "No Envoy pod found"; exit 1; }
+
+              kubectl port-forward -n "$NAMESPACE" $POD 29033:9001 >/dev/null 2>&1 &
+              PF_PID=$!
+              trap "kill $PF_PID 2>/dev/null || true" EXIT
+              sleep 3
+
+              DUMP=$(curl -s --max-time 5 http://127.0.0.1:29033/config_dump 2>/dev/null || true)
+
+              MISSING=$(printf '%s' "$DUMP" | jq -r '
+                [.configs[]
+                  | select(.["@type"] | contains("ClustersConfigDump"))
+                  | .dynamic_active_clusters[].cluster
+                  | select(.name | test("lb-(hostname-only|fqdn-in-ip)"))
+                  | select(.load_assignment == null or (.load_assignment.endpoints | length) == 0)
+                  | .name
+                ] | length
+              ' 2>/dev/null || echo "0")
+
+              if [ "$MISSING" != "0" ]; then
+                echo "$MISSING STRICT_DNS cluster(s) missing inline load_assignment"
+                exit 1
+              fi
+              echo "STRICT_DNS clusters have inline LoadAssignment"
+            check:
+              ($error == null): true
+
+    - name: cleanup
+      cluster: kubelb
+      try:
+        - delete:
+            ref:
+              apiVersion: kubelb.k8c.io/v1alpha1
+              kind: LoadBalancer
+              name: lb-hostname-only
+              namespace: tenant-primary
+        - delete:
+            ref:
+              apiVersion: kubelb.k8c.io/v1alpha1
+              kind: LoadBalancer
+              name: lb-fqdn-in-ip
+              namespace: tenant-primary
+      finally:
+        - script:
+            cluster: kubelb
+            content: |
+              kubectl delete loadbalancer.kubelb.k8c.io lb-hostname-only -n tenant-primary --ignore-not-found
+              kubectl delete loadbalancer.kubelb.k8c.io lb-fqdn-in-ip   -n tenant-primary --ignore-not-found

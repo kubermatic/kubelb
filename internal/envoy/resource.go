@@ -20,6 +20,7 @@ import (
 	"context"
 	"fmt"
 	"math"
+	"net"
 	"strings"
 	"time"
 
@@ -126,8 +127,12 @@ func MapSnapshot(ctx context.Context, client ctrlclient.Client, loadBalancers []
 					listener = append(listener, makeUDPListener(key, key, port, lb.Spec.Persistence))
 				}
 				proxyProtocol := lbEndpointPort.Protocol == corev1.ProtocolTCP && lb.Annotations[kubelb.AnnotationProxyProtocol] == "v2"
-				endpoints = append(endpoints, makeClusterLoadAssignment(key, lbEndpoints))
-				cluster = append(cluster, makeCluster(key, lbEndpointPort.Protocol, "", proxyProtocol, lb.Spec.Persistence))
+				cla := makeClusterLoadAssignment(key, lbEndpoints)
+				discoveryType := pickClusterDiscoveryType(lbEndpoint.Addresses)
+				cluster = append(cluster, makeCluster(key, lbEndpointPort.Protocol, "", proxyProtocol, lb.Spec.Persistence, discoveryType, cla))
+				if discoveryType == envoyCluster.Cluster_EDS {
+					endpoints = append(endpoints, cla)
+				}
 			}
 		}
 	}
@@ -160,7 +165,9 @@ func MapSnapshot(ctx context.Context, client ctrlclient.Client, loadBalancers []
 			for _, port := range svc.Spec.Ports {
 				portLookupKey := fmt.Sprintf(kubelb.EnvoyListenerPattern, port.Port, port.Protocol)
 				var lbEndpoints []*envoyEndpoint.LbEndpoint
+				var routeAddresses []kubelbv1alpha1.EndpointAddress
 				for _, address := range route.Spec.Endpoints {
+					routeAddresses = append(routeAddresses, address.Addresses...)
 					for _, routeEndpoints := range address.Addresses {
 						lbEndpoints = append(lbEndpoints, makeEndpoint(routeEndpoints, uint32(port.NodePort)))
 					}
@@ -176,8 +183,12 @@ func MapSnapshot(ctx context.Context, client ctrlclient.Client, loadBalancers []
 				if l := makeRouteListener(key, listenerPort, port.Protocol, useHTTPListener); l != nil {
 					listener = append(listener, l)
 				}
-				endpoints = append(endpoints, makeClusterLoadAssignment(key, lbEndpoints))
-				cluster = append(cluster, makeCluster(key, port.Protocol, clusterRouteKind, false, nil))
+				cla := makeClusterLoadAssignment(key, lbEndpoints)
+				discoveryType := pickClusterDiscoveryType(routeAddresses)
+				cluster = append(cluster, makeCluster(key, port.Protocol, clusterRouteKind, false, nil, discoveryType, cla))
+				if discoveryType == envoyCluster.Cluster_EDS {
+					endpoints = append(endpoints, cla)
+				}
 			}
 		}
 	}
@@ -208,7 +219,7 @@ func MapSnapshot(ctx context.Context, client ctrlclient.Client, loadBalancers []
 	)
 }
 
-func makeCluster(clusterName string, protocol corev1.Protocol, routeKind string, proxyProtocol bool, persistence *kubelbv1alpha1.LoadBalancerPersistence) *envoyCluster.Cluster {
+func makeCluster(clusterName string, protocol corev1.Protocol, routeKind string, proxyProtocol bool, persistence *kubelbv1alpha1.LoadBalancerPersistence, discoveryType envoyCluster.Cluster_DiscoveryType, loadAssignment *envoyEndpoint.ClusterLoadAssignment) *envoyCluster.Cluster {
 	defaultHealthCheck := []*envoyCore.HealthCheck{
 		{
 			Timeout:            &durationpb.Duration{Seconds: defaultHealthCheckTimeoutSeconds},
@@ -234,9 +245,26 @@ func makeCluster(clusterName string, protocol corev1.Protocol, routeKind string,
 	cluster := &envoyCluster.Cluster{
 		Name:                 clusterName,
 		ConnectTimeout:       durationpb.New(5 * time.Second),
-		ClusterDiscoveryType: &envoyCluster.Cluster_Type{Type: envoyCluster.Cluster_EDS},
+		ClusterDiscoveryType: &envoyCluster.Cluster_Type{Type: discoveryType},
 		LbPolicy:             envoyCluster.Cluster_ROUND_ROBIN,
-		EdsClusterConfig: &envoyCluster.Cluster_EdsClusterConfig{
+		DnsLookupFamily:      envoyCluster.Cluster_AUTO,
+		HealthChecks:         defaultHealthCheck,
+		CommonLbConfig: &envoyCluster.Cluster_CommonLbConfig{
+			HealthyPanicThreshold: &envoyType.Percent{Value: 0},
+		},
+	}
+
+	switch discoveryType {
+	case envoyCluster.Cluster_STRICT_DNS, envoyCluster.Cluster_LOGICAL_DNS:
+		cluster.LoadAssignment = loadAssignment
+		// DnsRefreshRate / RespectDnsTtl are marked deprecated in the proto in
+		// favour of TypedDnsResolverConfig but remain the supported way to tune
+		// DNS behaviour for STRICT_DNS clusters; envoy-gateway uses the same
+		// fields. Migrate when upstream removes them.
+		cluster.DnsRefreshRate = durationpb.New(30 * time.Second) //nolint:staticcheck // SA1019
+		cluster.RespectDnsTtl = true                              //nolint:staticcheck // SA1019
+	default:
+		cluster.EdsClusterConfig = &envoyCluster.Cluster_EdsClusterConfig{
 			ServiceName: clusterName,
 			EdsConfig: &envoyCore.ConfigSource{
 				ResourceApiVersion: envoyCore.ApiVersion_V3,
@@ -254,12 +282,7 @@ func makeCluster(clusterName string, protocol corev1.Protocol, routeKind string,
 					},
 				},
 			},
-		},
-		DnsLookupFamily: envoyCluster.Cluster_AUTO,
-		HealthChecks:    defaultHealthCheck,
-		CommonLbConfig: &envoyCluster.Cluster_CommonLbConfig{
-			HealthyPanicThreshold: &envoyType.Percent{Value: 0},
-		},
+		}
 	}
 
 	if persistenceType(persistence) == kubelbv1alpha1.LoadBalancerPersistenceTypeSourceIP && (protocol == corev1.ProtocolTCP || protocol == corev1.ProtocolUDP) {
@@ -330,11 +353,36 @@ func makeClusterLoadAssignment(clusterName string, lbEndpoints []*envoyEndpoint.
 	}
 }
 
-func makeEndpoint(addr kubelbv1alpha1.EndpointAddress, port uint32) *envoyEndpoint.LbEndpoint {
-	address := addr.IP
-	if address == "" {
-		address = addr.Hostname
+// resolveEndpointLiteral returns the address string for an EndpointAddress and
+// whether it is an IP literal. It classifies by content, not by which field
+// the value lives in: directly-authored LoadBalancer manifests sometimes place
+// FQDNs in the IP field, while CCM hostname mode uses the Hostname field.
+// Both must produce a hostname-flagged literal so the cluster can be built
+// with the correct discovery type.
+func resolveEndpointLiteral(addr kubelbv1alpha1.EndpointAddress) (string, bool) {
+	if addr.IP != "" {
+		return addr.IP, net.ParseIP(addr.IP) != nil
 	}
+	if addr.Hostname != "" {
+		return addr.Hostname, net.ParseIP(addr.Hostname) != nil
+	}
+	return "", false
+}
+
+// pickClusterDiscoveryType returns STRICT_DNS if any address is a hostname,
+// otherwise EDS. EDS does no name resolution and rejects non-IP endpoints, so
+// any hostname in the set forces a DNS-aware cluster type.
+func pickClusterDiscoveryType(addrs []kubelbv1alpha1.EndpointAddress) envoyCluster.Cluster_DiscoveryType {
+	for _, a := range addrs {
+		if _, isIP := resolveEndpointLiteral(a); !isIP {
+			return envoyCluster.Cluster_STRICT_DNS
+		}
+	}
+	return envoyCluster.Cluster_EDS
+}
+
+func makeEndpoint(addr kubelbv1alpha1.EndpointAddress, port uint32) *envoyEndpoint.LbEndpoint {
+	literal, _ := resolveEndpointLiteral(addr)
 	return &envoyEndpoint.LbEndpoint{
 		HostIdentifier: &envoyEndpoint.LbEndpoint_Endpoint{
 			Endpoint: &envoyEndpoint.Endpoint{
@@ -342,7 +390,7 @@ func makeEndpoint(addr kubelbv1alpha1.EndpointAddress, port uint32) *envoyEndpoi
 					Address: &envoyCore.Address_SocketAddress{
 						SocketAddress: &envoyCore.SocketAddress{
 							Protocol: envoyCore.SocketAddress_TCP,
-							Address:  address,
+							Address:  literal,
 							PortSpecifier: &envoyCore.SocketAddress_PortValue{
 								PortValue: port,
 							},

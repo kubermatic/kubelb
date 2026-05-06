@@ -87,12 +87,16 @@ type EndpointPort struct {
 	Protocol corev1.Protocol `json:"protocol,omitempty" protobuf:"bytes,3,opt,name=protocol,casttype=Protocol"`
 }
 
-// EndpointAddress is a tuple that describes single IP address.
+// EndpointAddress is a tuple that describes a single endpoint address. At least
+// one of IP or Hostname must be set.
+// +kubebuilder:validation:XValidation:rule="size(self.ip) > 0 || size(self.hostname) > 0",message="at least one of ip or hostname must be set"
 type EndpointAddress struct {
 	// The IP of the endpoint. This can be an IPv4 or IPv6 address.
 	// The IP address must not be IP CIDR, Loopback (127.0.0.0/8), link-local (169.254.0.0/16), or link-local multicast ((224.0.0.0/24) addresses.
-	IP string `json:"ip" protobuf:"bytes,1,opt,name=ip"`
-	// The Hostname of this endpoint
+	// +optional
+	IP string `json:"ip,omitempty" protobuf:"bytes,1,opt,name=ip"`
+	// The Hostname of this endpoint. Used when the backend has no stable IP and
+	// must be resolved by DNS. If both ip and hostname are set, ip wins.
 	// +optional
 	Hostname string `json:"hostname,omitempty" protobuf:"bytes,3,opt,name=hostname"`
 }
