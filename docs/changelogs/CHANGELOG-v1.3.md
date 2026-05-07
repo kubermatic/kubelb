@@ -18,12 +18,13 @@
 - [v1.3.0](#v130)
   - [Community Edition](#community-edition)
   - [Enterprise Edition](#enterprise-edition)
+  - 
 ## v1.3.12
 
 **GitHub release: [v1.3.12](https://github.com/kubermatic/kubelb/releases/tag/v1.3.12)**
 
 
-### Uncategorized
+### Bug or regression
 
 - HTTP idle-connection timeout default raised from 60s to 1h, and per-request timeout default changed from 15s (Envoy default) to disabled (streaming-friendly) ([#437](https://github.com/kubermatic/kubelb/pull/437))
 
@@ -170,24 +171,6 @@ cosign verify-blob --bundle checksums.txt.sigstore.json checksums.txt \
 - [ORAS](https://oras.land) - OCI Registry As Storage
 
 </details>
-
-- [v1.3.11](#v1311)
-- [v1.3.10](#v1310)
-- [v1.3.9](#v139)
-- [v1.3.8](#v138)
-- [v1.3.7](#v137)
-- [v1.3.6](#v136)
-- [v1.3.5](#v135)
-- [v1.3.4](#v134)
-- [v1.3.3](#v133)
-  - [Enterprise Edition](#enterprise-edition)
-- [v1.3.2](#v132)
-  - [Community Edition](#community-edition)
-  - [Enterprise Edition](#enterprise-edition)
-- [v1.3.1](#v131)
-- [v1.3.0](#v130)
-  - [Community Edition](#community-edition)
-  - [Enterprise Edition](#enterprise-edition)
 
 ## v1.3.11
 
