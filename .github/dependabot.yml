@@ -18,6 +18,11 @@ updates:
           - "patch"
     commit-message:
       prefix: "deps"
+    labels:
+      - dependencies
+      - docs/none
+      - release-note-none
+      - ok-to-test
 
   # GitHub Actions
   - package-ecosystem: "github-actions"
@@ -33,6 +38,11 @@ updates:
           - "*"
     commit-message:
       prefix: "ci"
+    labels:
+      - dependencies
+      - docs/none
+      - release-note-none
+      - ok-to-test
 
   # Docker images (Dockerfiles)
   - package-ecosystem: "docker"
@@ -43,6 +53,11 @@ updates:
     open-pull-requests-limit: 5
     commit-message:
       prefix: "docker"
+    labels:
+      - dependencies
+      - docs/none
+      - release-note-none
+      - ok-to-test
 
   # Helm chart dependencies
   - package-ecosystem: "helm"
@@ -52,6 +67,11 @@ updates:
       day: "monday"
     commit-message:
       prefix: "helm"
+    labels:
+      - dependencies
+      - docs/none
+      - release-note-none
+      - ok-to-test
 
   - package-ecosystem: "helm"
     directory: "/charts/kubelb-ccm"
@@ -60,6 +80,11 @@ updates:
       day: "monday"
     commit-message:
       prefix: "helm"
+    labels:
+      - dependencies
+      - docs/none
+      - release-note-none
+      - ok-to-test
 
   - package-ecosystem: "helm"
     directory: "/charts/kubelb-addons"
@@ -68,3 +93,8 @@ updates:
       day: "monday"
     commit-message:
       prefix: "helm"
+    labels:
+      - dependencies
+      - docs/none
+      - release-note-none
+      - ok-to-test
