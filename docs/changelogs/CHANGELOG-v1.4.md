@@ -5,6 +5,7 @@
 - [v1.4.0](#v140)
   - [Community Edition](#community-edition)
   - [Enterprise Edition](#enterprise-edition)
+
 ## v1.4.2
 
 **GitHub release: [v1.4.2](https://github.com/kubermatic/kubelb/releases/tag/v1.4.2)**
@@ -162,10 +163,6 @@ cosign verify-blob --bundle checksums.txt.sigstore.json checksums.txt \
 
 </details>
 
-- [v1.4.1](#v141)
-- [v1.4.0](#v140)
-  - [Community Edition](#community-edition)
-  - [Enterprise Edition](#enterprise-edition)
 ## v1.4.1
 
 **GitHub release: [v1.4.1](https://github.com/kubermatic/kubelb/releases/tag/v1.4.1)**
@@ -317,10 +314,6 @@ cosign verify-blob --bundle checksums.txt.sigstore.json checksums.txt \
 - [ORAS](https://oras.land) - OCI Registry As Storage
 
 </details>
-
-- [v1.4.0](#v140)
-  - [Community Edition](#community-edition)
-  - [Enterprise Edition](#enterprise-edition)
 
 ## v1.4.0
 

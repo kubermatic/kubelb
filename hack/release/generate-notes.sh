@@ -407,7 +407,10 @@ TMPFILE=$(mktemp)
 head -1 "$CHANGELOG" > "$TMPFILE"
 echo "" >> "$TMPFILE"
 printf '%b' "$OUTPUT" >> "$TMPFILE"
-tail -n +2 "$CHANGELOG" >> "$TMPFILE"
+echo "" >> "$TMPFILE"
+# Skip everything between title and first `## v...` so the previous run's TOC
+# (or any other pre-body cruft) is dropped instead of leaking into the body.
+sed -n '/^## v/,$p' "$CHANGELOG" >> "$TMPFILE"
 mv "$TMPFILE" "$CHANGELOG"
 
 # Rebuild TOC at the top of the changelog
@@ -447,7 +450,14 @@ TOCFILE=$(mktemp)
 echo "$TITLE_LINE" > "$TOCFILE"
 echo "" >> "$TOCFILE"
 printf '%b' "$TOC" >> "$TOCFILE"
-sed -n '/^## v/,$p' "$CHANGELOG" >> "$TOCFILE"
+echo "" >> "$TOCFILE"
+# Strip any stray TOC-shaped lines that may be embedded in the body from
+# pre-fix runs (the previous prepend step let the old top TOC bleed into the
+# body between version sections). These patterns never appear in real notes.
+sed -n '/^## v/,$p' "$CHANGELOG" |
+  grep -E -v '^- \[v[0-9]+\.[0-9]+\.[0-9]+\]\(#v[0-9]+\)$' |
+  grep -E -v '^  - \[(Community|Enterprise) Edition\]\(#(community|enterprise)-edition\)$' \
+    >> "$TOCFILE"
 mv "$TOCFILE" "$CHANGELOG"
 
 printf '%b' "$OUTPUT"
