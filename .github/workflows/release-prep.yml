@@ -30,8 +30,16 @@ on:
         required: false
         type: string
         default: ""
+      dry_run:
+        description: "Dry run: bump charts and generate artifacts but skip all writes (no branch creation, no commits pushed, no PR opened)."
+        required: false
+        type: boolean
+        default: false
 
 permissions: {}
+
+env:
+  EE_REPO: kubermatic/kubelb-ee
 
 jobs:
   prep:
@@ -68,12 +76,16 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.KUBELB_EE_TOKEN }}
           VERSION: ${{ inputs.version }}
+          DRY_RUN: ${{ inputs.dry_run }}
         run: |
           MINOR=$(echo "$VERSION" | grep -oE 'v[0-9]+\.[0-9]+')
-          EE_REPO="kubermatic/kubelb-ee"
           if gh api "repos/${EE_REPO}/branches/release/${MINOR}" --jq '.name' >/dev/null 2>&1; then
             echo "::notice::EE release branch release/${MINOR} already exists"
           else
+            if [ "$DRY_RUN" = "true" ]; then
+              echo "::error::[dry-run] EE release branch release/${MINOR} does not exist; cannot proceed (subsequent clone would fail). Re-run with dry_run=false or pre-create the branch."
+              exit 1
+            fi
             echo "Creating EE release branch release/${MINOR} from main..."
             MAIN_SHA=$(gh api "repos/${EE_REPO}/git/ref/heads/main" --jq '.object.sha')
             gh api "repos/${EE_REPO}/git/refs" \
@@ -85,8 +97,13 @@ jobs:
       - name: Ensure CE release branch exists
         env:
           BRANCH: ${{ inputs.branch }}
+          DRY_RUN: ${{ inputs.dry_run }}
         run: |
           if ! git ls-remote --exit-code --heads origin "$BRANCH" >/dev/null 2>&1; then
+            if [ "$DRY_RUN" = "true" ]; then
+              echo "::error::[dry-run] CE release branch $BRANCH does not exist; cannot proceed without creating it. Re-run with dry_run=false or pre-create the branch."
+              exit 1
+            fi
             echo "Creating CE release branch $BRANCH from main..."
             git checkout main
             git checkout -b "$BRANCH"
@@ -126,21 +143,28 @@ jobs:
         run: ./hack/release/bump-versions.sh "$VERSION"
 
       - name: Clone and bump EE
+        id: ee-clone
         env:
           KUBELB_EE_TOKEN: ${{ secrets.KUBELB_EE_TOKEN }}
           VERSION: ${{ inputs.version }}
         run: |
           MINOR=$(echo "$VERSION" | grep -oE 'v[0-9]+\.[0-9]+')
           git clone --branch "release/${MINOR}" \
-            "https://x-access-token:${KUBELB_EE_TOKEN}@github.com/kubermatic/kubelb-ee.git" /tmp/kubelb-ee
+            "https://x-access-token:${KUBELB_EE_TOKEN}@github.com/${EE_REPO}.git" /tmp/kubelb-ee
           cd /tmp/kubelb-ee
           git fetch --tags
-          for chart in kubelb-manager kubelb-ccm; do
-            [ -f "charts/${chart}/Chart.yaml" ] || continue
-            sed -i "s/^version:.*/version: ${VERSION}/" "charts/${chart}/Chart.yaml"
-            sed -i "s/^appVersion:.*/appVersion: ${VERSION}/" "charts/${chart}/Chart.yaml"
-            sed -i "0,/^  tag:/{s/^  tag:.*/  tag: ${VERSION}/}" "charts/${chart}/values.yaml"
-          done
+          # Capture EE HEAD SHA at prep time. release-auto-tag pins the EE
+          # tag to this exact SHA so that an EE push between prep PR creation
+          # and merge cannot cause CE/EE tags to diverge from what was
+          # reviewed in the prep PR.
+          EE_HEAD_SHA=$(git rev-parse HEAD)
+          echo "ee_head_sha=${EE_HEAD_SHA}" >> "$GITHUB_OUTPUT"
+          echo "::notice::EE prep SHA: ${EE_HEAD_SHA}"
+          # Bump EE chart values in /tmp clone only — never committed back.
+          # EE keeps its release branch values frozen at the last shipped
+          # version; the bump happens transiently in CI per release.
+          cd "${GITHUB_WORKSPACE}"
+          ./hack/release/bump-versions.sh --target-dir /tmp/kubelb-ee "$VERSION"
 
       - name: Generate artifacts (CE codegen + EE docs)
         env:
@@ -190,7 +214,7 @@ jobs:
           if [ -n "$PREV_TAG" ]; then
             ./hack/release/generate-notes.sh "$VERSION" "$PREV_TAG" \
               --branch "$BRANCH" \
-              --ee-repo kubermatic/kubelb-ee --ee-path /tmp/kubelb-ee --ee-branch "release/${MINOR}" \
+              --ee-repo "${EE_REPO}" --ee-path /tmp/kubelb-ee --ee-branch "release/${MINOR}" \
               kubermatic/kubelb
           else
             echo "::notice::No reachable previous tag found, skipping release notes generation"
@@ -205,6 +229,7 @@ jobs:
           KUBELB_EE_TOKEN: ${{ secrets.KUBELB_EE_TOKEN }}
           VERSION: ${{ inputs.version }}
           BASE_BRANCH: ${{ inputs.branch }}
+          DRY_RUN: ${{ inputs.dry_run }}
         run: |
           BRANCH="chore/prepare-${VERSION}"
 
@@ -218,8 +243,6 @@ jobs:
           echo "::endgroup::"
           git add -A
           git commit -s -m "chore: prepare ${VERSION}"
-          git remote set-url origin "https://x-access-token:${KUBELB_EE_TOKEN}@github.com/${{ github.repository }}.git"
-          git push origin "${BRANCH}"
 
           MINOR=$(echo "${VERSION}" | grep -oE 'v[0-9]+\.[0-9]+')
           CHANGELOG_FILE="docs/changelogs/CHANGELOG-${MINOR}.md"
@@ -228,11 +251,7 @@ jobs:
             NOTES_PREVIEW=$(head -100 "$CHANGELOG_FILE")
           fi
 
-          gh pr create \
-            --base "${BASE_BRANCH}" \
-            --head "${BRANCH}" \
-            --title "chore: prepare ${VERSION}" \
-            --body-file - <<PREOF
+          PR_BODY=$(cat <<PREOF
           **What this PR does / why we need it**:
           Prepare release ${VERSION}. Bumps chart versions, regenerates docs, and generates release notes.
 
@@ -252,6 +271,8 @@ jobs:
           - [ ] CI green
           - [ ] Cherry-picks complete
 
+          <!-- EE-SHA: ${{ steps.ee-clone.outputs.ee_head_sha }} -->
+
           <details>
           <summary><b>Release Notes Preview</b></summary>
 
@@ -267,6 +288,29 @@ jobs:
           NONE
           \`\`\`
           PREOF
+          )
+
+          if [ "$DRY_RUN" = "true" ]; then
+            echo "::group::[dry-run] would push branch ${BRANCH}"
+            git log -1 --stat
+            echo "::endgroup::"
+            echo "::group::[dry-run] would open PR — title: chore: prepare ${VERSION}"
+            printf '%s\n' "$PR_BODY"
+            echo "::endgroup::"
+            echo "::group::[dry-run] would add labels: release-note-none, kind/chore"
+            echo "::endgroup::"
+            echo "::notice::dry-run complete — no remote writes performed"
+            exit 0
+          fi
+
+          git remote set-url origin "https://x-access-token:${KUBELB_EE_TOKEN}@github.com/${{ github.repository }}.git"
+          git push origin "${BRANCH}"
+
+          printf '%s\n' "$PR_BODY" | gh pr create \
+            --base "${BASE_BRANCH}" \
+            --head "${BRANCH}" \
+            --title "chore: prepare ${VERSION}" \
+            --body-file -
 
           gh pr edit "${BRANCH}" --add-label "release-note-none" 2>/dev/null || true
           gh pr edit "${BRANCH}" --add-label "kind/chore" 2>/dev/null || true

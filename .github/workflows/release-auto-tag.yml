@@ -8,6 +8,9 @@ on:
 
 permissions: {}
 
+env:
+  EE_REPO: kubermatic/kubelb-ee
+
 jobs:
   auto-tag:
     if: github.event.pull_request.merged == true && startsWith(github.event.pull_request.head.ref, 'chore/prepare-v')
@@ -56,12 +59,28 @@ jobs:
           KUBELB_EE_TOKEN: ${{ secrets.KUBELB_EE_TOKEN }}
           VERSION: ${{ steps.version.outputs.version }}
           MINOR: ${{ steps.version.outputs.minor }}
+          PR_BODY: ${{ github.event.pull_request.body }}
         run: |
-          git clone --depth 1 --branch "release/${MINOR}" \
-            "https://x-access-token:${KUBELB_EE_TOKEN}@github.com/kubermatic/kubelb-ee.git" /tmp/kubelb-ee
+          # Pin EE tag to the SHA captured by release-prep at prep time so a
+          # push to release/${MINOR} between prep PR creation and merge cannot
+          # tag a state different from what the prep PR reviewed. Falls back
+          # to branch HEAD if the marker is absent (older prep PRs predating
+          # this change).
+          EE_SHA=$(printf '%s' "$PR_BODY" | grep -oE 'EE-SHA: [a-f0-9]{7,40}' | head -1 | awk '{print $2}')
+
+          # Need full history (not --depth 1) so we can tag an arbitrary SHA
+          # that may not be branch HEAD anymore.
+          git clone --branch "release/${MINOR}" \
+            "https://x-access-token:${KUBELB_EE_TOKEN}@github.com/${EE_REPO}.git" /tmp/kubelb-ee
 
           cd /tmp/kubelb-ee
-          git tag "${VERSION}"
+          if [ -n "$EE_SHA" ]; then
+            echo "::notice::Tagging EE at prep-time SHA: ${EE_SHA}"
+            git tag "${VERSION}" "${EE_SHA}"
+          else
+            echo "::warning::No EE-SHA in prep PR body; tagging EE at release/${MINOR} HEAD"
+            git tag "${VERSION}"
+          fi
           git push origin "${VERSION}"
 
   docs-update:
@@ -73,6 +92,7 @@ jobs:
       is_patch: ${{ needs.auto-tag.outputs.is_patch }}
     secrets:
       KUBERMATIC_DOCS_TOKEN: ${{ secrets.KUBERMATIC_DOCS_TOKEN }}
+      KUBELB_EE_TOKEN: ${{ secrets.KUBELB_EE_TOKEN }}
 
   notify:
     needs: [auto-tag, docs-update]
@@ -91,7 +111,7 @@ jobs:
         run: |
           BODY="### Release ${VERSION} — post-merge summary\n\n"
           BODY+="- **CE tag:** [\`${VERSION}\`](https://github.com/${REPO}/releases/tag/${VERSION})\n"
-          BODY+="- **EE tag:** [\`${VERSION}\`](https://github.com/kubermatic/kubelb-ee/releases/tag/${VERSION})\n"
+          BODY+="- **EE tag:** [\`${VERSION}\`](https://github.com/${EE_REPO}/releases/tag/${VERSION})\n"
 
           if [ -n "$DOCS_PR" ]; then
             BODY+="- **Docs PR:** ${DOCS_PR} ← **review and merge**\n"
