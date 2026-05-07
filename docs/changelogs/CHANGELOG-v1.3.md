@@ -18,7 +18,7 @@
 - [v1.3.0](#v130)
   - [Community Edition](#community-edition)
   - [Enterprise Edition](#enterprise-edition)
-  - 
+
 ## v1.3.12
 
 **GitHub release: [v1.3.12](https://github.com/kubermatic/kubelb/releases/tag/v1.3.12)**
