@@ -10,7 +10,7 @@
 **GitHub release: [v1.4.2](https://github.com/kubermatic/kubelb/releases/tag/v1.4.2)**
 
 
-### Uncategorized
+### Bug or Regression
 
 - Fix tenant reconciler failing with `no matches for kind "PodMonitor"` on clusters without the Prometheus Operator CRDs installed. ([#441](https://github.com/kubermatic/kubelb/pull/441))
 - HTTP idle-connection timeout default raised from 60s to 1h, and per-request timeout default changed from 15s (Envoy default) to disabled (streaming-friendly) ([#436](https://github.com/kubermatic/kubelb/pull/436))
