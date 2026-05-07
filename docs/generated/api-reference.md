@@ -294,7 +294,8 @@ _Appears in:_
 
 
 
-EndpointAddress is a tuple that describes single IP address.
+EndpointAddress is a tuple that describes a single endpoint address. At least
+one of IP or Hostname must be set.
 
 
 
@@ -304,8 +305,8 @@ _Appears in:_
 
 | Field | Description | Default | Validation |
 | --- | --- | --- | --- |
-| `ip` _string_ | The IP of the endpoint. This can be an IPv4 or IPv6 address.<br />The IP address must not be IP CIDR, Loopback (127.0.0.0/8), link-local (169.254.0.0/16), or link-local multicast ((224.0.0.0/24) addresses. |  |  |
-| `hostname` _string_ | The Hostname of this endpoint |  | Optional: \{\} <br /> |
+| `ip` _string_ | The IP of the endpoint. This can be an IPv4 or IPv6 address.<br />The IP address must not be IP CIDR, Loopback (127.0.0.0/8), link-local (169.254.0.0/16), or link-local multicast ((224.0.0.0/24) addresses. |  | Optional: \{\} <br /> |
+| `hostname` _string_ | The Hostname of this endpoint. Used when the backend has no stable IP and<br />must be resolved by DNS. If both ip and hostname are set, ip wins. |  | Optional: \{\} <br /> |
 
 
 #### EndpointPort
