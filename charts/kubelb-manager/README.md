@@ -71,6 +71,7 @@ cosign verify quay.io/kubermatic/kubelb-manager:v1.3.5 \
 | kubeRbacProxy.image.repository | string | `"quay.io/brancz/kube-rbac-proxy"` |  |
 | kubeRbacProxy.image.tag | string | `"v0.20.1"` |  |
 | kubelb.debug | bool | `true` |  |
+| kubelb.deniedAnnotations | list | `[]` | Annotation key patterns to exclude from propagation. Patterns support shell-style globbing. Deny rules always take precedence over PropagatedAnnotations and PropagateAllAnnotations. |
 | kubelb.enableGatewayAPI | bool | `false` | enableGatewayAPI specifies whether to enable the Gateway API and Gateway Controllers. By default Gateway API is disabled since without Gateway APIs installed the controller cannot start. |
 | kubelb.enableLeaderElection | bool | `true` |  |
 | kubelb.envoyProxy.affinity | object | `{}` |  |
@@ -84,8 +85,8 @@ cosign verify quay.io/kubermatic/kubelb-manager:v1.3.5 \
 | kubelb.envoyProxy.topology | string | `"shared"` | Topology defines the deployment topology for Envoy Proxy. Only "shared" is supported. "dedicated" and "global" are deprecated and will default to shared. |
 | kubelb.envoyProxy.useDaemonset | bool | `false` | Use DaemonSet for Envoy Proxy deployment instead of Deployment. |
 | kubelb.logLevel | string | `"info"` | To configure the verbosity of logging. Can be one of 'debug', 'info', 'error', 'panic' or any integer value > 0 which corresponds to custom debug levels of increasing verbosity. |
-| kubelb.propagateAllAnnotations | bool | `false` | Propagate all annotations from the LB resource to the LB service. |
-| kubelb.propagatedAnnotations | object | `{}` | Allowed annotations that will be propagated from the LB resource to the LB service. |
+| kubelb.propagateAllAnnotations | bool | `false` | Propagate all annotations from the source resource to load balancing resources. DeniedAnnotations still applies. |
+| kubelb.propagatedAnnotations | object | `{}` | Allowed annotation key patterns to propagate from the source resource to load balancing resources. Keys support shell-style globbing (e.g. "nginx.ingress.kubernetes.io/*"). Empty value means any value. |
 | kubelb.skipConfigGeneration | bool | `true` | Set to false to enable the generation of the Config CR. Set to true to skip the generation of the Config CR. Useful when the config CR needs to be managed manually. |
 | metrics.port | int | `9443` | Port where the manager exposes metrics (includes both manager and envoycp metrics) |
 | nameOverride | string | `""` |  |

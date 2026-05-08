@@ -39,4 +39,8 @@ spec:
   {{- toYaml . | nindent 4 }}
   {{- end }}
   propagateAllAnnotations: {{ .Values.kubelb.propagateAllAnnotations }}
+  {{- with .Values.kubelb.deniedAnnotations }}
+  deniedAnnotations:
+  {{- toYaml . | nindent 4 }}
+  {{- end }}
 {{- end }}

@@ -139,6 +139,11 @@ func (in *AnnotationSettings) DeepCopyInto(out *AnnotationSettings) {
 		*out = new(bool)
 		**out = **in
 	}
+	if in.DeniedAnnotations != nil {
+		in, out := &in.DeniedAnnotations, &out.DeniedAnnotations
+		*out = make([]string, len(*in))
+		copy(*out, *in)
+	}
 	if in.DefaultAnnotations != nil {
 		in, out := &in.DefaultAnnotations, &out.DefaultAnnotations
 		*out = make(map[AnnotatedResource]Annotations, len(*in))

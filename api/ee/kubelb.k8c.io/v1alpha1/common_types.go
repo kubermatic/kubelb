@@ -119,15 +119,24 @@ const (
 )
 
 type AnnotationSettings struct {
-	// PropagatedAnnotations defines the list of annotations(key-value pairs) that will be propagated to the LoadBalancer service. Keep the `value` field empty in the key-value pair to allow any value.
+	// PropagatedAnnotations defines the set of annotation key patterns that will be propagated to load balancing resources.
+	// Keys support shell-style glob patterns (e.g. "nginx.ingress.kubernetes.io/*"). Keep the value empty to allow any value;
+	// otherwise the value is a comma-separated list of permitted values for exact match.
 	// Tenant configuration has higher precedence than the annotations specified at the Config level.
 	// +optional
 	PropagatedAnnotations *map[string]string `json:"propagatedAnnotations,omitempty"`
 
-	// PropagateAllAnnotations defines whether all annotations will be propagated to the LoadBalancer service. If set to true, PropagatedAnnotations will be ignored.
+	// PropagateAllAnnotations defines whether all annotations will be propagated to load balancing resources.
+	// If set to true, PropagatedAnnotations is ignored. DeniedAnnotations still applies on top of this flag.
 	// Tenant configuration has higher precedence than the value specified at the Config level.
 	// +optional
 	PropagateAllAnnotations *bool `json:"propagateAllAnnotations,omitempty"`
+
+	// DeniedAnnotations is a list of annotation key patterns that are excluded from propagation, regardless of
+	// PropagateAllAnnotations or PropagatedAnnotations. Patterns support shell-style globbing (e.g. "nginx.ingress.kubernetes.io/*").
+	// Tenant configuration has higher precedence than the value specified at the Config level.
+	// +optional
+	DeniedAnnotations []string `json:"deniedAnnotations,omitempty"`
 
 	// DefaultAnnotations defines the list of annotations(key-value pairs) that will be set on the load balancing resources if not already present. A special key `all` can be used to apply the same
 	// set of annotations to all resources.
