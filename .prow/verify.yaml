@@ -22,7 +22,7 @@ presubmits:
       preset-goproxy: "true"
     spec:
       containers:
-        - image: golang:1.26
+        - image: golang:1.26.3
           command:
             - ./hack/ci/verify.sh
           resources:
@@ -59,7 +59,7 @@ presubmits:
       preset-goproxy: "true"
     spec:
       containers:
-        - image: golang:1.26
+        - image: golang:1.26.3
           command:
             - bash
           args:
@@ -85,7 +85,7 @@ presubmits:
       preset-goproxy: "true"
     spec:
       containers:
-        - image: golang:1.26
+        - image: golang:1.26.3
           securityContext:
             privileged: true
           env:
@@ -138,6 +138,9 @@ presubmits:
     spec:
       containers:
         - image: goreleaser/goreleaser:v2.15.3
+          env:
+            - name: GOTOOLCHAIN
+              value: auto
           command:
             - goreleaser
           args:
