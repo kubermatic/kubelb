@@ -32,8 +32,9 @@ spec:
             content: |
               set -e
               NAMESPACE=kubelb
-              POD=$(kubectl get pod -n "$NAMESPACE" -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{end}' \
-                | grep -E '^kubelb-[a-f0-9]' | head -1)
+              POD=$(kubectl get pod -n "$NAMESPACE" \
+                -l app.kubernetes.io/name=kubelb-manager,app.kubernetes.io/instance=kubelb \
+                -o jsonpath='{.items[0].metadata.name}')
               if [ -z "$POD" ]; then
                 echo "Could not find manager pod"
                 exit 1
