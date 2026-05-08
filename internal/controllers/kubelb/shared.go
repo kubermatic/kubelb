@@ -64,19 +64,27 @@ func GetConfig(ctx context.Context, client ctrlclient.Client, configNamespace st
 	return config, nil
 }
 
+// GetAnnotations resolves the effective AnnotationSettings for a tenant.
+// Tenant fully owns the propagation policy (PropagateAllAnnotations + PropagatedAnnotations)
+// if it sets either field; otherwise the policy falls back to config. This lets a tenant
+// explicitly set PropagateAllAnnotations=false to opt out of a config-wide propagate-all,
+// or replace propagate-all with a specific allow-list. DefaultAnnotations are resolved
+// independently with the same tenant-overrides-config rule.
 func GetAnnotations(tenant *kubelbv1alpha1.Tenant, config *kubelbv1alpha1.Config) kubelbv1alpha1.AnnotationSettings {
 	var annotations kubelbv1alpha1.AnnotationSettings
-	if config.Spec.PropagateAllAnnotations != nil && *config.Spec.PropagateAllAnnotations {
+
+	if tenant.Spec.PropagateAllAnnotations != nil || tenant.Spec.PropagatedAnnotations != nil {
+		annotations.PropagateAllAnnotations = tenant.Spec.PropagateAllAnnotations
+		annotations.PropagatedAnnotations = tenant.Spec.PropagatedAnnotations
+	} else {
 		annotations.PropagateAllAnnotations = config.Spec.PropagateAllAnnotations
-	} else if config.Spec.PropagatedAnnotations != nil {
 		annotations.PropagatedAnnotations = config.Spec.PropagatedAnnotations
 	}
 
-	// Tenant configuration has higher precedence than the annotations specified at the Config level.
-	if tenant.Spec.PropagateAllAnnotations != nil && *tenant.Spec.PropagateAllAnnotations {
-		annotations.PropagateAllAnnotations = tenant.Spec.PropagateAllAnnotations
-	} else if tenant.Spec.PropagatedAnnotations != nil {
-		annotations.PropagatedAnnotations = tenant.Spec.PropagatedAnnotations
+	if tenant.Spec.DeniedAnnotations != nil {
+		annotations.DeniedAnnotations = tenant.Spec.DeniedAnnotations
+	} else if config.Spec.DeniedAnnotations != nil {
+		annotations.DeniedAnnotations = config.Spec.DeniedAnnotations
 	}
 
 	if tenant.Spec.DefaultAnnotations != nil {

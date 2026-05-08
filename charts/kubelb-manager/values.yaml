@@ -41,10 +41,14 @@ kubelb:
     podMonitor:
       # -- Create PodMonitor resources for Envoy Proxy pods to enable Prometheus Operator scraping.
       enabled: false
-  # -- Allowed annotations that will be propagated from the LB resource to the LB service.
+  # -- Allowed annotation key patterns to propagate from the source resource to load balancing resources.
+  # Keys support shell-style globbing (e.g. "nginx.ingress.kubernetes.io/*"). Empty value means any value.
   propagatedAnnotations: {}
-  # -- Propagate all annotations from the LB resource to the LB service.
+  # -- Propagate all annotations from the source resource to load balancing resources. DeniedAnnotations still applies.
   propagateAllAnnotations: false
+  # -- Annotation key patterns to exclude from propagation. Patterns support shell-style globbing.
+  # Deny rules always take precedence over PropagatedAnnotations and PropagateAllAnnotations.
+  deniedAnnotations: []
 
 # Create required resources for KKP integration.
 kkpintegration:
