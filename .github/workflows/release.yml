@@ -160,14 +160,14 @@ jobs:
 
       - name: Upload release scan results
         if: ${{ !inputs.skip_vulnerability_scans && always() }}
-        uses: github/codeql-action/upload-sarif@e46ed2cbd01164d986452f91f178727624ae40d7 # v4.35.3
+        uses: github/codeql-action/upload-sarif@68bde559dea0fdcac2102bfdf6230c5f70eb485e # v4.35.4
         with:
           sarif_file: trivy-kubelb-manager.sarif
           category: release-kubelb-manager
 
       - name: Upload release scan results (ccm)
         if: ${{ !inputs.skip_vulnerability_scans && always() }}
-        uses: github/codeql-action/upload-sarif@e46ed2cbd01164d986452f91f178727624ae40d7 # v4.35.3
+        uses: github/codeql-action/upload-sarif@68bde559dea0fdcac2102bfdf6230c5f70eb485e # v4.35.4
         with:
           sarif_file: trivy-kubelb-ccm.sarif
           category: release-kubelb-ccm
