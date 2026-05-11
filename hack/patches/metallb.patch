@@ -293,3 +293,31 @@ diff -ruN --exclude=README.md --exclude=README.md.gotmpl a/metallb/templates/spe
          imagePullPolicy: {{ .Values.prometheus.rbacProxy.pullPolicy }}
          securityContext:
            readOnlyRootFilesystem: true
+diff -ruN --exclude=README.md --exclude=README.md.gotmpl a/metallb/charts/frr-k8s/values.yaml b/metallb/charts/frr-k8s/values.yaml
+--- a/metallb/charts/frr-k8s/values.yaml	2025-12-04 20:20:55
++++ b/metallb/charts/frr-k8s/values.yaml	2026-04-22 12:35:00
+@@ -48,8 +48,8 @@
+ 
+   # the image to be used for the kuberbacproxy container
+   rbacProxy:
+-    repository: gcr.io/kubebuilder/kube-rbac-proxy
+-    tag: v0.12.0
++    repository: quay.io/brancz/kube-rbac-proxy
++    tag: v0.20.1
+     pullPolicy:
+ 
+   # Prometheus Operator ServiceMonitors.
+diff -ruN --exclude=README.md --exclude=README.md.gotmpl a/metallb/values.yaml b/metallb/values.yaml
+--- a/metallb/values.yaml	2025-12-04 20:20:55
++++ b/metallb/values.yaml	2026-04-22 12:35:00
+@@ -55,8 +55,8 @@
+ 
+   # the image to be used for the kuberbacproxy container
+   rbacProxy:
+-    repository: gcr.io/kubebuilder/kube-rbac-proxy
+-    tag: v0.12.0
++    repository: quay.io/brancz/kube-rbac-proxy
++    tag: v0.20.1
+     pullPolicy:
+ 
+   # Prometheus Operator PodMonitors
