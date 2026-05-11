@@ -30,6 +30,12 @@ CHART_DIR="${1:-charts/kubelb-addons}"
 CHARTS_SUBDIR="${CHART_DIR}/charts"
 PATCH_DIR="hack/patches"
 
+# Wipe the whole subchart directory so removed deps (e.g. a swapped addon)
+# don't linger. Per-chart cleanup below only covers deps helm still produces
+# a tgz for; a dep dropped from Chart.yaml would otherwise leak its templates
+# — and its images — into every helm template invocation.
+rm -rf "${CHARTS_SUBDIR}"
+
 # GitHub release asset 500s are a recurring flake when pulling ingress-nginx
 # over the https://kubernetes.github.io/ingress-nginx → github.com redirect.
 retry 5 helm dependency build "${CHART_DIR}"
@@ -39,18 +45,12 @@ for tgz in "${CHARTS_SUBDIR}"/*.tgz; do
   chart_name=$(tar -tzf "$tgz" | head -1 | cut -d/ -f1 || true)
   patch_file="${PATCH_DIR}/${chart_name}.patch"
 
-  # If a patch exists, always re-extract so it applies fresh against the
-  # pristine upstream chart. Without this, a stale dir from a prior run could
-  # silently remain unpatched.
-  if [ -d "${CHARTS_SUBDIR}/${chart_name}" ]; then
-    if [ -f "$patch_file" ]; then
-      rm -rf "${CHARTS_SUBDIR}/${chart_name}"
-    else
-      rm -f "$tgz"
-      continue
-    fi
-  fi
-
+  # Always blow away a prior extraction. A new tgz here means helm dependency
+  # build produced one, so the pristine upstream must overwrite whatever a
+  # previous run left behind — otherwise a version bump silently keeps the
+  # old chart (patch applies to stale sources, non-patched charts ship their
+  # old defaults to the image lists).
+  rm -rf "${CHARTS_SUBDIR}/${chart_name}"
   tar -xzf "$tgz" -C "${CHARTS_SUBDIR}"
   rm -f "$tgz"
 
