@@ -175,6 +175,32 @@ setup_mac_docker_networking() {
     return 0
   fi
 
+  # docker-mac-net-connect path needs root. Get one sudo prompt out of the way
+  # up front so the rest of the script doesn't get blocked mid-flight by the
+  # 2-3 internal `sudo` calls below — macOS sudo's per-tty cache doesn't always
+  # carry across `sudo -v && make dev-setup` reliably.
+  #
+  # Non-interactive shells (CI, agents without a tty) skip with a warning. LB
+  # IP reachability is the only thing that suffers; cluster + reconciliation
+  # work fine without it.
+  if ! sudo -n true 2> /dev/null; then
+    if [[ -t 0 ]]; then
+      echodate "docker-mac-net-connect needs root to add host routes to the kind subnet."
+      echodate "sudo will prompt for your password now (one-time per setup run)."
+      if ! sudo -v; then
+        echodate "WARNING: sudo failed; skipping docker-mac-net-connect."
+        echodate "  LoadBalancer IPs will not be reachable from this host."
+        echodate "  Test from inside the network instead: docker exec kubelb-control-plane curl http://<lb-ip>/"
+        return 0
+      fi
+    else
+      echodate "WARNING: non-interactive shell, skipping docker-mac-net-connect."
+      echodate "  LoadBalancer IPs will not be reachable from this host."
+      echodate "  Test from inside the network instead: docker exec kubelb-control-plane curl http://<lb-ip>/"
+      return 0
+    fi
+  fi
+
   # Fall back to docker-mac-net-connect
   # Install if missing
   if ! brew list chipmk/tap/docker-mac-net-connect &> /dev/null; then
@@ -186,7 +212,7 @@ setup_mac_docker_networking() {
   if [[ ! -x "${dmn_bin}" ]]; then
     echodate "WARNING: docker-mac-net-connect binary not found"
     echodate "  Enable Docker Desktop host networking: Settings → Resources → Network → Host networking"
-    return 1
+    return 0
   fi
 
   # Get Docker socket path from current context (required for sudo)
@@ -231,7 +257,7 @@ setup_mac_docker_networking() {
 
   echodate "WARNING: Docker network routes not detected. LoadBalancer IPs may not be reachable."
   echodate "  Enable Docker Desktop host networking: Settings → Resources → Network → Host networking"
-  return 1
+  return 0
 }
 
 cluster_exists() {
