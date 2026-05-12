@@ -6,8 +6,18 @@ How to run KubeLB on your machine and iterate fast.
 
 - Go 1.26+
 - Docker (Desktop on macOS, daemon on Linux)
-- [kind](https://kind.sigs.k8s.io/), `kubectl`, `helm`
+- [kind](https://kind.sigs.k8s.io/), `kubectl`, `helm`, `jq`
 - [Tilt](https://docs.tilt.dev/install.html) (optional, for `make dev-tilt`)
+
+### macOS LoadBalancer reachability
+
+MetalLB IPs live inside the kind docker network. To make them reachable from
+your laptop, `setup-kind.sh` starts `docker-mac-net-connect` and prompts for
+sudo once. Non-interactive shells skip this with a warning; verify LB IPs
+from inside the network instead: `docker exec kubelb-control-plane curl http://<lb-ip>/`.
+
+(Docker Desktop's "Enable host networking" toggle is unrelated and does not
+make container IPs reachable on the versions tested.)
 
 ## Quick start
 
@@ -140,6 +150,7 @@ tenant cluster), or just `make dev-deploy` to re-run helm upgrade.
 
 **Force-recreate dev clusters**: `./hack/e2e/setup-kind.sh --force`.
 
-**Mac Docker network unreachable**: enable Docker Desktop host networking
-(Settings → Resources → Network), or let `setup-kind.sh` install
-`docker-mac-net-connect` automatically.
+**Mac LoadBalancer IP unreachable from host**: `setup-kind.sh` skips
+`docker-mac-net-connect` in non-interactive shells (CI, agents). Re-run from
+an interactive shell so it can prompt for sudo, or test LB IPs from inside
+the docker network: `docker exec kubelb-control-plane curl http://<lb-ip>/`.

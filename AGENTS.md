@@ -15,6 +15,30 @@ make manifests generate       # Generate CRDs, RBAC, DeepCopy
 make update-codegen           # Full code generation pipeline
 ```
 
+## Local Development
+
+Full guide: [docs/development.md](docs/development.md). Two-cluster minimal setup (`kubelb` + `tenant1`).
+
+```bash
+make dev-setup                # Create kind clusters + deploy KubeLB (idempotent)
+make dev-reload               # Rebuild + redeploy changed binaries (hash-skipped)
+make dev-tilt                 # Watch source, auto-reload (mode A: in-cluster)
+make dev-run-manager          # Run manager on laptop, scale in-cluster to 0 (mode B)
+make dev-run-ccm              # Run CCM on laptop, scale in-cluster to 0 (mode B)
+make dev-cleanup              # Delete clusters and kubeconfigs
+```
+
+Mode A (in-cluster) keeps xDS/Envoy working; Mode B is for debugger attach but
+breaks the xDS dataplane (manager's `envoycp.kubelb.svc` Service has no backing
+pod). Dev clusters share `.e2e-kubeconfigs/` with `make e2e-*`.
+
+**Mac prereq:** `LoadBalancer` IPs assigned by MetalLB are not reachable from
+your laptop unless `docker-mac-net-connect` is running. `setup-kind.sh`
+prompts for sudo once to start it; non-interactive shells skip with a warning.
+Test LB IPs from inside the docker network when host routes aren't set up:
+`docker exec kubelb-control-plane curl http://<lb-ip>/`. Cluster creation and
+in-cluster reconciliation work either way.
+
 ## E2E Testing
 
 Uses Chainsaw framework (declarative YAML-based) with Kind clusters.
