@@ -23,7 +23,12 @@ import (
 	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
 )
 
-const boolTrue = "true"
+const (
+	boolTrue  = "true"
+	boolFalse = "false"
+
+	schemeHTTPS = "https"
+)
 
 // AnnotationConversionResult holds the converted filters and any warnings
 type AnnotationConversionResult struct {
@@ -271,7 +276,7 @@ func handleAuthTypeSilent(_, value string, _ map[string]string) ([]gwapiv1.HTTPR
 	case AuthTypeBasic:
 		// Auto-converted to SecurityPolicy - no warning needed
 		return nil, nil
-	case "digest":
+	case authTypeDigest:
 		return nil, []string{"auth-type=digest is not supported in Gateway API; consider using basic auth or external auth"}
 	default:
 		return nil, []string{fmt.Sprintf("auth-type=%q is not supported", value)}

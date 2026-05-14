@@ -75,7 +75,7 @@ func BuildListeners(tlsListeners []TLSListener) []gwapiv1.Listener {
 	listeners := []gwapiv1.Listener{
 		// Always include HTTP listener
 		{
-			Name:     "http",
+			Name:     ListenerNameHTTP,
 			Port:     80,
 			Protocol: gwapiv1.HTTPProtocolType,
 			AllowedRoutes: &gwapiv1.AllowedRoutes{

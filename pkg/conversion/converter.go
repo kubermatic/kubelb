@@ -136,7 +136,7 @@ func isGRPCIngress(ingress *networkingv1.Ingress) bool {
 		return false
 	}
 	protocol := strings.ToUpper(ingress.Annotations[NginxBackendProtocol])
-	return protocol == "GRPC" || protocol == "GRPCS"
+	return protocol == BackendProtocolGRPC || protocol == BackendProtocolGRPCS
 }
 
 // hostRuleGroup holds hosts that share the same rules
@@ -152,7 +152,7 @@ func convertToHTTPRoutes(input Input, parentRef gwapiv1.ParentReference, filters
 	var httpRoutes []*gwapiv1.HTTPRoute
 
 	// Check for use-regex annotation
-	useRegex := ingress.Annotations != nil && ingress.Annotations[annotations.UseRegex] == "true"
+	useRegex := ingress.Annotations != nil && ingress.Annotations[annotations.UseRegex] == BoolTrue
 
 	// Collect rules per host
 	hostRules := make(map[string][]gwapiv1.HTTPRouteRule)

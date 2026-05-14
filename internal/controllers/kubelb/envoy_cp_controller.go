@@ -55,6 +55,9 @@ import (
 const (
 	RequeueAllResources   = "requeue-all-for-route"
 	EnvoyCPControllerName = "envoy-cp-controller"
+
+	envoyProxyAppName      = "kubelb-envoy-proxy"
+	envoyProxyManagedByVal = "kubelb"
 )
 
 type EnvoyCPReconciler struct {
@@ -272,9 +275,9 @@ func (r *EnvoyCPReconciler) ensureEnvoyProxy(ctx context.Context, namespace, app
 		Name:      fmt.Sprintf(envoyResourcePattern, appName),
 		Namespace: namespace,
 		Labels: map[string]string{
-			kubelb.LabelAppKubernetesName:      "kubelb-envoy-proxy",
+			kubelb.LabelAppKubernetesName:      envoyProxyAppName,
 			kubelb.LabelAppKubernetesInstance:  appName,
-			kubelb.LabelAppKubernetesManagedBy: "kubelb",
+			kubelb.LabelAppKubernetesManagedBy: envoyProxyManagedByVal,
 		},
 	}
 	if r.Config.Spec.EnvoyProxy.UseDaemonset {

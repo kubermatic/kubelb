@@ -23,7 +23,14 @@ import (
 	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
 )
 
-const defaultConfigEnabled = "enabled"
+const (
+	defaultConfigEnabled = "enabled"
+
+	affinityCookie       = "cookie"
+	authTypeDigest       = "digest"
+	backendProtocolGRPC  = "GRPC"
+	backendProtocolGRPCS = "GRPCS"
+)
 
 // handleAffinity handles session affinity annotations
 // nginx.ingress.kubernetes.io/affinity: "cookie"
@@ -32,7 +39,7 @@ func handleAffinity(_, value string, annotations map[string]string) ([]gwapiv1.H
 		return nil, nil
 	}
 
-	if value != "cookie" {
+	if value != affinityCookie {
 		return nil, []string{fmt.Sprintf("affinity=%q is not supported; only 'cookie' affinity can be converted", value)}
 	}
 
@@ -100,7 +107,7 @@ func handleAuthType(_, value string, annotations map[string]string) ([]gwapiv1.H
 		)
 		return nil, []string{warning}
 
-	case "digest":
+	case authTypeDigest:
 		return nil, []string{"auth-type=digest is not supported in Gateway API; consider using basic auth or external auth"}
 
 	default:
@@ -138,7 +145,7 @@ func handleBackendProtocol(_, value string, _ map[string]string) ([]gwapiv1.HTTP
 	value = strings.ToUpper(value)
 
 	switch value {
-	case "GRPC", "GRPCS":
+	case backendProtocolGRPC, backendProtocolGRPCS:
 		return nil, []string{fmt.Sprintf(
 			"backend-protocol=%s indicates this Ingress should be converted to GRPCRoute instead of HTTPRoute",
 			value,

@@ -229,7 +229,7 @@ func (r *Reconciler) reconcile(ctx context.Context, log logr.Logger, ingress *ne
 		acceptance := r.waitForRouteAcceptance(ctx, httpRoute.Name, httpRoute.Namespace)
 		routeAcceptance[httpRoute.Name] = acceptance.accepted
 		if !acceptance.accepted {
-			if acceptance.reason == "Timeout" {
+			if acceptance.reason == routeAcceptanceReasonTimeout {
 				hasTimeout = true
 				log.V(1).Info("HTTPRoute acceptance timed out", "name", httpRoute.Name)
 			} else {
@@ -244,7 +244,7 @@ func (r *Reconciler) reconcile(ctx context.Context, log logr.Logger, ingress *ne
 		acceptance := r.waitForGRPCRouteAcceptance(ctx, grpcRoute.Name, grpcRoute.Namespace)
 		routeAcceptance[grpcRoute.Name] = acceptance.accepted
 		if !acceptance.accepted {
-			if acceptance.reason == "Timeout" {
+			if acceptance.reason == routeAcceptanceReasonTimeout {
 				hasTimeout = true
 				log.V(1).Info("GRPCRoute acceptance timed out", "name", grpcRoute.Name)
 			} else {
@@ -737,6 +737,10 @@ func secretDataEqual(a, b map[string][]byte) bool {
 	return true
 }
 
+// routeAcceptanceReasonTimeout marks an acceptance check that exhausted its
+// polling budget before the Gateway reported a terminal Accepted condition.
+const routeAcceptanceReasonTimeout = "Timeout"
+
 // routeAcceptanceResult holds result of checking route acceptance
 type routeAcceptanceResult struct {
 	accepted bool
@@ -814,7 +818,7 @@ func (r *Reconciler) waitForRouteAcceptance(ctx context.Context, routeName, rout
 		}
 		time.Sleep(interval)
 	}
-	return routeAcceptanceResult{accepted: false, reason: "Timeout"}
+	return routeAcceptanceResult{accepted: false, reason: routeAcceptanceReasonTimeout}
 }
 
 // waitForGRPCRouteAcceptance polls GRPCRoute status until Accepted or timeout
@@ -848,7 +852,7 @@ func (r *Reconciler) waitForGRPCRouteAcceptance(ctx context.Context, routeName, 
 		}
 		time.Sleep(interval)
 	}
-	return routeAcceptanceResult{accepted: false, reason: "Timeout"}
+	return routeAcceptanceResult{accepted: false, reason: routeAcceptanceReasonTimeout}
 }
 
 // isAlreadyConverted checks if an Ingress has been successfully converted

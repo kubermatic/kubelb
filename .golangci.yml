@@ -73,6 +73,7 @@ linters:
     rules:
       - linters:
           - revive
+          - goconst
         path: _test\.go
       - path: (.+)\.go$
         text: cyclomatic complexity 33 of func `CreateOrUpdateGRPCRoute` is high

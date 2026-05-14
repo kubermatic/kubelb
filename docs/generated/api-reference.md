@@ -135,8 +135,9 @@ _Appears in:_
 
 | Field | Description | Default | Validation |
 | --- | --- | --- | --- |
-| `propagatedAnnotations` _map[string]string_ | PropagatedAnnotations defines the list of annotations(key-value pairs) that will be propagated to the LoadBalancer service. Keep the `value` field empty in the key-value pair to allow any value.<br />Tenant configuration has higher precedence than the annotations specified at the Config level. |  |  |
-| `propagateAllAnnotations` _boolean_ | PropagateAllAnnotations defines whether all annotations will be propagated to the LoadBalancer service. If set to true, PropagatedAnnotations will be ignored.<br />Tenant configuration has higher precedence than the value specified at the Config level. |  |  |
+| `propagatedAnnotations` _map[string]string_ | PropagatedAnnotations defines the set of annotation key patterns that will be propagated to load balancing resources.<br />Keys support shell-style glob patterns (e.g. "nginx.ingress.kubernetes.io/*"). Keep the value empty to allow any value;<br />otherwise the value is a comma-separated list of permitted values for exact match.<br />Tenant configuration has higher precedence than the annotations specified at the Config level. |  |  |
+| `propagateAllAnnotations` _boolean_ | PropagateAllAnnotations defines whether all annotations will be propagated to load balancing resources.<br />If set to true, PropagatedAnnotations is ignored. DeniedAnnotations still applies on top of this flag.<br />Tenant configuration has higher precedence than the value specified at the Config level. |  |  |
+| `deniedAnnotations` _string array_ | DeniedAnnotations is a list of annotation key patterns that are excluded from propagation, regardless of<br />PropagateAllAnnotations or PropagatedAnnotations. Patterns support shell-style globbing (e.g. "nginx.ingress.kubernetes.io/*").<br />Tenant configuration has higher precedence than the value specified at the Config level. |  |  |
 | `defaultAnnotations` _object (keys:[AnnotatedResource](#annotatedresource), values:[Annotations](#annotations))_ | DefaultAnnotations defines the list of annotations(key-value pairs) that will be set on the load balancing resources if not already present. A special key `all` can be used to apply the same<br />set of annotations to all resources.<br />Tenant configuration has higher precedence than the annotations specified at the Config level. |  |  |
 
 
@@ -244,8 +245,9 @@ _Appears in:_
 
 | Field | Description | Default | Validation |
 | --- | --- | --- | --- |
-| `propagatedAnnotations` _map[string]string_ | PropagatedAnnotations defines the list of annotations(key-value pairs) that will be propagated to the LoadBalancer service. Keep the `value` field empty in the key-value pair to allow any value.<br />Tenant configuration has higher precedence than the annotations specified at the Config level. |  |  |
-| `propagateAllAnnotations` _boolean_ | PropagateAllAnnotations defines whether all annotations will be propagated to the LoadBalancer service. If set to true, PropagatedAnnotations will be ignored.<br />Tenant configuration has higher precedence than the value specified at the Config level. |  |  |
+| `propagatedAnnotations` _map[string]string_ | PropagatedAnnotations defines the set of annotation key patterns that will be propagated to load balancing resources.<br />Keys support shell-style glob patterns (e.g. "nginx.ingress.kubernetes.io/*"). Keep the value empty to allow any value;<br />otherwise the value is a comma-separated list of permitted values for exact match.<br />Tenant configuration has higher precedence than the annotations specified at the Config level. |  |  |
+| `propagateAllAnnotations` _boolean_ | PropagateAllAnnotations defines whether all annotations will be propagated to load balancing resources.<br />If set to true, PropagatedAnnotations is ignored. DeniedAnnotations still applies on top of this flag.<br />Tenant configuration has higher precedence than the value specified at the Config level. |  |  |
+| `deniedAnnotations` _string array_ | DeniedAnnotations is a list of annotation key patterns that are excluded from propagation, regardless of<br />PropagateAllAnnotations or PropagatedAnnotations. Patterns support shell-style globbing (e.g. "nginx.ingress.kubernetes.io/*").<br />Tenant configuration has higher precedence than the value specified at the Config level. |  |  |
 | `defaultAnnotations` _object (keys:[AnnotatedResource](#annotatedresource), values:[Annotations](#annotations))_ | DefaultAnnotations defines the list of annotations(key-value pairs) that will be set on the load balancing resources if not already present. A special key `all` can be used to apply the same<br />set of annotations to all resources.<br />Tenant configuration has higher precedence than the annotations specified at the Config level. |  |  |
 | `envoyProxy` _[EnvoyProxy](#envoyproxy)_ | EnvoyProxy defines the desired state of the Envoy Proxy |  |  |
 | `loadBalancer` _[LoadBalancerSettings](#loadbalancersettings)_ |  |  |  |
@@ -294,7 +296,8 @@ _Appears in:_
 
 
 
-EndpointAddress is a tuple that describes single IP address.
+EndpointAddress is a tuple that describes a single endpoint address. At least
+one of IP or Hostname must be set.
 
 
 
@@ -305,7 +308,7 @@ _Appears in:_
 | Field | Description | Default | Validation |
 | --- | --- | --- | --- |
 | `ip` _string_ | The IP of the endpoint. This can be an IPv4 or IPv6 address.<br />The IP address must not be IP CIDR, Loopback (127.0.0.0/8), link-local (169.254.0.0/16), or link-local multicast ((224.0.0.0/24) addresses. |  |  |
-| `hostname` _string_ | The Hostname of this endpoint |  |  |
+| `hostname` _string_ | The Hostname of this endpoint. Used when the backend has no stable IP and<br />must be resolved by DNS. If both ip and hostname are set, ip wins. |  |  |
 
 
 #### EndpointPort
@@ -1041,8 +1044,9 @@ _Appears in:_
 
 | Field | Description | Default | Validation |
 | --- | --- | --- | --- |
-| `propagatedAnnotations` _map[string]string_ | PropagatedAnnotations defines the list of annotations(key-value pairs) that will be propagated to the LoadBalancer service. Keep the `value` field empty in the key-value pair to allow any value.<br />Tenant configuration has higher precedence than the annotations specified at the Config level. |  |  |
-| `propagateAllAnnotations` _boolean_ | PropagateAllAnnotations defines whether all annotations will be propagated to the LoadBalancer service. If set to true, PropagatedAnnotations will be ignored.<br />Tenant configuration has higher precedence than the value specified at the Config level. |  |  |
+| `propagatedAnnotations` _map[string]string_ | PropagatedAnnotations defines the set of annotation key patterns that will be propagated to load balancing resources.<br />Keys support shell-style glob patterns (e.g. "nginx.ingress.kubernetes.io/*"). Keep the value empty to allow any value;<br />otherwise the value is a comma-separated list of permitted values for exact match.<br />Tenant configuration has higher precedence than the annotations specified at the Config level. |  |  |
+| `propagateAllAnnotations` _boolean_ | PropagateAllAnnotations defines whether all annotations will be propagated to load balancing resources.<br />If set to true, PropagatedAnnotations is ignored. DeniedAnnotations still applies on top of this flag.<br />Tenant configuration has higher precedence than the value specified at the Config level. |  |  |
+| `deniedAnnotations` _string array_ | DeniedAnnotations is a list of annotation key patterns that are excluded from propagation, regardless of<br />PropagateAllAnnotations or PropagatedAnnotations. Patterns support shell-style globbing (e.g. "nginx.ingress.kubernetes.io/*").<br />Tenant configuration has higher precedence than the value specified at the Config level. |  |  |
 | `defaultAnnotations` _object (keys:[AnnotatedResource](#annotatedresource), values:[Annotations](#annotations))_ | DefaultAnnotations defines the list of annotations(key-value pairs) that will be set on the load balancing resources if not already present. A special key `all` can be used to apply the same<br />set of annotations to all resources.<br />Tenant configuration has higher precedence than the annotations specified at the Config level. |  |  |
 | `envoyProxy` _[TenantEnvoyProxy](#tenantenvoyproxy)_ | EnvoyProxy defines tenant-level overrides for Envoy Proxy configuration.<br />Fields set here take precedence over Config.Spec.EnvoyProxy. |  |  |
 | `loadBalancer` _[LoadBalancerSettings](#loadbalancersettings)_ |  |  |  |

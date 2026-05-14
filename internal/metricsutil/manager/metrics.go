@@ -167,28 +167,28 @@ var (
 	EnvoyCPSnapshotUpdatesTotal = factory.NewCounterVec(
 		"envoycp_snapshot_updates_total",
 		"Total number of Envoy snapshot updates",
-		[]string{"snapshot_name"},
+		[]string{metricsutil.LabelSnapshotName},
 	)
 
 	// EnvoyCPClusters tracks the number of clusters in the Envoy snapshot.
 	EnvoyCPClusters = factory.NewGaugeVec(
 		"envoycp_clusters",
 		"Current number of clusters in the Envoy snapshot",
-		[]string{"snapshot_name"},
+		[]string{metricsutil.LabelSnapshotName},
 	)
 
 	// EnvoyCPListeners tracks the number of listeners in the Envoy snapshot.
 	EnvoyCPListeners = factory.NewGaugeVec(
 		"envoycp_listeners",
 		"Current number of listeners in the Envoy snapshot",
-		[]string{"snapshot_name"},
+		[]string{metricsutil.LabelSnapshotName},
 	)
 
 	// EnvoyCPEndpoints tracks the number of endpoints in the Envoy snapshot.
 	EnvoyCPEndpoints = factory.NewGaugeVec(
 		"envoycp_endpoints",
 		"Current number of endpoints in the Envoy snapshot",
-		[]string{"snapshot_name"},
+		[]string{metricsutil.LabelSnapshotName},
 	)
 
 	// EnvoyDuplicateListenersDropped counts listeners dropped from the xDS snapshot
@@ -198,7 +198,7 @@ var (
 	EnvoyDuplicateListenersDropped = factory.NewCounterVec(
 		"envoy_duplicate_listeners_dropped_total",
 		"Total number of listeners dropped from the Envoy snapshot due to duplicate bind addresses",
-		[]string{"snapshot_name"},
+		[]string{metricsutil.LabelSnapshotName},
 	)
 )
 

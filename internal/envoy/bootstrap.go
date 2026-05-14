@@ -44,6 +44,10 @@ const xdsClusterName = "xds_cluster"
 const controlPlaneAddress = "envoycp.kubelb.svc"
 const adminClusterName = "admin_cluster"
 
+// wildcardBindAddress is the IPv4 any-address used by Envoy listeners that
+// should accept traffic from any interface inside the pod.
+const wildcardBindAddress = "0.0.0.0"
+
 const EnvoyAdminPort = 9001
 
 const EnvoyStatsPort = 19001
@@ -84,7 +88,7 @@ var EnvoyAdminListenerAddress = "127.0.0.1"
 func (s *Server) GenerateBootstrap() string {
 	// If debug is enabled, allow external access to the admin interface
 	if s.enableAdmin {
-		EnvoyAdminListenerAddress = "0.0.0.0"
+		EnvoyAdminListenerAddress = wildcardBindAddress
 	}
 
 	http2ProtocolOptions := marshalAny(&envoyExtensionsUpstreamsHttpV3.HttpProtocolOptions{
@@ -308,7 +312,7 @@ func getReadinessProbeListener() *envoyListener.Listener {
 		Address: &envoyCore.Address{
 			Address: &envoyCore.Address_SocketAddress{
 				SocketAddress: &envoyCore.SocketAddress{
-					Address: "0.0.0.0",
+					Address: wildcardBindAddress,
 					PortSpecifier: &envoyCore.SocketAddress_PortValue{
 						PortValue: EnvoyReadinessPort,
 					},
@@ -378,7 +382,7 @@ func getHealthCheckListener() *envoyListener.Listener {
 		Address: &envoyCore.Address{
 			Address: &envoyCore.Address_SocketAddress{
 				SocketAddress: &envoyCore.SocketAddress{
-					Address: "0.0.0.0",
+					Address: wildcardBindAddress,
 					PortSpecifier: &envoyCore.SocketAddress_PortValue{
 						PortValue: EnvoyHealthCheckPort,
 					},
@@ -441,7 +445,7 @@ func getStatsListener() *envoyListener.Listener {
 		Address: &envoyCore.Address{
 			Address: &envoyCore.Address_SocketAddress{
 				SocketAddress: &envoyCore.SocketAddress{
-					Address: "0.0.0.0",
+					Address: wildcardBindAddress,
 					PortSpecifier: &envoyCore.SocketAddress_PortValue{
 						PortValue: EnvoyStatsPort,
 					},
