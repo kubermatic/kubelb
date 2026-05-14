@@ -59,6 +59,11 @@ import (
 )
 
 const (
+	// nginx ingress backend-protocol annotation values that signal a TLS
+	// upstream — see isTLSBackend.
+	backendProtocolHTTPS = "HTTPS"
+	backendProtocolGRPCS = "GRPCS"
+
 	endpointAddressReferencePattern = "%s-address-%s"
 
 	// Health check configuration constants
@@ -448,7 +453,7 @@ func makeTCPListener(clusterName string, listenerName string, listenerPort uint3
 			Address: &envoyCore.Address_SocketAddress{
 				SocketAddress: &envoyCore.SocketAddress{
 					Protocol: envoyCore.SocketAddress_TCP,
-					Address:  "0.0.0.0",
+					Address:  wildcardBindAddress,
 					PortSpecifier: &envoyCore.SocketAddress_PortValue{
 						PortValue: listenerPort,
 					},
@@ -500,7 +505,7 @@ func makeUDPListener(clusterName string, listenerName string, listenerPort uint3
 			Address: &envoyCore.Address_SocketAddress{
 				SocketAddress: &envoyCore.SocketAddress{
 					Protocol: envoyCore.SocketAddress_UDP,
-					Address:  "0.0.0.0",
+					Address:  wildcardBindAddress,
 					PortSpecifier: &envoyCore.SocketAddress_PortValue{
 						PortValue: listenerPort,
 					},
@@ -618,7 +623,7 @@ func makeHTTPListener(listenerName string, clusterName string, listenerPort uint
 			Address: &envoyCore.Address_SocketAddress{
 				SocketAddress: &envoyCore.SocketAddress{
 					Protocol: envoyCore.SocketAddress_TCP,
-					Address:  "0.0.0.0",
+					Address:  wildcardBindAddress,
 					PortSpecifier: &envoyCore.SocketAddress_PortValue{
 						PortValue: listenerPort,
 					},
@@ -760,7 +765,7 @@ func isTLSBackend(route *kubelbv1alpha1.Route) bool {
 	}
 	annotations := route.Spec.Source.Kubernetes.Route.GetAnnotations()
 	switch strings.ToUpper(annotations["nginx.ingress.kubernetes.io/backend-protocol"]) {
-	case "HTTPS", "GRPCS":
+	case backendProtocolHTTPS, backendProtocolGRPCS:
 		return true
 	}
 	return strings.EqualFold(annotations["nginx.ingress.kubernetes.io/ssl-passthrough"], "true")

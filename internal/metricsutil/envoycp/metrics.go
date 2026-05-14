@@ -38,14 +38,14 @@ var (
 	SnapshotUpdatesTotal = factory.NewCounterVec(
 		"snapshot_updates_total",
 		"Total number of Envoy snapshot updates",
-		[]string{"snapshot_name"},
+		[]string{metricsutil.LabelSnapshotName},
 	)
 
 	// SnapshotGenerationDuration tracks the duration of snapshot generation.
 	SnapshotGenerationDuration = factory.NewHistogramVec(
 		"snapshot_generation_duration_seconds",
 		"Duration of Envoy snapshot generation in seconds",
-		[]string{"snapshot_name"},
+		[]string{metricsutil.LabelSnapshotName},
 		nil,
 	)
 )
@@ -56,35 +56,35 @@ var (
 	ClustersTotal = factory.NewGaugeVec(
 		"clusters",
 		"Current number of clusters in the Envoy snapshot",
-		[]string{"snapshot_name"},
+		[]string{metricsutil.LabelSnapshotName},
 	)
 
 	// ListenersTotal tracks the number of listeners across all snapshots.
 	ListenersTotal = factory.NewGaugeVec(
 		"listeners",
 		"Current number of listeners in the Envoy snapshot",
-		[]string{"snapshot_name"},
+		[]string{metricsutil.LabelSnapshotName},
 	)
 
 	// EndpointsTotal tracks the number of endpoints across all snapshots.
 	EndpointsTotal = factory.NewGaugeVec(
 		"endpoints",
 		"Current number of endpoints in the Envoy snapshot",
-		[]string{"snapshot_name"},
+		[]string{metricsutil.LabelSnapshotName},
 	)
 
 	// RoutesTotal tracks the number of routes across all snapshots.
 	RoutesTotal = factory.NewGaugeVec(
 		"routes",
 		"Current number of routes in the Envoy snapshot",
-		[]string{"snapshot_name"},
+		[]string{metricsutil.LabelSnapshotName},
 	)
 
 	// SecretsTotal tracks the number of secrets across all snapshots.
 	SecretsTotal = factory.NewGaugeVec(
 		"secrets",
 		"Current number of secrets in the Envoy snapshot",
-		[]string{"snapshot_name"},
+		[]string{metricsutil.LabelSnapshotName},
 	)
 )
 
@@ -117,21 +117,21 @@ var (
 	CacheHitsTotal = factory.NewCounterVec(
 		"cache_hits_total",
 		"Total number of cache hits for snapshot lookups",
-		[]string{"snapshot_name"},
+		[]string{metricsutil.LabelSnapshotName},
 	)
 
 	// CacheMissesTotal counts cache misses for snapshot lookups.
 	CacheMissesTotal = factory.NewCounterVec(
 		"cache_misses_total",
 		"Total number of cache misses for snapshot lookups",
-		[]string{"snapshot_name"},
+		[]string{metricsutil.LabelSnapshotName},
 	)
 
 	// CacheClearsTotal counts the total number of cache clears.
 	CacheClearsTotal = factory.NewCounterVec(
 		"cache_clears_total",
 		"Total number of cache clears",
-		[]string{"snapshot_name"},
+		[]string{metricsutil.LabelSnapshotName},
 	)
 )
 

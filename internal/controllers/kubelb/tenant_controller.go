@@ -446,14 +446,14 @@ func (r *TenantReconciler) reconcilePodMonitor(ctx context.Context, namespace st
 				"name":      podMonitorName,
 				"namespace": namespace,
 				"labels": map[string]interface{}{
-					kubelb.LabelAppKubernetesName:      "kubelb-envoy-proxy",
-					kubelb.LabelAppKubernetesManagedBy: "kubelb",
+					kubelb.LabelAppKubernetesName:      envoyProxyAppName,
+					kubelb.LabelAppKubernetesManagedBy: envoyProxyManagedByVal,
 				},
 			},
 			"spec": map[string]interface{}{
 				"selector": map[string]interface{}{
 					"matchLabels": map[string]interface{}{
-						kubelb.LabelAppKubernetesName: "kubelb-envoy-proxy",
+						kubelb.LabelAppKubernetesName: envoyProxyAppName,
 					},
 				},
 				"podMetricsEndpoints": []interface{}{

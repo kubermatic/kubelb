@@ -138,7 +138,7 @@ func handleXForwardedPrefix(_, value string, _ map[string]string) ([]gwapiv1.HTT
 // When true (default), the original Host header is preserved
 // When false, the Host header should be rewritten to the service name
 func handlePreserveHost(_, value string, _ map[string]string) ([]gwapiv1.HTTPRouteFilter, []string) {
-	if value != "false" {
+	if value != boolFalse {
 		return nil, nil // default is true, no action needed
 	}
 	warning := "preserve-host=false requires URLRewrite filter with Hostname at backend level; " +
@@ -227,12 +227,12 @@ func buildHSTSHeaderValue(annotations map[string]string) string {
 	value := "max-age=" + maxAge
 
 	// Include subdomains if enabled
-	if v, ok := annotations[HSTSIncludeSubdomains]; ok && v == "true" {
+	if v, ok := annotations[HSTSIncludeSubdomains]; ok && v == boolTrue {
 		value += "; includeSubDomains"
 	}
 
 	// Add preload if enabled
-	if v, ok := annotations[HSTSPreload]; ok && v == "true" {
+	if v, ok := annotations[HSTSPreload]; ok && v == boolTrue {
 		value += "; preload"
 	}
 

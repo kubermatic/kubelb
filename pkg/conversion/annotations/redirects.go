@@ -103,7 +103,7 @@ func handleTemporalRedirect(key, value string, _ map[string]string) ([]gwapiv1.H
 
 // createHTTPSRedirectFilter creates a RequestRedirect filter for HTTP->HTTPS
 func createHTTPSRedirectFilter(statusCode int) []gwapiv1.HTTPRouteFilter {
-	scheme := "https"
+	scheme := schemeHTTPS
 	code := statusCodeToGatewayAPI(statusCode)
 
 	return []gwapiv1.HTTPRouteFilter{

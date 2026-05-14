@@ -30,12 +30,13 @@ const (
 
 // Common label names used across metrics.
 const (
-	LabelNamespace = "namespace"
-	LabelTenant    = "tenant"
-	LabelResult    = "result"
-	LabelRouteType = "route_type"
-	LabelTopology  = "topology"
-	LabelOperation = "operation"
+	LabelNamespace    = "namespace"
+	LabelTenant       = "tenant"
+	LabelResult       = "result"
+	LabelRouteType    = "route_type"
+	LabelTopology     = "topology"
+	LabelOperation    = "operation"
+	LabelSnapshotName = "snapshot_name"
 )
 
 // Result label values for reconciliation outcomes.

@@ -158,7 +158,7 @@ func buildBackendTrafficPolicy(input PolicyConversionInput) (*egv1alpha1.Backend
 
 	// Session affinity - not directly supported in BackendTrafficPolicy the same way
 	// Envoy Gateway uses different mechanisms for session persistence
-	if input.Annotations[Affinity] == "cookie" {
+	if input.Annotations[Affinity] == affinityCookie {
 		warnings = append(warnings,
 			"affinity=cookie requires manual BackendTrafficPolicy configuration for session persistence")
 	}

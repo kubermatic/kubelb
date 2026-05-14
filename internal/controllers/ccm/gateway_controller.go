@@ -145,7 +145,7 @@ func (r *GatewayReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 
 func (r *GatewayReconciler) reconcile(ctx context.Context, log logr.Logger, gateway *gwapiv1.Gateway) error {
 	// Create/update the corresponding Route in LB cluster.
-	err := reconcileSourceForRoute(ctx, log, r.Client, r.LBManager.GetClient(), gateway, nil, nil, r.ClusterName)
+	err := reconcileSourceForRoute(ctx, log, r.Client, r.LBManager.GetClient(), gateway, nil, r.ClusterName)
 	if err != nil {
 		return fmt.Errorf("failed to reconcile source for route: %w", err)
 	}

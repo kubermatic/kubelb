@@ -277,7 +277,7 @@ func ShouldConfigureHostname(log logr.Logger, annotations map[string]string, res
 			"resourceName", resourceName,
 			"annotation", AnnotationRequestWildcardDomain)
 		return false
-	} else if val != "true" {
+	} else if val != AnnotationValueTrue {
 		log.V(4).Info("Hostname configuration denied: wildcard domain annotation not set to 'true'",
 			"resourceName", resourceName,
 			"annotation", AnnotationRequestWildcardDomain,

@@ -33,14 +33,13 @@ import (
 	ctrlclient "sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
-	gwapiv1alpha2 "sigs.k8s.io/gateway-api/apis/v1alpha2"
 )
 
 const (
 	CleanupFinalizer = "kubelb.k8c.io/cleanup"
 )
 
-func reconcileSourceForRoute(ctx context.Context, log logr.Logger, client ctrlclient.Client, lbClient ctrlclient.Client, resource ctrlclient.Object, originalServices []types.NamespacedName, referenceGrants []gwapiv1alpha2.ReferenceGrant, namespace string) error {
+func reconcileSourceForRoute(ctx context.Context, log logr.Logger, client ctrlclient.Client, lbClient ctrlclient.Client, resource ctrlclient.Object, originalServices []types.NamespacedName, namespace string) error {
 	log.V(2).Info("reconciling source for producing route")
 
 	unstructuredResource, err := unstructured.ConvertObjectToUnstructured(resource)
@@ -55,8 +54,7 @@ func reconcileSourceForRoute(ctx context.Context, log logr.Logger, client ctrlcl
 	}
 
 	routeSubresources := route.Subresources{
-		Services:        services,
-		ReferenceGrants: referenceGrants,
+		Services: services,
 	}
 
 	err = route.CreateRouteForResource(ctx, log, lbClient, *unstructuredResource, routeSubresources, namespace)

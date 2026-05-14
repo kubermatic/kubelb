@@ -22,6 +22,13 @@ const (
 	// Common string constants
 	BoolTrue = "true"
 
+	// nginx ingress backend-protocol values that signal a gRPC upstream.
+	BackendProtocolGRPC  = "GRPC"
+	BackendProtocolGRPCS = "GRPCS"
+
+	// Gateway listener name for plaintext HTTP.
+	ListenerNameHTTP = "http"
+
 	// Annotations
 	AnnotationSkipConversion     = "kubelb.k8c.io/skip-conversion"
 	AnnotationConversionStatus   = "kubelb.k8c.io/conversion-status"

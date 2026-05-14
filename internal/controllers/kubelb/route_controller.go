@@ -60,6 +60,10 @@ import (
 const (
 	RouteControllerName = "route-controller"
 	CleanupFinalizer    = "kubelb.k8c.io/cleanup"
+
+	conditionMessageSuccess   = "Success"
+	conditionReasonSuccessful = "InstallationSuccessful"
+	conditionReasonFailed     = "InstallationFailed"
 )
 
 // RouteReconciler reconciles a Route Object
@@ -645,13 +649,13 @@ func getResourceStatus(v any) runtime.RawExtension {
 }
 
 func setCondition(conditions *[]metav1.Condition, err error) {
-	conditionMessage := "Success"
+	conditionMessage := conditionMessageSuccess
 	conditionStatus := metav1.ConditionTrue
-	conditionReason := "InstallationSuccessful"
+	conditionReason := conditionReasonSuccessful
 	if err != nil {
 		conditionMessage = err.Error()
 		conditionStatus = metav1.ConditionFalse
-		conditionReason = "InstallationFailed"
+		conditionReason = conditionReasonFailed
 	}
 	apimeta.SetStatusCondition(conditions, metav1.Condition{
 		Type:    kubelbv1alpha1.ConditionResourceAppliedSuccessfully.String(),

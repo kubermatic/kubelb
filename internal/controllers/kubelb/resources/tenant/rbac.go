@@ -27,6 +27,9 @@ const (
 	serviceAccountName = "kubelb-ccm"
 	roleName           = "kubelb-ccm"
 	roleBindingName    = "kubelb-ccm"
+
+	apiGroupKubeLB = "kubelb.k8c.io"
+	verbGet        = "get"
 )
 
 func ServiceAccountReconciler() reconciling.NamedServiceAccountReconcilerFactory {
@@ -42,12 +45,12 @@ func RoleReconciler() reconciling.NamedRoleReconcilerFactory {
 		return roleName, func(r *rbacv1.Role) (*rbacv1.Role, error) {
 			r.Rules = []rbacv1.PolicyRule{
 				{
-					APIGroups: []string{"kubelb.k8c.io"},
+					APIGroups: []string{apiGroupKubeLB},
 					Resources: []string{"loadbalancers", "routes", "addresses", "syncsecrets"},
 					Verbs: []string{
 						"create",
 						"update",
-						"get",
+						verbGet,
 						"list",
 						"delete",
 						"patch",
@@ -55,27 +58,27 @@ func RoleReconciler() reconciling.NamedRoleReconcilerFactory {
 					},
 				},
 				{
-					APIGroups: []string{"kubelb.k8c.io"},
+					APIGroups: []string{apiGroupKubeLB},
 					Resources: []string{"tenantstates"},
 					Verbs: []string{
-						"get",
+						verbGet,
 						"list",
 						"watch",
 					},
 				},
 				{
-					APIGroups: []string{"kubelb.k8c.io"},
+					APIGroups: []string{apiGroupKubeLB},
 					Resources: []string{"tenantstates/status"},
 					Verbs: []string{
-						"get",
+						verbGet,
 					},
 				},
 				{
-					APIGroups: []string{"kubelb.k8c.io"},
+					APIGroups: []string{apiGroupKubeLB},
 					Resources: []string{"loadbalancers/status", "routes/status", "addresses/status", "syncsecrets/status"},
 					Verbs: []string{
 						"update",
-						"get",
+						verbGet,
 						"patch",
 					},
 				},
