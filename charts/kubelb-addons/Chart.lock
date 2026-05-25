@@ -13,12 +13,12 @@ dependencies:
   version: 1.20.0
 - name: metallb
   repository: oci://quay.io/metallb/chart
-  version: 0.15.3
+  version: 0.16.0
 - name: agentgateway-crds
   repository: oci://cr.agentgateway.dev/charts
   version: v1.1.0
 - name: agentgateway
   repository: oci://cr.agentgateway.dev/charts
   version: v1.1.0
-digest: sha256:995dcc8928f683afcc9595f8321a9c9af0ccf3ef3fb3c48ddbdfba3dc9b32375
-generated: "2026-04-22T10:05:37.704831+05:00"
+digest: sha256:83d5d99f0f2bd7210ab96e73241f56d3e14913d6cdbe817e12afa7cef8d1eaf3
+generated: "2026-05-25T01:37:54.529070445Z"
