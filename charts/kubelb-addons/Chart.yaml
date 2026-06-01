@@ -30,7 +30,7 @@ dependencies:
   - name: metallb
     repository: oci://quay.io/metallb/chart
     condition: metallb.enabled
-    version: 0.15.3
+    version: 0.16.1
   - name: agentgateway-crds
     repository: oci://cr.agentgateway.dev/charts
     condition: agentgateway-crds.enabled
