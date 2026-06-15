@@ -17,16 +17,37 @@ limitations under the License.
 package kubelb
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
 
 	kubelbv1alpha1 "k8c.io/kubelb/api/ce/kubelb.k8c.io/v1alpha1"
+
+	"k8s.io/apimachinery/pkg/util/validation"
 )
 
 func ptrBool(b bool) *bool { return &b }
 
 func ptrMap(m map[string]string) *map[string]string { return &m }
+
+func TestGenerateRouteServiceName(t *testing.T) {
+	got := GenerateRouteServiceName(
+		"default-xx-yyyy-argocd-server",
+		"default-xx-yyyy-argocd-server",
+		"argocd",
+	)
+
+	if len(got) > MaxNameLength {
+		t.Fatalf("expected name length <= %d, got %d: %q", MaxNameLength, len(got), got)
+	}
+	if strings.HasSuffix(got, "-") {
+		t.Fatalf("expected name not to end with '-', got %q", got)
+	}
+	if errs := validation.IsDNS1035Label(got); len(errs) > 0 {
+		t.Fatalf("expected DNS-1035 service name, got %q: %v", got, errs)
+	}
+}
 
 func TestPropagateAnnotations(t *testing.T) {
 	tests := []struct {
