@@ -77,9 +77,7 @@ func GenerateName(name, namespace string) string {
 	output := fmt.Sprintf("%s-%s", namespace, name)
 
 	if len(output) >= MaxNameLength {
-		hash := sha256.Sum256([]byte(output))
-		suffix := hex.EncodeToString(hash[:])[:NameSuffixLength]
-		output = fmt.Sprintf("%s-%s", output[:MaxNameLength-(NameSuffixLength+1)], suffix)
+		output = truncateName(output)
 	}
 
 	return output
@@ -88,15 +86,48 @@ func GenerateName(name, namespace string) string {
 // GenerateRouteServiceName generates a unique service name that includes route identifier.
 // Format: namespace-routeName-serviceName[-uid] (truncated to MaxNameLength)
 func GenerateRouteServiceName(routeName, serviceName, namespace string) string {
-	output := fmt.Sprintf("%s-%s-%s", namespace, routeName, serviceName)
+	output := dns1035Name(fmt.Sprintf("%s-%s-%s", namespace, routeName, serviceName))
 
 	if len(output) >= MaxNameLength {
-		hash := sha256.Sum256([]byte(output))
-		suffix := hex.EncodeToString(hash[:])[:NameSuffixLength]
-		output = fmt.Sprintf("%s-%s", output[:MaxNameLength-(NameSuffixLength+1)], suffix)
+		output = truncateName(output)
 	}
 
 	return output
+}
+
+func dns1035Name(name string) string {
+	name = strings.ToLower(name)
+	var builder strings.Builder
+	builder.Grow(len(name))
+
+	for _, char := range name {
+		switch {
+		case char >= 'a' && char <= 'z':
+			builder.WriteRune(char)
+		case char >= '0' && char <= '9':
+			builder.WriteRune(char)
+		case char == '-':
+			builder.WriteRune(char)
+		default:
+			builder.WriteRune('-')
+		}
+	}
+
+	output := strings.Trim(builder.String(), "-")
+	if output == "" {
+		return "k"
+	}
+	if output[0] < 'a' || output[0] > 'z' {
+		output = fmt.Sprintf("k-%s", output)
+	}
+	return output
+}
+
+func truncateName(name string) string {
+	hash := sha256.Sum256([]byte(name))
+	suffix := hex.EncodeToString(hash[:])[:NameSuffixLength]
+	prefix := strings.TrimRight(name[:MaxNameLength-(NameSuffixLength+1)], "-")
+	return fmt.Sprintf("%s-%s", prefix, suffix)
 }
 
 func GetName(obj client.Object) string {

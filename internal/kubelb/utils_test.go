@@ -31,18 +31,103 @@ func ptrBool(b bool) *bool { return &b }
 
 func ptrMap(m map[string]string) *map[string]string { return &m }
 
-func TestGenerateRouteServiceName(t *testing.T) {
+func TestGenerateRouteServiceNameReturnsDNS1035Name(t *testing.T) {
+	tests := []struct {
+		name        string
+		routeName   string
+		serviceName string
+		namespace   string
+		want        string
+	}{
+		{
+			name:        "short name is unchanged",
+			routeName:   "route",
+			serviceName: "service",
+			namespace:   "default",
+			want:        "default-route-service",
+		},
+		{
+			name:        "route dots are normalized",
+			routeName:   "app.example.com",
+			serviceName: "service",
+			namespace:   "default",
+			want:        "default-app-example-com-service",
+		},
+		{
+			name:        "uppercase chars are lowercased",
+			routeName:   "Route",
+			serviceName: "Service",
+			namespace:   "Default",
+			want:        "default-route-service",
+		},
+		{
+			name:        "invalid separators are normalized",
+			routeName:   "route/name",
+			serviceName: "service_name",
+			namespace:   "default",
+			want:        "default-route-name-service-name",
+		},
+		{
+			name:        "digit-leading namespace is prefixed",
+			routeName:   "route",
+			serviceName: "service",
+			namespace:   "1default",
+			want:        "k-1default-route-service",
+		},
+		{
+			name:        "trailing invalid chars are trimmed",
+			routeName:   "route.",
+			serviceName: "service.",
+			namespace:   "default.",
+			want:        "default--route--service",
+		},
+		{
+			name:        "all invalid chars fall back to valid name",
+			routeName:   "...",
+			serviceName: "___",
+			namespace:   "///",
+			want:        "k",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := GenerateRouteServiceName(tt.routeName, tt.serviceName, tt.namespace)
+			if got != tt.want {
+				t.Fatalf("expected %q, got %q", tt.want, got)
+			}
+			if errs := validation.IsDNS1035Label(got); len(errs) > 0 {
+				t.Fatalf("expected DNS-1035 service name, got %q: %v", got, errs)
+			}
+		})
+	}
+}
+
+func TestGenerateRouteServiceNameTruncatesLongName(t *testing.T) {
+	got := GenerateRouteServiceName(strings.Repeat("a", 52), "bbbbbbbb", "a")
+
+	if len(got) > MaxNameLength {
+		t.Fatalf("expected name length <= %d, got %d: %q", MaxNameLength, len(got), got)
+	}
+	if errs := validation.IsDNS1035Label(got); len(errs) > 0 {
+		t.Fatalf("expected DNS-1035 service name, got %q: %v", got, errs)
+	}
+}
+
+func TestGenerateRouteServiceNameTruncatesIssue470Name(t *testing.T) {
+	const invalidName = "argocd-default-xx-yyyy-argocd-server-default-xx-yyyy-argocd-"
+
 	got := GenerateRouteServiceName(
 		"default-xx-yyyy-argocd-server",
 		"default-xx-yyyy-argocd-server",
 		"argocd",
 	)
 
+	if got == invalidName {
+		t.Fatalf("expected name not to match reported invalid name %q", invalidName)
+	}
 	if len(got) > MaxNameLength {
 		t.Fatalf("expected name length <= %d, got %d: %q", MaxNameLength, len(got), got)
-	}
-	if strings.HasSuffix(got, "-") {
-		t.Fatalf("expected name not to end with '-', got %q", got)
 	}
 	if errs := validation.IsDNS1035Label(got); len(errs) > 0 {
 		t.Fatalf("expected DNS-1035 service name, got %q: %v", got, errs)
