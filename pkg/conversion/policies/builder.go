@@ -294,7 +294,7 @@ func (b *BackendTrafficPolicyBuilder) SetRateLimitRPS(rps int) *BackendTrafficPo
 			Rules: []egv1alpha1.RateLimitRule{
 				{
 					Limit: egv1alpha1.RateLimitValue{
-						Requests: uint(rps),
+						Requests: uint32(rps),
 						Unit:     egv1alpha1.RateLimitUnitSecond,
 					},
 				},
@@ -315,7 +315,7 @@ func (b *BackendTrafficPolicyBuilder) SetRateLimitRPM(rpm int) *BackendTrafficPo
 			Rules: []egv1alpha1.RateLimitRule{
 				{
 					Limit: egv1alpha1.RateLimitValue{
-						Requests: uint(rpm),
+						Requests: uint32(rpm),
 						Unit:     egv1alpha1.RateLimitUnitMinute,
 					},
 				},
