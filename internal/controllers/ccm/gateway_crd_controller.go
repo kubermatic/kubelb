@@ -23,6 +23,7 @@ import (
 
 	"github.com/go-logr/logr"
 
+	"k8c.io/kubelb/internal/kubelb"
 	crds "k8c.io/kubelb/internal/resources/crds"
 	"k8c.io/kubelb/internal/resources/reconciling"
 
@@ -105,7 +106,7 @@ func (r *GatewayCRDReconciler) reconcileCRD(ctx context.Context, name string) er
 func (r *GatewayCRDReconciler) crdReconciler(name string, source *apiextensionsv1.CustomResourceDefinition) reconciling.NamedCustomResourceDefinitionReconcilerFactory {
 	return func() (string, reconciling.CustomResourceDefinitionReconciler) {
 		return name, func(crd *apiextensionsv1.CustomResourceDefinition) (*apiextensionsv1.CustomResourceDefinition, error) {
-			crd.Labels = source.Labels
+			crd.Labels = gatewayAPICRDLabels(source.Labels)
 			crd.Annotations = source.Annotations
 			crd.Spec = source.Spec
 
@@ -247,11 +248,20 @@ func InstallCRDs(ctx context.Context, c client.Client, log logr.Logger, channel 
 func crdReconcilerFactory(name string, source *apiextensionsv1.CustomResourceDefinition) reconciling.NamedCustomResourceDefinitionReconcilerFactory {
 	return func() (string, reconciling.CustomResourceDefinitionReconciler) {
 		return name, func(crd *apiextensionsv1.CustomResourceDefinition) (*apiextensionsv1.CustomResourceDefinition, error) {
-			crd.Labels = source.Labels
+			crd.Labels = gatewayAPICRDLabels(source.Labels)
 			crd.Annotations = source.Annotations
 			crd.Spec = source.Spec
 			crd.Spec.Conversion = &apiextensionsv1.CustomResourceConversion{Strategy: apiextensionsv1.NoneConverter}
 			return crd, nil
 		}
 	}
+}
+
+func gatewayAPICRDLabels(sourceLabels map[string]string) map[string]string {
+	labels := make(map[string]string, len(sourceLabels)+1)
+	for key, value := range sourceLabels {
+		labels[key] = value
+	}
+	labels[kubelb.LabelManagedBy] = kubelb.LabelControllerName
+	return labels
 }
