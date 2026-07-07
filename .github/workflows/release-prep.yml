@@ -242,6 +242,10 @@ jobs:
           git status
           echo "::endgroup::"
           git add -A
+          if git diff --cached --quiet; then
+            echo "::error::No changes to commit — generated artifacts are identical to ${BASE_BRANCH}. Prep may already be applied; nothing to release."
+            exit 1
+          fi
           git commit -s -m "chore: prepare ${VERSION}"
 
           MINOR=$(echo "${VERSION}" | grep -oE 'v[0-9]+\.[0-9]+')
@@ -304,6 +308,11 @@ jobs:
           fi
 
           git remote set-url origin "https://x-access-token:${KUBELB_EE_TOKEN}@github.com/${{ github.repository }}.git"
+          # A prep branch from a prior (closed/superseded) run persists on the
+          # remote — closing a PR does not delete its branch. Drop any stale
+          # branch so re-running prep for the same version pushes cleanly
+          # instead of failing non-fast-forward.
+          git push origin --delete "${BRANCH}" 2>/dev/null || true
           git push origin "${BRANCH}"
 
           printf '%s\n' "$PR_BODY" | gh pr create \
