@@ -158,6 +158,12 @@ jobs:
           done
           exit $EXIT_CODE
 
+      - name: Scan CLI binary for vulnerabilities
+        if: ${{ !inputs.skip_vulnerability_scans }}
+        run: |
+          trivy rootfs --exit-code 1 --severity HIGH,CRITICAL --ignore-unfixed \
+            --format table dist/kubelb-cli_linux_amd64*/kubelb
+
       - name: Upload release scan results
         if: ${{ !inputs.skip_vulnerability_scans && always() }}
         uses: github/codeql-action/upload-sarif@54f647b7e1bb85c95cddabcd46b0c578ec92bc1a # v4.36.3
@@ -175,7 +181,12 @@ jobs:
       - name: Generate GitHub attestation for checksums
         uses: actions/attest-build-provenance@0f67c3f4856b2e3261c31976d6725780e5e4c373 # v4.1.1
         with:
-          subject-path: "./dist/checksums.txt"
+          # CLI archives are attested individually (users download and run
+          # them directly); everything else is covered via checksums.txt.
+          subject-path: |
+            ./dist/checksums.txt
+            ./dist/kubelb-cli_*.tar.gz
+            ./dist/kubelb-cli_*.zip
 
       - name: Generate and attach SBOMs to Docker images
         env:

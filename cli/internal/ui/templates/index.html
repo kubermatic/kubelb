@@ -1,0 +1,2128 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>KubeLB Ingress Migration</title>
+    <style>
+      :root {
+        --kubelb-dark: #001129;
+        --kubelb-primary: #0081ae;
+        --kubelb-accent: #00d9d2;
+        --kubelb-light: #e6f7ff;
+        --success: #22c55e;
+        --warning: #f59e0b;
+        --error: #ef4444;
+        --info: #3b82f6;
+        --gray-50: #f9fafb;
+        --gray-100: #f3f4f6;
+        --gray-200: #e5e7eb;
+        --gray-300: #d1d5db;
+        --gray-400: #9ca3af;
+        --gray-500: #6b7280;
+        --gray-600: #4b5563;
+        --gray-700: #374151;
+        --gray-800: #1f2937;
+        --gray-900: #111827;
+      }
+
+      * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
+
+      body {
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+          "Helvetica Neue", sans-serif;
+        background: var(--kubelb-dark);
+        color: var(--gray-800);
+        min-height: 100vh;
+        line-height: 1.5;
+      }
+
+      /* Background pattern */
+      .bg-pattern {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100vw;
+        height: 100vh;
+        z-index: 0;
+        pointer-events: none;
+        overflow: hidden;
+      }
+      .bg-pattern svg {
+        width: 100%;
+        height: 100%;
+      }
+      .header, .container, .footer {
+        position: relative;
+        z-index: 1;
+      }
+
+      /* Header */
+      .header {
+        padding: 24px 32px;
+        color: white;
+        position: relative;
+      }
+      .header-content {
+        max-width: 1400px;
+        margin: 0 auto;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 16px;
+      }
+      .header-left {
+        display: flex;
+        align-items: center;
+        gap: 16px;
+      }
+      .header h1 {
+        font-size: 1.5rem;
+        font-weight: 600;
+        margin: 0;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+      }
+      .kubermatic-logo {
+        height: 28px;
+        width: auto;
+        flex-shrink: 0;
+      }
+      .header h1 span {
+        background: var(--kubelb-accent);
+        color: var(--kubelb-dark);
+        font-size: 0.6rem;
+        padding: 2px 6px;
+        border-radius: 4px;
+        font-weight: 600;
+        text-transform: uppercase;
+      }
+      .header-subtitle {
+        color: var(--gray-400);
+        font-size: 0.85rem;
+      }
+      .config-toggle {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 8px 14px;
+        background: rgba(255, 255, 255, 0.08);
+        border: 1px solid rgba(255, 255, 255, 0.15);
+        border-radius: 8px;
+        color: var(--gray-300);
+        font-size: 0.8rem;
+        cursor: pointer;
+        transition: all 0.15s;
+        text-decoration: none;
+      }
+      .config-toggle:hover {
+        background: rgba(255, 255, 255, 0.12);
+        border-color: rgba(255, 255, 255, 0.25);
+      }
+      .config-toggle svg {
+        width: 16px;
+        height: 16px;
+        opacity: 0.7;
+      }
+
+      /* Main container */
+      .container {
+        max-width: 1400px;
+        margin: 0 auto;
+        padding: 0 32px 24px;
+      }
+
+      /* Stats */
+      .stats {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+        gap: 12px;
+        margin-bottom: 20px;
+      }
+      .stat {
+        background: rgba(255, 255, 255, 0.06);
+        padding: 14px 16px;
+        border-radius: 10px;
+        border-left: 3px solid var(--kubelb-accent);
+        transition: background 0.2s;
+      }
+      .stat:hover {
+        background: rgba(255, 255, 255, 0.1);
+      }
+      .stat-value {
+        font-size: 1.75rem;
+        font-weight: 700;
+        color: white;
+        line-height: 1;
+      }
+      .stat-label {
+        font-size: 0.7rem;
+        color: var(--gray-400);
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        margin-top: 4px;
+      }
+      .stat.converted {
+        border-left-color: var(--success);
+      }
+      .stat.converted .stat-value {
+        color: #4ade80;
+      }
+      .stat.partial {
+        border-left-color: var(--warning);
+      }
+      .stat.partial .stat-value {
+        color: #fbbf24;
+      }
+      .stat.pending {
+        border-left-color: var(--info);
+      }
+      .stat.pending .stat-value {
+        color: #60a5fa;
+      }
+      .stat.failed {
+        border-left-color: var(--error);
+      }
+      .stat.failed .stat-value {
+        color: #f87171;
+      }
+      .stat.skipped {
+        border-left-color: var(--gray-500);
+      }
+      .stat.skipped .stat-value {
+        color: var(--gray-400);
+      }
+      .stat.new {
+        border-left-color: #a78bfa;
+      }
+      .stat.new .stat-value {
+        color: #a78bfa;
+      }
+
+      /* Card */
+      .card {
+        background: white;
+        border-radius: 12px;
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+        overflow: hidden;
+      }
+      .card-header {
+        padding: 16px 20px;
+        border-bottom: 1px solid var(--gray-200);
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        flex-wrap: wrap;
+        gap: 12px;
+      }
+      .card-title {
+        font-size: 1rem;
+        font-weight: 600;
+        color: var(--gray-800);
+      }
+
+      /* View Switcher */
+      .view-switcher {
+        display: flex;
+        gap: 8px;
+        margin-bottom: 16px;
+      }
+      .view-btn {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 10px 18px;
+        border: 1px solid rgba(255, 255, 255, 0.15);
+        background: rgba(255, 255, 255, 0.06);
+        border-radius: 8px;
+        cursor: pointer;
+        font-size: 0.85rem;
+        font-weight: 500;
+        color: var(--gray-300);
+        transition: all 0.15s;
+      }
+      .view-btn:hover {
+        border-color: var(--kubelb-accent);
+        color: var(--kubelb-accent);
+        background: rgba(0, 217, 210, 0.1);
+      }
+      .view-btn.active {
+        border-color: var(--kubelb-accent);
+        background: rgba(0, 217, 210, 0.15);
+        color: var(--kubelb-accent);
+      }
+      .view-btn svg {
+        opacity: 0.7;
+      }
+      .view-btn.active svg {
+        opacity: 1;
+      }
+      .route-count {
+        background: var(--kubelb-accent);
+        color: var(--kubelb-dark);
+        padding: 2px 8px;
+        border-radius: 10px;
+        font-size: 0.7rem;
+        font-weight: 600;
+      }
+
+      /* Routes content */
+      .routes-content {
+        background: white;
+        border-radius: 12px;
+        padding: 16px;
+      }
+      .resource-section {
+        margin-bottom: 20px;
+      }
+      .resource-section:last-child {
+        margin-bottom: 0;
+      }
+      .resource-section-header {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-bottom: 10px;
+        padding-bottom: 8px;
+        border-bottom: 1px solid var(--gray-200);
+      }
+      .resource-section-title {
+        font-size: 0.9rem;
+        font-weight: 600;
+        color: var(--gray-700);
+      }
+      .resource-section-count {
+        background: var(--gray-100);
+        color: var(--gray-600);
+        padding: 2px 8px;
+        border-radius: 10px;
+        font-size: 0.75rem;
+        font-weight: 500;
+      }
+      .resource-table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 0.85rem;
+      }
+      .resource-table th {
+        text-align: left;
+        padding: 8px 12px;
+        background: var(--gray-50);
+        font-weight: 600;
+        font-size: 0.7rem;
+        text-transform: uppercase;
+        color: var(--gray-500);
+        border-bottom: 1px solid var(--gray-200);
+      }
+      .resource-table td {
+        padding: 10px 12px;
+        border-bottom: 1px solid var(--gray-100);
+      }
+      .resource-table tr:last-child td {
+        border-bottom: none;
+      }
+      .resource-table tr:hover {
+        background: var(--gray-50);
+      }
+      .kubelb-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        padding: 2px 8px;
+        background: var(--kubelb-light);
+        color: var(--kubelb-primary);
+        border-radius: 4px;
+        font-size: 0.7rem;
+        font-weight: 600;
+      }
+
+      /* Toolbar */
+      .toolbar {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+        flex-wrap: wrap;
+      }
+      .btn {
+        padding: 8px 16px;
+        border: none;
+        border-radius: 8px;
+        cursor: pointer;
+        font-size: 0.875rem;
+        font-weight: 500;
+        transition: all 0.15s;
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+      }
+      .btn:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+      }
+      .btn-primary {
+        background: var(--kubelb-primary);
+        color: white;
+      }
+      .btn-primary:hover:not(:disabled) {
+        background: #006d94;
+      }
+      .btn-accent {
+        background: var(--kubelb-accent);
+        color: var(--kubelb-dark);
+      }
+      .btn-accent:hover:not(:disabled) {
+        background: #00c4be;
+      }
+      .btn-secondary {
+        background: var(--gray-100);
+        color: var(--gray-700);
+        border: 1px solid var(--gray-300);
+      }
+      .btn-secondary:hover:not(:disabled) {
+        background: var(--gray-200);
+      }
+      .btn-sm {
+        padding: 6px 12px;
+        font-size: 0.8rem;
+      }
+      .selected-count {
+        color: var(--gray-500);
+        font-size: 0.875rem;
+        padding: 0 8px;
+      }
+      .auto-refresh {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 0.8rem;
+        color: var(--gray-500);
+        margin-left: auto;
+      }
+      .auto-refresh input {
+        cursor: pointer;
+        accent-color: var(--kubelb-primary);
+      }
+
+      /* Table */
+      .table-container {
+        overflow-x: auto;
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+      }
+      th,
+      td {
+        padding: 12px 16px;
+        text-align: left;
+        border-bottom: 1px solid var(--gray-100);
+      }
+      th {
+        background: var(--gray-50);
+        font-weight: 600;
+        font-size: 0.75rem;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        color: var(--gray-500);
+        position: sticky;
+        top: 0;
+      }
+      tbody tr {
+        transition: background 0.15s;
+      }
+      tbody tr:hover {
+        background: var(--gray-50);
+      }
+      tbody tr:last-child td {
+        border-bottom: none;
+      }
+
+      /* Status badges */
+      .badge {
+        display: inline-flex;
+        align-items: center;
+        padding: 4px 10px;
+        border-radius: 9999px;
+        font-size: 0.75rem;
+        font-weight: 500;
+        gap: 4px;
+      }
+      .badge-converted {
+        background: #dcfce7;
+        color: #166534;
+      }
+      .badge-partial {
+        background: #fef3c7;
+        color: #92400e;
+      }
+      .badge-pending {
+        background: #dbeafe;
+        color: #1e40af;
+      }
+      .badge-failed {
+        background: #fee2e2;
+        color: #991b1b;
+      }
+      .badge-skipped {
+        background: var(--gray-100);
+        color: var(--gray-600);
+      }
+      .badge-new {
+        background: #ede9fe;
+        color: #5b21b6;
+      }
+
+      /* Warnings inline */
+      .warning-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        padding: 4px 8px;
+        background: #fef3c7;
+        color: #92400e;
+        border-radius: 6px;
+        font-size: 0.75rem;
+        cursor: pointer;
+      }
+      .warning-badge:hover {
+        background: #fde68a;
+      }
+      .warning-icon {
+        width: 14px;
+        height: 14px;
+      }
+
+      /* Expandable warnings row */
+      .warning-row {
+        background: #fffbeb;
+      }
+      .warning-row td {
+        padding: 0;
+        border-bottom: 1px solid #fef3c7;
+      }
+      .warning-content {
+        padding: 12px 16px 12px 52px;
+        font-size: 0.85rem;
+      }
+      .warning-content ul {
+        margin: 0;
+        padding-left: 20px;
+      }
+      .warning-content li {
+        color: #92400e;
+        margin: 4px 0;
+      }
+
+      /* Clickable name */
+      .clickable {
+        color: var(--kubelb-primary);
+        font-weight: 500;
+        cursor: pointer;
+        text-decoration: none;
+      }
+      .clickable:hover {
+        text-decoration: underline;
+      }
+
+      /* Hosts cell */
+      .hosts {
+        max-width: 250px;
+      }
+      .host-tag {
+        display: inline-block;
+        background: var(--gray-100);
+        padding: 2px 8px;
+        border-radius: 4px;
+        font-size: 0.8rem;
+        margin: 2px 4px 2px 0;
+        color: var(--gray-700);
+      }
+      .host-more {
+        color: var(--gray-400);
+        font-size: 0.8rem;
+      }
+
+      /* Checkbox */
+      .checkbox {
+        width: 18px;
+        height: 18px;
+        cursor: pointer;
+        accent-color: var(--kubelb-primary);
+      }
+
+      /* Modal */
+      .modal {
+        display: none;
+        position: fixed;
+        inset: 0;
+        background: rgba(0, 0, 0, 0.5);
+        z-index: 1000;
+        backdrop-filter: blur(2px);
+      }
+      .modal.active {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 20px;
+      }
+      .modal-content {
+        background: white;
+        border-radius: 16px;
+        width: 100%;
+        max-width: 1000px;
+        max-height: 90vh;
+        display: flex;
+        flex-direction: column;
+        box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+      }
+      .modal-header {
+        padding: 20px 24px;
+        background: linear-gradient(
+          135deg,
+          var(--kubelb-dark) 0%,
+          var(--kubelb-primary) 100%
+        );
+        color: white;
+        border-radius: 16px 16px 0 0;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+      }
+      .modal-header h2 {
+        font-size: 1.1rem;
+        font-weight: 600;
+      }
+      .modal-close {
+        background: rgba(255, 255, 255, 0.1);
+        border: none;
+        color: white;
+        width: 32px;
+        height: 32px;
+        border-radius: 8px;
+        cursor: pointer;
+        font-size: 1.25rem;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        transition: background 0.15s;
+      }
+      .modal-close:hover {
+        background: rgba(255, 255, 255, 0.2);
+      }
+      .modal-body {
+        padding: 20px 24px;
+        overflow-y: auto;
+        flex: 1;
+      }
+      .modal-footer {
+        padding: 16px 24px;
+        border-top: 1px solid var(--gray-200);
+        display: flex;
+        gap: 12px;
+        justify-content: flex-end;
+        background: var(--gray-50);
+        border-radius: 0 0 16px 16px;
+      }
+
+      /* Preview warnings in modal */
+      .preview-warnings {
+        background: #fffbeb;
+        border: 1px solid #fde68a;
+        border-radius: 8px;
+        padding: 12px 16px;
+        margin-bottom: 16px;
+      }
+      .preview-warnings h4 {
+        font-size: 0.85rem;
+        color: #92400e;
+        margin-bottom: 8px;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+      }
+      .preview-warnings ul {
+        margin: 0;
+        padding-left: 24px;
+      }
+      .preview-warnings li {
+        color: #78350f;
+        font-size: 0.85rem;
+        margin: 4px 0;
+      }
+
+      /* Tabs */
+      .tabs {
+        display: flex;
+        gap: 4px;
+        margin-bottom: 16px;
+        flex-wrap: wrap;
+        border-bottom: 2px solid var(--gray-200);
+        padding-bottom: 8px;
+      }
+      .tab-btn {
+        padding: 8px 16px;
+        border: none;
+        background: transparent;
+        border-radius: 6px;
+        cursor: pointer;
+        font-size: 0.85rem;
+        font-weight: 500;
+        color: var(--gray-500);
+        transition: all 0.15s;
+      }
+      .tab-btn:hover {
+        background: var(--gray-100);
+        color: var(--gray-700);
+      }
+      .tab-btn.active {
+        background: var(--kubelb-primary);
+        color: white;
+      }
+      .tab-divider {
+        width: 1px;
+        background: var(--gray-300);
+        margin: 4px 8px;
+      }
+
+      /* Code block */
+      pre {
+        background: var(--gray-900);
+        color: #e2e8f0;
+        padding: 20px;
+        border-radius: 8px;
+        overflow: auto;
+        font-family: "SF Mono", "Menlo", "Monaco", "Courier New", monospace;
+        font-size: 0.85rem;
+        line-height: 1.6;
+        max-height: 500px;
+      }
+      pre code {
+        font-family: inherit;
+      }
+      /* YAML syntax highlighting */
+      .yaml-key {
+        color: #7dd3fc;
+      }
+      .yaml-value {
+        color: #fde68a;
+      }
+      .yaml-comment {
+        color: #6b7280;
+      }
+
+      /* Toast notifications */
+      .toast-container {
+        position: fixed;
+        bottom: 24px;
+        right: 24px;
+        z-index: 2000;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+      }
+      .toast {
+        padding: 12px 20px;
+        border-radius: 8px;
+        color: white;
+        font-size: 0.9rem;
+        box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+        animation: slideIn 0.3s ease;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+      .toast-success {
+        background: var(--success);
+      }
+      .toast-error {
+        background: var(--error);
+      }
+      .toast-info {
+        background: var(--kubelb-primary);
+      }
+      @keyframes slideIn {
+        from {
+          transform: translateX(100%);
+          opacity: 0;
+        }
+        to {
+          transform: translateX(0);
+          opacity: 1;
+        }
+      }
+
+      /* Empty state */
+      .empty-state {
+        text-align: center;
+        padding: 60px 20px;
+        color: var(--gray-500);
+      }
+      .empty-state svg {
+        width: 64px;
+        height: 64px;
+        margin-bottom: 16px;
+        opacity: 0.5;
+      }
+      .empty-state h3 {
+        font-size: 1.1rem;
+        color: var(--gray-700);
+        margin-bottom: 8px;
+      }
+
+      /* Loading */
+      .loading {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 12px;
+        padding: 40px;
+        color: var(--gray-500);
+      }
+      .spinner {
+        width: 20px;
+        height: 20px;
+        border: 2px solid var(--gray-200);
+        border-top-color: var(--kubelb-primary);
+        border-radius: 50%;
+        animation: spin 0.8s linear infinite;
+      }
+      @keyframes spin {
+        to {
+          transform: rotate(360deg);
+        }
+      }
+
+      /* Error banner */
+      .error-banner {
+        background: #fee2e2;
+        color: #991b1b;
+        padding: 12px 16px;
+        border-radius: 8px;
+        margin-bottom: 16px;
+        display: none;
+        align-items: center;
+        gap: 8px;
+      }
+      .error-banner.visible {
+        display: flex;
+      }
+
+      /* Footer */
+      .footer {
+        position: fixed;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        padding: 10px 32px;
+        background: rgba(0, 0, 0, 0.4);
+        border-top: 1px solid rgba(255, 255, 255, 0.08);
+        color: var(--gray-500);
+        font-size: 0.75rem;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        z-index: 100;
+      }
+      .footer-link {
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        color: var(--gray-400);
+        text-decoration: none;
+        transition: color 0.15s;
+      }
+      .footer-link:hover {
+        color: var(--kubelb-accent);
+      }
+      .footer .kubermatic-logo-icon {
+        height: 16px;
+        width: 16px;
+        color: currentColor;
+      }
+      .footer-brand {
+        font-weight: 500;
+      }
+
+      /* Adjust container to not overlap footer */
+      .container {
+        padding-bottom: 70px;
+      }
+
+      /* Config panel */
+      .config-panel {
+        display: none;
+        background: rgba(0, 0, 0, 0.3);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        border-radius: 10px;
+        padding: 16px 20px;
+        margin-bottom: 20px;
+      }
+      .config-panel.visible {
+        display: block;
+      }
+      .config-panel-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 12px;
+      }
+      .config-panel-title {
+        font-size: 0.85rem;
+        font-weight: 600;
+        color: var(--gray-300);
+      }
+      .config-panel-close {
+        background: none;
+        border: none;
+        color: var(--gray-400);
+        cursor: pointer;
+        padding: 4px;
+        font-size: 1rem;
+      }
+      .config-panel-close:hover {
+        color: white;
+      }
+      .config-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+        gap: 10px;
+      }
+      .config-item {
+        font-size: 0.75rem;
+      }
+      .config-label {
+        color: var(--gray-500);
+      }
+      .config-value {
+        color: var(--kubelb-accent);
+        font-family: monospace;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="bg-pattern">
+      <svg xmlns="http://www.w3.org/2000/svg" xml:space="preserve" x="0" y="0" style="enable-background:new 0 0 1440 750" version="1.1" viewBox="0 0 1440 750"><style>.st2{opacity:.3;fill:#00d9d2;enable-background:new}.st3{opacity:.1}.st4{fill:#48b8bc}.st5{opacity:.4;fill:#00d9d2;enable-background:new}.st6{opacity:.5}.st7{fill:#00d9d2}.st8{opacity:.6}.st9{opacity:.7}.st10{opacity:.8}.st11{opacity:.9}</style><path d="M1440 0H0v750h1440V0z" style="fill:#001129"/><linearGradient id="SVGID_1_" x1="1388.236" x2="903.736" y1="-442.882" y2="150.118" gradientTransform="matrix(1 0 0 -1 0 750)" gradientUnits="userSpaceOnUse"><stop offset="0" style="stop-color:#0081ae"/><stop offset="1" style="stop-color:#0081ae;stop-opacity:0"/></linearGradient><path d="M1440 0H0v750h1440V0z" style="fill:url(#SVGID_1_)"/><path d="m1304.5 492.6-239.7-19 19-239.7 239.7 19-19 239.7zM1068 470.9l233.7 18.5 18.5-233.7-233.7-18.5-18.5 233.7z" class="st2"/><g class="st3"><path d="m1290.4 503.5-236.4-44 .3-1.5 43.7-235 236.4 44-44 236.5zm-233-46.4L1288 500l42.9-230.5-230.5-42.9-43 230.5z" class="st4"/></g><path d="m1290.4 503.5-236.4-44 .3-1.5 43.7-235 236.4 44-44 236.5zm-233-46.4L1288 500l42.9-230.5-230.5-42.9-43 230.5z" class="st5"/><g class="st3"><path d="m1275.2 512.8-230.6-68.4 68.5-230.6 1.5.4 229.1 68-.4 1.5-68.1 229.1zm-226.8-70.5 224.8 66.7 66.7-224.8-224.8-66.7-66.7 224.8z" class="st4"/></g><g class="st6"><path d="m1275.2 512.8-230.6-68.4 68.5-230.6 1.5.4 229.1 68-.4 1.5-68.1 229.1zm-226.8-70.5 224.8 66.7 66.7-224.8-224.8-66.7-66.7 224.8z" class="st7"/></g><g class="st8"><path d="m1351.3 298.3-92.2 222.1-222.1-92.1 92.2-222.1 222.1 92.1zm-93.8 218.2 89.8-216.6-216.5-89.9-89.8 216.6 216.5 89.9z" class="st7"/></g><g class="st9"><path d="m1242.8 526.2-211.6-114.4 114.4-211.6 211.5 114.4-114.3 211.6zm-207.5-115.5 206.2 111.5L1353 316l-206.2-111.5-111.5 206.2z" class="st7"/></g><g class="st3"><path d="M1225.5 530.4 1027 394.5l.9-1.3 135-197.2 198.4 136-135.8 198.4zm-194.3-136.6 193.5 132.5 132.5-193.5-193.5-132.4-132.5 193.4z" class="st4"/></g><g class="st10"><path d="M1225.5 530.4 1027 394.5l.9-1.3 135-197.2 198.4 136-135.8 198.4zm-194.3-136.6 193.5 132.5 132.5-193.5-193.5-132.4-132.5 193.4z" class="st7"/></g><g class="st3"><path d="m1207.8 532.8-183.2-155.9 155.9-183.2 1.1 1 182 154.9-1 1.1-154.8 182.1zm-178.9-156.2 178.6 151.9 151.9-178.6L1180.8 198l-151.9 178.6z" class="st4"/></g><g class="st11"><path d="m1207.8 532.8-183.2-155.9 155.9-183.2 1.1 1 182 154.9-1 1.1-154.8 182.1zm-178.9-156.2 178.6 151.9 151.9-178.6L1180.8 198l-151.9 178.6z" class="st7"/></g><path d="M1364.2 367.4 1190 533.3l-165.9-174.2 174.2-165.9 165.9 174.2zM1190.1 529l169.8-161.7-161.7-169.8-169.8 161.7L1190.1 529z" class="st7"/><path d="m1041 193.5-64.9-5.1 5.1-64.9 64.9 5.1-5.1 64.9zm-64-5.9 63.2 5 5-63.2-63.2-5-5 63.2z" class="st2"/><g class="st3"><path d="m1037.2 196.4-64-11.9.1-.4 11.8-63.6 64 11.9-11.9 64zm-63-12.5 62.4 11.6 11.6-62.4-62.4-11.6-11.6 62.4z" class="st4"/></g><path d="m1037.2 196.4-64-11.9.1-.4 11.8-63.6 64 11.9-11.9 64zm-63-12.5 62.4 11.6 11.6-62.4-62.4-11.6-11.6 62.4z" class="st5"/><g class="st3"><path d="m1033.1 198.9-62.4-18.5 18.5-62.4.4.1 62 18.4-.1.4-18.4 62zm-61.4-19 60.8 18.1 18.1-60.8-60.8-18-18.1 60.7z" class="st4"/></g><g class="st6"><path d="m1033.1 198.9-62.4-18.5 18.5-62.4.4.1 62 18.4-.1.4-18.4 62zm-61.4-19 60.8 18.1 18.1-60.8-60.8-18-18.1 60.7z" class="st7"/></g><g class="st8"><path d="m1053.7 140.9-24.9 60.1-60.1-24.9 24.9-60.1 60.1 24.9zm-25.4 59.1 24.3-58.6-58.6-24.3-24.3 58.6 58.6 24.3z" class="st7"/></g><g class="st9"><path d="m1024.3 202.6-57.2-30.9 30.9-57.2 57.2 31-30.9 57.1zm-56.1-31.3 55.8 30.2 30.2-55.8-55.8-30.2-30.2 55.8z" class="st7"/></g><g class="st3"><path d="M1019.6 203.7 965.9 167l.2-.3 36.5-53.3 53.7 36.8-36.7 53.5zm-52.5-36.9 52.3 35.8 35.8-52.3-52.4-35.8-35.7 52.3z" class="st4"/></g><g class="st10"><path d="M1019.6 203.7 965.9 167l.2-.3 36.5-53.3 53.7 36.8-36.7 53.5zm-52.5-36.9 52.3 35.8 35.8-52.3-52.4-35.8-35.7 52.3z" class="st7"/></g><g class="st3"><path d="m1014.9 204.4-49.6-42.2 42.2-49.6.3.3 49.2 41.9-.3.3-41.8 49.3zm-48.4-42.3 48.3 41.1 41.1-48.3-48.3-41.1-41.1 48.3z" class="st4"/></g><g class="st11"><path d="m1014.9 204.4-49.6-42.2 42.2-49.6.3.3 49.2 41.9-.3.3-41.8 49.3zm-48.4-42.3 48.3 41.1 41.1-48.3-48.3-41.1-41.1 48.3z" class="st7"/></g><path d="m1057.2 159.6-47.1 44.9-44.9-47.1 47.1-44.9 44.9 47.1zm-47.1 43.7 45.9-43.8-43.8-45.9-45.9 43.7 43.8 46z" class="st7"/><path d="M991.2 663.5 846.6 652l11.5-144.6 144.6 11.5-11.5 144.6zm-142.6-13.1 140.9 11.2 11.2-140.9-140.9-11.2-11.2 140.9z" class="st2"/><g class="st3"><path d="M982.6 670 840 643.5l.2-.9L866.6 501l142.6 26.5L982.6 670zm-140.4-27.9 139 25.9 25.9-139-139-25.9-25.9 139z" class="st4"/></g><path d="M982.6 670 840 643.5l.2-.9L866.6 501l142.6 26.5L982.6 670zm-140.4-27.9 139 25.9 25.9-139-139-25.9-25.9 139z" class="st5"/><g class="st3"><path d="m973.5 675.6-139-41.3 41.3-139 .9.3 138.1 41-.3.9-41 138.1zm-136.7-42.5 135.5 40.2 40.2-135.5L877 497.6l-40.2 135.5z" class="st4"/></g><g class="st6"><path d="m973.5 675.6-139-41.3 41.3-139 .9.3 138.1 41-.3.9-41 138.1zm-136.7-42.5 135.5 40.2 40.2-135.5L877 497.6l-40.2 135.5z" class="st7"/></g><g class="st8"><path d="m1019.4 546.3-55.6 133.9-133.9-55.6 55.6-133.9 133.9 55.6zm-56.6 131.6 54.2-130.6-130.6-54.2-54.2 130.6 130.6 54.2z" class="st7"/></g><g class="st9"><path d="m953.9 683.8-127.6-68.9 69-127.6 127.6 69-69 127.5zm-125.1-69.7 124.4 67.2 67.2-124.4-124.3-67.2-67.3 124.4z" class="st7"/></g><g class="st3"><path d="m943.5 686.3-119.6-81.9.5-.8 81.4-118.9 119.6 81.9-81.9 119.7zm-117.1-82.4L943 683.7l79.9-116.6-116.7-79.9-79.8 116.7z" class="st4"/></g><g class="st10"><path d="m943.5 686.3-119.6-81.9.5-.8 81.4-118.9 119.6 81.9-81.9 119.7zm-117.1-82.4L943 683.7l79.9-116.6-116.7-79.9-79.8 116.7z" class="st7"/></g><g class="st3"><path d="m932.9 687.7-110.4-94 94-110.4.7.6 109.7 93.4-.6.7-93.4 109.7zM825 593.5l107.7 91.6 91.6-107.7-107.7-91.6L825 593.5z" class="st4"/></g><g class="st11"><path d="m932.9 687.7-110.4-94 94-110.4.7.6 109.7 93.4-.6.7-93.4 109.7zM825 593.5l107.7 91.6 91.6-107.7-107.7-91.6L825 593.5z" class="st7"/></g><path d="m1027.1 588-105 100-100-105 105-100 100 105zm-104.9 97.4 102.4-97.5-97.5-102.4L824.7 583l97.5 102.4z" class="st7"/></svg>
+    </div>
+
+    <div class="header">
+      <div class="header-content">
+        <div class="header-left">
+          <h1>
+            <svg class="kubermatic-logo" viewBox="0 0 128 112" fill="white">
+              <path d="M78 .8v30.3L38 50.8V20.6zM128 20.6v30.2L88 31.1V.8zM78 80v30.3L38 90.6V60.3zM128 60.3v30.3l-40 19.7V80zM28 20.8L0 1.2v110l28-19.7z"/>
+            </svg>
+            KubeLB <span>Beta</span>
+          </h1>
+          <span class="header-subtitle">Ingress → Gateway API Migration</span>
+        </div>
+        <div style="display:flex;gap:8px">
+          <button class="config-toggle" onclick="toggleConfig()" title="Show conversion configuration">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="12" cy="12" r="3"/>
+              <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+            </svg>
+            Config
+          </button>
+          <a href="https://docs.kubermatic.com/kubelb/latest/cli/ingress-to-gateway-api" target="_blank" rel="noopener noreferrer" class="config-toggle" title="View CLI documentation">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:16px;height:16px">
+              <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/>
+              <path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/>
+            </svg>
+            Documentation
+          </a>
+          <a href="https://docs.kubermatic.com/kubelb/latest/ingress-to-gateway-api/kubelb-automation/#what-gets-converted" target="_blank" rel="noopener noreferrer" class="config-toggle" title="View what annotations and features are supported">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:16px;height:16px">
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+              <polyline points="14 2 14 8 20 8"/>
+              <line x1="16" y1="13" x2="8" y2="13"/>
+              <line x1="16" y1="17" x2="8" y2="17"/>
+              <polyline points="10 9 9 9 8 9"/>
+            </svg>
+            Support Matrix
+          </a>
+        </div>
+      </div>
+    </div>
+
+    <div class="container">
+      <div class="config-panel" id="configPanel">
+        <div class="config-panel-header">
+          <span class="config-panel-title">Conversion Configuration</span>
+          <button class="config-panel-close" onclick="toggleConfig()">×</button>
+        </div>
+        <div class="config-grid" id="config-grid"></div>
+      </div>
+
+      <div class="stats" id="stats">
+        <div class="stat">
+          <div class="stat-value">-</div>
+          <div class="stat-label">Total</div>
+        </div>
+      </div>
+
+      <!-- View switcher -->
+      <div class="view-switcher">
+        <button class="view-btn active" onclick="switchView('ingresses')">
+          <svg
+            width="18"
+            height="18"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+          >
+            <path
+              d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"
+            />
+          </svg>
+          Ingresses
+        </button>
+        <button class="view-btn" onclick="switchView('routes')">
+          <svg
+            width="18"
+            height="18"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+          >
+            <circle cx="12" cy="12" r="3" />
+            <path
+              d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"
+            />
+          </svg>
+          Gateway API
+          <span class="route-count" id="routeCount">0</span>
+        </button>
+      </div>
+
+      <!-- Ingresses View -->
+      <div id="ingressesView" class="card">
+        <div class="card-header">
+          <span class="card-title">Ingress Resources</span>
+          <div class="toolbar">
+            <button class="btn btn-accent" id="previewBtn" disabled title="Preview Gateway API output for selected ingresses">
+              <svg
+                width="16"
+                height="16"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+              >
+                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+                <circle cx="12" cy="12" r="3" />
+              </svg>
+              Preview
+            </button>
+            <button class="btn btn-primary" id="convertBtn" disabled title="Convert selected ingresses to Gateway API">
+              <svg
+                width="16"
+                height="16"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+              >
+                <path d="M23 4v6h-6M1 20v-6h6" />
+                <path
+                  d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"
+                />
+              </svg>
+              Convert
+            </button>
+            <button class="btn btn-secondary" id="refreshBtn" title="Refresh ingress list">
+              <svg
+                width="16"
+                height="16"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+              >
+                <path d="M23 4v6h-6M1 20v-6h6" />
+                <path
+                  d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"
+                />
+              </svg>
+              Refresh
+            </button>
+            <span class="selected-count" id="selectedCount"></span>
+            <label class="auto-refresh" title="Automatically refresh every 5 seconds">
+              <input type="checkbox" id="autoRefresh" checked />
+              Auto-refresh
+            </label>
+          </div>
+        </div>
+
+        <div id="errorBanner" class="error-banner">
+          <svg
+            width="16"
+            height="16"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+          >
+            <circle cx="12" cy="12" r="10" />
+            <line x1="12" y1="8" x2="12" y2="12" />
+            <line x1="12" y1="16" x2="12.01" y2="16" />
+          </svg>
+          <span id="errorText"></span>
+        </div>
+
+        <div class="table-container">
+          <table>
+            <thead>
+              <tr>
+                <th style="width: 40px">
+                  <input type="checkbox" class="checkbox" id="selectAll" />
+                </th>
+                <th>Namespace</th>
+                <th>Name</th>
+                <th>Status</th>
+                <th>Hosts</th>
+                <th style="width: 80px">Routes</th>
+                <th style="width: 140px">Actions</th>
+              </tr>
+            </thead>
+            <tbody id="ingressTable">
+              <tr>
+                <td colspan="6">
+                  <div class="loading">
+                    <div class="spinner"></div>
+                    Loading ingresses...
+                  </div>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Routes View -->
+      <div id="routesView" class="card" style="display: none">
+        <div class="card-header">
+          <span class="card-title">Gateway API Resources</span>
+          <div class="toolbar">
+            <button class="btn btn-secondary" onclick="fetchRoutes()">
+              <svg
+                width="16"
+                height="16"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+              >
+                <path d="M23 4v6h-6M1 20v-6h6" />
+                <path
+                  d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"
+                />
+              </svg>
+              Refresh
+            </button>
+          </div>
+        </div>
+        <div id="routesContent" style="padding: 16px;">
+          <div class="loading">
+            <div class="spinner"></div>
+            Loading Gateway API resources...
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="modal" id="previewModal">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h2 id="previewTitle">Preview</h2>
+          <button class="modal-close" onclick="closeModal()">×</button>
+        </div>
+        <div class="modal-body">
+          <div
+            id="previewWarnings"
+            class="preview-warnings"
+            style="display: none"
+          >
+            <h4>
+              <svg
+                width="16"
+                height="16"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+              >
+                <path
+                  d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"
+                />
+                <line x1="12" y1="9" x2="12" y2="13" />
+                <line x1="12" y1="17" x2="12.01" y2="17" />
+              </svg>
+              Conversion Warnings
+            </h4>
+            <ul id="warningsList"></ul>
+          </div>
+          <div id="previewTabs" class="tabs" style="display: none"></div>
+          <pre id="previewYaml"><code></code></pre>
+        </div>
+        <div class="modal-footer">
+          <button
+            class="btn btn-secondary"
+            id="copyYamlBtn"
+            style="margin-right: auto"
+          >
+            <svg
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+              <path
+                d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"
+              />
+            </svg>
+            Copy YAML
+          </button>
+          <button class="btn btn-secondary" onclick="closeModal()">
+            Close
+          </button>
+          <button class="btn btn-primary" id="convertFromPreview">
+            <svg
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <path d="M23 4v6h-6M1 20v-6h6" />
+              <path
+                d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"
+              />
+            </svg>
+            Convert
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <div class="toast-container" id="toastContainer"></div>
+
+    <script>
+      let ingresses = [];
+      let selected = new Set();
+      let autoRefreshInterval;
+      let currentPreview = null;
+      let previewData = {};
+      let previewMode = "single";
+      let expandedWarnings = new Set();
+      let currentView = "ingresses";
+
+      // View switching
+      function switchView(view) {
+        currentView = view;
+        document
+          .querySelectorAll(".view-btn")
+          .forEach((btn) => btn.classList.remove("active"));
+        event.target.closest(".view-btn").classList.add("active");
+
+        document.getElementById("ingressesView").style.display =
+          view === "ingresses" ? "block" : "none";
+        document.getElementById("routesView").style.display =
+          view === "routes" ? "block" : "none";
+
+        if (view === "routes" && !routesData) {
+          fetchRoutes();
+        }
+      }
+
+      let routesData = null;
+
+      // Fetch routes
+      async function fetchRoutes() {
+        try {
+          const resp = await fetch("/api/routes");
+          if (!resp.ok) throw new Error("Failed to fetch routes");
+          routesData = await resp.json();
+
+          // Update count badge - count all Gateway API resources
+          const totalCount =
+            (routesData.gateways?.length || 0) +
+            (routesData.httpRoutes?.length || 0) +
+            (routesData.grpcRoutes?.length || 0) +
+            (routesData.backendTrafficPolicies?.length || 0) +
+            (routesData.securityPolicies?.length || 0) +
+            (routesData.clientTrafficPolicies?.length || 0);
+          document.getElementById("routeCount").textContent = totalCount;
+          renderGatewayResources();
+        } catch (e) {
+          showToast("Failed to load routes: " + e.message, "error");
+        }
+      }
+
+      // Render all Gateway API resources
+      function renderGatewayResources() {
+        const container = document.getElementById("routesContent");
+        if (!routesData) {
+          container.innerHTML =
+            '<div class="loading"><div class="spinner"></div>Loading...</div>';
+          return;
+        }
+
+        const sections = [
+          { key: "gateways", title: "Gateways", icon: "🌐" },
+          { key: "httpRoutes", title: "HTTPRoutes", icon: "🔀" },
+          { key: "grpcRoutes", title: "GRPCRoutes", icon: "📡" },
+          {
+            key: "backendTrafficPolicies",
+            title: "BackendTrafficPolicies",
+            icon: "⚙️",
+          },
+          { key: "securityPolicies", title: "SecurityPolicies", icon: "🔒" },
+          {
+            key: "clientTrafficPolicies",
+            title: "ClientTrafficPolicies",
+            icon: "📊",
+          },
+        ];
+
+        let html = "";
+        let hasAnyResources = false;
+
+        for (const section of sections) {
+          const items = routesData[section.key] || [];
+          if (items.length === 0) continue;
+          hasAnyResources = true;
+
+          html += `
+                <div class="resource-section">
+                    <div class="resource-section-header">
+                        <span class="resource-section-title">${
+                          section.title
+                        }</span>
+                        <span class="resource-section-count">${
+                          items.length
+                        }</span>
+                    </div>
+                    <table class="resource-table">
+                        <thead>
+                            <tr>
+                                <th>Namespace</th>
+                                <th>Name</th>
+                                <th>Status</th>
+                                ${
+                                  section.key !== "gateways"
+                                    ? "<th>Target/Gateway</th>"
+                                    : ""
+                                }
+                                <th>Created by KubeLB</th>
+                                <th style="width:100px">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${items
+                              .map((item) =>
+                                renderResourceRow(item, section.key),
+                              )
+                              .join("")}
+                        </tbody>
+                    </table>
+                </div>`;
+        }
+
+        if (!hasAnyResources) {
+          html = `<div class="empty-state">
+                    <svg viewBox="0 0 24 24" width="48" height="48" fill="none" stroke="currentColor" stroke-width="1.5">
+                        <circle cx="12" cy="12" r="3"/>
+                        <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4"/>
+                    </svg>
+                    <h3>No Gateway API Resources</h3>
+                    <p>Convert some ingresses to create Gateway API resources</p>
+                </div>`;
+        }
+
+        container.innerHTML = html;
+      }
+
+      function renderResourceRow(item, sectionKey) {
+        // For gateways without addresses, show as pending (provisioning)
+        const isGatewayWithoutIP = sectionKey === "gateways" && (!item.addresses || item.addresses.length === 0);
+
+        let statusClass;
+        if (isGatewayWithoutIP) {
+          statusClass = "badge-pending";
+        } else if (item.status === "Ready" || item.status === "Accepted") {
+          statusClass = "badge-converted";
+        } else if (item.status === "NotReady" || item.status === "NotAccepted") {
+          statusClass = "badge-failed";
+        } else {
+          statusClass = "badge-pending";
+        }
+
+        const isKubelbManaged = item.managedBy || item.sourceIngress;
+        const kubelbBadge = isKubelbManaged
+          ? `<span class="kubelb-badge">KubeLB</span>${
+              item.sourceIngress
+                ? ` <code style="font-size:0.75rem">${item.sourceIngress}</code>`
+                : ""
+            }`
+          : '<span style="color:var(--gray-400)">—</span>';
+
+        const targetCol =
+          sectionKey !== "gateways"
+            ? `<td>${
+                item.gateway
+                  ? `<code style="font-size:0.8rem">${item.gateway}</code>`
+                  : item.targetRef
+                  ? `<code style="font-size:0.8rem">${item.targetRef}</code>`
+                  : "—"
+              }</td>`
+            : "";
+
+        // Gateway-specific: show addresses or provisioning warning
+        let gatewayAddressInfo = "";
+        if (sectionKey === "gateways") {
+          if (item.addresses && item.addresses.length > 0) {
+            gatewayAddressInfo = `<div style="font-size:0.75rem;color:var(--success)">${item.addresses.join(", ")}</div>`;
+          } else {
+            gatewayAddressInfo = `<div style="font-size:0.75rem;color:var(--warning)">⏳ Waiting for LoadBalancer IP (may take 3-5 min)</div>`;
+          }
+        }
+
+        return `<tr>
+                <td><code style="font-size:0.85rem;color:var(--gray-600)">${
+                  item.namespace
+                }</code></td>
+                <td><strong>${item.name}</strong>${
+          item.hostnames?.length
+            ? `<div style="font-size:0.75rem;color:var(--gray-500)">${item.hostnames
+                .slice(0, 2)
+                .join(", ")}${item.hostnames.length > 2 ? "..." : ""}</div>`
+            : ""
+        }${gatewayAddressInfo}</td>
+                <td>
+                    <span class="badge ${statusClass}">${isGatewayWithoutIP ? "Provisioning" : item.status}</span>
+                    ${
+                      item.statusReason && !isGatewayWithoutIP
+                        ? `<span style="font-size:0.7rem;color:var(--gray-400);margin-left:4px">(${item.statusReason})</span>`
+                        : ""
+                    }
+                </td>
+                ${targetCol}
+                <td>${kubelbBadge}</td>
+                <td>
+                    <div style="display:flex;gap:4px">
+                        <button class="btn btn-sm btn-secondary" onclick="previewResource('${item.kind}', '${item.namespace}', '${item.name}')" title="View resource YAML">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+                                <circle cx="12" cy="12" r="3"/>
+                            </svg>
+                        </button>
+                        <button class="btn btn-sm" style="background:#fee2e2;color:#991b1b;border:1px solid #fecaca" onclick="deleteResource('${item.kind}', '${item.namespace}', '${item.name}')" title="Delete ${item.kind} resource">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <polyline points="3 6 5 6 21 6"/>
+                                <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+                            </svg>
+                        </button>
+                    </div>
+                </td>
+            </tr>`;
+      }
+
+      // Preview Gateway API resource
+      async function previewResource(kind, namespace, name) {
+        try {
+          const resp = await fetch(`/api/resources/${kind}/${namespace}/${name}`);
+          const data = await resp.json();
+          if (!resp.ok) throw new Error(data.error || "Failed to fetch resource");
+
+          previewMode = "resource";
+          currentPreview = { kind, namespace, name };
+          document.getElementById("previewTitle").textContent = `${kind}: ${namespace}/${name}`;
+
+          // Hide tabs for simple resource preview
+          document.getElementById("previewTabs").style.display = "none";
+          document.getElementById("previewWarnings").style.display = "none";
+          document.getElementById("previewYaml").textContent = data.yaml || "# No YAML";
+
+          // Hide convert button for resource preview
+          document.getElementById("convertFromPreview").style.display = "none";
+
+          document.getElementById("previewModal").classList.add("active");
+          document.querySelector(".modal-body").scrollTop = 0;
+          document.getElementById("previewYaml").scrollTop = 0;
+        } catch (e) {
+          showToast("Failed to load resource: " + e.message, "error");
+        }
+      }
+
+      // Delete Gateway API resource
+      async function deleteResource(kind, namespace, name) {
+        if (!confirm(`Delete ${kind} ${namespace}/${name}?\n\nThis action cannot be undone.`)) {
+          return;
+        }
+
+        try {
+          const resp = await fetch(`/api/resources/${kind}/${namespace}/${name}`, {
+            method: "DELETE",
+          });
+          const data = await resp.json();
+          if (!resp.ok) throw new Error(data.error || "Failed to delete resource");
+
+          showToast(`Deleted ${kind} ${namespace}/${name}`, "success");
+          await fetchRoutes();
+        } catch (e) {
+          showToast("Failed to delete: " + e.message, "error");
+        }
+      }
+
+      // Delete Ingress resource
+      async function deleteIngress(namespace, name) {
+        if (!confirm(`Delete Ingress ${namespace}/${name}?\n\nThis action cannot be undone.`)) {
+          return;
+        }
+
+        try {
+          const resp = await fetch(`/api/ingresses/${namespace}/${name}`, {
+            method: "DELETE",
+          });
+          const data = await resp.json();
+          if (!resp.ok) throw new Error(data.error || "Failed to delete ingress");
+
+          showToast(`Deleted Ingress ${namespace}/${name}`, "success");
+          await fetchIngresses();
+        } catch (e) {
+          showToast("Failed to delete: " + e.message, "error");
+        }
+      }
+
+      // Skip Ingress - marks it to be excluded from conversion
+      async function skipIngress(namespace, name) {
+        if (!confirm(`Skip Ingress ${namespace}/${name}?\n\nThis will mark the ingress to be excluded from future conversions.`)) {
+          return;
+        }
+
+        try {
+          const resp = await fetch(`/api/ingresses/${namespace}/${name}/skip`, {
+            method: "POST",
+          });
+          const data = await resp.json();
+          if (!resp.ok) throw new Error(data.error || "Failed to skip ingress");
+
+          showToast(`Skipped Ingress ${namespace}/${name}`, "success");
+          await fetchIngresses();
+        } catch (e) {
+          showToast("Failed to skip: " + e.message, "error");
+        }
+      }
+
+      // Toggle config panel
+      function toggleConfig() {
+        const panel = document.getElementById("configPanel");
+        panel.classList.toggle("visible");
+      }
+
+      // Toast notification
+      function showToast(message, type = "info") {
+        const container = document.getElementById("toastContainer");
+        const toast = document.createElement("div");
+        toast.className = `toast toast-${type}`;
+        toast.innerHTML = message;
+        container.appendChild(toast);
+        setTimeout(() => toast.remove(), 4000);
+      }
+
+      // Error banner
+      function showError(msg) {
+        const banner = document.getElementById("errorBanner");
+        document.getElementById("errorText").textContent = msg;
+        banner.classList.add("visible");
+      }
+      function hideError() {
+        document.getElementById("errorBanner").classList.remove("visible");
+      }
+
+      // Fetch ingresses
+      async function fetchIngresses() {
+        try {
+          const resp = await fetch("/api/ingresses");
+          if (!resp.ok) throw new Error("Failed to fetch");
+          const data = await resp.json();
+          ingresses = data.ingresses || [];
+          renderStats(data.summary);
+          renderTable();
+          renderConfig(data.config);
+          hideError();
+        } catch (e) {
+          showError("Failed to load ingresses: " + e.message);
+        }
+      }
+
+      // Render config
+      function renderConfig(config) {
+        if (!config) return;
+        const grid = document.getElementById("config-grid");
+        const items = [
+          { label: "Gateway", value: `${config.gatewayNamespace}/${config.gatewayName}` },
+          { label: "Gateway Class", value: config.gatewayClass },
+          { label: "Ingress Class", value: config.ingressClass || "(all)" },
+          { label: "Domain Replace", value: config.domainReplace || "—" },
+          { label: "Domain Suffix", value: config.domainSuffix || "—" },
+          { label: "Propagate External DNS Annotations", value: config.propagateExternalDns ? "Yes" : "No" },
+          { label: "Copy TLS Secrets", value: config.copyTlsSecrets ? "Yes" : "No" },
+          { label: "Envoy Gateway Features", value: config.disableEnvoyGatewayFeatures ? "Disabled" : "Enabled" },
+        ];
+        grid.innerHTML = items.map(item => `
+          <div class="config-item">
+            <span class="config-label">${item.label}:</span>
+            <span class="config-value">${item.value}</span>
+          </div>
+        `).join("");
+      }
+
+      // Render stats
+      function renderStats(s) {
+        document.getElementById("stats").innerHTML = `
+                <div class="stat"><div class="stat-value">${s.total}</div><div class="stat-label">Total</div></div>
+                <div class="stat converted"><div class="stat-value">${s.converted}</div><div class="stat-label">Converted</div></div>
+                <div class="stat partial"><div class="stat-value">${s.partial}</div><div class="stat-label">Partial</div></div>
+                <div class="stat pending"><div class="stat-value">${s.pending}</div><div class="stat-label">Pending</div></div>
+                <div class="stat failed"><div class="stat-value">${s.failed}</div><div class="stat-label">Failed</div></div>
+                <div class="stat skipped"><div class="stat-value">${s.skipped}</div><div class="stat-label">Skipped</div></div>
+                <div class="stat new"><div class="stat-value">${s.new}</div><div class="stat-label">New</div></div>
+            `;
+      }
+
+      // Format hosts
+      function formatHosts(hosts) {
+        if (!hosts || hosts.length === 0)
+          return '<span style="color:var(--gray-400)">—</span>';
+        const maxShow = 2;
+        const shown = hosts
+          .slice(0, maxShow)
+          .map((h) => `<span class="host-tag">${h}</span>`)
+          .join("");
+        const more =
+          hosts.length > maxShow
+            ? `<span class="host-more">+${hosts.length - maxShow} more</span>`
+            : "";
+        return shown + more;
+      }
+
+      // Render table
+      function renderTable() {
+        const tbody = document.getElementById("ingressTable");
+        if (ingresses.length === 0) {
+          tbody.innerHTML = `<tr><td colspan="7">
+                    <div class="empty-state">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                            <path d="M9 17H7A5 5 0 0 1 7 7h2m6 10h2a5 5 0 0 0 0-10h-2m-7 5h8"/>
+                        </svg>
+                        <h3>No Ingresses Found</h3>
+                        <p>No Ingress resources found in the cluster</p>
+                    </div>
+                </td></tr>`;
+          return;
+        }
+
+        let html = "";
+        for (const ing of ingresses) {
+          const key = `${ing.namespace}/${ing.name}`;
+          const routes =
+            (ing.httproutes?.length || 0) + (ing.grpcroutes?.length || 0);
+          const canConvert = ing.status === "new" || ing.status === "failed";
+          const hasWarnings = ing.warnings && ing.warnings.length > 0;
+          const isExpanded = expandedWarnings.has(key);
+
+          html += `<tr>
+                    <td><input type="checkbox" class="checkbox row-check" data-key="${key}" ${
+            selected.has(key) ? "checked" : ""
+          } ${canConvert ? "" : "disabled"}></td>
+                    <td><code style="font-size:0.85rem;color:var(--gray-600)">${
+                      ing.namespace
+                    }</code></td>
+                    <td>
+                        <span class="clickable" onclick="showPreview('${
+                          ing.namespace
+                        }', '${ing.name}')">${ing.name}</span>
+                        ${
+                          hasWarnings
+                            ? `<button class="warning-badge" onclick="toggleWarnings('${key}', event)" title="Click to ${
+                                isExpanded ? "hide" : "show"
+                              } warnings">
+                            <svg class="warning-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+                            ${ing.warnings.length}
+                        </button>`
+                            : ""
+                        }
+                    </td>
+                    <td><span class="badge badge-${ing.status}">${
+            ing.status
+          }</span></td>
+                    <td class="hosts" title="${(ing.hosts || []).join(
+                      ", ",
+                    )}">${formatHosts(ing.hosts)}</td>
+                    <td>${
+                      routes > 0
+                        ? routes
+                        : '<span style="color:var(--gray-400)">—</span>'
+                    }</td>
+                    <td>
+                        <div style="display:flex;gap:4px">
+                            <button class="btn btn-sm btn-secondary" onclick="showPreview('${ing.namespace}', '${ing.name}')" title="Preview conversion output">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+                                    <circle cx="12" cy="12" r="3"/>
+                                </svg>
+                            </button>
+                            ${canConvert ? `<button class="btn btn-sm" style="background:#f3f4f6;color:#6b7280;border:1px solid #d1d5db" onclick="skipIngress('${ing.namespace}', '${ing.name}')" title="Exclude from conversion">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <circle cx="12" cy="12" r="10"/>
+                                    <line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/>
+                                </svg>
+                            </button>` : ''}
+                            <button class="btn btn-sm" style="background:#fee2e2;color:#991b1b;border:1px solid #fecaca" onclick="deleteIngress('${ing.namespace}', '${ing.name}')" title="Delete ingress resource">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <polyline points="3 6 5 6 21 6"/>
+                                    <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+                                </svg>
+                            </button>
+                        </div>
+                    </td>
+                </tr>`;
+
+          if (hasWarnings && isExpanded) {
+            html += `<tr class="warning-row" data-warning-key="${key}">
+                        <td colspan="7">
+                            <div class="warning-content">
+                                <ul>${ing.warnings
+                                  .map((w) => `<li>${escapeHtml(w)}</li>`)
+                                  .join("")}</ul>
+                            </div>
+                        </td>
+                    </tr>`;
+          }
+        }
+
+        tbody.innerHTML = html;
+
+        document.querySelectorAll(".row-check").forEach((cb) => {
+          cb.addEventListener("change", (e) => {
+            if (e.target.checked) selected.add(e.target.dataset.key);
+            else selected.delete(e.target.dataset.key);
+            updateSelectedCount();
+          });
+        });
+      }
+
+      function escapeHtml(text) {
+        const div = document.createElement("div");
+        div.textContent = text;
+        return div.innerHTML;
+      }
+
+      function toggleWarnings(key, event) {
+        event.stopPropagation();
+        if (expandedWarnings.has(key)) {
+          expandedWarnings.delete(key);
+        } else {
+          expandedWarnings.add(key);
+        }
+        renderTable();
+      }
+
+      function updateSelectedCount() {
+        const count = selected.size;
+        document.getElementById("selectedCount").textContent =
+          count > 0 ? `${count} selected` : "";
+        document.getElementById("convertBtn").disabled = count === 0;
+        document.getElementById("previewBtn").disabled = count === 0;
+      }
+
+      // Show preview for single ingress
+      async function showPreview(namespace, name) {
+        try {
+          const resp = await fetch(
+            `/api/ingresses/${namespace}/${name}/preview`,
+          );
+          const data = await resp.json();
+          if (!resp.ok)
+            throw new Error(data.error || "Failed to fetch preview");
+
+          previewMode = "single";
+          currentPreview = { namespace, name, data };
+          document.getElementById(
+            "previewTitle",
+          ).textContent = `${namespace}/${name}`;
+
+          // Tabs
+          const tabsEl = document.getElementById("previewTabs");
+          tabsEl.innerHTML = `
+                    <button class="tab-btn active" onclick="switchTab('original', this)">Original Ingress</button>
+                    <button class="tab-btn" onclick="switchTab('converted', this)">Converted Resources</button>
+                `;
+          tabsEl.style.display = "flex";
+
+          // Default to original
+          document.getElementById("previewYaml").textContent =
+            data.originalYaml || "# No original YAML";
+
+          // Warnings
+          const warningsEl = document.getElementById("previewWarnings");
+          const warningsList = document.getElementById("warningsList");
+          if (data.warnings?.length > 0) {
+            warningsList.innerHTML = data.warnings
+              .map((w) => `<li>${escapeHtml(w)}</li>`)
+              .join("");
+            warningsEl.style.display = "block";
+          } else {
+            warningsEl.style.display = "none";
+          }
+
+          document.getElementById("previewModal").classList.add("active");
+          document.querySelector(".modal-body").scrollTop = 0;
+          document.getElementById("previewYaml").scrollTop = 0;
+        } catch (e) {
+          showToast("Failed to load preview: " + e.message, "error");
+        }
+      }
+
+      function switchTab(tab, btn) {
+        document
+          .querySelectorAll("#previewTabs .tab-btn")
+          .forEach((b) => b.classList.remove("active"));
+        btn.classList.add("active");
+
+        if (previewMode === "single" && currentPreview?.data) {
+          if (tab === "original") {
+            document.getElementById("previewYaml").textContent =
+              currentPreview.data.originalYaml || "# No original YAML";
+          } else {
+            document.getElementById("previewYaml").textContent =
+              currentPreview.data.convertedYaml || "# No resources generated";
+          }
+        } else if (previewMode === "batch") {
+          if (tab === "allOriginal") {
+            document.getElementById("previewYaml").textContent =
+              currentPreview.allOriginal || "# No YAML";
+          } else if (tab === "allConverted") {
+            document.getElementById("previewYaml").textContent =
+              currentPreview.allConverted || "# No resources generated";
+          } else if (previewData[tab]) {
+            const data = previewData[tab];
+            document.getElementById(
+              "previewYaml",
+            ).textContent = `# Original Ingress\n${data.originalYaml}\n\n# Converted Resources\n${data.convertedYaml}`;
+          }
+        }
+        document.querySelector(".modal-body").scrollTop = 0;
+        document.getElementById("previewYaml").scrollTop = 0;
+      }
+
+      function closeModal() {
+        document.getElementById("previewModal").classList.remove("active");
+        document.getElementById("convertFromPreview").style.display = "";
+        currentPreview = null;
+      }
+
+      // Preview selected ingresses - uses batch preview API for combined Gateway
+      async function previewSelected() {
+        if (selected.size === 0) return;
+
+        const btn = document.getElementById("previewBtn");
+        btn.disabled = true;
+        const originalHtml = btn.innerHTML;
+        btn.innerHTML =
+          '<div class="spinner" style="width:16px;height:16px;border-width:2px"></div> Loading...';
+
+        try {
+          const keys = Array.from(selected);
+
+          // Fetch individual original YAMLs for the "Original" tabs
+          previewData = {};
+          let allOriginal = "";
+          for (const key of keys) {
+            const [namespace, name] = key.split("/");
+            try {
+              const resp = await fetch(`/api/ingresses/${namespace}/${name}/preview`);
+              const data = await resp.json();
+              if (resp.ok) {
+                previewData[key] = data;
+                allOriginal += `---\n# Source: ${key}\n${data.originalYaml}\n`;
+              }
+            } catch (e) {
+              // Ignore errors for original YAML fetch
+            }
+          }
+
+          // Fetch combined preview with single Gateway
+          const ingressList = keys.map((key) => {
+            const [namespace, name] = key.split("/");
+            return { namespace, name };
+          });
+
+          const batchResp = await fetch("/api/ingresses/preview", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ ingresses: ingressList }),
+          });
+
+          const batchData = await batchResp.json();
+          if (!batchResp.ok) {
+            throw new Error(batchData.error || "Failed to generate batch preview");
+          }
+
+          previewMode = "batch";
+          currentPreview = { keys, allOriginal, allConverted: batchData.convertedYaml };
+          document.getElementById("previewTitle").textContent = `Preview: ${keys.length} ingress(es)`;
+
+          // Tabs - show original ingresses first
+          const tabsEl = document.getElementById("previewTabs");
+          let tabsHtml = `
+                    <button class="tab-btn active" onclick="switchTab('allOriginal', this)">Original Ingresses</button>
+                    <button class="tab-btn" onclick="switchTab('allConverted', this)">Combined Resources</button>
+                `;
+          if (keys.length > 1) {
+            tabsHtml += '<div class="tab-divider"></div>';
+            tabsHtml += keys
+              .map((k) => {
+                const name = k.split("/")[1];
+                return `<button class="tab-btn" onclick="switchTab('${k}', this)">${name}</button>`;
+              })
+              .join("");
+          }
+          tabsEl.innerHTML = tabsHtml;
+          tabsEl.style.display = "flex";
+
+          // Default to original ingresses
+          document.getElementById("previewYaml").textContent =
+            allOriginal || "# No YAML";
+
+          // Warnings
+          const warningsEl = document.getElementById("previewWarnings");
+          const warningsList = document.getElementById("warningsList");
+          const allWarnings = batchData.warnings || [];
+          if (allWarnings.length > 0) {
+            warningsList.innerHTML = allWarnings
+              .map((w) => `<li>${escapeHtml(w)}</li>`)
+              .join("");
+            warningsEl.style.display = "block";
+          } else {
+            warningsEl.style.display = "none";
+          }
+
+          document.getElementById("previewModal").classList.add("active");
+          document.querySelector(".modal-body").scrollTop = 0;
+          document.getElementById("previewYaml").scrollTop = 0;
+        } catch (e) {
+          showToast("Failed to load previews: " + e.message, "error");
+        } finally {
+          btn.disabled = false;
+          btn.innerHTML = originalHtml;
+          updateSelectedCount();
+        }
+      }
+
+      // Convert selected
+      async function convertSelected() {
+        if (selected.size === 0) return;
+
+        const btn = document.getElementById("convertBtn");
+        btn.disabled = true;
+        const originalHtml = btn.innerHTML;
+        btn.innerHTML =
+          '<div class="spinner" style="width:16px;height:16px;border-width:2px"></div> Converting...';
+
+        try {
+          const ingressList = Array.from(selected).map((key) => {
+            const [namespace, name] = key.split("/");
+            return { namespace, name };
+          });
+
+          const resp = await fetch("/api/ingresses/convert", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ ingresses: ingressList }),
+          });
+
+          const data = await resp.json();
+          if (!resp.ok) throw new Error(data.error || "Conversion failed");
+
+          selected.clear();
+          updateSelectedCount();
+          await fetchIngresses();
+
+          const msg = [];
+          if (data.converted?.length)
+            msg.push(`${data.converted.length} converted`);
+          if (data.skipped?.length) msg.push(`${data.skipped.length} skipped`);
+          if (Object.keys(data.failed || {}).length)
+            msg.push(`${Object.keys(data.failed).length} failed`);
+          showToast(
+            msg.join(", ") || "Conversion complete",
+            data.failed && Object.keys(data.failed).length
+              ? "error"
+              : "success",
+          );
+        } catch (e) {
+          showToast("Conversion failed: " + e.message, "error");
+        } finally {
+          btn.disabled = false;
+          btn.innerHTML = originalHtml;
+          updateSelectedCount();
+        }
+      }
+
+      // Convert from preview modal
+      async function convertFromPreview() {
+        if (!currentPreview) return;
+
+        const btn = document.getElementById("convertFromPreview");
+        btn.disabled = true;
+        const originalHtml = btn.innerHTML;
+        btn.innerHTML =
+          '<div class="spinner" style="width:16px;height:16px;border-width:2px"></div>';
+
+        try {
+          if (previewMode === "batch") {
+            const ingressList = currentPreview.keys.map((key) => {
+              const [namespace, name] = key.split("/");
+              return { namespace, name };
+            });
+
+            const resp = await fetch("/api/ingresses/convert", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ ingresses: ingressList }),
+            });
+
+            const data = await resp.json();
+            if (!resp.ok) throw new Error(data.error || "Conversion failed");
+
+            selected.clear();
+            updateSelectedCount();
+            closeModal();
+            await fetchIngresses();
+
+            const msg = [];
+            if (data.converted?.length)
+              msg.push(`${data.converted.length} converted`);
+            if (data.skipped?.length)
+              msg.push(`${data.skipped.length} skipped`);
+            if (Object.keys(data.failed || {}).length)
+              msg.push(`${Object.keys(data.failed).length} failed`);
+            showToast(msg.join(", ") || "Conversion complete", "success");
+          } else {
+            const { namespace, name } = currentPreview;
+            const resp = await fetch(
+              `/api/ingresses/${namespace}/${name}/convert`,
+              { method: "POST" },
+            );
+            const data = await resp.json();
+            if (!resp.ok) throw new Error(data.error || "Conversion failed");
+
+            closeModal();
+            await fetchIngresses();
+            showToast("Converted successfully", "success");
+          }
+        } catch (e) {
+          showToast("Conversion failed: " + e.message, "error");
+        } finally {
+          btn.disabled = false;
+          btn.innerHTML = originalHtml;
+        }
+      }
+
+      // Copy YAML
+      function copyYaml() {
+        const yaml = document.getElementById("previewYaml").textContent;
+        navigator.clipboard
+          .writeText(yaml)
+          .then(() => {
+            showToast("YAML copied to clipboard", "success");
+          })
+          .catch((err) => {
+            showToast("Failed to copy: " + err.message, "error");
+          });
+      }
+
+      // Auto refresh - refreshes both Ingresses and Gateway API resources
+      function setupAutoRefresh() {
+        const checkbox = document.getElementById("autoRefresh");
+        const toggle = () => {
+          clearInterval(autoRefreshInterval);
+          if (checkbox.checked) {
+            autoRefreshInterval = setInterval(() => {
+              fetchIngresses();
+              fetchRoutes();
+            }, 5000);
+          }
+        };
+        checkbox.addEventListener("change", toggle);
+        toggle();
+      }
+
+      // Event listeners
+      document.getElementById("selectAll").addEventListener("change", (e) => {
+        document.querySelectorAll(".row-check:not(:disabled)").forEach((cb) => {
+          cb.checked = e.target.checked;
+          if (e.target.checked) selected.add(cb.dataset.key);
+          else selected.delete(cb.dataset.key);
+        });
+        updateSelectedCount();
+      });
+
+      document
+        .getElementById("previewBtn")
+        .addEventListener("click", previewSelected);
+      document
+        .getElementById("convertBtn")
+        .addEventListener("click", convertSelected);
+      document
+        .getElementById("refreshBtn")
+        .addEventListener("click", () => {
+          fetchIngresses();
+          fetchRoutes();
+        });
+      document
+        .getElementById("convertFromPreview")
+        .addEventListener("click", convertFromPreview);
+      document
+        .getElementById("copyYamlBtn")
+        .addEventListener("click", copyYaml);
+
+      document.getElementById("previewModal").addEventListener("click", (e) => {
+        if (e.target.classList.contains("modal")) closeModal();
+      });
+
+      document.addEventListener("keydown", (e) => {
+        if (e.key === "Escape") closeModal();
+      });
+
+      // Init
+      fetchIngresses();
+      fetchRoutes(); // Also fetch routes count
+      setupAutoRefresh();
+    </script>
+
+    <footer class="footer">
+      <span>powered by</span>
+      <a href="https://www.kubermatic.com" target="_blank" rel="noopener noreferrer" class="footer-link">
+        <svg class="kubermatic-logo-icon" viewBox="0 0 128 112" fill="currentColor">
+          <path d="M78 .8v30.3L38 50.8V20.6zM128 20.6v30.2L88 31.1V.8zM78 80v30.3L38 90.6V60.3zM128 60.3v30.3l-40 19.7V80zM28 20.8L0 1.2v110l28-19.7z"/>
+        </svg>
+        <span class="footer-brand">Kubermatic</span>
+      </a>
+    </footer>
+  </body>
+</html>

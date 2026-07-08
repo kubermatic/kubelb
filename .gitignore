@@ -34,3 +34,5 @@ ai/
 pr-reviews/
 docs/plans/
 docs/*/plans/
+# Local worktrees
+.worktrees/

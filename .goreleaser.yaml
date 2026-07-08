@@ -24,6 +24,7 @@ env:
 before:
   hooks:
     - go mod tidy
+    - sh -c "cd cli && go mod tidy"
 
 builds:
   # kubelb manager binary
@@ -58,6 +59,36 @@ builds:
       - -X 'k8c.io/kubelb/internal/versioninfo.GitVersion={{ .Version }}'
       - -X 'k8c.io/kubelb/internal/versioninfo.GitCommit={{ .Commit }}'
       - -X 'k8c.io/kubelb/internal/versioninfo.BuildDate={{ .Date }}'
+    mod_timestamp: "{{ .CommitTimestamp }}"
+    flags:
+      - -trimpath
+
+  # CLI binary (nested module cli/, shipped as `kubelb`)
+  - id: kubelb-cli
+    dir: cli
+    main: .
+    binary: kubelb
+    goos:
+      - linux
+      - windows
+      - darwin
+    goarch:
+      - amd64
+      - arm64
+      - arm
+    goarm:
+      - "6"
+      - "7"
+    ignore:
+      - goos: windows
+        goarch: arm64
+      - goos: windows
+        goarch: arm
+    ldflags:
+      - -s -w
+      - -X 'k8c.io/kubelb/cli/cmd.gitVersion={{ .Version }}'
+      - -X 'k8c.io/kubelb/cli/cmd.gitCommit={{ .Commit }}'
+      - -X 'k8c.io/kubelb/cli/cmd.buildDate={{ .Date }}'
     mod_timestamp: "{{ .CommitTimestamp }}"
     flags:
       - -trimpath
@@ -101,6 +132,27 @@ archives:
       - README*
       - SBOM.md
 
+  - id: kubelb-cli-archive
+    builds:
+      - kubelb-cli
+    formats:
+      - tar.gz
+    format_overrides:
+      - goos: windows
+        formats:
+          - zip
+    name_template: >-
+      kubelb-cli_
+      {{- .Version }}_
+      {{- .Os }}_
+      {{- .Arch }}
+      {{- if .Arm }}v{{ .Arm }}{{ end }}
+    files:
+      - LICENSE*
+      - SBOM.md
+      - src: cli/README.md
+        strip_parent: true
+
 sboms:
   # SBOM for binary archives
   - id: archive-sbom
@@ -122,6 +174,13 @@ sboms:
       - ccm
     documents:
       - "{{ .Binary }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}.sbom.spdx.json"
+
+  - id: kubelb-cli-sbom
+    artifacts: binary
+    ids:
+      - kubelb-cli
+    documents:
+      - "kubelb-cli_{{ .Version }}_{{ .Os }}_{{ .Arch }}{{ if .Arm }}v{{ .Arm }}{{ end }}.sbom.spdx.json"
 
 # Checksum signing with cosign (keyless)
 # Signs only checksums.txt - users verify checksums against this signed file
@@ -299,6 +358,18 @@ release:
 
     # kubelb-addons
     helm pull oci://quay.io/kubermatic/helm-charts/kubelb-addons --version {{ .Env.KUBELB_ADDONS_VERSION }}
+    ```
+
+    </details>
+
+    <details>
+    <summary><b>KubeLB CLI</b></summary>
+
+    Download the archive for your platform from the release assets. The binary is named `kubelb`.
+
+    ```bash
+    curl -LO https://github.com/kubermatic/kubelb/releases/download/{{ .Tag }}/kubelb-cli_{{ .Version }}_linux_amd64.tar.gz
+    tar -xzf kubelb-cli_{{ .Version }}_linux_amd64.tar.gz kubelb
     ```
 
     </details>

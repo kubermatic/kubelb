@@ -20,6 +20,7 @@ Each release includes SBOM files as downloadable assets:
 # Binary SBOMs
 kubelb_<version>_<os>_<arch>.sbom.spdx.json
 ccm_<version>_<os>_<arch>.sbom.spdx.json
+kubelb-cli_<version>_<os>_<arch>.sbom.spdx.json
 
 # Archive SBOMs
 kubelb_<version>_<os>_<arch>.tar.gz.sbom.spdx.json

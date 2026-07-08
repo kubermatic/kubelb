@@ -75,6 +75,69 @@ presubmits:
               memory: 16Gi
               cpu: 4
 
+  - name: pull-kubelb-cli-lint
+    run_if_changed: "^cli/"
+    decorate: true
+    clone_uri: "ssh://git@github.com/kubermatic/kubelb.git"
+    labels:
+      preset-goproxy: "true"
+    spec:
+      containers:
+        - image: golangci/golangci-lint:v2.10.1
+          command:
+            - bash
+          args:
+            - -c
+            - |
+              make download-gocache
+              make lint-cli
+          resources:
+            requests:
+              cpu: 4
+              memory: 6Gi
+
+  - name: pull-kubelb-cli-unit-tests
+    run_if_changed: "^(cli/|api/)"
+    decorate: true
+    clone_uri: "ssh://git@github.com/kubermatic/kubelb.git"
+    labels:
+      preset-goproxy: "true"
+    spec:
+      containers:
+        - image: golang:1.26.5
+          command:
+            - bash
+          args:
+            - -c
+            - |
+              make download-gocache
+              make test-cli
+          resources:
+            requests:
+              memory: 4Gi
+              cpu: 1
+
+  - name: pull-kubelb-cli-build
+    run_if_changed: "^(cli/|api/)"
+    decorate: true
+    clone_uri: "ssh://git@github.com/kubermatic/kubelb.git"
+    labels:
+      preset-goproxy: "true"
+    spec:
+      containers:
+        - image: golang:1.26.5
+          command:
+            - bash
+          args:
+            - -c
+            - |
+              make download-gocache
+              make build-cli
+          resources:
+            requests:
+              memory: 2Gi
+              cpu: 2
+
   - name: pull-kubelb-e2e-tests
     always_run: false
     run_if_changed: "api/|cmd/|internal/|test/e2e/|go.mod|go.sum"
@@ -143,7 +206,7 @@ presubmits:
               cpu: 4
 
   - name: pull-kubelb-gorelease-verify
-    run_if_changed: "^(\\.goreleaser\\.ya?ml|go\\.(mod|sum))$|Dockerfile|\\.dockerfile$"
+    run_if_changed: "^(\\.goreleaser\\.ya?ml|(cli/)?go\\.(mod|sum))$|Dockerfile|\\.dockerfile$"
     decorate: true
     clone_uri: "ssh://git@github.com/kubermatic/kubelb.git"
     labels:

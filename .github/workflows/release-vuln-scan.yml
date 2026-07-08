@@ -24,7 +24,7 @@ jobs:
           go-version-file: go.mod
 
       - name: Build binaries
-        run: make build
+        run: make build build-cli
 
       - name: Build Docker images
         run: |
@@ -43,4 +43,7 @@ jobs:
             trivy image --exit-code 1 --severity HIGH,CRITICAL --ignore-unfixed \
               --format table "${img}" || EXIT_CODE=1
           done
+          echo "=== Scanning CLI binary ==="
+          trivy rootfs --exit-code 1 --severity HIGH,CRITICAL --ignore-unfixed \
+            --format table cli/bin/kubelb || EXIT_CODE=1
           exit $EXIT_CODE

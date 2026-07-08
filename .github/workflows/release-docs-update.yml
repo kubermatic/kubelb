@@ -83,6 +83,7 @@ jobs:
           sparse-checkout: |
             hack/release
             go.mod
+            cli/docs/cli
 
       - name: Setup Go
         uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
@@ -231,6 +232,25 @@ jobs:
           done
 
           echo "::notice::Bumped kubelb-context versions to ${VERSION} in ${UPDATED} file(s)"
+
+      - name: Sync CLI reference docs
+        env:
+          MINOR: ${{ inputs.minor }}
+        run: |
+          # CLI command reference is generated in the kubelb repo
+          # (make update-cli-docs -> cli/docs/cli) and mirrored into the
+          # docs CLI section. Older release branches predate the CLI merge
+          # and have no cli/ directory — skip instead of failing.
+          SRC="kubelb-ce/cli/docs/cli"
+          DEST="content/kubelb/${MINOR}/cli/references/commands"
+          if [ ! -d "$SRC" ]; then
+            echo "::notice::${SRC} not present on release/${MINOR}; skipping CLI docs sync"
+            exit 0
+          fi
+          mkdir -p "$DEST"
+          rm -f "${DEST}"/kubelb*.md
+          cp "${SRC}"/kubelb*.md "$DEST"/
+          echo "::notice::Synced $(ls "$SRC"/kubelb*.md | wc -l) CLI reference pages to ${DEST}"
 
       - name: Replace helm values tables between marker comments
         env:
