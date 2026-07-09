@@ -7,7 +7,7 @@ dependencies:
   version: 1.7.2
 - name: cert-manager
   repository: oci://quay.io/jetstack/charts
-  version: v1.20.2
+  version: 1.21.0
 - name: external-dns
   repository: https://kubernetes-sigs.github.io/external-dns
   version: 1.20.0
@@ -20,5 +20,5 @@ dependencies:
 - name: agentgateway
   repository: oci://cr.agentgateway.dev/charts
   version: v1.1.0
-digest: sha256:995dcc8928f683afcc9595f8321a9c9af0ccf3ef3fb3c48ddbdfba3dc9b32375
-generated: "2026-04-22T10:05:37.704831+05:00"
+digest: sha256:280d9b205e95405f1cd26bac3634cf8144cdd0e650900b28c058d127e6b4fb97
+generated: "2026-07-09T07:54:06.856707105Z"
