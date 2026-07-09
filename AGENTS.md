@@ -8,12 +8,30 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 make build                    # Build all binaries (kubelb-manager, ccm)
 make build-kubelb             # Build manager only
 make build-ccm                # Build CCM only
+make build-cli                # Build CLI (cli/bin/kubelb)
 make lint                     # Run golangci-lint
 make fmt vet                  # Format and vet
 make test                     # Unit tests with envtest
+make test-cli lint-cli        # CLI module tests and lint
 make manifests generate       # Generate CRDs, RBAC, DeepCopy
 make update-codegen           # Full code generation pipeline
+make update-cli-docs          # Regenerate CLI reference docs (cli/docs/cli)
 ```
+
+## CLI
+
+`cli/` is a **nested Go module** (`k8c.io/kubelb/cli`) with a `replace
+k8c.io/kubelb => ../` so it always builds against the in-tree API. It is
+binary-only (nobody imports it as a library) and keeps cobra +
+`envoyproxy/gateway` out of the manager/ccm dependency tree. Update both
+`go.mod` files when touching shared deps (`make go-mod-tidy` handles both).
+
+- Layout: `cli/main.go`, `cli/cmd/` (cobra commands), `cli/internal/`.
+- Edition detection: at startup the CLI auto-detects CE vs EE (TenantState,
+  falling back to the tunnel CRD) and loads types from `api/{ce,ee}`.
+- Local build outputs `cli/bin/kubelb`; releases ship it as `kubelb` in the
+  same GitHub release as the manager/ccm artifacts, versioned with the
+  KubeLB release tag.
 
 ## Local Development
 

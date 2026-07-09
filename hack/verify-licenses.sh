@@ -26,3 +26,10 @@ go mod vendor
 echodate "Checking licenses..."
 wwhrd check -q
 echodate "Check successful."
+
+cd cli
+go mod vendor
+
+echodate "Checking CLI licenses..."
+wwhrd check -q -f ../.wwhrd.yml
+echodate "Check successful."

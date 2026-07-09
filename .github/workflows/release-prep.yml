@@ -170,7 +170,7 @@ jobs:
         env:
           KUBELB_EE_PATH: /tmp/kubelb-ee
         run: |
-          make helm-lint helm-dependency-update update-codegen
+          make helm-lint helm-dependency-update update-codegen update-cli-docs
           ./hack/release/generate-docs.sh --ee-only
 
       - name: Generate release notes
@@ -221,7 +221,7 @@ jobs:
           fi
 
       - name: Validate
-        run: make lint build
+        run: make lint build test-cli
 
       - name: Create prep branch and PR
         env:

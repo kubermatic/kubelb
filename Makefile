@@ -122,9 +122,11 @@ yamllint:  ## Run yamllint against code.
 
 check-dependencies: ## Verify go.mod.
 	go mod verify
+	cd cli && go mod verify
 
 go-mod-tidy:
 	go mod tidy
+	cd cli && go mod tidy
 
 verify-boilerplate:  ## Run verify-boilerplate code.
 	./hack/verify-boilerplate.sh
@@ -155,6 +157,22 @@ build-%: fmt vet ## Build manager binary.
 		$(if $(TAGS),-tags $(TAGS),) \
 		-ldflags "$(LDFLAGS)" \
 		-o bin/$* cmd/$*/main.go
+
+.PHONY: build-cli
+build-cli: ## Build CLI binary (cli/bin/kubelb).
+	@$(MAKE) -C cli build
+
+.PHONY: test-cli
+test-cli: ## Run CLI unit tests.
+	@$(MAKE) -C cli test
+
+.PHONY: lint-cli
+lint-cli: ## Run golangci-lint against the CLI module.
+	@$(MAKE) -C cli lint
+
+.PHONY: update-cli-docs
+update-cli-docs: build-cli ## Regenerate CLI reference docs (cli/docs/cli).
+	@$(MAKE) -C cli update-docs
 
 .PHONY: e2e-binary-kubelb
 e2e-binary-kubelb: ## Build kubelb e2e binary only (linux/amd64, reproducible ldflags)

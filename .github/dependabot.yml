@@ -3,7 +3,9 @@ version: 2
 updates:
   # Go modules
   - package-ecosystem: "gomod"
-    directory: "/"
+    directories:
+      - "/"
+      - "/cli"
     schedule:
       interval: "weekly"
       day: "monday"
