@@ -22,7 +22,7 @@ dependencies:
   - name: cert-manager
     repository: oci://quay.io/jetstack/charts
     condition: cert-manager.enabled
-    version: v1.20.2
+    version: 1.21.0
   - name: external-dns
     repository: https://kubernetes-sigs.github.io/external-dns
     condition: external-dns.enabled
