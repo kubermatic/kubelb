@@ -120,6 +120,12 @@ type EnvoyProxy struct {
 	// to enable metrics scraping by Prometheus Operator.
 	// +optional
 	PodMonitor *EnvoyProxyPodMonitor `json:"podMonitor,omitempty"`
+
+	// HeaderLimits configures the client header size and count limits for the
+	// KubeLB-managed Envoy Proxy. Unset fields default to Envoy's maximum so the
+	// managed proxy never rejects headers that the edge proxy already accepted.
+	// +optional
+	HeaderLimits *EnvoyProxyHeaderLimits `json:"headerLimits,omitempty"`
 }
 
 // EnvoyProxyPodMonitor defines the PodMonitor configuration for Envoy Proxy
@@ -127,6 +133,31 @@ type EnvoyProxyPodMonitor struct {
 	// Enabled controls whether a PodMonitor is created for Envoy Proxy pods.
 	// +optional
 	Enabled bool `json:"enabled,omitempty"`
+}
+
+// EnvoyProxyHeaderLimits configures the client header size and count limits for
+// the KubeLB-managed Envoy Proxy. Envoy rejects requests whose headers exceed
+// its 60 KiB default with HTTP 431; these fields raise that ceiling.
+type EnvoyProxyHeaderLimits struct {
+	// MaxRequestHeadersKb is the maximum request header block size in KiB.
+	// Envoy's default is 60; defaults to 8192 (Envoy's maximum) when unset.
+	// +optional
+	// +kubebuilder:validation:Minimum=1
+	// +kubebuilder:validation:Maximum=8192
+	MaxRequestHeadersKb *uint32 `json:"maxRequestHeadersKb,omitempty"`
+
+	// MaxRequestHeadersCount is the maximum number of request headers.
+	// Envoy's default is 100; defaults to 4096 when unset.
+	// +optional
+	// +kubebuilder:validation:Minimum=1
+	MaxRequestHeadersCount *uint32 `json:"maxRequestHeadersCount,omitempty"`
+
+	// MaxResponseHeadersKb is the maximum upstream response header block size in KiB.
+	// Envoy's default is 60; defaults to 8192 (Envoy's maximum) when unset.
+	// +optional
+	// +kubebuilder:validation:Minimum=1
+	// +kubebuilder:validation:Maximum=8192
+	MaxResponseHeadersKb *uint32 `json:"maxResponseHeadersKb,omitempty"`
 }
 
 // EnvoyProxyOverloadManager defines the overload manager configuration for Envoy XDS

@@ -22,8 +22,10 @@ import (
 
 	envoyCluster "github.com/envoyproxy/go-control-plane/envoy/config/cluster/v3"
 	envoyListener "github.com/envoyproxy/go-control-plane/envoy/config/listener/v3"
+	envoyHttpManager "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/network/http_connection_manager/v3"
 	envoyTcpProxy "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/network/tcp_proxy/v3"
 	envoyUdpProxy "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/udp/udp_proxy/v3"
+	envoyUpstreams "github.com/envoyproxy/go-control-plane/envoy/extensions/upstreams/http/v3"
 	envoyType "github.com/envoyproxy/go-control-plane/envoy/type/v3"
 	"github.com/envoyproxy/go-control-plane/pkg/cache/types"
 	dto "github.com/prometheus/client_model/go"
@@ -103,7 +105,7 @@ func TestMakeCluster_ProxyProtocol(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			cluster := makeCluster("test-cluster", corev1.ProtocolTCP, "", tt.proxyProtocol, nil, envoyCluster.Cluster_EDS, nil)
+			cluster := makeCluster("test-cluster", corev1.ProtocolTCP, "", tt.proxyProtocol, nil, envoyCluster.Cluster_EDS, nil, ResolveHeaderLimits(nil))
 
 			if tt.wantTransport && cluster.TransportSocket == nil {
 				t.Error("expected TransportSocket to be set for proxy protocol v2")
@@ -147,7 +149,7 @@ func TestMakeCluster_Persistence(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			cluster := makeCluster("test-cluster", tt.protocol, "", false, tt.persistence, envoyCluster.Cluster_EDS, nil)
+			cluster := makeCluster("test-cluster", tt.protocol, "", false, tt.persistence, envoyCluster.Cluster_EDS, nil, ResolveHeaderLimits(nil))
 			if cluster.GetLbPolicy() != tt.wantPolicy {
 				t.Fatalf("LbPolicy = %v, want %v", cluster.GetLbPolicy(), tt.wantPolicy)
 			}
@@ -466,7 +468,7 @@ func TestMakeCluster_DiscoveryType(t *testing.T) {
 	cla := makeClusterLoadAssignment("test-cluster", nil)
 
 	t.Run("EDS keeps EdsClusterConfig and no inline LoadAssignment", func(t *testing.T) {
-		c := makeCluster("test-cluster", corev1.ProtocolTCP, "", false, nil, envoyCluster.Cluster_EDS, cla)
+		c := makeCluster("test-cluster", corev1.ProtocolTCP, "", false, nil, envoyCluster.Cluster_EDS, cla, ResolveHeaderLimits(nil))
 		if c.GetType() != envoyCluster.Cluster_EDS {
 			t.Errorf("type = %v, want EDS", c.GetType())
 		}
@@ -479,7 +481,7 @@ func TestMakeCluster_DiscoveryType(t *testing.T) {
 	})
 
 	t.Run("STRICT_DNS sets inline LoadAssignment and drops EdsClusterConfig", func(t *testing.T) {
-		c := makeCluster("test-cluster", corev1.ProtocolTCP, "", false, nil, envoyCluster.Cluster_STRICT_DNS, cla)
+		c := makeCluster("test-cluster", corev1.ProtocolTCP, "", false, nil, envoyCluster.Cluster_STRICT_DNS, cla, ResolveHeaderLimits(nil))
 		if c.GetType() != envoyCluster.Cluster_STRICT_DNS {
 			t.Errorf("type = %v, want STRICT_DNS", c.GetType())
 		}
@@ -496,4 +498,68 @@ func TestMakeCluster_DiscoveryType(t *testing.T) {
 			t.Error("RespectDnsTtl must be true for STRICT_DNS")
 		}
 	})
+}
+
+func hcmFromListener(t *testing.T, listener *envoyListener.Listener) *envoyHttpManager.HttpConnectionManager {
+	t.Helper()
+	typedConfig := listener.GetFilterChains()[0].GetFilters()[0].GetTypedConfig()
+	if typedConfig == nil {
+		t.Fatal("expected typed HCM config")
+	}
+	hcm := &envoyHttpManager.HttpConnectionManager{}
+	if err := typedConfig.UnmarshalTo(hcm); err != nil {
+		t.Fatalf("failed to unmarshal HCM: %v", err)
+	}
+	return hcm
+}
+
+func TestResolveHeaderLimits(t *testing.T) {
+	if got := ResolveHeaderLimits(nil); got != (HeaderLimits{8192, 4096, 8192}) {
+		t.Errorf("nil config = %+v, want defaults", got)
+	}
+
+	kb := uint32(96)
+	config := &kubelbv1alpha1.Config{
+		Spec: kubelbv1alpha1.ConfigSpec{
+			EnvoyProxy: kubelbv1alpha1.EnvoyProxy{
+				HeaderLimits: &kubelbv1alpha1.EnvoyProxyHeaderLimits{MaxRequestHeadersKb: &kb},
+			},
+		},
+	}
+	got := ResolveHeaderLimits(config)
+	if got.MaxRequestHeadersKb != 96 {
+		t.Errorf("MaxRequestHeadersKb = %d, want 96 (configured)", got.MaxRequestHeadersKb)
+	}
+	if got.MaxRequestHeadersCount != 4096 || got.MaxResponseHeadersKb != 8192 {
+		t.Errorf("unset fields = %+v, want defaults", got)
+	}
+}
+
+func TestMakeHTTPListener_HeaderLimits(t *testing.T) {
+	limits := HeaderLimits{MaxRequestHeadersKb: 96, MaxRequestHeadersCount: 200}
+	hcm := hcmFromListener(t, makeHTTPListener("l", "c", 10001, limits))
+	if got := hcm.GetMaxRequestHeadersKb().GetValue(); got != 96 {
+		t.Errorf("MaxRequestHeadersKb = %d, want 96", got)
+	}
+	if got := hcm.GetCommonHttpProtocolOptions().GetMaxHeadersCount().GetValue(); got != 200 {
+		t.Errorf("MaxHeadersCount = %d, want 200", got)
+	}
+}
+
+// TestMakeCluster_HTTPHeaderLimits covers the HTTPRoute branch; the GRPCRoute
+// branch shares the same upstream header limits, so one branch is
+// representative of both.
+func TestMakeCluster_HTTPHeaderLimits(t *testing.T) {
+	limits := HeaderLimits{MaxRequestHeadersCount: 200, MaxResponseHeadersKb: 128}
+	c := makeCluster("test-cluster", corev1.ProtocolTCP, "HTTPRoute", false, nil, envoyCluster.Cluster_EDS, nil, limits)
+	opts := &envoyUpstreams.HttpProtocolOptions{}
+	if err := c.GetTypedExtensionProtocolOptions()[envoyHTTPProtocolOptionsTypeURL].UnmarshalTo(opts); err != nil {
+		t.Fatalf("failed to unmarshal upstream http options: %v", err)
+	}
+	if got := opts.GetCommonHttpProtocolOptions().GetMaxHeadersCount().GetValue(); got != 200 {
+		t.Errorf("MaxHeadersCount = %d, want 200", got)
+	}
+	if got := opts.GetCommonHttpProtocolOptions().GetMaxResponseHeadersKb().GetValue(); got != 128 {
+		t.Errorf("MaxResponseHeadersKb = %d, want 128", got)
+	}
 }
