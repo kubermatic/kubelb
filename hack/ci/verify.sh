@@ -72,6 +72,7 @@ try() {
 }
 
 try "Verify Helm lock" ./hack/verify-helm-lock.sh
+try "Verify addons patches" make verify-addons-patches
 try "Verify go.mod" make check-dependencies
 try "Verify YAML" yamllint -c .yamllint.conf .
 try "Verify boilerplate" make verify-boilerplate

@@ -20,6 +20,9 @@
 #
 # Usage:
 #   ./hack/build-addons-chart-deps.sh [chart-dir]
+#
+# STRICT_PATCH=true forces git apply, which rejects fuzz that `patch` would
+# silently tolerate. Used by hack/verify-addons-patches.sh in CI.
 
 set -euo pipefail
 
@@ -56,7 +59,7 @@ for tgz in "${CHARTS_SUBDIR}"/*.tgz; do
 
   if [ -f "$patch_file" ]; then
     echo "Applying patch: ${patch_file}"
-    if command -v patch > /dev/null 2>&1; then
+    if [ "${STRICT_PATCH:-false}" != "true" ] && command -v patch > /dev/null 2>&1; then
       patch -d "${CHARTS_SUBDIR}" -p1 < "$patch_file"
     else
       git apply --unsafe-paths --directory="${CHARTS_SUBDIR}" -p1 "$patch_file"
