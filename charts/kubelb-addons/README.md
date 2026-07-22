@@ -87,12 +87,14 @@ These are the default values to use when Gateway API is disabled for KubeLB in f
 
 | Repository | Name | Version |
 |------------|------|---------|
+| file://./ratelimit | ratelimit | 0.1.0 |
 | https://kubernetes-sigs.github.io/external-dns | external-dns | 1.20.0 |
 | https://kubernetes.github.io/ingress-nginx | ingress-nginx | 4.15.1 |
-| oci://cr.agentgateway.dev/charts | agentgateway | v1.1.0 |
-| oci://cr.agentgateway.dev/charts | agentgateway-crds | v1.1.0 |
+| oci://cr.agentgateway.dev/charts | agentgateway | v1.3.1 |
+| oci://cr.agentgateway.dev/charts | agentgateway-crds | v1.3.1 |
 | oci://docker.io/envoyproxy | envoy-gateway(gateway-helm) | 1.7.2 |
-| oci://quay.io/jetstack/charts | cert-manager | v1.20.2 |
+| oci://ghcr.io/valkey-io/valkey-helm | valkey | 0.10.0 |
+| oci://quay.io/jetstack/charts | cert-manager | 1.21.0 |
 | oci://quay.io/metallb/chart | metallb | 0.15.3 |
 
 ## Values
@@ -132,6 +134,8 @@ These are the default values to use when Gateway API is disabled for KubeLB in f
 | global.imageRegistry | string | `""` | Override the registry for all images (prefix replacement). When set, all supported addon images are rewritten to this registry host. |
 | ingress-nginx | object | `{"enabled":false}` | ---------------------------------------------------------- |
 | metallb.enabled | bool | `false` |  |
+| ratelimit.enabled | bool | `false` |  |
+| valkey.enabled | bool | `false` |  |
 
 ## Maintainers
 

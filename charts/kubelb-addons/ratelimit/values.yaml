@@ -1,0 +1,55 @@
+# Envoy global rate limit service (github.com/envoyproxy/ratelimit).
+# Backs agentgateway global rate-limit policies. The KubeLB manager owns the
+# descriptor ConfigMap at runtime; this chart only provisions the service and
+# its wiring.
+
+image:
+  registry: docker.io
+  repository: envoyproxy/ratelimit
+  # Upstream tags are bare commit SHAs (no semver since v1.4.0). This pin
+  # tracks the SHA Envoy Gateway blesses in its current release branch.
+  tag: "1e50889b"
+  pullPolicy: IfNotPresent
+
+imagePullSecrets: []
+
+# Two replicas because agentgateway rate-limit policies default to
+# FailClosed: an RLS outage blocks all traffic on rate-limited routes.
+# Counters live in the Redis-protocol backend, replicas need no coordination.
+replicaCount: 2
+
+logLevel: info
+
+redis:
+  # Redis-protocol endpoint as host:port. When empty, defaults to the valkey
+  # subchart's service in the same release: <release-name>-valkey:6379.
+  url: ""
+  # Name of a Secret holding the auth password under the key `password`,
+  # injected as REDIS_AUTH. Empty means no authentication.
+  authSecretName: ""
+
+config:
+  # Name of the ConfigMap carrying ratelimit domain YAML files. Mounted as a
+  # whole directory so ConfigMap updates hot-reload through the kubelet
+  # symlink swap (a subPath mount would never see updates). The volume is
+  # marked optional: the KubeLB manager creates and manages this ConfigMap,
+  # and the service starts without it (FORCE_START_WITHOUT_INITIAL_CONFIG).
+  configMapName: ratelimit-config
+  # Set to true to render the ConfigMap from `inline` for standalone use
+  # without the KubeLB manager.
+  create: false
+  # Map of file name to ratelimit domain YAML content.
+  inline: {}
+
+service:
+  # gRPC endpoint agentgateway's rateLimit.global.backendRef targets.
+  grpcPort: 8081
+  # HTTP healthcheck/debug endpoint.
+  httpPort: 8080
+  # Native Prometheus metrics endpoint.
+  metricsPort: 9090
+
+resources: {}
+nodeSelector: {}
+tolerations: []
+affinity: {}

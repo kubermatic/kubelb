@@ -1,0 +1,15 @@
+{{- if gt (int .Values.replicaCount) 1 }}
+# agentgateway rate-limit policies default to FailClosed, so losing every RLS
+# pod at once blocks all rate-limited traffic.
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "ratelimit.fullname" . }}
+  labels:
+    {{- include "ratelimit.labels" . | nindent 4 }}
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      {{- include "ratelimit.selectorLabels" . | nindent 6 }}
+{{- end }}
