@@ -1,13 +1,13 @@
 diff -ruN --exclude=README.md --exclude=README.md.gotmpl a/cert-manager/templates/_helpers.tpl b/cert-manager/templates/_helpers.tpl
---- a/cert-manager/templates/_helpers.tpl	2026-04-16 16:54:14
-+++ b/cert-manager/templates/_helpers.tpl	2026-04-16 16:54:54
+--- a/cert-manager/templates/_helpers.tpl	2026-07-09 02:52:02
++++ b/cert-manager/templates/_helpers.tpl	2026-07-22 17:07:11
 @@ -190,7 +190,7 @@
  usage through tuple/variable indirection.
  */ -}}
  
 -{{- if ne (len .) 4 -}}
 +{{- if lt (len .) 4 -}}
-     {{- fail (printf "ERROR: template \"image\" expects (tuple <imageValues> <imageRegistry> <imageNamespace> <defaultReference>), got %d arguments" (len .)) -}}
+     {{- fail (printf "ERROR: template \"cert-manager.image\" expects (tuple <imageValues> <imageRegistry> <imageNamespace> <defaultReference>), got %d arguments" (len .)) -}}
  {{- end -}}
  
 @@ -199,15 +199,28 @@
@@ -70,26 +70,26 @@ diff -ruN --exclude=README.md --exclude=README.md.gotmpl a/cert-manager/template
  {{- end -}}
  
 diff -ruN --exclude=README.md --exclude=README.md.gotmpl a/cert-manager/templates/cainjector-deployment.yaml b/cert-manager/templates/cainjector-deployment.yaml
---- a/cert-manager/templates/cainjector-deployment.yaml	2026-04-16 16:54:14
-+++ b/cert-manager/templates/cainjector-deployment.yaml	2026-04-16 16:55:11
+--- a/cert-manager/templates/cainjector-deployment.yaml	2026-07-09 02:52:02
++++ b/cert-manager/templates/cainjector-deployment.yaml	2026-07-22 17:07:19
 @@ -76,7 +76,7 @@
        {{- end }}
        containers:
          - name: {{ .Chart.Name }}-cainjector
--          image: "{{ template "image" (tuple .Values.cainjector.image .Values.imageRegistry .Values.imageNamespace (printf ":%s" .Chart.AppVersion)) }}"
-+          image: "{{ template "image" (tuple .Values.cainjector.image .Values.imageRegistry .Values.imageNamespace (printf ":%s" .Chart.AppVersion) $) }}"
+-          image: "{{ template "cert-manager.image" (tuple .Values.cainjector.image .Values.imageRegistry .Values.imageNamespace (printf ":%s" .Chart.AppVersion)) }}"
++          image: "{{ template "cert-manager.image" (tuple .Values.cainjector.image .Values.imageRegistry .Values.imageNamespace (printf ":%s" .Chart.AppVersion) $) }}"
            imagePullPolicy: {{ .Values.cainjector.image.pullPolicy }}
            args:
            {{- /* The if statement below is equivalent to {{- if $value }} but will also return true for 0. */ -}}
 diff -ruN --exclude=README.md --exclude=README.md.gotmpl a/cert-manager/templates/deployment.yaml b/cert-manager/templates/deployment.yaml
---- a/cert-manager/templates/deployment.yaml	2026-04-16 16:54:14
-+++ b/cert-manager/templates/deployment.yaml	2026-04-16 16:55:11
+--- a/cert-manager/templates/deployment.yaml	2026-07-09 02:52:02
++++ b/cert-manager/templates/deployment.yaml	2026-07-22 17:07:19
 @@ -86,7 +86,7 @@
        {{- end }}
        containers:
          - name: {{ .Chart.Name }}-controller
--          image: "{{ template "image" (tuple .Values.image .Values.imageRegistry .Values.imageNamespace (printf ":%s" .Chart.AppVersion)) }}"
-+          image: "{{ template "image" (tuple .Values.image .Values.imageRegistry .Values.imageNamespace (printf ":%s" .Chart.AppVersion) $) }}"
+-          image: "{{ template "cert-manager.image" (tuple .Values.image .Values.imageRegistry .Values.imageNamespace (printf ":%s" .Chart.AppVersion)) }}"
++          image: "{{ template "cert-manager.image" (tuple .Values.image .Values.imageRegistry .Values.imageNamespace (printf ":%s" .Chart.AppVersion) $) }}"
            imagePullPolicy: {{ .Values.image.pullPolicy }}
            args:
            {{- /* The if statement below is equivalent to {{- if $value }} but will also return true for 0. */ -}}
@@ -97,32 +97,32 @@ diff -ruN --exclude=README.md --exclude=README.md.gotmpl a/cert-manager/template
            - --leader-election-retry-period={{ .retryPeriod }}
            {{- end }}
            {{- end }}
--          - --acme-http01-solver-image={{ template "image" (tuple .Values.acmesolver.image .Values.imageRegistry .Values.imageNamespace (printf ":%s" .Chart.AppVersion)) }}
-+          - --acme-http01-solver-image={{ template "image" (tuple .Values.acmesolver.image .Values.imageRegistry .Values.imageNamespace (printf ":%s" .Chart.AppVersion) $) }}
+-          - --acme-http01-solver-image={{ template "cert-manager.image" (tuple .Values.acmesolver.image .Values.imageRegistry .Values.imageNamespace (printf ":%s" .Chart.AppVersion)) }}
++          - --acme-http01-solver-image={{ template "cert-manager.image" (tuple .Values.acmesolver.image .Values.imageRegistry .Values.imageNamespace (printf ":%s" .Chart.AppVersion) $) }}
            {{- with .Values.extraArgs }}
            {{- toYaml . | nindent 10 }}
            {{- end }}
 diff -ruN --exclude=README.md --exclude=README.md.gotmpl a/cert-manager/templates/startupapicheck-job.yaml b/cert-manager/templates/startupapicheck-job.yaml
---- a/cert-manager/templates/startupapicheck-job.yaml	2026-04-16 16:54:14
-+++ b/cert-manager/templates/startupapicheck-job.yaml	2026-04-16 16:55:11
-@@ -54,7 +54,7 @@
+--- a/cert-manager/templates/startupapicheck-job.yaml	2026-07-09 02:52:02
++++ b/cert-manager/templates/startupapicheck-job.yaml	2026-07-22 17:07:19
+@@ -57,7 +57,7 @@
        {{- end }}
        containers:
          - name: {{ .Chart.Name }}-startupapicheck
--          image: "{{ template "image" (tuple .Values.startupapicheck.image .Values.imageRegistry .Values.imageNamespace (printf ":%s" .Chart.AppVersion)) }}"
-+          image: "{{ template "image" (tuple .Values.startupapicheck.image .Values.imageRegistry .Values.imageNamespace (printf ":%s" .Chart.AppVersion) $) }}"
+-          image: "{{ template "cert-manager.image" (tuple .Values.startupapicheck.image .Values.imageRegistry .Values.imageNamespace (printf ":%s" .Chart.AppVersion)) }}"
++          image: "{{ template "cert-manager.image" (tuple .Values.startupapicheck.image .Values.imageRegistry .Values.imageNamespace (printf ":%s" .Chart.AppVersion) $) }}"
            imagePullPolicy: {{ .Values.startupapicheck.image.pullPolicy }}
            args:
            - check
 diff -ruN --exclude=README.md --exclude=README.md.gotmpl a/cert-manager/templates/webhook-deployment.yaml b/cert-manager/templates/webhook-deployment.yaml
---- a/cert-manager/templates/webhook-deployment.yaml	2026-04-16 16:54:14
-+++ b/cert-manager/templates/webhook-deployment.yaml	2026-04-16 16:55:11
+--- a/cert-manager/templates/webhook-deployment.yaml	2026-07-09 02:52:02
++++ b/cert-manager/templates/webhook-deployment.yaml	2026-07-22 17:07:19
 @@ -81,7 +81,7 @@
        {{- end }}
        containers:
          - name: {{ .Chart.Name }}-webhook
--          image: "{{ template "image" (tuple .Values.webhook.image .Values.imageRegistry .Values.imageNamespace (printf ":%s" .Chart.AppVersion)) }}"
-+          image: "{{ template "image" (tuple .Values.webhook.image .Values.imageRegistry .Values.imageNamespace (printf ":%s" .Chart.AppVersion) $) }}"
+-          image: "{{ template "cert-manager.image" (tuple .Values.webhook.image .Values.imageRegistry .Values.imageNamespace (printf ":%s" .Chart.AppVersion)) }}"
++          image: "{{ template "cert-manager.image" (tuple .Values.webhook.image .Values.imageRegistry .Values.imageNamespace (printf ":%s" .Chart.AppVersion) $) }}"
            imagePullPolicy: {{ .Values.webhook.image.pullPolicy }}
            args:
            {{- /* The if statement below is equivalent to {{- if $value }} but will also return true for 0. */ -}}
