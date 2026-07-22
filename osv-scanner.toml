@@ -1,0 +1,3 @@
+[[IgnoredVulns]]
+id = "GO-2026-5932"
+reason = "golang.org/x/crypto/openpgp is deprecated with no fixed version; kubelb does not import any openpgp package (verified with `go mod why golang.org/x/crypto/openpgp` in both modules), x/crypto is only an indirect dependency"

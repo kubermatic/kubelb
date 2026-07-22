@@ -19,6 +19,7 @@ package portlookup
 import (
 	"context"
 	"fmt"
+	"sync"
 	"testing"
 
 	kubelbv1alpha1 "k8c.io/kubelb/api/ce/kubelb.k8c.io/v1alpha1"
@@ -251,6 +252,34 @@ func TestLoadState_HealsDuplicateRoutePort(t *testing.T) {
 	if aHas == bHas {
 		t.Fatalf("expected exactly one route to retain the port after heal; got A=%v B=%v", aHas, bHas)
 	}
+}
+
+// TestPortAllocator_ConcurrentReadWrite hammers readers and writers on shared
+// keys concurrently. Without the reader locks it triggers a data race (and the
+// runtime "concurrent map read and map write" fatal) under -race.
+func TestPortAllocator_ConcurrentReadWrite(t *testing.T) {
+	pa := NewPortAllocator()
+	const goroutines = 8
+	var wg sync.WaitGroup
+	for i := 0; i < goroutines; i++ {
+		wg.Add(2)
+		go func(n int) {
+			defer wg.Done()
+			ep := fmt.Sprintf("ep-%d", n)
+			for j := 0; j < 500; j++ {
+				pa.AllocatePorts(ep, []string{"a", "b", "c"})
+			}
+		}(i)
+		go func(n int) {
+			defer wg.Done()
+			ep := fmt.Sprintf("ep-%d", n)
+			for j := 0; j < 500; j++ {
+				pa.Lookup(ep, "a")
+				_ = pa.GetPortLookupTable()
+			}
+		}(i)
+	}
+	wg.Wait()
 }
 
 // TestHealLoadStateCollisions_EndpointPatternKeys uses realistic kubelb pattern

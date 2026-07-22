@@ -19,6 +19,7 @@ package kubelb
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"reflect"
 	"time"
@@ -270,6 +271,7 @@ func (r *RouteReconciler) manageServices(ctx context.Context, log logr.Logger, r
 	}
 
 	routeStatus := route.Status.DeepCopy()
+	var svcErrs []error
 	for _, svc := range services {
 		log.V(4).Info("Creating/Updating service", "name", svc.Name, "namespace", svc.Namespace)
 		var err error
@@ -278,6 +280,7 @@ func (r *RouteReconciler) manageServices(ctx context.Context, log logr.Logger, r
 			log.Error(err, "failed to create or update Service", "name", svc.Name, "namespace", svc.Namespace)
 			errorMessage := fmt.Errorf("failed to create or update Service: %w", err)
 			r.Recorder.Eventf(route, nil, corev1.EventTypeWarning, "ServiceApplyFailed", "Reconciling", errorMessage.Error())
+			svcErrs = append(svcErrs, errorMessage)
 		}
 		updateServiceStatus(routeStatus, &svc, err)
 	}
@@ -285,7 +288,16 @@ func (r *RouteReconciler) manageServices(ctx context.Context, log logr.Logger, r
 	// Cleanup orphaned services from naming change (old: ns-svc, new: ns-route-svc)
 	r.cleanupRenamedServices(ctx, log, route, originalRouteName)
 
-	return r.UpdateRouteStatus(ctx, route, *routeStatus)
+	// Write status first so the failure condition is visible, then surface the
+	// error so the workqueue retries (the For(...) uses GenerationChangedPredicate,
+	// so a status-only write would not re-enqueue).
+	if err := r.UpdateRouteStatus(ctx, route, *routeStatus); err != nil {
+		return err
+	}
+	if len(svcErrs) > 0 {
+		return errors.Join(svcErrs...)
+	}
+	return nil
 }
 
 func (r *RouteReconciler) cleanupOrphanedServices(ctx context.Context, log logr.Logger, route *kubelbv1alpha1.Route) error {

@@ -17,6 +17,7 @@ limitations under the License.
 package envoy
 
 import (
+	"context"
 	"testing"
 	"time"
 
@@ -28,14 +29,19 @@ import (
 	envoyUpstreams "github.com/envoyproxy/go-control-plane/envoy/extensions/upstreams/http/v3"
 	envoyType "github.com/envoyproxy/go-control-plane/envoy/type/v3"
 	"github.com/envoyproxy/go-control-plane/pkg/cache/types"
+	"github.com/envoyproxy/go-control-plane/pkg/resource/v3"
 	dto "github.com/prometheus/client_model/go"
 	"google.golang.org/protobuf/proto"
 
 	kubelbv1alpha1 "k8c.io/kubelb/api/ce/kubelb.k8c.io/v1alpha1"
 	managermetrics "k8c.io/kubelb/internal/metricsutil/manager"
+	portlookup "k8c.io/kubelb/internal/port-lookup"
 
 	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/runtime"
+	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 )
 
 func counterValue(t *testing.T, c interface {
@@ -561,5 +567,201 @@ func TestMakeCluster_HTTPHeaderLimits(t *testing.T) {
 	}
 	if got := opts.GetCommonHttpProtocolOptions().GetMaxResponseHeadersKb().GetValue(); got != 128 {
 		t.Errorf("MaxResponseHeadersKb = %d, want 128", got)
+	}
+}
+
+func testScheme(t *testing.T) *runtime.Scheme {
+	t.Helper()
+	s := runtime.NewScheme()
+	if err := kubelbv1alpha1.AddToScheme(s); err != nil {
+		t.Fatalf("add kubelb scheme: %v", err)
+	}
+	return s
+}
+
+// inlineAddressLB builds a LoadBalancer with a single endpoint carrying one
+// inline IP address and one TCP port. Inline Addresses mean MapSnapshot never
+// resolves an AddressesReference, so the fake client is never hit.
+func inlineAddressLB() kubelbv1alpha1.LoadBalancer {
+	return kubelbv1alpha1.LoadBalancer{
+		ObjectMeta: metav1.ObjectMeta{Namespace: "tenant-a", Name: "lb1"},
+		Spec: kubelbv1alpha1.LoadBalancerSpec{
+			Endpoints: []kubelbv1alpha1.LoadBalancerEndpoints{
+				{
+					Addresses: []kubelbv1alpha1.EndpointAddress{{IP: "10.0.0.1"}},
+					Ports:     []kubelbv1alpha1.EndpointPort{{Port: 80, Protocol: corev1.ProtocolTCP}},
+				},
+			},
+		},
+	}
+}
+
+// ingressSourceRoute builds a Route sourced from a Kubernetes Ingress with a
+// single upstream Service (one TCP port) and one inline IP endpoint address.
+func ingressSourceRoute() kubelbv1alpha1.Route {
+	routeObj := unstructured.Unstructured{}
+	routeObj.SetKind("Ingress")
+	routeObj.SetName("ing1")
+
+	svc := corev1.Service{
+		ObjectMeta: metav1.ObjectMeta{Namespace: "app", Name: "svc1", UID: "uid-1"},
+		Spec: corev1.ServiceSpec{
+			Ports: []corev1.ServicePort{{Port: 8080, Protocol: corev1.ProtocolTCP, NodePort: 30080}},
+		},
+	}
+
+	return kubelbv1alpha1.Route{
+		ObjectMeta: metav1.ObjectMeta{Namespace: "tenant-a", Name: "route1"},
+		Spec: kubelbv1alpha1.RouteSpec{
+			Endpoints: []kubelbv1alpha1.LoadBalancerEndpoints{
+				{Addresses: []kubelbv1alpha1.EndpointAddress{{IP: "10.0.0.2"}}},
+			},
+			Source: kubelbv1alpha1.RouteSource{
+				Kubernetes: &kubelbv1alpha1.KubernetesSource{
+					Route:    routeObj,
+					Services: []kubelbv1alpha1.UpstreamService{{Service: svc}},
+				},
+			},
+		},
+	}
+}
+
+// TestMapSnapshot_VersionIsDeterministic pins the core property Plan 005 relies
+// on: identical inputs (same client, allocator instance, and slices) produce an
+// identical snapshot version for every resource type. Port allocation uses
+// math/rand, so the two builds must reuse the same populated allocator — the
+// version is not reproducible across process runs, only within one.
+func TestMapSnapshot_VersionIsDeterministic(t *testing.T) {
+	ctx := context.Background()
+	cl := fake.NewClientBuilder().WithScheme(testScheme(t)).Build()
+	lbs := []kubelbv1alpha1.LoadBalancer{inlineAddressLB()}
+	routes := []kubelbv1alpha1.Route{ingressSourceRoute()}
+
+	pa := portlookup.NewPortAllocator()
+	if err := pa.AllocatePortsForLoadBalancers(kubelbv1alpha1.LoadBalancerList{Items: lbs}); err != nil {
+		t.Fatalf("allocate LB ports: %v", err)
+	}
+	if err := pa.AllocatePortsForRoutes(routes); err != nil {
+		t.Fatalf("allocate route ports: %v", err)
+	}
+
+	snap1, err := MapSnapshot(ctx, cl, lbs, routes, pa, "test-node", ResolveHeaderLimits(nil))
+	if err != nil {
+		t.Fatalf("MapSnapshot #1: %v", err)
+	}
+	snap2, err := MapSnapshot(ctx, cl, lbs, routes, pa, "test-node", ResolveHeaderLimits(nil))
+	if err != nil {
+		t.Fatalf("MapSnapshot #2: %v", err)
+	}
+
+	for _, rt := range []resource.Type{resource.ClusterType, resource.ListenerType, resource.EndpointType} {
+		if v1, v2 := snap1.GetVersion(rt), snap2.GetVersion(rt); v1 != v2 {
+			t.Errorf("version drift for %s: %q != %q", rt, v1, v2)
+		}
+	}
+	if snap1.GetVersion(resource.ClusterType) == "" {
+		t.Error("cluster version is empty; expected a non-empty hash")
+	}
+}
+
+// TestMapSnapshot_ProducesExpectedResources is a characterization test: the
+// asserted counts are read from the current implementation's actual output for
+// a single LB (1 endpoint, 1 TCP port, 1 inline IP address). An IP address
+// yields an EDS discovery type, so one endpoint (ClusterLoadAssignment) is
+// emitted alongside the cluster and listener.
+func TestMapSnapshot_ProducesExpectedResources(t *testing.T) {
+	ctx := context.Background()
+	cl := fake.NewClientBuilder().WithScheme(testScheme(t)).Build()
+	lbs := []kubelbv1alpha1.LoadBalancer{inlineAddressLB()}
+
+	pa := portlookup.NewPortAllocator()
+	if err := pa.AllocatePortsForLoadBalancers(kubelbv1alpha1.LoadBalancerList{Items: lbs}); err != nil {
+		t.Fatalf("allocate LB ports: %v", err)
+	}
+
+	snap, err := MapSnapshot(ctx, cl, lbs, nil, pa, "test-node", ResolveHeaderLimits(nil))
+	if err != nil {
+		t.Fatalf("MapSnapshot: %v", err)
+	}
+
+	const (
+		wantClusters  = 1
+		wantListeners = 1
+		wantEndpoints = 1
+	)
+	if got := len(snap.GetResources(resource.ClusterType)); got != wantClusters {
+		t.Errorf("clusters = %d, want %d", got, wantClusters)
+	}
+	if got := len(snap.GetResources(resource.ListenerType)); got != wantListeners {
+		t.Errorf("listeners = %d, want %d", got, wantListeners)
+	}
+	if got := len(snap.GetResources(resource.EndpointType)); got != wantEndpoints {
+		t.Errorf("endpoints = %d, want %d (EDS discovery type emits a ClusterLoadAssignment)", got, wantEndpoints)
+	}
+}
+
+// TestMapSnapshot_HostnameEndpointEmitsNoEDSEndpoint characterizes the
+// STRICT_DNS branch: a hostname address forces a DNS-aware cluster, whose
+// load assignment is inlined on the cluster rather than delivered as a separate
+// EDS endpoint resource, so the endpoints map is empty.
+func TestMapSnapshot_HostnameEndpointEmitsNoEDSEndpoint(t *testing.T) {
+	ctx := context.Background()
+	cl := fake.NewClientBuilder().WithScheme(testScheme(t)).Build()
+
+	lb := inlineAddressLB()
+	lb.Spec.Endpoints[0].Addresses = []kubelbv1alpha1.EndpointAddress{{Hostname: "backend.example.com"}}
+	lbs := []kubelbv1alpha1.LoadBalancer{lb}
+
+	pa := portlookup.NewPortAllocator()
+	if err := pa.AllocatePortsForLoadBalancers(kubelbv1alpha1.LoadBalancerList{Items: lbs}); err != nil {
+		t.Fatalf("allocate LB ports: %v", err)
+	}
+
+	snap, err := MapSnapshot(ctx, cl, lbs, nil, pa, "test-node", ResolveHeaderLimits(nil))
+	if err != nil {
+		t.Fatalf("MapSnapshot: %v", err)
+	}
+
+	if got := len(snap.GetResources(resource.ClusterType)); got != 1 {
+		t.Errorf("clusters = %d, want 1", got)
+	}
+	if got := len(snap.GetResources(resource.EndpointType)); got != 0 {
+		t.Errorf("endpoints = %d, want 0 (STRICT_DNS inlines its load assignment)", got)
+	}
+}
+
+// TestMapSnapshot_VersionStableAcrossReorder asserts the property Plan 005
+// relies on from a different angle: mutating a metadata field that MapSnapshot
+// never reads (an annotation unrelated to proxy-protocol) leaves every resource
+// version unchanged. The allocator is reused so port assignment is identical.
+func TestMapSnapshot_VersionStableAcrossReorder(t *testing.T) {
+	ctx := context.Background()
+	cl := fake.NewClientBuilder().WithScheme(testScheme(t)).Build()
+
+	lbs := []kubelbv1alpha1.LoadBalancer{inlineAddressLB()}
+	pa := portlookup.NewPortAllocator()
+	if err := pa.AllocatePortsForLoadBalancers(kubelbv1alpha1.LoadBalancerList{Items: lbs}); err != nil {
+		t.Fatalf("allocate LB ports: %v", err)
+	}
+
+	snap1, err := MapSnapshot(ctx, cl, lbs, nil, pa, "test-node", ResolveHeaderLimits(nil))
+	if err != nil {
+		t.Fatalf("MapSnapshot #1: %v", err)
+	}
+
+	mutated := inlineAddressLB()
+	mutated.Annotations = map[string]string{"kubelb.k8c.io/irrelevant": "value"}
+	mutated.ResourceVersion = "99999"
+	lbs2 := []kubelbv1alpha1.LoadBalancer{mutated}
+
+	snap2, err := MapSnapshot(ctx, cl, lbs2, nil, pa, "test-node", ResolveHeaderLimits(nil))
+	if err != nil {
+		t.Fatalf("MapSnapshot #2: %v", err)
+	}
+
+	for _, rt := range []resource.Type{resource.ClusterType, resource.ListenerType, resource.EndpointType} {
+		if v1, v2 := snap1.GetVersion(rt), snap2.GetVersion(rt); v1 != v2 {
+			t.Errorf("version changed for %s despite ignored-field mutation: %q != %q", rt, v1, v2)
+		}
 	}
 }
