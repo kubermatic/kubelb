@@ -81,7 +81,47 @@ const (
 	accessLogFormat = "[%START_TIME%] \"%REQ(:METHOD)% %REQ(X-ENVOY-ORIGINAL-PATH?:PATH)% %PROTOCOL%\" %RESPONSE_CODE% %RESPONSE_FLAGS% %BYTES_RECEIVED% %BYTES_SENT% %DURATION% %RESP(X-ENVOY-UPSTREAM-SERVICE-TIME)% \"%DOWNSTREAM_REMOTE_ADDRESS%\" \"%REQ(USER-AGENT)%\" \"%REQ(X-REQUEST-ID)%\" \"%REQ(:AUTHORITY)%\" \"%UPSTREAM_HOST%\"\n"
 )
 
-func MapSnapshot(ctx context.Context, client ctrlclient.Client, loadBalancers []kubelbv1alpha1.LoadBalancer, routes []kubelbv1alpha1.Route, portAllocator *portlookup.PortAllocator, snapshotName string) (*envoycache.Snapshot, error) {
+// Header limit defaults for the KubeLB-managed Envoy. These raise Envoy's
+// stock limits so the managed proxy never rejects headers the edge proxy
+// already accepted; admins can lower them via Config.Spec.EnvoyProxy.HeaderLimits.
+const (
+	defaultMaxRequestHeadersKb    uint32 = 8192
+	defaultMaxRequestHeadersCount uint32 = 4096
+	defaultMaxResponseHeadersKb   uint32 = 8192
+)
+
+// HeaderLimits holds the resolved client header limits applied to the managed Envoy.
+type HeaderLimits struct {
+	MaxRequestHeadersKb    uint32
+	MaxRequestHeadersCount uint32
+	MaxResponseHeadersKb   uint32
+}
+
+// ResolveHeaderLimits reads the header limits from the Config, falling back to
+// the built-in defaults for any field that is unset.
+func ResolveHeaderLimits(config *kubelbv1alpha1.Config) HeaderLimits {
+	limits := HeaderLimits{
+		MaxRequestHeadersKb:    defaultMaxRequestHeadersKb,
+		MaxRequestHeadersCount: defaultMaxRequestHeadersCount,
+		MaxResponseHeadersKb:   defaultMaxResponseHeadersKb,
+	}
+	if config == nil || config.Spec.EnvoyProxy.HeaderLimits == nil {
+		return limits
+	}
+	configured := config.Spec.EnvoyProxy.HeaderLimits
+	if configured.MaxRequestHeadersKb != nil {
+		limits.MaxRequestHeadersKb = *configured.MaxRequestHeadersKb
+	}
+	if configured.MaxRequestHeadersCount != nil {
+		limits.MaxRequestHeadersCount = *configured.MaxRequestHeadersCount
+	}
+	if configured.MaxResponseHeadersKb != nil {
+		limits.MaxResponseHeadersKb = *configured.MaxResponseHeadersKb
+	}
+	return limits
+}
+
+func MapSnapshot(ctx context.Context, client ctrlclient.Client, loadBalancers []kubelbv1alpha1.LoadBalancer, routes []kubelbv1alpha1.Route, portAllocator *portlookup.PortAllocator, snapshotName string, headerLimits HeaderLimits) (*envoycache.Snapshot, error) {
 	var listener []types.Resource
 	var cluster []types.Resource
 	var endpoints []types.Resource
@@ -134,7 +174,7 @@ func MapSnapshot(ctx context.Context, client ctrlclient.Client, loadBalancers []
 				proxyProtocol := lbEndpointPort.Protocol == corev1.ProtocolTCP && lb.Annotations[kubelb.AnnotationProxyProtocol] == "v2"
 				cla := makeClusterLoadAssignment(key, lbEndpoints)
 				discoveryType := pickClusterDiscoveryType(lbEndpoint.Addresses)
-				cluster = append(cluster, makeCluster(key, lbEndpointPort.Protocol, "", proxyProtocol, lb.Spec.Persistence, discoveryType, cla))
+				cluster = append(cluster, makeCluster(key, lbEndpointPort.Protocol, "", proxyProtocol, lb.Spec.Persistence, discoveryType, cla, headerLimits))
 				if discoveryType == envoyCluster.Cluster_EDS {
 					endpoints = append(endpoints, cla)
 				}
@@ -185,12 +225,12 @@ func MapSnapshot(ctx context.Context, client ctrlclient.Client, loadBalancers []
 
 				key := fmt.Sprintf(kubelb.EnvoyRoutePortIdentifierPattern, route.Namespace, svc.Namespace, svc.Name, originalRouteName, svc.UID, port.Port, port.Protocol)
 
-				if l := makeRouteListener(key, listenerPort, port.Protocol, useHTTPListener); l != nil {
+				if l := makeRouteListener(key, listenerPort, port.Protocol, useHTTPListener, headerLimits); l != nil {
 					listener = append(listener, l)
 				}
 				cla := makeClusterLoadAssignment(key, lbEndpoints)
 				discoveryType := pickClusterDiscoveryType(routeAddresses)
-				cluster = append(cluster, makeCluster(key, port.Protocol, clusterRouteKind, false, nil, discoveryType, cla))
+				cluster = append(cluster, makeCluster(key, port.Protocol, clusterRouteKind, false, nil, discoveryType, cla, headerLimits))
 				if discoveryType == envoyCluster.Cluster_EDS {
 					endpoints = append(endpoints, cla)
 				}
@@ -224,7 +264,7 @@ func MapSnapshot(ctx context.Context, client ctrlclient.Client, loadBalancers []
 	)
 }
 
-func makeCluster(clusterName string, protocol corev1.Protocol, routeKind string, proxyProtocol bool, persistence *kubelbv1alpha1.LoadBalancerPersistence, discoveryType envoyCluster.Cluster_DiscoveryType, loadAssignment *envoyEndpoint.ClusterLoadAssignment) *envoyCluster.Cluster {
+func makeCluster(clusterName string, protocol corev1.Protocol, routeKind string, proxyProtocol bool, persistence *kubelbv1alpha1.LoadBalancerPersistence, discoveryType envoyCluster.Cluster_DiscoveryType, loadAssignment *envoyEndpoint.ClusterLoadAssignment, headerLimits HeaderLimits) *envoyCluster.Cluster {
 	defaultHealthCheck := []*envoyCore.HealthCheck{
 		{
 			Timeout:            &durationpb.Duration{Seconds: defaultHealthCheckTimeoutSeconds},
@@ -297,9 +337,17 @@ func makeCluster(clusterName string, protocol corev1.Protocol, routeKind string,
 		}
 	}
 
+	// Upstream response header limits; the managed proxy must not reject
+	// responses the backend produced, so these follow the configured limits.
+	upstreamHeaderLimits := &envoyCore.HttpProtocolOptions{
+		MaxHeadersCount:      wrapperspb.UInt32(headerLimits.MaxRequestHeadersCount),
+		MaxResponseHeadersKb: wrapperspb.UInt32(headerLimits.MaxResponseHeadersKb),
+	}
+
 	// gRPC requires HTTP/2, while HTTPRoute/Ingress use HTTP/1.1 for NodePort backends
 	if routeKind == "GRPCRoute" {
 		httpOpts := &envoyUpstreams.HttpProtocolOptions{
+			CommonHttpProtocolOptions: upstreamHeaderLimits,
 			UpstreamProtocolOptions: &envoyUpstreams.HttpProtocolOptions_ExplicitHttpConfig_{
 				ExplicitHttpConfig: &envoyUpstreams.HttpProtocolOptions_ExplicitHttpConfig{
 					ProtocolConfig: &envoyUpstreams.HttpProtocolOptions_ExplicitHttpConfig_Http2ProtocolOptions{
@@ -313,6 +361,7 @@ func makeCluster(clusterName string, protocol corev1.Protocol, routeKind string,
 		}
 	} else if IsHTTPRoute(routeKind) {
 		httpOpts := &envoyUpstreams.HttpProtocolOptions{
+			CommonHttpProtocolOptions: upstreamHeaderLimits,
 			UpstreamProtocolOptions: &envoyUpstreams.HttpProtocolOptions_ExplicitHttpConfig_{
 				ExplicitHttpConfig: &envoyUpstreams.HttpProtocolOptions_ExplicitHttpConfig{
 					ProtocolConfig: &envoyUpstreams.HttpProtocolOptions_ExplicitHttpConfig_HttpProtocolOptions{
@@ -538,7 +587,7 @@ func getOriginalRouteName(route *kubelbv1alpha1.Route) string {
 }
 
 // makeHTTPListener creates an HTTP Connection Manager listener for L7 HTTP routes.
-func makeHTTPListener(listenerName string, clusterName string, listenerPort uint32) *envoyListener.Listener {
+func makeHTTPListener(listenerName string, clusterName string, listenerPort uint32, headerLimits HeaderLimits) *envoyListener.Listener {
 	routeConfig := &envoyRoute.RouteConfiguration{
 		Name: listenerName + "_route",
 		VirtualHosts: []*envoyRoute.VirtualHost{{
@@ -598,8 +647,12 @@ func makeHTTPListener(listenerName string, clusterName string, listenerPort uint
 		// so long-lived HTTP connections (websockets, SSE, gRPC streams)
 		// aren't cycled mid-flight.
 		CommonHttpProtocolOptions: &envoyCore.HttpProtocolOptions{
-			IdleTimeout: durationpb.New(time.Hour),
+			IdleTimeout:     durationpb.New(time.Hour),
+			MaxHeadersCount: wrapperspb.UInt32(headerLimits.MaxRequestHeadersCount),
 		},
+		// Request header size, raised from Envoy's 60 KiB default so the managed
+		// proxy does not reject headers the edge proxy already accepted.
+		MaxRequestHeadersKb: wrapperspb.UInt32(headerLimits.MaxRequestHeadersKb),
 		// Stream idle timeout raised from Envoy's 5m default to 1h to
 		// match streaming-friendly idle handling.
 		StreamIdleTimeout: durationpb.New(time.Hour),
@@ -718,11 +771,11 @@ func resolveRouteAddresses(ctx context.Context, client ctrlclient.Client, route 
 
 // makeRouteListener returns the envoy listener for a given service port on a
 // Route. Returns nil for unsupported protocols.
-func makeRouteListener(key string, listenerPort uint32, protocol corev1.Protocol, useHTTPListener bool) *envoyListener.Listener {
+func makeRouteListener(key string, listenerPort uint32, protocol corev1.Protocol, useHTTPListener bool, headerLimits HeaderLimits) *envoyListener.Listener {
 	switch protocol {
 	case corev1.ProtocolTCP:
 		if useHTTPListener {
-			return makeHTTPListener(key, key, listenerPort)
+			return makeHTTPListener(key, key, listenerPort, headerLimits)
 		}
 		return makeTCPListener(key, key, listenerPort, nil)
 	case corev1.ProtocolUDP:

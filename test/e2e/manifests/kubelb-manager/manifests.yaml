@@ -19,9 +19,33 @@ metadata:
 spec:
   selfSigned: {}
 ---
+# Test fixture only: raise the Envoy Gateway edge's request header limit so a
+# large-header request reaches KubeLB's managed Envoy. This lets the
+# large-headers e2e test exercise the managed Envoy's header limit (the actual
+# feature); configuring the edge is otherwise the user's own responsibility.
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: EnvoyProxy
+metadata:
+  name: kubelb-proxy-config
+  namespace: kubelb
+spec:
+  bootstrap:
+    type: Merge
+    value: |
+      layered_runtime:
+        layers:
+        - name: edge-header-limit
+          static_layer:
+            envoy.reloadable_features.max_request_headers_size_kb: 8192
+---
 apiVersion: gateway.networking.k8s.io/v1
 kind: GatewayClass
 metadata:
   name: eg
 spec:
   controllerName: gateway.envoyproxy.io/gatewayclass-controller
+  parametersRef:
+    group: gateway.envoyproxy.io
+    kind: EnvoyProxy
+    name: kubelb-proxy-config
+    namespace: kubelb

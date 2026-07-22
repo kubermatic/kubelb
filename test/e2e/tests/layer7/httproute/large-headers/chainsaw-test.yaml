@@ -1,0 +1,208 @@
+# Copyright 2026 The KubeLB Authors.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# Large client header L7 HTTPRoute Test
+# KubeLB's managed Envoy defaults its request header limit to 8192 KiB (up from
+# Envoy's 60 KiB default via Config.spec.envoyProxy.headerLimits), so it does not
+# reject headers the edge already accepted. The edge is raised to 8192 KiB by a
+# test fixture in manifests/kubelb-manager/manifests.yaml so the managed Envoy is
+# the hop actually under test here. A ~70 KiB header exceeds the 60 KiB default and
+# must return 200; without the managed Envoy's raised limit it would be a 431.
+apiVersion: chainsaw.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: large-headers-httproute
+  labels:
+    all:
+    test: large-headers
+    resource: httproute
+    layer: layer7
+spec:
+  bindings:
+    - name: name
+      value: echo-large-headers
+  steps:
+    - name: create-service
+      description: Create ClusterIP service pointing to echo-shared
+      cluster: tenant1
+      try:
+        - apply:
+            resource:
+              apiVersion: v1
+              kind: Service
+              metadata:
+                name: ($name)
+                namespace: default
+              spec:
+                type: ClusterIP
+                selector:
+                  app: echo-shared
+                ports:
+                  - port: 80
+                    targetPort: 5678
+
+    - name: create-gateway
+      description: Create Gateway with kubelb class
+      cluster: tenant1
+      try:
+        - apply:
+            resource:
+              apiVersion: gateway.networking.k8s.io/v1
+              kind: Gateway
+              metadata:
+                name: ($name)
+                namespace: default
+              spec:
+                gatewayClassName: kubelb
+                listeners:
+                  - name: http
+                    port: 80
+                    protocol: HTTP
+                    allowedRoutes:
+                      namespaces:
+                        from: Same
+
+    - name: create-httproute
+      description: Create HTTPRoute
+      cluster: tenant1
+      try:
+        - apply:
+            resource:
+              apiVersion: gateway.networking.k8s.io/v1
+              kind: HTTPRoute
+              metadata:
+                name: ($name)
+                namespace: default
+              spec:
+                parentRefs:
+                  - name: ($name)
+                    namespace: default
+                hostnames:
+                  - large-headers-route.test.local
+                rules:
+                  - matches:
+                      - path:
+                          type: PathPrefix
+                          value: /
+                    backendRefs:
+                      - name: ($name)
+                        port: 80
+
+    - name: verify-gateway-status
+      description: Verify Gateway gets LoadBalancer IP
+      cluster: tenant1
+      try:
+        - assert:
+            timeout: 120s
+            resource:
+              apiVersion: gateway.networking.k8s.io/v1
+              kind: Gateway
+              metadata:
+                name: ($name)
+                namespace: default
+              status:
+                addresses:
+                  - {}
+
+    - name: verify-baseline-http
+      description: Verify a normal request succeeds before testing large headers
+      cluster: tenant1
+      try:
+        - script:
+            skipCommandOutput: true
+            timeout: 60s
+            env:
+              - name: NAME
+                value: ($name)
+            content: |
+              set -e
+              IP=$(kubectl get gateway "$NAME" -n default \
+                -o jsonpath='{.status.addresses[0].value}')
+              HOST="large-headers-route.test.local"
+              EXPECTED="hello-shared"
+
+              for i in $(seq 1 15); do
+                RESPONSE=$(curl -s --max-time 5 -H "Host: ${HOST}" "http://${IP}/" 2>/dev/null || true)
+                if echo "$RESPONSE" | grep -q "$EXPECTED"; then
+                  echo "Baseline HTTP response OK"
+                  exit 0
+                fi
+                echo "Attempt $i: waiting for route propagation..."
+                sleep 2
+              done
+              echo "FAILED: Expected '$EXPECTED'"
+              exit 1
+            check:
+              ($error == null): true
+
+    - name: verify-large-header-accepted
+      description: A ~70 KiB header (above the 60 KiB default) must return 200, not 431
+      cluster: tenant1
+      try:
+        - script:
+            skipCommandOutput: true
+            timeout: 60s
+            env:
+              - name: NAME
+                value: ($name)
+            content: |
+              set -e
+              IP=$(kubectl get gateway "$NAME" -n default \
+                -o jsonpath='{.status.addresses[0].value}')
+              HOST="large-headers-route.test.local"
+              # 70 KiB: above Envoy's 60 KiB default, below the managed proxy's limit.
+              LARGE_VALUE=$(head -c 71680 /dev/zero | tr '\0' 'A')
+
+              for i in $(seq 1 15); do
+                CODE=$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 \
+                  -H "Host: ${HOST}" -H "X-Large-Header: ${LARGE_VALUE}" \
+                  "http://${IP}/" 2>/dev/null || true)
+                if [ "$CODE" = "200" ]; then
+                  echo "Large header accepted: HTTP $CODE"
+                  exit 0
+                fi
+                if [ "$CODE" = "431" ]; then
+                  echo "FAILED: managed Envoy rejected large header with 431 (limit not applied)"
+                  exit 1
+                fi
+                echo "Attempt $i: got HTTP '$CODE', retrying..."
+                sleep 2
+              done
+              echo "FAILED: large header not accepted, last code '$CODE'"
+              exit 1
+            check:
+              ($error == null): true
+
+    - name: cleanup
+      description: Cleanup resources
+      cluster: tenant1
+      try:
+        - delete:
+            ref:
+              apiVersion: gateway.networking.k8s.io/v1
+              kind: HTTPRoute
+              name: ($name)
+              namespace: default
+        - delete:
+            ref:
+              apiVersion: gateway.networking.k8s.io/v1
+              kind: Gateway
+              name: ($name)
+              namespace: default
+        - delete:
+            ref:
+              apiVersion: v1
+              kind: Service
+              name: ($name)
+              namespace: default
