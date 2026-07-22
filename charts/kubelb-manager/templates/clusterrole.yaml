@@ -235,7 +235,6 @@ rules:
   - rbac.authorization.k8s.io
   resources:
   - rolebindings
-  - clusterroles
   - roles
   verbs:
   - bind
