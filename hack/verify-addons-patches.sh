@@ -25,6 +25,10 @@ cd $(dirname $0)/..
 
 CHARTS_SUBDIR="charts/kubelb-addons/charts"
 
+# Register the HTTP(S) addon repos; helm dependency build needs them for
+# non-OCI deps (ingress-nginx, external-dns). Requires yq.
+./hack/ensure-helm-repos.sh
+
 STRICT_PATCH=true ./hack/build-addons-chart-deps.sh
 
 rejects="$(find "${CHARTS_SUBDIR}" -name '*.rej' 2> /dev/null || true)"
