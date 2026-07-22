@@ -1,0 +1,20 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "ratelimit.fullname" . }}
+  labels:
+    {{- include "ratelimit.labels" . | nindent 4 }}
+spec:
+  type: ClusterIP
+  selector:
+    {{- include "ratelimit.selectorLabels" . | nindent 4 }}
+  ports:
+    - name: grpc
+      port: {{ .Values.service.grpcPort }}
+      targetPort: grpc
+    - name: http
+      port: {{ .Values.service.httpPort }}
+      targetPort: http
+    - name: metrics
+      port: {{ .Values.service.metricsPort }}
+      targetPort: metrics

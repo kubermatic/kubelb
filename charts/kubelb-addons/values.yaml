@@ -71,3 +71,15 @@ agentgateway-crds:
 ## Agentgateway
 agentgateway:
   enabled: false
+
+## Valkey: counter store for the Envoy global rate-limit service used by AI
+## token/cost budgets. Single instance, no persistence: counters are TTL'd
+## increments, loss on restart means one window of overcounting at worst.
+valkey:
+  enabled: false
+
+## Envoy global rate limit service (RLS): shared-counter enforcement for AI
+## token/cost budgets on the agentgateway data plane. Requires valkey (or an
+## external Redis-protocol endpoint via ratelimit.redis.url).
+ratelimit:
+  enabled: false
