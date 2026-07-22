@@ -41,7 +41,7 @@ const (
 type LookupTable map[string]map[string]int
 
 type PortAllocator struct {
-	mu sync.Mutex
+	mu sync.RWMutex
 
 	portLookup LookupTable
 	// portLookupReverse is a reverse lookup table for available ports. It is used to quickly determine if a port is available.
@@ -57,9 +57,22 @@ func NewPortAllocator() *PortAllocator {
 }
 
 func (pa *PortAllocator) GetPortLookupTable() LookupTable {
-	return pa.portLookup
+	pa.mu.RLock()
+	defer pa.mu.RUnlock()
+	out := make(LookupTable, len(pa.portLookup))
+	for endpointKey, ports := range pa.portLookup {
+		inner := make(map[string]int, len(ports))
+		for k, v := range ports {
+			inner[k] = v
+		}
+		out[endpointKey] = inner
+	}
+	return out
 }
+
 func (pa *PortAllocator) Lookup(endpointKey, portKey string) (int, bool) {
+	pa.mu.RLock()
+	defer pa.mu.RUnlock()
 	if endpointLookup, exists := pa.portLookup[endpointKey]; exists {
 		if port, exists := endpointLookup[portKey]; exists {
 			return port, true
@@ -246,6 +259,8 @@ func (pa *PortAllocator) LoadState(ctx context.Context, apiReader client.Reader)
 	// clear duplicates so the next reconcile allocates fresh ports for them.
 	healLoadStateCollisions(lookupTable)
 
+	pa.mu.Lock()
+	defer pa.mu.Unlock()
 	pa.portLookup = lookupTable
 	pa.recomputeAvailablePorts()
 	return nil
