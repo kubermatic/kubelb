@@ -28,6 +28,7 @@ echodate "Installing tools..."
 
 apt-get update -qq && apt-get install -y -qq yamllint > /dev/null 2>&1 &
 curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | DESIRED_VERSION=v3.17.0 bash > /dev/null 2>&1 &
+curl -fsSL -o /usr/local/bin/yq https://github.com/mikefarah/yq/releases/download/v4.45.1/yq_linux_amd64 && chmod +x /usr/local/bin/yq &
 go install mvdan.cc/sh/v3/cmd/shfmt@v3.13.1 &
 go install go.xrstf.de/gimps@v0.6.2 &
 go install github.com/kubermatic-labs/boilerplate@v0.3.0 &
@@ -72,6 +73,7 @@ try() {
 }
 
 try "Verify Helm lock" ./hack/verify-helm-lock.sh
+try "Verify addons patches" make verify-addons-patches
 try "Verify go.mod" make check-dependencies
 try "Verify YAML" yamllint -c .yamllint.conf .
 try "Verify boilerplate" make verify-boilerplate

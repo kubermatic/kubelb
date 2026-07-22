@@ -137,6 +137,9 @@ verify-imports:  ## Run verify-imports code.
 verify-helm-lock:  ## Verify Helm chart lock files are in sync.
 	./hack/verify-helm-lock.sh
 
+verify-addons-patches:  ## Verify addon chart patches apply cleanly.
+	./hack/verify-addons-patches.sh
+
 clean:  ## Clean binaries
 	rm -rf bin/*
 	@cd cli && $(MAKE) clean
