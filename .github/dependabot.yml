@@ -100,3 +100,10 @@ updates:
       - docs/none
       - release-note-none
       - ok-to-test
+    ignore:
+      # The agentgateway charts renumbered their versioning: the dead pre-v1.0
+      # lineage ended at 2.2.x, which semver-sorts above the current 1.x line,
+      # so dependabot "upgrades" into the obsolete lineage (see #504, #508).
+      # Upstream minors are also breaking (v1alpha1 CRDs); bump these manually.
+      - dependency-name: "agentgateway"
+      - dependency-name: "agentgateway-crds"
