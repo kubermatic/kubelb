@@ -67,6 +67,11 @@ spec:
               value: "true"
             - name: MERGE_DOMAIN_CONFIG
               value: "true"
+            # Returns RateLimit-Limit/-Remaining/-Reset for the most exhausted
+            # descriptor; the gateway copies them onto its 429 so clients see
+            # when the window resets.
+            - name: LIMIT_RESPONSE_HEADERS_ENABLED
+              value: "true"
           ports:
             - name: grpc
               containerPort: {{ .Values.service.grpcPort }}
