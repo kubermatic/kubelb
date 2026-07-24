@@ -1,0 +1,13 @@
+{{- if .Values.config.create }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ .Values.config.configMapName }}
+  labels:
+    {{- include "ratelimit.labels" . | nindent 4 }}
+data:
+  {{- range $file, $content := .Values.config.inline }}
+  {{ $file }}: |
+    {{- $content | nindent 4 }}
+  {{- end }}
+{{- end }}

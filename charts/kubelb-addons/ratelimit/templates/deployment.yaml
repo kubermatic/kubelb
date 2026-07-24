@@ -1,0 +1,106 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "ratelimit.fullname" . }}
+  labels:
+    {{- include "ratelimit.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "ratelimit.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "ratelimit.selectorLabels" . | nindent 8 }}
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "ratelimit.fullname" . }}
+      containers:
+        - name: ratelimit
+          image: {{ include "ratelimit.image" . }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command: ["/bin/ratelimit"]
+          env:
+            - name: LOG_LEVEL
+              value: {{ .Values.logLevel | quote }}
+            - name: USE_STATSD
+              value: "false"
+            - name: USE_PROMETHEUS
+              value: "true"
+            - name: PROMETHEUS_ADDR
+              value: ":{{ .Values.service.metricsPort }}"
+            - name: GRPC_PORT
+              value: {{ .Values.service.grpcPort | quote }}
+            - name: PORT
+              value: {{ .Values.service.httpPort | quote }}
+            - name: REDIS_SOCKET_TYPE
+              value: tcp
+            - name: REDIS_URL
+              value: {{ include "ratelimit.redisUrl" . }}
+            {{- if .Values.redis.authSecretName }}
+            - name: REDIS_AUTH
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.redis.authSecretName }}
+                  key: password
+            {{- end }}
+            # Config files are read from RUNTIME_ROOT/RUNTIME_SUBDIRECTORY/
+            # RUNTIME_APPDIRECTORY. RUNTIME_WATCH_ROOT=false watches that
+            # directory directly, which is what fires on the kubelet symlink
+            # swap when the mounted ConfigMap changes; the default root-watch
+            # mode expects Lyft's runtime-deploy layout and never triggers.
+            - name: RUNTIME_ROOT
+              value: /data
+            - name: RUNTIME_SUBDIRECTORY
+              value: ratelimit
+            - name: RUNTIME_APPDIRECTORY
+              value: config
+            - name: RUNTIME_WATCH_ROOT
+              value: "false"
+            - name: RUNTIME_IGNOREDOTFILES
+              value: "true"
+            - name: FORCE_START_WITHOUT_INITIAL_CONFIG
+              value: "true"
+            - name: MERGE_DOMAIN_CONFIG
+              value: "true"
+          ports:
+            - name: grpc
+              containerPort: {{ .Values.service.grpcPort }}
+            - name: http
+              containerPort: {{ .Values.service.httpPort }}
+            - name: metrics
+              containerPort: {{ .Values.service.metricsPort }}
+          readinessProbe:
+            httpGet:
+              path: /healthcheck
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          {{- with .Values.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          volumeMounts:
+            - name: config
+              mountPath: /data/ratelimit/config
+      volumes:
+        - name: config
+          configMap:
+            name: {{ .Values.config.configMapName }}
+            optional: true
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
