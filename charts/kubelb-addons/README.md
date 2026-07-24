@@ -103,6 +103,11 @@ These are the default values to use when Gateway API is disabled for KubeLB in f
 |-----|------|---------|-------------|
 | agentgateway-crds.enabled | bool | `false` |  |
 | agentgateway.enabled | bool | `false` |  |
+| aiRecordingRules.configMap.enabled | bool | `false` | Render the same rule file into a plain ConfigMap for vanilla Prometheus (mount it and list it under rule_files). |
+| aiRecordingRules.enabled | bool | `false` | Render the AI usage recording rules. |
+| aiRecordingRules.interval | string | `"1m"` | Evaluation interval for the rule group. |
+| aiRecordingRules.prometheusRule.enabled | bool | `true` | Render a monitoring.coreos.com/v1 PrometheusRule (requires the prometheus-operator CRDs in the cluster). |
+| aiRecordingRules.prometheusRule.labels | object | `{}` | Extra labels for the PrometheusRule, e.g. a `release` label matching the operator's ruleSelector. |
 | cert-manager.config.apiVersion | string | `"controller.config.cert-manager.io/v1alpha1"` |  |
 | cert-manager.config.enableGatewayAPI | bool | `true` |  |
 | cert-manager.config.kind | string | `"ControllerConfiguration"` |  |

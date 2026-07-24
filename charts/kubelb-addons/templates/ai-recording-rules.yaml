@@ -1,0 +1,31 @@
+{{- if .Values.aiRecordingRules.enabled }}
+{{- if .Values.aiRecordingRules.prometheusRule.enabled }}
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: kubelb-ai-usage
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/name: kubelb-addons
+    app.kubernetes.io/managed-by: {{ .Release.Service }}
+    {{- with .Values.aiRecordingRules.prometheusRule.labels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  {{- include "kubelb-addons.aiRecordingRuleGroups" . | nindent 2 }}
+{{- end }}
+{{- if .Values.aiRecordingRules.configMap.enabled }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: kubelb-ai-usage-rules
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/name: kubelb-addons
+    app.kubernetes.io/managed-by: {{ .Release.Service }}
+data:
+  kubelb-ai-usage.rules.yaml: |
+    {{- include "kubelb-addons.aiRecordingRuleGroups" . | nindent 4 }}
+{{- end }}
+{{- end }}
