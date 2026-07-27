@@ -22,9 +22,9 @@ dependencies:
   version: v1.3.1
 - name: valkey
   repository: oci://ghcr.io/valkey-io/valkey-helm
-  version: 0.10.0
+  version: 0.11.0
 - name: ratelimit
   repository: file://./ratelimit
   version: 0.1.0
-digest: sha256:5277458f8ac4c74382bb97c07d49649a8338301e510aac1bc6c025c29258361e
-generated: "2026-07-22T16:48:10.87871+05:00"
+digest: sha256:40c860bc3862e023f3a3b0a032b4feeb30bd9f7a1ff3834f2d2064857904b624
+generated: "2026-07-27T01:13:50.60176932Z"
