@@ -698,8 +698,12 @@ func tenantSpecChangedPredicate() predicate.Predicate {
 			}
 			return false
 		},
-		CreateFunc:  func(_ event.CreateEvent) bool { return false },
-		DeleteFunc:  func(_ event.DeleteEvent) bool { return false },
+		CreateFunc: func(_ event.CreateEvent) bool { return false },
+		// Deletion must reconcile. The SnapshotCache entry for a tenant lives for
+		// the manager's process lifetime, and once the tenant namespace is gone
+		// the namespace-scoped watches stop delivering anything that would clear
+		// it, because their predicate resolves the namespace on every event.
+		DeleteFunc:  func(_ event.DeleteEvent) bool { return true },
 		GenericFunc: func(_ event.GenericEvent) bool { return false },
 	}
 }
