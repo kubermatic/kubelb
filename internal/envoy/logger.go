@@ -17,36 +17,43 @@ limitations under the License.
 package envoy
 
 import (
-	"log"
+	"fmt"
+
+	envoylog "github.com/envoyproxy/go-control-plane/pkg/log"
+
+	"sigs.k8s.io/controller-runtime/pkg/log"
 )
 
-// An example of a logger that implements `pkg/log/Logger`.  Logs to
-// stdout.  If Debug == false then Debugf() and Infof() won't output
-// anything.
+// xdsLog is shared with the xDS stream callbacks in server.go.
+var xdsLog = log.Log.WithName("envoy-xds")
+
+// Logger routes go-control-plane's logging through logr. go-control-plane calls
+// it from inside stream callbacks, where the std log package's global stderr
+// mutex becomes a contention point during reconnect storms.
+//
+// Debug gates the verbose levels; warnings and errors are always emitted.
 type Logger struct {
 	Debug bool
 }
 
-// Log to stdout only if Debug is true.
+var _ envoylog.Logger = Logger{}
+
 func (logger Logger) Debugf(format string, args ...interface{}) {
 	if logger.Debug {
-		log.Printf(format+"\n", args...)
+		xdsLog.V(2).Info(fmt.Sprintf(format, args...))
 	}
 }
 
-// Log to stdout only if Debug is true.
 func (logger Logger) Infof(format string, args ...interface{}) {
 	if logger.Debug {
-		log.Printf(format+"\n", args...)
+		xdsLog.V(1).Info(fmt.Sprintf(format, args...))
 	}
 }
 
-// Log to stdout always.
 func (logger Logger) Warnf(format string, args ...interface{}) {
-	log.Printf(format+"\n", args...)
+	xdsLog.Info(fmt.Sprintf(format, args...))
 }
 
-// Log to stdout always.
 func (logger Logger) Errorf(format string, args ...interface{}) {
-	log.Printf(format+"\n", args...)
+	xdsLog.Error(nil, fmt.Sprintf(format, args...))
 }

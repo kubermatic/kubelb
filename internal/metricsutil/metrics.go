@@ -37,6 +37,7 @@ const (
 	LabelTopology     = "topology"
 	LabelOperation    = "operation"
 	LabelSnapshotName = "snapshot_name"
+	LabelTypeURL      = "type_url"
 )
 
 // Result label values for reconciliation outcomes.

@@ -21,6 +21,7 @@ import (
 	"net"
 	"strconv"
 	"strings"
+	"time"
 
 	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	clusterservice "github.com/envoyproxy/go-control-plane/envoy/service/cluster/v3"
@@ -34,6 +35,7 @@ import (
 	serverv3 "github.com/envoyproxy/go-control-plane/pkg/server/v3"
 	"github.com/pkg/errors"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/keepalive"
 
 	"k8c.io/kubelb/api/ce/kubelb.k8c.io/v1alpha1"
 	envoycpmetrics "k8c.io/kubelb/internal/metricsutil/envoycp"
@@ -41,6 +43,26 @@ import (
 
 const (
 	grpcMaxConcurrentStreams = 1000000
+
+	// xDS streams are long-lived and mostly idle, so a proxy that dies without
+	// closing its TCP connection is otherwise only reaped by kernel timeouts and
+	// its stream state leaks on the manager for hours.
+	grpcKeepaliveTime    = 30 * time.Second
+	grpcKeepaliveTimeout = 10 * time.Second
+
+	// Bounding connection lifetime lets proxies redistribute over manager
+	// replicas instead of pinning to whichever one they first reached. gRPC
+	// closes an aged connection with GOAWAY plus this grace period, so the proxy
+	// reconnects without ever seeing a mid-response reset.
+	grpcMaxConnectionAge      = 30 * time.Minute
+	grpcMaxConnectionAgeGrace = 5 * time.Minute
+
+	// Envoy's own keepalive must not be rejected as too aggressive, which would
+	// have the server tear the connection down as a policy violation.
+	grpcKeepaliveMinTime = 10 * time.Second
+
+	// Cap on draining so a stuck stream cannot block manager shutdown forever.
+	grpcGracefulStopTimeout = 30 * time.Second
 )
 
 func registerServer(grpcServer *grpc.Server, server serverv3.Server) {
@@ -85,7 +107,6 @@ func (s *Server) UpdateConfig(config *v1alpha1.Config) {
 
 // Start the Envoy control plane server.
 func (s *Server) Start(ctx context.Context) error {
-	// Create a Cache
 	srv3 := serverv3.NewServer(ctx, s.Cache, &serverv3.CallbackFuncs{
 		StreamOpenFunc: func(_ context.Context, _ int64, _ string) error {
 			envoycpmetrics.GRPCConnectionsTotal.Inc()
@@ -96,10 +117,21 @@ func (s *Server) Start(ctx context.Context) error {
 		},
 		StreamRequestFunc: func(_ int64, req *discoveryv3.DiscoveryRequest) error {
 			envoycpmetrics.GRPCRequestsTotal.WithLabelValues(req.GetTypeUrl()).Inc()
+			// A DiscoveryRequest carrying an ErrorDetail is a NACK: Envoy rejected
+			// the config we pushed. Surface it so a rejected snapshot is not
+			// silently invisible on the control plane.
+			if detail := req.GetErrorDetail(); detail != nil {
+				envoycpmetrics.XDSNACKsTotal.WithLabelValues(req.GetTypeUrl()).Inc()
+				xdsLog.Info("Envoy NACKed xDS config",
+					"type_url", req.GetTypeUrl(),
+					"version", req.GetVersionInfo(),
+					"nonce", req.GetResponseNonce(),
+					"error", detail.GetMessage())
+			}
 			return nil
 		},
-		StreamResponseFunc: func(_ context.Context, _ int64, _ *discoveryv3.DiscoveryRequest, resp *discoveryv3.DiscoveryResponse) {
-			envoycpmetrics.GRPCResponsesTotal.WithLabelValues(resp.GetTypeUrl()).Inc()
+		StreamResponseFunc: func(_ context.Context, _ int64, req *discoveryv3.DiscoveryRequest, _ *discoveryv3.DiscoveryResponse) {
+			envoycpmetrics.GRPCResponsesTotal.WithLabelValues(req.GetTypeUrl()).Inc()
 		},
 	})
 
@@ -108,7 +140,19 @@ func (s *Server) Start(ctx context.Context) error {
 	// a single connection to the management server, then it might lead to
 	// availability problems.
 	var grpcOptions []grpc.ServerOption
-	grpcOptions = append(grpcOptions, grpc.MaxConcurrentStreams(grpcMaxConcurrentStreams))
+	grpcOptions = append(grpcOptions,
+		grpc.MaxConcurrentStreams(grpcMaxConcurrentStreams),
+		grpc.KeepaliveParams(keepalive.ServerParameters{
+			Time:                  grpcKeepaliveTime,
+			Timeout:               grpcKeepaliveTimeout,
+			MaxConnectionAge:      grpcMaxConnectionAge,
+			MaxConnectionAgeGrace: grpcMaxConnectionAgeGrace,
+		}),
+		grpc.KeepaliveEnforcementPolicy(keepalive.EnforcementPolicy{
+			MinTime:             grpcKeepaliveMinTime,
+			PermitWithoutStream: true,
+		}),
+	)
 	grpcServer := grpc.NewServer(grpcOptions...)
 
 	var lc net.ListenConfig
@@ -119,8 +163,24 @@ func (s *Server) Start(ctx context.Context) error {
 
 	registerServer(grpcServer, srv3)
 
-	// s.Log.Infow("starting management service", "listen-address", s.listenAddress)
-	if err = grpcServer.Serve(lis); err != nil {
+	// Drain on shutdown. Serve does not observe ctx, so without this the process
+	// exits with every ADS stream still open and the whole proxy fleet
+	// reconnects at once against the next manager.
+	go func() {
+		<-ctx.Done()
+		stopped := make(chan struct{})
+		go func() {
+			grpcServer.GracefulStop()
+			close(stopped)
+		}()
+		select {
+		case <-stopped:
+		case <-time.After(grpcGracefulStopTimeout):
+			grpcServer.Stop()
+		}
+	}()
+
+	if err = grpcServer.Serve(lis); err != nil && !errors.Is(err, grpc.ErrServerStopped) {
 		return errors.Wrap(err, "envoy control plane server failed while start serving incoming connections")
 	}
 

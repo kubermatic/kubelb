@@ -100,14 +100,23 @@ var (
 	GRPCRequestsTotal = factory.NewCounterVec(
 		"grpc_requests_total",
 		"Total number of gRPC xDS requests",
-		[]string{"type_url"},
+		[]string{metricsutil.LabelTypeURL},
 	)
 
 	// GRPCResponsesTotal counts the total number of gRPC responses.
 	GRPCResponsesTotal = factory.NewCounterVec(
 		"grpc_responses_total",
 		"Total number of gRPC xDS responses",
-		[]string{"type_url"},
+		[]string{metricsutil.LabelTypeURL},
+	)
+
+	// XDSNACKsTotal counts xDS config rejections (NACKs) from Envoy, labeled by
+	// resource type. A rejected snapshot is otherwise invisible on the
+	// control-plane side.
+	XDSNACKsTotal = factory.NewCounterVec(
+		"xds_nacks_total",
+		"Total number of xDS config rejections (NACKs) received from Envoy",
+		[]string{metricsutil.LabelTypeURL},
 	)
 )
 
@@ -176,6 +185,7 @@ func allCollectors() []prometheus.Collector {
 		GRPCConnectionsTotal,
 		GRPCRequestsTotal,
 		GRPCResponsesTotal,
+		XDSNACKsTotal,
 		// Cache metrics
 		CacheHitsTotal,
 		CacheMissesTotal,

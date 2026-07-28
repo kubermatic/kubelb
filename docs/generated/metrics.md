@@ -98,6 +98,7 @@ Metrics exposed by the KubeLB Envoy Control Plane component.
 | `kubelb_envoy_control_plane_snapshot_generation_duration_seconds` | Histogram | Duration of Envoy snapshot generation in seconds | `snapshot_name` |
 | `kubelb_envoy_control_plane_snapshot_updates_total` | Counter | Total number of Envoy snapshot updates | `snapshot_name` |
 | `kubelb_envoy_control_plane_snapshots` | Gauge | Current number of active Envoy snapshots | - |
+| `kubelb_envoy_control_plane_xds_nacks_total` | Counter | Total number of xDS config rejections (NACKs) received from Envoy | `type_url` |
 
 ---
 
