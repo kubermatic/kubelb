@@ -91,6 +91,53 @@ const (
 	defaultMaxResponseHeadersKb   uint32 = 8192
 )
 
+// Upstreams are tenant NodePorts, so every flow is tracked by kube-proxy. In
+// IPVS mode it drops idle entries at 900s without signalling either end,
+// leaving Envoy to reuse a socket the node has forgotten. Probe well before.
+const (
+	tcpKeepaliveIdleSeconds     = 180
+	tcpKeepaliveIntervalSeconds = 30
+	tcpKeepaliveProbes          = 3
+)
+
+// Hardcoded because the syscall package resolves these differently on Darwin.
+const (
+	sockOptLevelSocket   = 0x1 // SOL_SOCKET
+	sockOptNameKeepalive = 0x9 // SO_KEEPALIVE
+	sockOptLevelTCP      = 0x6 // SOL_TCP
+	sockOptNameKeepIdle  = 0x4 // TCP_KEEPIDLE
+	sockOptNameKeepIntvl = 0x5 // TCP_KEEPINTVL
+	sockOptNameKeepCnt   = 0x6 // TCP_KEEPCNT
+)
+
+func upstreamTCPKeepalive() *envoyCluster.UpstreamConnectionOptions {
+	return &envoyCluster.UpstreamConnectionOptions{
+		TcpKeepalive: &envoyCore.TcpKeepalive{
+			KeepaliveTime:     wrapperspb.UInt32(tcpKeepaliveIdleSeconds),
+			KeepaliveInterval: wrapperspb.UInt32(tcpKeepaliveIntervalSeconds),
+			KeepaliveProbes:   wrapperspb.UInt32(tcpKeepaliveProbes),
+		},
+	}
+}
+
+// Set on the listening socket; accepted connections inherit them.
+func downstreamTCPKeepalive() []*envoyCore.SocketOption {
+	option := func(level, name, value int64) *envoyCore.SocketOption {
+		return &envoyCore.SocketOption{
+			Level: level,
+			Name:  name,
+			Value: &envoyCore.SocketOption_IntValue{IntValue: value},
+			State: envoyCore.SocketOption_STATE_PREBIND,
+		}
+	}
+	return []*envoyCore.SocketOption{
+		option(sockOptLevelSocket, sockOptNameKeepalive, 1),
+		option(sockOptLevelTCP, sockOptNameKeepIdle, tcpKeepaliveIdleSeconds),
+		option(sockOptLevelTCP, sockOptNameKeepIntvl, tcpKeepaliveIntervalSeconds),
+		option(sockOptLevelTCP, sockOptNameKeepCnt, tcpKeepaliveProbes),
+	}
+}
+
 // HeaderLimits holds the resolved client header limits applied to the managed Envoy.
 type HeaderLimits struct {
 	MaxRequestHeadersKb    uint32
@@ -307,6 +354,10 @@ func makeCluster(clusterName string, protocol corev1.Protocol, routeKind string,
 		CommonLbConfig: &envoyCluster.Cluster_CommonLbConfig{
 			HealthyPanicThreshold: &envoyType.Percent{Value: 0},
 		},
+	}
+
+	if protocol != corev1.ProtocolUDP {
+		cluster.UpstreamConnectionOptions = upstreamTCPKeepalive()
 	}
 
 	switch discoveryType {
@@ -527,6 +578,7 @@ func makeTCPListener(clusterName string, listenerName string, listenerPort uint3
 				},
 			}},
 		}},
+		SocketOptions: downstreamTCPKeepalive(),
 	}
 }
 
@@ -701,6 +753,7 @@ func makeHTTPListener(listenerName string, clusterName string, listenerPort uint
 				},
 			}},
 		}},
+		SocketOptions: downstreamTCPKeepalive(),
 	}
 }
 

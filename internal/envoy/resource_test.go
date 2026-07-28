@@ -23,6 +23,7 @@ import (
 	"time"
 
 	envoyCluster "github.com/envoyproxy/go-control-plane/envoy/config/cluster/v3"
+	envoyCore "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	envoyListener "github.com/envoyproxy/go-control-plane/envoy/config/listener/v3"
 	envoyHttpManager "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/network/http_connection_manager/v3"
 	envoyTcpProxy "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/network/tcp_proxy/v3"
@@ -800,5 +801,84 @@ func TestMapSnapshot_VersionStableAcrossReorder(t *testing.T) {
 		if v1, v2 := snap1.GetVersion(rt), snap2.GetVersion(rt); v1 != v2 {
 			t.Errorf("version changed for %s despite ignored-field mutation: %q != %q", rt, v1, v2)
 		}
+	}
+}
+
+func TestMakeCluster_TCPKeepalive(t *testing.T) {
+	tests := []struct {
+		name     string
+		protocol corev1.Protocol
+		want     bool
+	}{
+		{name: "tcp cluster keeps the conntrack entry warm", protocol: corev1.ProtocolTCP, want: true},
+		{name: "udp cluster has no tcp keepalive", protocol: corev1.ProtocolUDP},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cluster := makeCluster("test-cluster", tt.protocol, "", false, nil, envoyCluster.Cluster_EDS, nil, ResolveHeaderLimits(nil))
+			keepalive := cluster.GetUpstreamConnectionOptions().GetTcpKeepalive()
+			if got := keepalive != nil; got != tt.want {
+				t.Fatalf("tcp_keepalive present = %v, want %v", got, tt.want)
+			}
+			if !tt.want {
+				return
+			}
+			if got := keepalive.GetKeepaliveTime().GetValue(); got != tcpKeepaliveIdleSeconds {
+				t.Errorf("keepalive_time = %d, want %d", got, tcpKeepaliveIdleSeconds)
+			}
+			if got := keepalive.GetKeepaliveInterval().GetValue(); got != tcpKeepaliveIntervalSeconds {
+				t.Errorf("keepalive_interval = %d, want %d", got, tcpKeepaliveIntervalSeconds)
+			}
+			if got := keepalive.GetKeepaliveProbes().GetValue(); got != tcpKeepaliveProbes {
+				t.Errorf("keepalive_probes = %d, want %d", got, tcpKeepaliveProbes)
+			}
+		})
+	}
+}
+
+func socketOptionValue(t *testing.T, options []*envoyCore.SocketOption, level, name int64) int64 {
+	t.Helper()
+	for _, option := range options {
+		if option.GetLevel() == level && option.GetName() == name {
+			if option.GetState() != envoyCore.SocketOption_STATE_PREBIND {
+				t.Errorf("socket option level %d name %d state = %v, want STATE_PREBIND", level, name, option.GetState())
+			}
+			return option.GetIntValue()
+		}
+	}
+	t.Fatalf("socket option level %d name %d not found", level, name)
+	return 0
+}
+
+func TestListeners_TCPKeepalive(t *testing.T) {
+	tests := []struct {
+		name     string
+		listener *envoyListener.Listener
+	}{
+		{name: "tcp", listener: makeTCPListener("test-cluster", "test-listener", 10001, nil)},
+		{name: "http", listener: makeHTTPListener("test-listener", "test-cluster", 10001, ResolveHeaderLimits(nil))},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			options := tt.listener.GetSocketOptions()
+			if got := socketOptionValue(t, options, sockOptLevelSocket, sockOptNameKeepalive); got != 1 {
+				t.Errorf("SO_KEEPALIVE = %d, want 1", got)
+			}
+			if got := socketOptionValue(t, options, sockOptLevelTCP, sockOptNameKeepIdle); got != tcpKeepaliveIdleSeconds {
+				t.Errorf("TCP_KEEPIDLE = %d, want %d", got, tcpKeepaliveIdleSeconds)
+			}
+			if got := socketOptionValue(t, options, sockOptLevelTCP, sockOptNameKeepIntvl); got != tcpKeepaliveIntervalSeconds {
+				t.Errorf("TCP_KEEPINTVL = %d, want %d", got, tcpKeepaliveIntervalSeconds)
+			}
+			if got := socketOptionValue(t, options, sockOptLevelTCP, sockOptNameKeepCnt); got != tcpKeepaliveProbes {
+				t.Errorf("TCP_KEEPCNT = %d, want %d", got, tcpKeepaliveProbes)
+			}
+		})
+	}
+}
+
+func TestMakeUDPListener_NoTCPKeepalive(t *testing.T) {
+	if options := makeUDPListener("test-cluster", "test-listener", 10001, nil).GetSocketOptions(); len(options) != 0 {
+		t.Fatalf("udp listener socket options = %v, want none", options)
 	}
 }
