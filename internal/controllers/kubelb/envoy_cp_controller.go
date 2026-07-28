@@ -67,7 +67,6 @@ type EnvoyCPReconciler struct {
 	Namespace         string
 	EnvoyServer       *envoycp.Server
 	DisableGatewayAPI bool
-	Config            *kubelbv1alpha1.Config
 }
 
 // +kubebuilder:rbac:groups=kubelb.k8c.io,resources=loadbalancers,verbs=get;list;watch
@@ -88,10 +87,7 @@ func (r *EnvoyCPReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		managermetrics.EnvoyCPReconcileTotal.WithLabelValues(metricsutil.ResultError).Inc()
 		return ctrl.Result{}, fmt.Errorf("failed to retrieve config: %w", err)
 	}
-	r.Config = config
-	r.EnvoyServer.UpdateConfig(config)
-
-	if err := r.reconcile(ctx, req); err != nil {
+	if err := r.reconcile(ctx, req, config); err != nil {
 		managermetrics.EnvoyCPReconcileTotal.WithLabelValues(metricsutil.ResultError).Inc()
 		return ctrl.Result{}, err
 	}
@@ -100,7 +96,7 @@ func (r *EnvoyCPReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 	return ctrl.Result{}, nil
 }
 
-func (r *EnvoyCPReconciler) reconcile(ctx context.Context, req ctrl.Request) error {
+func (r *EnvoyCPReconciler) reconcile(ctx context.Context, req ctrl.Request, config *kubelbv1alpha1.Config) error {
 	snapshotName, appName := req.Namespace, req.Namespace
 
 	lbs, routes, err := r.ListLoadBalancersAndRoutes(ctx, req)
@@ -113,7 +109,7 @@ func (r *EnvoyCPReconciler) reconcile(ctx context.Context, req ctrl.Request) err
 	if len(lbs) == 0 && len(routes) == 0 {
 		r.EnvoyCache.ClearSnapshot(snapshotName)
 		envoycpmetrics.CacheClearsTotal.WithLabelValues(snapshotName).Inc()
-		return r.cleanupEnvoyProxy(ctx, appName, namespace)
+		return r.cleanupEnvoyProxy(ctx, config, appName, namespace)
 	}
 
 	tenant, err := GetTenant(ctx, r.Client, RemoveTenantPrefix(namespace))
@@ -121,7 +117,7 @@ func (r *EnvoyCPReconciler) reconcile(ctx context.Context, req ctrl.Request) err
 		return fmt.Errorf("failed to retrieve tenant: %w", err)
 	}
 
-	if err := r.ensureEnvoyProxy(ctx, namespace, appName, snapshotName, tenant); err != nil {
+	if err := r.ensureEnvoyProxy(ctx, config, namespace, appName, snapshotName, tenant); err != nil {
 		return fmt.Errorf("failed to update Envoy proxy: %w", err)
 	}
 	managermetrics.EnvoyProxiesTotal.WithLabelValues(namespace, "shared").Set(1)
@@ -138,13 +134,13 @@ func (r *EnvoyCPReconciler) reconcile(ctx context.Context, req ctrl.Request) err
 		return err
 	}
 
-	return r.updateCache(ctx, snapshotName, lbs, routes)
+	return r.updateCache(ctx, config, snapshotName, lbs, routes)
 }
 
-func (r *EnvoyCPReconciler) updateCache(ctx context.Context, snapshotName string, lbs []kubelbv1alpha1.LoadBalancer, routes []kubelbv1alpha1.Route) error {
+func (r *EnvoyCPReconciler) updateCache(ctx context.Context, config *kubelbv1alpha1.Config, snapshotName string, lbs []kubelbv1alpha1.LoadBalancer, routes []kubelbv1alpha1.Route) error {
 	log := ctrl.LoggerFrom(ctx)
 	snapshotStart := time.Now()
-	desiredSnapshot, err := envoycp.MapSnapshot(ctx, r.Client, lbs, routes, r.PortAllocator, snapshotName, envoycp.ResolveHeaderLimits(r.Config))
+	desiredSnapshot, err := envoycp.MapSnapshot(ctx, r.Client, lbs, routes, r.PortAllocator, snapshotName, envoycp.ResolveHeaderLimits(config))
 	envoycpmetrics.SnapshotGenerationDuration.WithLabelValues(snapshotName).Observe(time.Since(snapshotStart).Seconds())
 	if err != nil {
 		return err
@@ -233,7 +229,7 @@ func (r *EnvoyCPReconciler) ListLoadBalancersAndRoutes(ctx context.Context, req 
 	return lbs, routeList, nil
 }
 
-func (r *EnvoyCPReconciler) cleanupEnvoyProxy(ctx context.Context, appName string, namespace string) error {
+func (r *EnvoyCPReconciler) cleanupEnvoyProxy(ctx context.Context, config *kubelbv1alpha1.Config, appName string, namespace string) error {
 	log := ctrl.LoggerFrom(ctx).WithValues("reconcile", "envoy-proxy")
 	log.V(2).Info("cleanup envoy-proxy")
 
@@ -242,7 +238,7 @@ func (r *EnvoyCPReconciler) cleanupEnvoyProxy(ctx context.Context, appName strin
 		Namespace: namespace,
 	}
 	var envoyProxy ctrlruntimeclient.Object
-	if r.Config.Spec.EnvoyProxy.UseDaemonset {
+	if config.Spec.EnvoyProxy.UseDaemonset {
 		envoyProxy = &appsv1.DaemonSet{
 			ObjectMeta: objMeta,
 		}
@@ -260,7 +256,7 @@ func (r *EnvoyCPReconciler) cleanupEnvoyProxy(ctx context.Context, appName strin
 	return nil
 }
 
-func (r *EnvoyCPReconciler) ensureEnvoyProxy(ctx context.Context, namespace, appName, snapshotName string, tenant *kubelbv1alpha1.Tenant) error {
+func (r *EnvoyCPReconciler) ensureEnvoyProxy(ctx context.Context, config *kubelbv1alpha1.Config, namespace, appName, snapshotName string, tenant *kubelbv1alpha1.Tenant) error {
 	log := ctrl.LoggerFrom(ctx).WithValues("reconcile", "envoy-proxy")
 	log.V(2).Info("verify envoy-proxy")
 
@@ -274,7 +270,7 @@ func (r *EnvoyCPReconciler) ensureEnvoyProxy(ctx context.Context, namespace, app
 			kubelb.LabelAppKubernetesManagedBy: envoyProxyManagedByVal,
 		},
 	}
-	if r.Config.Spec.EnvoyProxy.UseDaemonset {
+	if config.Spec.EnvoyProxy.UseDaemonset {
 		envoyProxy = &appsv1.DaemonSet{
 			ObjectMeta: objMeta,
 		}
@@ -293,10 +289,10 @@ func (r *EnvoyCPReconciler) ensureEnvoyProxy(ctx context.Context, namespace, app
 		return err
 	}
 
-	desiredTemplate := r.getEnvoyProxyPodSpec(namespace, appName, snapshotName, tenant)
+	desiredTemplate := r.getEnvoyProxyPodSpec(config, namespace, appName, snapshotName, tenant)
 	var originalTemplate corev1.PodTemplateSpec
 	var originalReplicas, desiredReplicas *int32
-	if r.Config.Spec.EnvoyProxy.UseDaemonset {
+	if config.Spec.EnvoyProxy.UseDaemonset {
 		daemonset := envoyProxy.(*appsv1.DaemonSet)
 		originalTemplate = daemonset.Spec.Template
 		daemonset.Spec.Selector = &metav1.LabelSelector{
@@ -308,7 +304,7 @@ func (r *EnvoyCPReconciler) ensureEnvoyProxy(ctx context.Context, namespace, app
 		deployment := envoyProxy.(*appsv1.Deployment)
 		originalTemplate = deployment.Spec.Template
 		originalReplicas = deployment.Spec.Replicas
-		replicas := r.Config.Spec.EnvoyProxy.Replicas
+		replicas := config.Spec.EnvoyProxy.Replicas
 		if tenant.Spec.EnvoyProxy != nil && tenant.Spec.EnvoyProxy.Replicas != nil {
 			replicas = *tenant.Spec.EnvoyProxy.Replicas
 		}
@@ -334,8 +330,8 @@ func (r *EnvoyCPReconciler) ensureEnvoyProxy(ctx context.Context, namespace, app
 	return nil
 }
 
-func (r *EnvoyCPReconciler) getEnvoyProxyPodSpec(namespace, appName, snapshotName string, tenant *kubelbv1alpha1.Tenant) corev1.PodTemplateSpec {
-	envoyProxy := r.Config.Spec.EnvoyProxy
+func (r *EnvoyCPReconciler) getEnvoyProxyPodSpec(config *kubelbv1alpha1.Config, namespace, appName, snapshotName string, tenant *kubelbv1alpha1.Tenant) corev1.PodTemplateSpec {
+	envoyProxy := config.Spec.EnvoyProxy
 
 	// Extract graceful shutdown configuration
 	gracefulShutdownEnabled := true
@@ -359,7 +355,7 @@ func (r *EnvoyCPReconciler) getEnvoyProxyPodSpec(namespace, appName, snapshotNam
 		Name:  envoyProxyContainerName,
 		Image: envoyImage,
 		Args: []string{
-			"--config-yaml", r.EnvoyServer.GenerateBootstrap(),
+			"--config-yaml", r.EnvoyServer.GenerateBootstrap(config),
 			"--service-node", snapshotName,
 			"--service-cluster", namespace,
 		},
@@ -509,7 +505,7 @@ func (r *EnvoyCPReconciler) getEnvoyProxyPodSpec(namespace, appName, snapshotNam
 				kubelb.LabelAppKubernetesName:      appName,
 				kubelb.LabelAppKubernetesManagedBy: "kubelb",
 			},
-			Annotations: r.envoyProxyAnnotations(),
+			Annotations: r.envoyProxyAnnotations(config),
 		},
 		Spec: corev1.PodSpec{
 			TerminationGracePeriodSeconds: ptr.To(terminationGracePeriod),
@@ -550,8 +546,8 @@ func (r *EnvoyCPReconciler) getEnvoyProxyPodSpec(namespace, appName, snapshotNam
 	return template
 }
 
-func (r *EnvoyCPReconciler) envoyProxyAnnotations() map[string]string {
-	if r.Config.Spec.EnvoyProxy.PodMonitor != nil && r.Config.Spec.EnvoyProxy.PodMonitor.Enabled {
+func (r *EnvoyCPReconciler) envoyProxyAnnotations(config *kubelbv1alpha1.Config) map[string]string {
+	if config.Spec.EnvoyProxy.PodMonitor != nil && config.Spec.EnvoyProxy.PodMonitor.Enabled {
 		return nil
 	}
 	return map[string]string{

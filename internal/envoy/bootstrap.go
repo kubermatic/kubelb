@@ -38,6 +38,8 @@ import (
 	"google.golang.org/protobuf/types/known/anypb"
 	"google.golang.org/protobuf/types/known/durationpb"
 	"google.golang.org/protobuf/types/known/wrapperspb"
+
+	"k8c.io/kubelb/api/ce/kubelb.k8c.io/v1alpha1"
 )
 
 const xdsClusterName = "xds_cluster"
@@ -85,7 +87,7 @@ const (
 // potential security issues while keeping it available for the stats and probe listeners.
 var EnvoyAdminListenerAddress = "127.0.0.1"
 
-func (s *Server) GenerateBootstrap() string {
+func (s *Server) GenerateBootstrap(config *v1alpha1.Config) string {
 	// If debug is enabled, allow external access to the admin interface
 	if s.enableAdmin {
 		EnvoyAdminListenerAddress = wildcardBindAddress
@@ -254,8 +256,8 @@ func (s *Server) GenerateBootstrap() string {
 			},
 		},
 	}
-	if s.config.Spec.EnvoyProxy.OverloadManager != nil && s.config.Spec.EnvoyProxy.OverloadManager.Enabled {
-		cfg.OverloadManager = s.buildOverloadManager()
+	if config.Spec.EnvoyProxy.OverloadManager != nil && config.Spec.EnvoyProxy.OverloadManager.Enabled {
+		cfg.OverloadManager = s.buildOverloadManager(config)
 	}
 
 	jsonBytes, err := protojson.Marshal(cfg)
@@ -469,12 +471,12 @@ func marshalAny(pb proto.Message) *anypb.Any {
 	return marshalledPB
 }
 
-func (s *Server) buildOverloadManager() *envoyConfigOverloadV3.OverloadManager {
+func (s *Server) buildOverloadManager(config *v1alpha1.Config) *envoyConfigOverloadV3.OverloadManager {
 	om := &envoyConfigOverloadV3.OverloadManager{
 		RefreshInterval: durationpb.New(250 * time.Millisecond),
 	}
 
-	cfg := s.config.Spec.EnvoyProxy.OverloadManager
+	cfg := config.Spec.EnvoyProxy.OverloadManager
 
 	// Configure fixed heap monitoring if max heap size is specified
 	if cfg.MaxHeapSizeBytes > 0 {

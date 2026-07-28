@@ -92,7 +92,7 @@ var _ = Describe("Lb deployment and service creation", func() {
 					return k8sClient.Get(ctx, deploymentLookupKey, createdDeployment)
 				}, timeout, interval).Should(Succeed())
 
-				Expect(createdDeployment.Spec.Template.Spec.Containers[0].Args[1]).Should(Equal(envoyServer.GenerateBootstrap()))
+				Expect(createdDeployment.Spec.Template.Spec.Containers[0].Args[1]).Should(Equal(envoyServer.GenerateBootstrap(&kubelbv1alpha1.Config{})))
 
 				By("creating a corresponding service")
 

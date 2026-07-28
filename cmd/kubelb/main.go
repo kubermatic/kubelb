@@ -137,13 +137,15 @@ func main() {
 	// setup signal handler
 	ctx := ctrl.SetupSignalHandler()
 
-	conf, err := config.GetConfig(ctx, mgr.GetAPIReader(), opt.namespace)
-	if err != nil {
+	// Controllers now read the Config per reconcile rather than caching it here,
+	// but keep the startup read so a missing or unreadable Config still fails the
+	// manager fast instead of surfacing on the first reconcile.
+	if _, err := config.GetConfig(ctx, mgr.GetAPIReader(), opt.namespace); err != nil {
 		setupLog.Error(err, "unable to load controller config")
 		os.Exit(1)
 	}
 
-	envoyServer, err := envoy.NewServer(&conf, opt.envoyListenAddress, opt.enableDebugMode)
+	envoyServer, err := envoy.NewServer(opt.envoyListenAddress, opt.enableDebugMode)
 	if err != nil {
 		setupLog.Error(err, "unable to create envoy server")
 		os.Exit(1)

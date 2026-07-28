@@ -20,15 +20,13 @@ import (
 	"context"
 	"testing"
 	"time"
-
-	"k8c.io/kubelb/api/ce/kubelb.k8c.io/v1alpha1"
 )
 
 // On shutdown the xDS server must drain its streams. Without it the process
 // exits with every ADS stream still open, so each connected proxy sees a reset
 // mid-response and the whole fleet reconnects at once.
 func TestServerStartDrainsOnContextCancellation(t *testing.T) {
-	server, err := NewServer(&v1alpha1.Config{}, "127.0.0.1:0", false)
+	server, err := NewServer("127.0.0.1:0", false)
 	if err != nil {
 		t.Fatalf("NewServer() error = %v", err)
 	}
