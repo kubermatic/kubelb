@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"math"
 	"net"
+	"sort"
 	"strings"
 	"time"
 
@@ -237,6 +238,15 @@ func MapSnapshot(ctx context.Context, client ctrlclient.Client, loadBalancers []
 			}
 		}
 	}
+
+	// The source LoadBalancers/Routes arrive in controller-runtime cache order,
+	// which is Go map order and therefore varies between reconciles. Sorting here
+	// keeps both the version hash below and the first-wins choice in
+	// dedupListenersByAddress stable, so an unchanged config keeps its version
+	// instead of republishing to every connected proxy on every reconcile.
+	sortResourcesByName(cluster)
+	sortResourcesByName(listener)
+	sortResourcesByName(endpoints)
 
 	listener = dedupListenersByAddress(listener, snapshotName)
 
@@ -692,6 +702,12 @@ func makeHTTPListener(listenerName string, clusterName string, listenerPort uint
 			}},
 		}},
 	}
+}
+
+func sortResourcesByName(resources []types.Resource) {
+	sort.Slice(resources, func(i, j int) bool {
+		return envoycache.GetResourceName(resources[i]) < envoycache.GetResourceName(resources[j])
+	})
 }
 
 // dedupListenersByAddress drops listeners with duplicate bind addresses before

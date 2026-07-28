@@ -150,32 +150,26 @@ func (r *EnvoyCPReconciler) updateCache(ctx context.Context, snapshotName string
 		return err
 	}
 
+	desiredVersion := desiredSnapshot.GetVersion(envoyresource.ClusterType)
 	currentSnapshot, err := r.EnvoyCache.GetSnapshot(snapshotName)
 	if err != nil {
 		envoycpmetrics.CacheMissesTotal.WithLabelValues(snapshotName).Inc()
-		log.Info("init snapshot", "service-node", snapshotName, "version", desiredSnapshot.GetVersion(envoyresource.ClusterType))
-		if err := r.EnvoyCache.SetSnapshot(ctx, snapshotName, desiredSnapshot); err != nil {
-			return err
+		log.Info("init snapshot", "service-node", snapshotName, "version", desiredVersion)
+	} else {
+		envoycpmetrics.CacheHitsTotal.WithLabelValues(snapshotName).Inc()
+		if currentSnapshot.GetVersion(envoyresource.ClusterType) == desiredVersion {
+			log.V(2).Info("snapshot is in desired state")
+			return nil
 		}
-		r.recordSnapshotMetrics(snapshotName, desiredSnapshot)
-		managermetrics.EnvoyCPSnapshotUpdatesTotal.WithLabelValues(snapshotName).Inc()
-		envoycpmetrics.SnapshotUpdatesTotal.WithLabelValues(snapshotName).Inc()
-		return nil
-	}
-	envoycpmetrics.CacheHitsTotal.WithLabelValues(snapshotName).Inc()
-
-	lastUsedVersion := currentSnapshot.GetVersion(envoyresource.ClusterType)
-	desiredVersion := desiredSnapshot.GetVersion(envoyresource.ClusterType)
-	if lastUsedVersion == desiredVersion {
-		log.V(2).Info("snapshot is in desired state")
-		return nil
+		log.Info("updating snapshot", "service-node", snapshotName, "version", desiredVersion)
 	}
 
+	// Validated on both the init and update paths: an inconsistent snapshot (a
+	// cluster without its endpoints) must never reach a proxy, and a cold cache
+	// is exactly when a bad first snapshot would go out unnoticed.
 	if err := desiredSnapshot.Consistent(); err != nil {
 		return fmt.Errorf("new Envoy config snapshot is not consistent: %w", err)
 	}
-
-	log.Info("updating snapshot", "service-node", snapshotName, "version", desiredSnapshot.GetVersion(envoyresource.ClusterType))
 
 	if err := r.EnvoyCache.SetSnapshot(ctx, snapshotName, desiredSnapshot); err != nil {
 		return fmt.Errorf("failed to set a new Envoy cache snapshot: %w", err)

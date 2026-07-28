@@ -18,6 +18,7 @@ package envoy
 
 import (
 	"context"
+	"fmt"
 	"testing"
 	"time"
 
@@ -623,6 +624,42 @@ func ingressSourceRoute() kubelbv1alpha1.Route {
 				},
 			},
 		},
+	}
+}
+
+// The manager lists LoadBalancers and Routes through the controller-runtime
+// cache, whose List() returns items in Go map iteration order. If the snapshot
+// version depended on that order it would churn on every reconcile,
+// republishing an unchanged config to every connected proxy.
+func TestMapSnapshot_VersionIsIndependentOfResourceOrder(t *testing.T) {
+	ctx := context.Background()
+	cl := fake.NewClientBuilder().WithScheme(testScheme(t)).Build()
+
+	lbs := make([]kubelbv1alpha1.LoadBalancer, 0, 3)
+	for i, name := range []string{"lb-a", "lb-b", "lb-c"} {
+		lb := inlineAddressLB()
+		lb.Name = name
+		lb.Spec.Endpoints[0].Addresses[0].IP = fmt.Sprintf("10.0.1.%d", i+1)
+		lbs = append(lbs, lb)
+	}
+
+	pa := portlookup.NewPortAllocator()
+	if err := pa.AllocatePortsForLoadBalancers(kubelbv1alpha1.LoadBalancerList{Items: lbs}); err != nil {
+		t.Fatalf("allocate LB ports: %v", err)
+	}
+
+	versionFor := func(in []kubelbv1alpha1.LoadBalancer) string {
+		t.Helper()
+		snap, err := MapSnapshot(ctx, cl, in, nil, pa, "test-node", ResolveHeaderLimits(nil))
+		if err != nil {
+			t.Fatalf("MapSnapshot: %v", err)
+		}
+		return snap.GetVersion(resource.ClusterType)
+	}
+
+	reversed := []kubelbv1alpha1.LoadBalancer{lbs[2], lbs[1], lbs[0]}
+	if got, want := versionFor(reversed), versionFor(lbs); got != want {
+		t.Errorf("snapshot version depends on input order: %q != %q", got, want)
 	}
 }
 
