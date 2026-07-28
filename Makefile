@@ -13,6 +13,10 @@ GO_VERSION = 1.26.5
 HELM_DOCS_VERSION ?= v1.14.2
 CRD_REF_DOCS_VERSION ?= v0.3.0
 CHAINSAW_VERSION ?= v0.2.14
+# Nested module, tagged tools/setup-envtest/vX.Y.Z. Must be a tag: a branch ref
+# makes go install fall back to the parent module, which lacks the package.
+# Keep in sync with the controller-runtime minor version in go.mod.
+SETUP_ENVTEST_VERSION ?= v0.24.1
 
 CRD_CODE_GEN_PATH = "./api/ce/..."
 RECONCILE_HELPER_PATH = "internal/resources/reconciling/zz_generated_reconcile.go"
@@ -288,7 +292,7 @@ $(CONTROLLER_GEN): $(LOCALBIN)
 .PHONY: envtest
 envtest: $(ENVTEST) ## Download envtest-setup locally if necessary.
 $(ENVTEST): $(LOCALBIN)
-	test -s $(LOCALBIN)/setup-envtest || GOBIN=$(LOCALBIN) go install sigs.k8s.io/controller-runtime/tools/setup-envtest@latest
+	test -s $(LOCALBIN)/setup-envtest || GOBIN=$(LOCALBIN) go install sigs.k8s.io/controller-runtime/tools/setup-envtest@$(SETUP_ENVTEST_VERSION)
 
 .PHONY: chainsaw
 chainsaw: $(CHAINSAW) ## Download chainsaw locally if necessary.
