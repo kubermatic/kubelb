@@ -213,7 +213,7 @@ presubmits:
       preset-goproxy: "true"
     spec:
       containers:
-        - image: goreleaser/goreleaser:v2.15.3
+        - image: goreleaser/goreleaser:v2.17.1
           env:
             - name: GOTOOLCHAIN
               value: auto
