@@ -7,6 +7,7 @@ KUBELB_CCM_IMG ?= quay.io/kubermatic/kubelb-ccm
 ## Tool Versions
 # ENVTEST_K8S_VERSION refers to the version of kubebuilder assets to be downloaded by envtest binary.
 ENVTEST_K8S_VERSION ?= $(shell go list -m -f "{{ .Version }}" k8s.io/api | awk -F'[v.]' '{printf "1.%d", $$3}')
+BENCHTIME ?= 1s
 KUSTOMIZE_VERSION ?= v5.8.1
 CONTROLLER_TOOLS_VERSION ?= v0.20.1
 GO_VERSION = 1.26.5
@@ -147,6 +148,10 @@ clean:  ## Clean binaries
 .PHONY: test
 test: envtest ## Run tests.
 	KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) --bin-dir $(LOCALBIN) -p path)" go test -v ./internal/... -coverprofile cover.out
+
+.PHONY: bench
+bench: ## Run benchmarks. Pipe to a file and compare runs with benchstat.
+	go test ./internal/envoy/... -run '^$$' -bench=. -benchmem -benchtime=$(BENCHTIME)
 
 ##@ Build
 
