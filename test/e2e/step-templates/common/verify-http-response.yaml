@@ -37,7 +37,9 @@ spec:
       value: "20"
   try:
     - script:
-        timeout: 60s
+        # Must cover the worst-case retry loop: default 20 retries x (5s
+        # curl --max-time + 2s sleep) = 140s.
+        timeout: 180s
         env:
           - name: IP
             value: ($ip)

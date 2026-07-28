@@ -142,8 +142,8 @@ increase_inotify_limits() {
 }
 
 is_docker_network_reachable() {
-  # Test if host can reach Docker network gateway without docker-mac-net-connect
-  # This indicates Docker Desktop host networking is enabled
+  # Verify that the host can actually reach the Docker bridge. A utun route can
+  # survive a Docker Desktop restart even when docker-mac-net-connect is stale.
   local gateway
   gateway=$(docker network inspect bridge -f '{{(index .IPAM.Config 0).Gateway}}' 2> /dev/null)
   [[ -n "$gateway" ]] && ping -c 1 -t 1 "$gateway" &> /dev/null
@@ -163,16 +163,18 @@ setup_mac_docker_networking() {
     return 0
   fi
 
-  # Check if routes already exist (docker-mac-net-connect running)
-  if netstat -rnf inet 2> /dev/null | grep -q "172.*utun"; then
-    echodate "Docker network routes already configured"
+  # A successful probe is authoritative; route presence alone is not.
+  if is_docker_network_reachable; then
+    if netstat -rnf inet 2> /dev/null | grep -q "172.*utun"; then
+      echodate "Docker network connectivity verified"
+    else
+      echodate "Using Docker Desktop host networking (native)"
+    fi
     return 0
   fi
 
-  # Check if Docker Desktop host networking is enabled (native reachability)
-  if is_docker_network_reachable; then
-    echodate "Using Docker Desktop host networking (native)"
-    return 0
+  if netstat -rnf inet 2> /dev/null | grep -q "172.*utun"; then
+    echodate "Detected stale Docker network routes; restarting docker-mac-net-connect"
   fi
 
   # docker-mac-net-connect path needs root. Get one sudo prompt out of the way
@@ -242,11 +244,12 @@ setup_mac_docker_networking() {
   echodate "Starting docker-mac-net-connect..."
   sudo DOCKER_HOST="${docker_socket}" DOCKER_API_VERSION=1.44 "${dmn_bin}" &> /dev/null &
 
-  # Wait for routes to appear with exponential backoff (0.1s, 0.2s, 0.4s, ...)
+  # Wait for real connectivity with exponential backoff (0.1s, 0.2s, ...).
+  # Checking routes would accept the stale-route state we are repairing.
   local retries=10
   local wait_time=0.1
   while [[ $retries -gt 0 ]]; do
-    if netstat -rnf inet 2> /dev/null | grep -q "172.*utun"; then
+    if is_docker_network_reachable; then
       echodate "Docker network connectivity configured"
       return 0
     fi
@@ -255,7 +258,7 @@ setup_mac_docker_networking() {
     ((retries--))
   done
 
-  echodate "WARNING: Docker network routes not detected. LoadBalancer IPs may not be reachable."
+  echodate "WARNING: Docker network connectivity could not be verified. LoadBalancer IPs may not be reachable."
   echodate "  Enable Docker Desktop host networking: Settings → Resources → Network → Host networking"
   return 0
 }

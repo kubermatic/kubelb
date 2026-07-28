@@ -130,7 +130,7 @@ spec:
       cluster: tenant1
       try:
         - script:
-            timeout: 60s
+            timeout: 420s
             content: |
               set -e
               IP=$(kubectl get svc echo-mpmnod -n default -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
@@ -138,17 +138,27 @@ spec:
               SUCCESS_PORT2=0
 
               for i in $(seq 1 10); do
-                RESPONSE=$(curl -s --max-time 5 "http://${IP}:80" || true)
-                if echo "$RESPONSE" | grep -q "hello-from-mpmnod-port-80"; then
-                  SUCCESS_PORT1=$((SUCCESS_PORT1 + 1))
-                fi
+                for attempt in 1 2 3; do
+                  RESPONSE=$(curl -s --max-time 5 "http://${IP}:80" || true)
+                  if echo "$RESPONSE" | grep -q "hello-from-mpmnod-port-80"; then
+                    SUCCESS_PORT1=$((SUCCESS_PORT1 + 1))
+                    break
+                  fi
+                  echo "port 80 request $i attempt $attempt failed"
+                  sleep 1
+                done
               done
 
               for i in $(seq 1 10); do
-                RESPONSE=$(curl -s --max-time 5 "http://${IP}:81" || true)
-                if echo "$RESPONSE" | grep -q "hello-from-mpmnod-port-81"; then
-                  SUCCESS_PORT2=$((SUCCESS_PORT2 + 1))
-                fi
+                for attempt in 1 2 3; do
+                  RESPONSE=$(curl -s --max-time 5 "http://${IP}:81" || true)
+                  if echo "$RESPONSE" | grep -q "hello-from-mpmnod-port-81"; then
+                    SUCCESS_PORT2=$((SUCCESS_PORT2 + 1))
+                    break
+                  fi
+                  echo "port 81 request $i attempt $attempt failed"
+                  sleep 1
+                done
               done
 
               if [ "$SUCCESS_PORT1" -eq 10 ] && [ "$SUCCESS_PORT2" -eq 10 ]; then

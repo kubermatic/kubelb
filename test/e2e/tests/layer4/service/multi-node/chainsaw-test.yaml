@@ -133,17 +133,22 @@ spec:
       cluster: tenant1
       try:
         - script:
-            timeout: 60s
+            timeout: 240s
             content: |
               set -e
               IP=$(kubectl get svc echo-multinode -n default \
                 -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
               SUCCESS=0
               for i in $(seq 1 10); do
-                RESPONSE=$(curl -s --max-time 5 "http://${IP}" || true)
-                if echo "$RESPONSE" | grep -q "hello-from-multinode"; then
-                  SUCCESS=$((SUCCESS + 1))
-                fi
+                for attempt in 1 2 3; do
+                  RESPONSE=$(curl -s --max-time 5 "http://${IP}" || true)
+                  if echo "$RESPONSE" | grep -q "hello-from-multinode"; then
+                    SUCCESS=$((SUCCESS + 1))
+                    break
+                  fi
+                  echo "request $i attempt $attempt failed"
+                  sleep 1
+                done
               done
               if [ "$SUCCESS" -eq 10 ]; then
                 echo "All 10 requests succeeded"

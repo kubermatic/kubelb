@@ -99,7 +99,18 @@ done
 # Update all repositories (only if any exist)
 if helm repo list &> /dev/null; then
   echo "Updating Helm repositories..."
-  helm repo update
+  # Transient index fetch failures are common in CI; retry before giving up.
+  for attempt in 1 2 3; do
+    if helm repo update; then
+      break
+    fi
+    if [ "$attempt" -eq 3 ]; then
+      echo "helm repo update failed after ${attempt} attempts" >&2
+      exit 1
+    fi
+    echo "helm repo update failed (attempt ${attempt}), retrying in 5s..." >&2
+    sleep 5
+  done
 else
   echo "No Helm repositories configured, skipping update"
 fi

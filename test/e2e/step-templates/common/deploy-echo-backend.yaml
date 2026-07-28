@@ -89,7 +89,8 @@ spec:
           ($error == null): true
     - assert:
         cluster: tenant1
-        timeout: 60s
+        # Covers a cold-node image pull, not just pod scheduling.
+        timeout: 120s
         resource:
           apiVersion: apps/v1
           kind: Deployment
