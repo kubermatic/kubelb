@@ -10,6 +10,24 @@ description: Sweep and update every dependency surface in the kubelb repo (go.mo
 1. **A surface gets missed.** Dependabot covers less than it looks like. Work the inventory below, do not assume.
 2. **A bump silently no-ops or silently gets lost.** Verify by reading the resulting tree, never by trusting a "merged" badge or a clean `make` run.
 
+## Scan for CVEs first
+
+Vulnerabilities decide what to bump and in what order. Run the scanners **before** touching any version, and land security-driven bumps as their own PR ahead of routine ones — a CVE fix should be reviewable and backportable without a pile of cosmetic bumps around it.
+
+Discover what this repo already runs rather than assuming; see [REFERENCE.md](REFERENCE.md#discovering-a-repos-security-posture) for the discovery commands. Reuse its pinned scanner versions and thresholds so local results match CI. For kubelb today that is:
+
+```bash
+go install golang.org/x/vuln/cmd/govulncheck@v1.1.4
+govulncheck ./... && (cd cli && govulncheck ./...)
+
+make build build-cli
+docker build -t kubelb-manager:scan -f kubelb.goreleaser.dockerfile .
+trivy image --severity HIGH,CRITICAL --ignore-unfixed kubelb-manager:scan
+trivy rootfs --severity HIGH,CRITICAL --ignore-unfixed cli/bin/kubelb
+```
+
+Then triage: a finding that a bump fixes drives that bump. A finding with no fixed version, or in a package the binaries never import, gets suppressed **with a reason** rather than chased — see [REFERENCE.md](REFERENCE.md#suppressing-a-finding).
+
 ## Inventory
 
 Run every row. `auto` = dependabot proposes it weekly; still confirm it is current.
@@ -34,6 +52,7 @@ Go deps: direct deps are usually already current. Use `go get -u ./...` in **bot
 
 Split on **user-facing vs internal**, not one-PR-per-bump.
 
+- **Security fixes → first, on their own.** Anything closing a CVE goes ahead of routine bumps so it can be reviewed and backported cleanly.
 - **User-facing → its own PR, one per concern.** Addon charts (they deploy into tenant clusters), the managed envoy dataplane image, anything with a real `release-note`, CRD/API changes. Each needs its own e2e signal and its own revert story.
 - **Internal → bundle freely into one PR.** Makefile tools, prow images, action SHAs, `hack/ci` pins, go.mod. Nobody downstream sees these.
 

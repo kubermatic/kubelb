@@ -1,3 +1,58 @@
+# Reference
+
+## Discovering a repo's security posture
+
+Do not hardcode scanners. Read them out of CI so this works unchanged in `kubelb-ee` or any sibling repo, and so local runs match what will gate the PR.
+
+```bash
+# which scanners run, and where
+grep -rn "govulncheck\|trivy\|osv-scanner\|grype\|snyk\|dependency-review\|codeql\|scorecard" \
+  .github/ .prow/ hack/ Makefile 2>/dev/null | grep -v Binary
+
+# pinned scanner versions and thresholds
+grep -rnE "govulncheck@|trivy .*-b /usr/local/bin|severity|fail-on-severity|ignore-unfixed|exit-code" \
+  .github/workflows/ .prow/
+
+# suppression configs
+git ls-files | grep -iE "osv|trivy|grype|vuln|\.snyk"
+```
+
+Then mirror what you find: same tool, same pinned version, same severity threshold. Three things to extract:
+
+- **What runs where.** Blocking on PRs vs release-only changes how urgent a finding is.
+- **Thresholds.** `--severity HIGH,CRITICAL` plus `--ignore-unfixed` means MEDIUM findings and unfixable ones are deliberately out of scope. Do not "fix" what the repo has chosen not to gate on.
+- **Suppression file and its convention** (see below).
+
+### kubelb's posture as of writing
+
+| Scanner | Version | Where | Gate |
+|---|---|---|---|
+| govulncheck | v1.1.4 | `pr.yml`, both modules | blocking on every PR |
+| trivy (image + rootfs) | v0.69.2 | `pr.yml`, `release.yml`, `release-vuln-scan.yml` | blocking, `HIGH,CRITICAL`, `--ignore-unfixed` |
+| dependency-review-action | v5.0.0 | `pr.yml` | `fail-on-severity: high`, scopes runtime + development |
+| CodeQL | — | `codeql-analysis.yml` | SARIF to code scanning |
+| OpenSSF Scorecard | — | `scorecard.yml` | SARIF to code scanning |
+
+Note `osv-scanner.toml` exists in the repo root but **nothing in-repo invokes osv-scanner** — it is consumed by an external scanner. Edits to it are therefore untestable locally; do not assume a local run validates them.
+
+## Suppressing a finding
+
+Suppress only when a bump genuinely cannot fix it: no fixed version exists, or the vulnerable package is not reachable from the binaries. Prove the second claim before claiming it:
+
+```bash
+go mod why golang.org/x/crypto/openpgp        # run in both modules
+```
+
+Record the id and the reasoning in the repo's suppression file. The existing entry is the format to copy:
+
+```toml
+[[IgnoredVulns]]
+id = "GO-2026-5932"
+reason = "golang.org/x/crypto/openpgp is deprecated with no fixed version; kubelb does not import any openpgp package (verified with `go mod why golang.org/x/crypto/openpgp` in both modules), x/crypto is only an indirect dependency"
+```
+
+A reason that does not say *why it is unreachable or unfixable* is not a reason.
+
 # Pitfalls
 
 Each of these cost real time. Ordered by how badly they bite.
