@@ -39,6 +39,8 @@ const (
 	CleanupFinalizer = "kubelb.k8c.io/cleanup"
 )
 
+// +kubebuilder:rbac:groups=events.k8s.io,resources=events,verbs=create;patch
+
 func reconcileSourceForRoute(ctx context.Context, log logr.Logger, client ctrlclient.Client, lbClient ctrlclient.Client, resource ctrlclient.Object, originalServices []types.NamespacedName, namespace string) error {
 	log.V(2).Info("reconciling source for producing route")
 
