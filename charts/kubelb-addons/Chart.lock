@@ -16,15 +16,15 @@ dependencies:
   version: 0.16.1
 - name: agentgateway-crds
   repository: oci://cr.agentgateway.dev/charts
-  version: v1.3.1
+  version: 1.4.0
 - name: agentgateway
   repository: oci://cr.agentgateway.dev/charts
-  version: v1.3.1
+  version: 1.4.0
 - name: valkey
   repository: oci://ghcr.io/valkey-io/valkey-helm
   version: 0.11.0
 - name: ratelimit
   repository: file://./ratelimit
   version: 0.1.0
-digest: sha256:eccc647653bea553545ad740320db0770ba820f629c7f2bd1237d4a1130e88f0
-generated: "2026-07-28T19:12:58.149501+05:00"
+digest: sha256:5cb0ba8edb3104300f286a120e5687f6a2e88d1251cf1cf32c29c2343f5acab6
+generated: "2026-07-28T19:19:58.042666+05:00"
