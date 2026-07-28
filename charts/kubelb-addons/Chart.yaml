@@ -17,7 +17,7 @@ dependencies:
   - name: gateway-helm
     repository: oci://docker.io/envoyproxy
     condition: envoy-gateway.enabled
-    version: 1.7.2
+    version: 1.8.3
     alias: envoy-gateway
   - name: cert-manager
     repository: oci://quay.io/jetstack/charts
@@ -26,11 +26,11 @@ dependencies:
   - name: external-dns
     repository: https://kubernetes-sigs.github.io/external-dns
     condition: external-dns.enabled
-    version: 1.20.0
+    version: 1.21.1
   - name: metallb
     repository: oci://quay.io/metallb/chart
     condition: metallb.enabled
-    version: 0.15.3
+    version: 0.16.1
   - name: agentgateway-crds
     repository: oci://cr.agentgateway.dev/charts
     condition: agentgateway-crds.enabled

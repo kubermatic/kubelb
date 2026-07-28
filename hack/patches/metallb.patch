@@ -1,6 +1,6 @@
 diff -ruN --exclude=README.md --exclude=README.md.gotmpl a/metallb/charts/frr-k8s/templates/_helpers.tpl b/metallb/charts/frr-k8s/templates/_helpers.tpl
---- a/metallb/charts/frr-k8s/templates/_helpers.tpl	2025-12-04 20:20:55
-+++ b/metallb/charts/frr-k8s/templates/_helpers.tpl	2026-04-14 12:05:23
+--- a/metallb/charts/frr-k8s/templates/_helpers.tpl	2026-05-28 02:12:45
++++ b/metallb/charts/frr-k8s/templates/_helpers.tpl	2026-07-28 19:14:32
 @@ -61,3 +61,18 @@
  {{- default "default" .Values.frrk8s.serviceAccount.name }}
  {{- end }}
@@ -21,8 +21,8 @@ diff -ruN --exclude=README.md --exclude=README.md.gotmpl a/metallb/charts/frr-k8
 +{{- $repository -}}
 +{{- end }}
 diff -ruN --exclude=README.md --exclude=README.md.gotmpl a/metallb/charts/frr-k8s/templates/controller.yaml b/metallb/charts/frr-k8s/templates/controller.yaml
---- a/metallb/charts/frr-k8s/templates/controller.yaml	2025-12-04 20:20:55
-+++ b/metallb/charts/frr-k8s/templates/controller.yaml	2026-04-14 12:05:23
+--- a/metallb/charts/frr-k8s/templates/controller.yaml	2026-05-28 02:12:45
++++ b/metallb/charts/frr-k8s/templates/controller.yaml	2026-07-28 19:14:32
 @@ -132,7 +132,7 @@
        {{- if .Values.frrk8s.runtimeClassName }}
        runtimeClassName: {{ .Values.frrk8s.runtimeClassName }}
@@ -32,7 +32,7 @@ diff -ruN --exclude=README.md --exclude=README.md.gotmpl a/metallb/charts/frr-k8
        imagePullSecrets:
          {{- toYaml . | nindent 8 }}
        {{- end }}
-@@ -161,7 +161,7 @@
+@@ -165,7 +165,7 @@
        initContainers:
          # Copies the initial config files with the right permissions to the shared volume.
          - name: cp-frr-files
@@ -41,7 +41,7 @@ diff -ruN --exclude=README.md --exclude=README.md.gotmpl a/metallb/charts/frr-k8
            securityContext:
              runAsUser: 100
              runAsGroup: 101
-@@ -173,20 +173,20 @@
+@@ -177,20 +177,20 @@
                mountPath: /etc/frr
          # Copies the reloader to the shared volume between the speaker and reloader.
          - name: cp-reloader
@@ -65,7 +65,7 @@ diff -ruN --exclude=README.md --exclude=README.md.gotmpl a/metallb/charts/frr-k8
            command: ["/bin/sh", "-c", "cp -f /frr-status /etc/frr_status/"]
            volumeMounts:
              - name: frr-status
-@@ -194,7 +194,7 @@
+@@ -198,7 +198,7 @@
        shareProcessNamespace: true
        containers:
        - name: controller
@@ -74,7 +74,7 @@ diff -ruN --exclude=README.md --exclude=README.md.gotmpl a/metallb/charts/frr-k8
          {{- if .Values.frrk8s.image.pullPolicy }}
          imagePullPolicy: {{ .Values.frrk8s.image.pullPolicy }}
          {{- end }}
-@@ -273,7 +273,7 @@
+@@ -299,7 +299,7 @@
              - NET_RAW
              - SYS_ADMIN
              - NET_BIND_SERVICE
@@ -83,7 +83,7 @@ diff -ruN --exclude=README.md --exclude=README.md.gotmpl a/metallb/charts/frr-k8
          {{- if .Values.frrk8s.frr.image.pullPolicy }}
          imagePullPolicy: {{ .Values.frrk8s.frr.image.pullPolicy }}
          {{- end }}
-@@ -322,7 +322,7 @@
+@@ -342,7 +342,7 @@
            periodSeconds: {{ .Values.frrk8s.startupProbe.periodSeconds }}
          {{- end }}
        - name: reloader
@@ -92,7 +92,7 @@ diff -ruN --exclude=README.md --exclude=README.md.gotmpl a/metallb/charts/frr-k8
          {{- if .Values.frrk8s.frr.image.pullPolicy }}
          imagePullPolicy: {{ .Values.frrk8s.frr.image.pullPolicy }}
          {{- end }}
-@@ -339,7 +339,7 @@
+@@ -359,7 +359,7 @@
            {{- toYaml . | nindent 12 }}
          {{- end }}
        - name: frr-metrics
@@ -100,8 +100,8 @@ diff -ruN --exclude=README.md --exclude=README.md.gotmpl a/metallb/charts/frr-k8
 +        image: {{ include "frrk8s.imageRepository" (dict "repository" .Values.frrk8s.frr.image.repository "context" .) }}:{{ .Values.frrk8s.frr.image.tag | default .Chart.AppVersion }}
          command: ["/etc/frr_metrics/frr-metrics"]
          args:
-           - --metrics-port={{ .Values.frrk8s.frr.metricsPort }}
-@@ -381,7 +381,7 @@
+           - --metrics-port={{ .Values.frrk8s.frr.secureMetricsPort }}
+@@ -422,7 +422,7 @@
              valueFrom:
                fieldRef:
                  fieldPath: metadata.name
@@ -110,27 +110,9 @@ diff -ruN --exclude=README.md --exclude=README.md.gotmpl a/metallb/charts/frr-k8
          volumeMounts:
            - mountPath: /var/run/frr
              name: frr-sockets
-@@ -394,7 +394,7 @@
-           {{- toYaml . | nindent 12 }}
-         {{- end }}
-       - name: kube-rbac-proxy
--        image: {{ .Values.prometheus.rbacProxy.repository }}:{{ .Values.prometheus.rbacProxy.tag }}
-+        image: {{ include "frrk8s.imageRepository" (dict "repository" .Values.prometheus.rbacProxy.repository "context" .) }}:{{ .Values.prometheus.rbacProxy.tag }}
-         imagePullPolicy: {{ .Values.prometheus.rbacProxy.pullPolicy }}
-         args:
-           - --logtostderr
-@@ -420,7 +420,7 @@
-             readOnly: true
-         {{- end }}
-       - name: kube-rbac-proxy-frr
--        image: {{ .Values.prometheus.rbacProxy.repository }}:{{ .Values.prometheus.rbacProxy.tag | default .Chart.AppVersion }}
-+        image: {{ include "frrk8s.imageRepository" (dict "repository" .Values.prometheus.rbacProxy.repository "context" .) }}:{{ .Values.prometheus.rbacProxy.tag | default .Chart.AppVersion }}
-         imagePullPolicy: {{ .Values.prometheus.rbacProxy.pullPolicy }}
-         args:
-           - --logtostderr
 diff -ruN --exclude=README.md --exclude=README.md.gotmpl a/metallb/charts/frr-k8s/templates/status-cleaner.yaml b/metallb/charts/frr-k8s/templates/status-cleaner.yaml
---- a/metallb/charts/frr-k8s/templates/status-cleaner.yaml	2025-12-04 20:20:55
-+++ b/metallb/charts/frr-k8s/templates/status-cleaner.yaml	2026-04-14 12:05:23
+--- a/metallb/charts/frr-k8s/templates/status-cleaner.yaml	2026-05-28 02:12:45
++++ b/metallb/charts/frr-k8s/templates/status-cleaner.yaml	2026-07-28 19:14:32
 @@ -23,7 +23,7 @@
        {{- if .Values.frrk8s.runtimeClassName }}
        runtimeClassName: {{ .Values.frrk8s.runtimeClassName }}
@@ -140,7 +122,7 @@ diff -ruN --exclude=README.md --exclude=README.md.gotmpl a/metallb/charts/frr-k8
        imagePullSecrets:
          {{- toYaml . | nindent 8 }}
        {{- end }}
-@@ -47,7 +47,7 @@
+@@ -56,7 +56,7 @@
            valueFrom:
              fieldRef:
                fieldPath: metadata.namespace
@@ -150,11 +132,11 @@ diff -ruN --exclude=README.md --exclude=README.md.gotmpl a/metallb/charts/frr-k8
          imagePullPolicy: {{ .Values.frrk8s.image.pullPolicy }}
          {{- end }}
 diff -ruN --exclude=README.md --exclude=README.md.gotmpl a/metallb/templates/_helpers.tpl b/metallb/templates/_helpers.tpl
---- a/metallb/templates/_helpers.tpl	2025-12-04 20:20:55
-+++ b/metallb/templates/_helpers.tpl	2026-04-14 12:05:23
-@@ -112,3 +112,17 @@
+--- a/metallb/templates/_helpers.tpl	2026-05-28 02:12:45
++++ b/metallb/templates/_helpers.tpl	2026-07-28 19:15:34
+@@ -97,3 +97,17 @@
  {{- end }}
- {{- end }}
+ 
  
 +{{/*
 +Rewrite a repository to the configured global mirror registry.
@@ -171,9 +153,9 @@ diff -ruN --exclude=README.md --exclude=README.md.gotmpl a/metallb/templates/_he
 +{{- $repository -}}
 +{{- end }}
 diff -ruN --exclude=README.md --exclude=README.md.gotmpl a/metallb/templates/controller.yaml b/metallb/templates/controller.yaml
---- a/metallb/templates/controller.yaml	2025-12-04 20:20:55
-+++ b/metallb/templates/controller.yaml	2026-04-14 12:05:23
-@@ -40,7 +40,7 @@
+--- a/metallb/templates/controller.yaml	2026-05-28 02:12:45
++++ b/metallb/templates/controller.yaml	2026-07-28 19:14:32
+@@ -41,7 +41,7 @@
        {{- with .Values.controller.runtimeClassName }}
        runtimeClassName: {{ . | quote }}
        {{- end }}
@@ -182,7 +164,7 @@ diff -ruN --exclude=README.md --exclude=README.md.gotmpl a/metallb/templates/con
        imagePullSecrets:
          {{- toYaml . | nindent 8 }}
        {{- end }}
-@@ -52,7 +52,7 @@
+@@ -53,7 +53,7 @@
  {{- end }}
        containers:
        - name: controller
@@ -191,19 +173,10 @@ diff -ruN --exclude=README.md --exclude=README.md.gotmpl a/metallb/templates/con
          {{- if .Values.controller.image.pullPolicy }}
          imagePullPolicy: {{ .Values.controller.image.pullPolicy }}
          {{- end }}
-@@ -138,7 +138,7 @@
-             - ALL
-       {{- if .Values.prometheus.secureMetricsPort }}
-       - name: kube-rbac-proxy
--        image: {{ .Values.prometheus.rbacProxy.repository }}:{{ .Values.prometheus.rbacProxy.tag }}
-+        image: {{ include "metallb.imageRepository" (dict "repository" .Values.prometheus.rbacProxy.repository "context" .) }}:{{ .Values.prometheus.rbacProxy.tag }}
-         imagePullPolicy: {{ .Values.prometheus.rbacProxy.pullPolicy }}
-         securityContext:
-           readOnlyRootFilesystem: true
 diff -ruN --exclude=README.md --exclude=README.md.gotmpl a/metallb/templates/speaker.yaml b/metallb/templates/speaker.yaml
---- a/metallb/templates/speaker.yaml	2025-12-04 20:20:55
-+++ b/metallb/templates/speaker.yaml	2026-04-14 12:05:23
-@@ -162,7 +162,7 @@
+--- a/metallb/templates/speaker.yaml	2026-05-28 02:12:45
++++ b/metallb/templates/speaker.yaml	2026-07-28 19:14:32
+@@ -163,7 +163,7 @@
        {{- if .Values.speaker.runtimeClassName }}
        runtimeClassName: {{ .Values.speaker.runtimeClassName }}
        {{- end }}
@@ -212,7 +185,7 @@ diff -ruN --exclude=README.md --exclude=README.md.gotmpl a/metallb/templates/spe
        imagePullSecrets:
          {{- toYaml . | nindent 8 }}
        {{- end }}
-@@ -212,7 +212,7 @@
+@@ -217,7 +217,7 @@
        initContainers:
          # Copies the initial config files with the right permissions to the shared volume.
          - name: cp-frr-files
@@ -221,7 +194,7 @@ diff -ruN --exclude=README.md --exclude=README.md.gotmpl a/metallb/templates/spe
            securityContext:
              runAsUser: 100
              runAsGroup: 101
-@@ -228,7 +228,7 @@
+@@ -233,7 +233,7 @@
            {{- end }}
          # Copies the reloader to the shared volume between the speaker and reloader.
          - name: cp-reloader
@@ -230,7 +203,7 @@ diff -ruN --exclude=README.md --exclude=README.md.gotmpl a/metallb/templates/spe
            command: ["/cp-tool","/frr-reloader.sh","/etc/frr_reloader/frr-reloader.sh"]
            volumeMounts:
              - name: reloader
-@@ -239,7 +239,7 @@
+@@ -244,7 +244,7 @@
            {{- end }}
          # Copies the metrics exporter
          - name: cp-metrics
@@ -239,7 +212,7 @@ diff -ruN --exclude=README.md --exclude=README.md.gotmpl a/metallb/templates/spe
            command: ["/cp-tool","/frr-metrics","/etc/frr_metrics/frr-metrics"]
            volumeMounts:
              - name: metrics
-@@ -252,7 +252,7 @@
+@@ -257,7 +257,7 @@
        {{- end }}
        containers:
        - name: speaker
@@ -248,7 +221,7 @@ diff -ruN --exclude=README.md --exclude=README.md.gotmpl a/metallb/templates/spe
          {{- if .Values.speaker.image.pullPolicy }}
          imagePullPolicy: {{ .Values.speaker.image.pullPolicy }}
          {{- end }}
-@@ -399,7 +399,7 @@
+@@ -420,7 +420,7 @@
              - NET_RAW
              - SYS_ADMIN
              - NET_BIND_SERVICE
@@ -257,7 +230,7 @@ diff -ruN --exclude=README.md --exclude=README.md.gotmpl a/metallb/templates/spe
          {{- if .Values.speaker.frr.image.pullPolicy }}
          imagePullPolicy: {{ .Values.speaker.frr.image.pullPolicy }}
          {{- end }}
-@@ -459,7 +459,7 @@
+@@ -466,7 +466,7 @@
            periodSeconds: {{ .Values.speaker.startupProbe.periodSeconds }}
          {{- end }}
        - name: reloader
@@ -266,7 +239,7 @@ diff -ruN --exclude=README.md --exclude=README.md.gotmpl a/metallb/templates/spe
          {{- if .Values.speaker.frr.image.pullPolicy }}
          imagePullPolicy: {{ .Values.speaker.frr.image.pullPolicy }}
          {{- end }}
-@@ -481,7 +481,7 @@
+@@ -488,7 +488,7 @@
            {{- toYaml . | nindent 12 }}
          {{- end }}
        - name: frr-metrics
@@ -275,49 +248,3 @@ diff -ruN --exclude=README.md --exclude=README.md.gotmpl a/metallb/templates/spe
          securityContext:
            readOnlyRootFilesystem: true
            allowPrivilegeEscalation: false
-@@ -511,7 +511,7 @@
-       {{- end }}
-       {{- if .Values.prometheus.secureMetricsPort }}
-       - name: kube-rbac-proxy
--        image: {{ .Values.prometheus.rbacProxy.repository }}:{{ .Values.prometheus.rbacProxy.tag }}
-+        image: {{ include "metallb.imageRepository" (dict "repository" .Values.prometheus.rbacProxy.repository "context" .) }}:{{ .Values.prometheus.rbacProxy.tag }}
-         imagePullPolicy: {{ .Values.prometheus.rbacProxy.pullPolicy }}
-         securityContext:
-           readOnlyRootFilesystem: true
-@@ -543,7 +543,7 @@
-       {{- if .Values.speaker.frr.enabled }}
-       {{- if .Values.speaker.frr.secureMetricsPort }}
-       - name: kube-rbac-proxy-frr
--        image: {{ .Values.prometheus.rbacProxy.repository }}:{{ .Values.prometheus.rbacProxy.tag | default .Chart.AppVersion }}
-+        image: {{ include "metallb.imageRepository" (dict "repository" .Values.prometheus.rbacProxy.repository "context" .) }}:{{ .Values.prometheus.rbacProxy.tag | default .Chart.AppVersion }}
-         imagePullPolicy: {{ .Values.prometheus.rbacProxy.pullPolicy }}
-         securityContext:
-           readOnlyRootFilesystem: true
-diff -ruN --exclude=README.md --exclude=README.md.gotmpl a/metallb/charts/frr-k8s/values.yaml b/metallb/charts/frr-k8s/values.yaml
---- a/metallb/charts/frr-k8s/values.yaml	2025-12-04 20:20:55
-+++ b/metallb/charts/frr-k8s/values.yaml	2026-04-22 12:35:00
-@@ -48,8 +48,8 @@
- 
-   # the image to be used for the kuberbacproxy container
-   rbacProxy:
--    repository: gcr.io/kubebuilder/kube-rbac-proxy
--    tag: v0.12.0
-+    repository: quay.io/brancz/kube-rbac-proxy
-+    tag: v0.20.1
-     pullPolicy:
- 
-   # Prometheus Operator ServiceMonitors.
-diff -ruN --exclude=README.md --exclude=README.md.gotmpl a/metallb/values.yaml b/metallb/values.yaml
---- a/metallb/values.yaml	2025-12-04 20:20:55
-+++ b/metallb/values.yaml	2026-04-22 12:35:00
-@@ -55,8 +55,8 @@
- 
-   # the image to be used for the kuberbacproxy container
-   rbacProxy:
--    repository: gcr.io/kubebuilder/kube-rbac-proxy
--    tag: v0.12.0
-+    repository: quay.io/brancz/kube-rbac-proxy
-+    tag: v0.20.1
-     pullPolicy:
- 
-   # Prometheus Operator PodMonitors

@@ -4,16 +4,16 @@ dependencies:
   version: 4.15.1
 - name: gateway-helm
   repository: oci://docker.io/envoyproxy
-  version: 1.7.2
+  version: 1.8.3
 - name: cert-manager
   repository: oci://quay.io/jetstack/charts
   version: 1.21.0
 - name: external-dns
   repository: https://kubernetes-sigs.github.io/external-dns
-  version: 1.20.0
+  version: 1.21.1
 - name: metallb
   repository: oci://quay.io/metallb/chart
-  version: 0.15.3
+  version: 0.16.1
 - name: agentgateway-crds
   repository: oci://cr.agentgateway.dev/charts
   version: v1.3.1
@@ -26,5 +26,5 @@ dependencies:
 - name: ratelimit
   repository: file://./ratelimit
   version: 0.1.0
-digest: sha256:40c860bc3862e023f3a3b0a032b4feeb30bd9f7a1ff3834f2d2064857904b624
-generated: "2026-07-27T01:13:50.60176932Z"
+digest: sha256:eccc647653bea553545ad740320db0770ba820f629c7f2bd1237d4a1130e88f0
+generated: "2026-07-28T19:12:58.149501+05:00"
