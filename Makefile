@@ -8,11 +8,11 @@ KUBELB_CCM_IMG ?= quay.io/kubermatic/kubelb-ccm
 # ENVTEST_K8S_VERSION refers to the version of kubebuilder assets to be downloaded by envtest binary.
 ENVTEST_K8S_VERSION ?= $(shell go list -m -f "{{ .Version }}" k8s.io/api | awk -F'[v.]' '{printf "1.%d", $$3}')
 KUSTOMIZE_VERSION ?= v5.8.1
-CONTROLLER_TOOLS_VERSION ?= v0.20.1
+CONTROLLER_TOOLS_VERSION ?= v0.21.0
 GO_VERSION = 1.26.5
 HELM_DOCS_VERSION ?= v1.14.2
 CRD_REF_DOCS_VERSION ?= v0.3.0
-CHAINSAW_VERSION ?= v0.2.14
+CHAINSAW_VERSION ?= v0.2.15
 # Nested module, tagged tools/setup-envtest/vX.Y.Z. Must be a tag: a branch ref
 # makes go install fall back to the parent module, which lacks the package.
 # Keep in sync with the controller-runtime minor version in go.mod.
@@ -22,7 +22,7 @@ CRD_CODE_GEN_PATH = "./api/ce/..."
 RECONCILE_HELPER_PATH = "internal/resources/reconciling/zz_generated_reconcile.go"
 
 GATEWAY_RELEASE_CHANNEL ?= standard
-GATEWAY_API_VERSION ?= v1.5.1
+GATEWAY_API_VERSION ?= v1.6.1
 KUBELB_ADDONS_CHART_VERSION ?= v0.4.0
 
 export GOPATH?=$(shell go env GOPATH)
@@ -287,7 +287,8 @@ $(KUSTOMIZE): $(LOCALBIN)
 .PHONY: controller-gen
 controller-gen: $(CONTROLLER_GEN) ## Download controller-gen locally if necessary.
 $(CONTROLLER_GEN): $(LOCALBIN)
-	test -s $(LOCALBIN)/controller-gen || GOBIN=$(LOCALBIN) go install sigs.k8s.io/controller-tools/cmd/controller-gen@$(CONTROLLER_TOOLS_VERSION)
+	@$(LOCALBIN)/controller-gen --version 2>/dev/null | grep -q "$(CONTROLLER_TOOLS_VERSION)$$" || \
+		GOBIN=$(LOCALBIN) go install sigs.k8s.io/controller-tools/cmd/controller-gen@$(CONTROLLER_TOOLS_VERSION)
 
 .PHONY: envtest
 envtest: $(ENVTEST) ## Download envtest-setup locally if necessary.
@@ -297,7 +298,7 @@ $(ENVTEST): $(LOCALBIN)
 .PHONY: chainsaw
 chainsaw: $(CHAINSAW) ## Download chainsaw locally if necessary.
 $(CHAINSAW): $(LOCALBIN)
-	@test -s $(LOCALBIN)/chainsaw || { \
+	@$(LOCALBIN)/chainsaw version 2>/dev/null | grep -q "$(subst v,,$(CHAINSAW_VERSION))$$" || { \
 		OS=$$(uname -s | tr '[:upper:]' '[:lower:]') && \
 		ARCH=$$(uname -m | sed 's/x86_64/amd64/' | sed 's/aarch64/arm64/') && \
 		curl -sSfL "https://github.com/kyverno/chainsaw/releases/download/$(CHAINSAW_VERSION)/chainsaw_$${OS}_$${ARCH}.tar.gz" | tar xz -C $(LOCALBIN) chainsaw; \
