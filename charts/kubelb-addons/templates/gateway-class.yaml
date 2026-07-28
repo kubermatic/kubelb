@@ -2,7 +2,8 @@
 {{- $egValues := index .Values "envoy-gateway" -}}
 {{- $envoyProxyImage := "" -}}
 {{- if .Values.global.imageRegistry -}}
-  {{- $defaultImage := "docker.io/envoyproxy/envoy:distroless-v1.37.1" -}}
+  {{- /* Keep in sync with DefaultEnvoyProxyImage for the envoy-gateway chart version in Chart.yaml. */ -}}
+  {{- $defaultImage := "docker.io/envoyproxy/envoy:distroless-v1.37.2" -}}
   {{- $imageParts := splitn "/" 2 $defaultImage -}}
   {{- $repositoryTag := $imageParts._1 -}}
   {{- $envoyProxyImage = printf "%s/%s" (trimSuffix "/" .Values.global.imageRegistry) $repositoryTag -}}
