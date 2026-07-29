@@ -24,4 +24,6 @@ boilerplate \
   -exclude Makefile \
   -exclude api/ee \
   -exclude internal/resources/crds \
-  -exclude .github
+  -exclude .github \
+  -exclude .worktrees \
+  -exclude .claude
