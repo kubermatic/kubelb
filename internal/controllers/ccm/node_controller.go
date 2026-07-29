@@ -36,6 +36,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/util/retry"
 	ctrl "sigs.k8s.io/controller-runtime"
 	ctrlclient "sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
@@ -118,10 +119,16 @@ func (r *KubeLBNodeReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 		return ctrl.Result{}, nil
 	}
 
-	// Update the addresses
-	addresses.Spec.Addresses = currentAddresses.Spec.Addresses
-	if err = recordKubeLBOperation("update", func() error {
-		return r.KubeLBClient.Update(ctx, &addresses)
+	// Update the addresses. The object is shared by every CCM in the tenant, so
+	// re-read it on each attempt rather than losing the reconcile to a conflict.
+	if err = retry.RetryOnConflict(retry.DefaultRetry, func() error {
+		if err := r.KubeLBClient.Get(ctx, types.NamespacedName{Name: kubelbiov1alpha1.DefaultAddressName, Namespace: r.ClusterName}, &addresses); err != nil {
+			return err
+		}
+		addresses.Spec.Addresses = currentAddresses.Spec.Addresses
+		return recordKubeLBOperation("update", func() error {
+			return r.KubeLBClient.Update(ctx, &addresses)
+		})
 	}); err != nil {
 		log.Error(err, "unable to update addresses")
 		ccmmetrics.NodeReconcileTotal.WithLabelValues(metricsutil.ResultError).Inc()
