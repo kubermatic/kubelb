@@ -88,14 +88,14 @@ These are the default values to use when Gateway API is disabled for KubeLB in f
 | Repository | Name | Version |
 |------------|------|---------|
 | file://./ratelimit | ratelimit | 0.1.0 |
-| https://kubernetes-sigs.github.io/external-dns | external-dns | 1.20.0 |
+| https://kubernetes-sigs.github.io/external-dns | external-dns | 1.21.1 |
 | https://kubernetes.github.io/ingress-nginx | ingress-nginx | 4.15.1 |
-| oci://cr.agentgateway.dev/charts | agentgateway | v1.3.1 |
-| oci://cr.agentgateway.dev/charts | agentgateway-crds | v1.3.1 |
-| oci://docker.io/envoyproxy | envoy-gateway(gateway-helm) | 1.7.2 |
-| oci://ghcr.io/valkey-io/valkey-helm | valkey | 0.10.0 |
+| oci://cr.agentgateway.dev/charts | agentgateway | 1.4.0 |
+| oci://cr.agentgateway.dev/charts | agentgateway-crds | 1.4.0 |
+| oci://docker.io/envoyproxy | envoy-gateway(gateway-helm) | 1.8.3 |
+| oci://ghcr.io/valkey-io/valkey-helm | valkey | 0.11.0 |
 | oci://quay.io/jetstack/charts | cert-manager | 1.21.0 |
-| oci://quay.io/metallb/chart | metallb | 0.15.3 |
+| oci://quay.io/metallb/chart | metallb | 0.16.1 |
 
 ## Values
 

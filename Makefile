@@ -443,7 +443,10 @@ helm-lint:
 	helm lint charts/*
 
 generate-helm-docs: helm-docs
-	$(LOCALBIN)/helm-docs charts/
+	@# helm-docs takes no positional arguments, so a bare "charts/" was ignored
+	@# and it searched from the repo root, rewriting README.md in any git
+	@# worktree checked out under the repo.
+	$(LOCALBIN)/helm-docs --chart-search-root charts
 
 .PHONY: bump-chart
 bump-chart:
