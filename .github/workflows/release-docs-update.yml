@@ -213,7 +213,18 @@ jobs:
           # bump together), and multi-line `--version vX.Y.Z` scoped to
           # kubelb-manager/ccm charts only — kubelb-addons has its own
           # version line in the same doc and must not bump with kubelb.
-          FILE_RULES["tutorials/airgap-installation/_index.en.md"]='s{^VERSION=v\d+\.\d+\.\d+$}{VERSION='"${VERSION}"'}gm; s{(kubermatic/(?:helm-charts/)?kubelb-(?:manager|ccm)(?:-ee)?:)v\d+\.\d+\.\d+}{${1}'"${VERSION}"'}g; s{(oci://[^\s`]+kubelb-(?:manager|ccm)(?:-ee)?\s+\\\s*\n\s*--version[ =])v\d+\.\d+\.\d+}{${1}'"${VERSION}"'}g'
+          # Listed under both paths: docs restructure (kubermatic/docs#2242)
+          # moved the page to installation/air-gap on main (v1.5+ trees),
+          # while v1.3/v1.4 trees keep the old tutorials path. The missing
+          # one warns-and-skips.
+          AIRGAP_RULES='s{^VERSION=v\d+\.\d+\.\d+$}{VERSION='"${VERSION}"'}gm; s{(kubermatic/(?:helm-charts/)?kubelb-(?:manager|ccm)(?:-ee)?:)v\d+\.\d+\.\d+}{${1}'"${VERSION}"'}g; s{(oci://[^\s`]+kubelb-(?:manager|ccm)(?:-ee)?\s+\\\s*\n\s*--version[ =])v\d+\.\d+\.\d+}{${1}'"${VERSION}"'}g'
+          FILE_RULES["tutorials/airgap-installation/_index.en.md"]="$AIRGAP_RULES"
+          FILE_RULES["installation/air-gap/_index.en.md"]="$AIRGAP_RULES"
+          # security: cosign/oras image + chart refs (manager only — the page
+          # has no ccm examples), GitHub release download URLs, and the
+          # versioned SBOM/checksums artifact filename. Anchored so nothing
+          # else on the page (envoy images, tool versions) can match.
+          FILE_RULES["security/_index.en.md"]='s{(kubermatic/(?:helm-charts/)?kubelb-manager(?:-ee)?:)v\d+\.\d+\.\d+}{${1}'"${VERSION}"'}g; s{(github\.com/kubermatic/kubelb/releases/download/)v\d+\.\d+\.\d+}{${1}'"${VERSION}"'}g; s{(kubelb_)v\d+\.\d+\.\d+(_linux)}{${1}'"${VERSION}"'${2}}g'
 
           UPDATED=0
           for relpath in "${!FILE_RULES[@]}"; do
