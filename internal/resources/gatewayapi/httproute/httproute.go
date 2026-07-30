@@ -73,19 +73,17 @@ func CreateOrUpdateHTTPRoute(ctx context.Context, log logr.Logger, client ctrlcl
 				}
 			}
 			// Collect services from the filters.
-			if ref.Filters != nil {
-				for _, filter := range ref.Filters {
-					if filter.RequestMirror != nil && (filter.RequestMirror.BackendRef.Kind == nil || *filter.RequestMirror.BackendRef.Kind == kubelb.ServiceKind) {
-						ref := filter.RequestMirror.BackendRef
-						for _, service := range referencedServices {
-							if string(ref.Name) == service.Name {
-								ns := ref.Namespace
-								// Corresponding service found, update the name.
-								if ns == nil || string(*ns) == service.Namespace {
-									object.Spec.Rules[i].Filters[j].RequestMirror.BackendRef.Name = gwapiv1.ObjectName(kubelb.GenerateRouteServiceName(routeName, service.Name, service.Namespace))
-									// Set the namespace to nil since all the services are created in the same namespace as the Route.
-									object.Spec.Rules[i].Filters[j].RequestMirror.BackendRef.Namespace = nil
-								}
+			for k, filter := range ref.Filters {
+				if filter.RequestMirror != nil && (filter.RequestMirror.BackendRef.Kind == nil || *filter.RequestMirror.BackendRef.Kind == kubelb.ServiceKind) {
+					mirrorRef := filter.RequestMirror.BackendRef
+					for _, service := range referencedServices {
+						if string(mirrorRef.Name) == service.Name {
+							ns := mirrorRef.Namespace
+							// Corresponding service found, update the name.
+							if ns == nil || string(*ns) == service.Namespace {
+								object.Spec.Rules[i].BackendRefs[j].Filters[k].RequestMirror.BackendRef.Name = gwapiv1.ObjectName(kubelb.GenerateRouteServiceName(routeName, service.Name, service.Namespace))
+								// Set the namespace to nil since all the services are created in the same namespace as the Route.
+								object.Spec.Rules[i].BackendRefs[j].Filters[k].RequestMirror.BackendRef.Namespace = nil
 							}
 						}
 					}
