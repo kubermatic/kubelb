@@ -456,10 +456,11 @@ func (r *RouteReconciler) manageRoutes(ctx context.Context, log logr.Logger, rou
 	routeStatus := route.Status.DeepCopy()
 
 	// Determine the type of the resource and call the appropriate method
+	var applyErr error
 	switch v := resource.(type) {
 	case *v1.Ingress: // v1 "k8s.io/api/networking/v1"
-		err = ingressHelpers.CreateOrUpdateIngress(ctx, log, r.Client, v, referencedServices, route.Namespace, originalRouteName, config, tenant, annotations)
-		if err == nil {
+		applyErr = ingressHelpers.CreateOrUpdateIngress(ctx, log, r.Client, v, referencedServices, route.Namespace, originalRouteName, config, tenant, annotations)
+		if applyErr == nil {
 			// Retrieve updated object to get the status.
 			key := ctrlruntimeclient.ObjectKey{Namespace: v.Namespace, Name: v.Name}
 			res := &v1.Ingress{}
@@ -468,12 +469,12 @@ func (r *RouteReconciler) manageRoutes(ctx context.Context, log logr.Logger, rou
 					return fmt.Errorf("failed to get Ingress: %w", err)
 				}
 			}
-			updateResourceStatus(routeStatus, res, err)
+			updateResourceStatus(routeStatus, res, nil)
 		}
 
 	case *gwapiv1.Gateway: // v1 "sigs.k8s.io/gateway-api/apis/v1"
-		err = gatewayHelpers.CreateOrUpdateGateway(ctx, log, r.Client, v, route.Namespace, config, tenant, annotations)
-		if err == nil {
+		applyErr = gatewayHelpers.CreateOrUpdateGateway(ctx, log, r.Client, v, route.Namespace, config, tenant, annotations)
+		if applyErr == nil {
 			// Retrieve updated object to get the status.
 			key := ctrlruntimeclient.ObjectKey{Namespace: v.Namespace, Name: v.Name}
 			res := &gwapiv1.Gateway{}
@@ -482,12 +483,12 @@ func (r *RouteReconciler) manageRoutes(ctx context.Context, log logr.Logger, rou
 					return fmt.Errorf("failed to get Gateway: %w", err)
 				}
 			}
-			updateResourceStatus(routeStatus, res, err)
+			updateResourceStatus(routeStatus, res, nil)
 		}
 
 	case *gwapiv1.HTTPRoute: // v1 "sigs.k8s.io/gateway-api/apis/v1"
-		err = httprouteHelpers.CreateOrUpdateHTTPRoute(ctx, log, r.Client, v, referencedServices, route.Namespace, originalRouteName, tenant, annotations)
-		if err == nil {
+		applyErr = httprouteHelpers.CreateOrUpdateHTTPRoute(ctx, log, r.Client, v, referencedServices, route.Namespace, originalRouteName, tenant, annotations)
+		if applyErr == nil {
 			// Retrieve updated object to get the status.
 			key := ctrlruntimeclient.ObjectKey{Namespace: v.Namespace, Name: v.Name}
 			res := &gwapiv1.HTTPRoute{}
@@ -496,12 +497,12 @@ func (r *RouteReconciler) manageRoutes(ctx context.Context, log logr.Logger, rou
 					return fmt.Errorf("failed to get HTTPRoute: %w", err)
 				}
 			}
-			updateResourceStatus(routeStatus, res, err)
+			updateResourceStatus(routeStatus, res, nil)
 		}
 
 	case *gwapiv1.GRPCRoute: // v1 "sigs.k8s.io/gateway-api/apis/v1"
-		err = grpcrouteHelpers.CreateOrUpdateGRPCRoute(ctx, log, r.Client, v, referencedServices, route.Namespace, originalRouteName, tenant, annotations)
-		if err == nil {
+		applyErr = grpcrouteHelpers.CreateOrUpdateGRPCRoute(ctx, log, r.Client, v, referencedServices, route.Namespace, originalRouteName, tenant, annotations)
+		if applyErr == nil {
 			// Retrieve updated object to get the status.
 			key := ctrlruntimeclient.ObjectKey{Namespace: v.Namespace, Name: v.Name}
 			res := &gwapiv1.GRPCRoute{}
@@ -510,14 +511,25 @@ func (r *RouteReconciler) manageRoutes(ctx context.Context, log logr.Logger, rou
 					return fmt.Errorf("failed to get GRPCRoute: %w", err)
 				}
 			}
-			updateResourceStatus(routeStatus, res, err)
+			updateResourceStatus(routeStatus, res, nil)
 		}
 
 	default:
 		log.V(4).Info("Unsupported resource type")
 	}
 
-	return r.UpdateRouteStatus(ctx, route, *routeStatus)
+	if applyErr != nil {
+		applyErr = fmt.Errorf("failed to create or update %s: %w", resource.GetObjectKind().GroupVersionKind().Kind, applyErr)
+		log.Error(applyErr, "failed to apply route resource")
+		r.Recorder.Eventf(route, nil, corev1.EventTypeWarning, "RouteApplyFailed", "Reconciling", applyErr.Error())
+		updateResourceStatus(routeStatus, resource, applyErr)
+	}
+
+	// Status first so the failure is visible, then the error so the workqueue retries.
+	if err := r.UpdateRouteStatus(ctx, route, *routeStatus); err != nil {
+		return err
+	}
+	return applyErr
 }
 
 func (r *RouteReconciler) shouldReconcile(ctx context.Context, route *kubelbv1alpha1.Route, tenant *kubelbv1alpha1.Tenant, config *kubelbv1alpha1.Config) (bool, bool, error) {

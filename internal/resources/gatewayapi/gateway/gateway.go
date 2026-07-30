@@ -43,19 +43,31 @@ func CreateOrUpdateGateway(ctx context.Context, log logr.Logger, client ctrlclie
 		gatewayClassName = config.Spec.GatewayAPI.Class
 	}
 
-	// Check if Gateway with the same name but different namespace already exists. If it does, log an error as we don't support
-	// multiple Gateway objects.
+	// Every tenant-cluster namespace collapses into one namespace here, so two source
+	// objects can claim the same name. Renaming to disambiguate would rotate the load
+	// balancer IP, since Envoy Gateway derives its proxy Service name from the
+	// Gateway's namespace/name. First claimant keeps the name instead.
 	gateways := &gwapiv1.GatewayList{}
 	if err := client.List(ctx, gateways, ctrlclient.InNamespace(namespace)); err != nil {
 		return fmt.Errorf("failed to list Gateways: %w", err)
 	}
 
 	found := false
-	for _, existingGateway := range gateways.Items {
-		if existingGateway.Name == object.Name {
-			found = true
-			break
+	for i := range gateways.Items {
+		existingGateway := &gateways.Items[i]
+		if existingGateway.Name != object.Name {
+			continue
 		}
+		found = true
+		// Match on the full origin: the name alone stops identifying the source object
+		// once an edition derives the management-cluster name from the origin.
+		originName, hasName := existingGateway.Labels[kubelb.LabelOriginName]
+		originNamespace, hasNamespace := existingGateway.Labels[kubelb.LabelOriginNamespace]
+		// Gateways predating these labels are adopted rather than rejected.
+		if hasName && hasNamespace && (originName != object.Name || originNamespace != object.Namespace) {
+			return fmt.Errorf("gateway name %q is already claimed by %s/%s in the tenant cluster; a Gateway name can only be owned by one source object per tenant", object.Name, originNamespace, originName)
+		}
+		break
 	}
 
 	if !found && len(gateways.Items) >= MaxGatewaysPerTenant {
