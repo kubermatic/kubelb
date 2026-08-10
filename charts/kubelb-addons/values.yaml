@@ -72,31 +72,3 @@ agentgateway-crds:
 agentgateway:
   enabled: false
 
-## Valkey: counter store for the Envoy global rate-limit service. Single
-## instance, no persistence: counters are TTL'd increments, loss on restart
-## means one window of overcounting at worst.
-valkey:
-  enabled: false
-
-## Envoy global rate limit service (RLS): shared-counter enforcement for
-## agentgateway global rate-limit policies. Requires valkey (or an external
-## Redis-protocol endpoint via ratelimit.redis.url).
-ratelimit:
-  enabled: false
-
-aiRecordingRules:
-  # -- Render the AI usage recording rules.
-  enabled: false
-  # -- Evaluation interval for the rule group.
-  interval: 1m
-  prometheusRule:
-    # -- Render a monitoring.coreos.com/v1 PrometheusRule (requires the
-    # prometheus-operator CRDs in the cluster).
-    enabled: true
-    # -- Extra labels for the PrometheusRule, e.g. a `release` label matching
-    # the operator's ruleSelector.
-    labels: {}
-  configMap:
-    # -- Render the same rule file into a plain ConfigMap for vanilla
-    # Prometheus (mount it and list it under rule_files).
-    enabled: false

@@ -39,11 +39,3 @@ dependencies:
     repository: oci://cr.agentgateway.dev/charts
     condition: agentgateway.enabled
     version: 1.4.0
-  - name: valkey
-    repository: oci://ghcr.io/valkey-io/valkey-helm
-    condition: valkey.enabled
-    version: 0.11.0
-  - name: ratelimit
-    repository: file://./ratelimit
-    condition: ratelimit.enabled
-    version: 0.1.0

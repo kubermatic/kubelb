@@ -87,14 +87,12 @@ These are the default values to use when Gateway API is disabled for KubeLB in f
 
 | Repository | Name | Version |
 |------------|------|---------|
-| file://./ratelimit | ratelimit | 0.1.0 |
 | https://kubernetes-sigs.github.io/external-dns | external-dns | 1.21.1 |
 | https://kubernetes.github.io/ingress-nginx | ingress-nginx | 4.15.1 |
 | oci://cr.agentgateway.dev/charts | agentgateway | 1.4.0 |
 | oci://cr.agentgateway.dev/charts | agentgateway-crds | 1.4.0 |
 | oci://docker.io/envoyproxy | envoy-gateway(gateway-helm) | 1.8.3 |
-| oci://ghcr.io/valkey-io/valkey-helm | valkey | 0.11.0 |
-| oci://quay.io/jetstack/charts | cert-manager | 1.21.0 |
+| oci://quay.io/jetstack/charts | cert-manager | 1.21.1 |
 | oci://quay.io/metallb/chart | metallb | 0.16.1 |
 
 ## Values
@@ -103,11 +101,6 @@ These are the default values to use when Gateway API is disabled for KubeLB in f
 |-----|------|---------|-------------|
 | agentgateway-crds.enabled | bool | `false` |  |
 | agentgateway.enabled | bool | `false` |  |
-| aiRecordingRules.configMap.enabled | bool | `false` | Render the same rule file into a plain ConfigMap for vanilla Prometheus (mount it and list it under rule_files). |
-| aiRecordingRules.enabled | bool | `false` | Render the AI usage recording rules. |
-| aiRecordingRules.interval | string | `"1m"` | Evaluation interval for the rule group. |
-| aiRecordingRules.prometheusRule.enabled | bool | `true` | Render a monitoring.coreos.com/v1 PrometheusRule (requires the prometheus-operator CRDs in the cluster). |
-| aiRecordingRules.prometheusRule.labels | object | `{}` | Extra labels for the PrometheusRule, e.g. a `release` label matching the operator's ruleSelector. |
 | cert-manager.config.apiVersion | string | `"controller.config.cert-manager.io/v1alpha1"` |  |
 | cert-manager.config.enableGatewayAPI | bool | `true` |  |
 | cert-manager.config.kind | string | `"ControllerConfiguration"` |  |
@@ -139,8 +132,6 @@ These are the default values to use when Gateway API is disabled for KubeLB in f
 | global.imageRegistry | string | `""` | Override the registry for all images (prefix replacement). When set, all supported addon images are rewritten to this registry host. |
 | ingress-nginx | object | `{"enabled":false}` | ---------------------------------------------------------- |
 | metallb.enabled | bool | `false` |  |
-| ratelimit.enabled | bool | `false` |  |
-| valkey.enabled | bool | `false` |  |
 
 ## Maintainers
 

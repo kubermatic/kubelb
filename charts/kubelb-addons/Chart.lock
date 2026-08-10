@@ -20,11 +20,5 @@ dependencies:
 - name: agentgateway
   repository: oci://cr.agentgateway.dev/charts
   version: 1.4.0
-- name: valkey
-  repository: oci://ghcr.io/valkey-io/valkey-helm
-  version: 0.11.0
-- name: ratelimit
-  repository: file://./ratelimit
-  version: 0.1.0
-digest: sha256:9cc4a08666fe87c7a5eb9a3b32f4e8bf246e5160539ea4bf12dca1eb6efa0f46
-generated: "2026-08-03T01:13:48.5058469Z"
+digest: sha256:e5c060196ed5d2a85772a4872445810e78d21dfa9cd84b0424591d909e750d29
+generated: "2026-08-10T11:01:00.828333+05:00"
