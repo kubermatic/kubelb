@@ -63,6 +63,57 @@ gh workflow run release-prep.yml \
 
 Cherry-pick fixes to `release/v1.4` before running prep.
 
+## Addons Release
+
+The `kubelb-addons` chart versions independently of the manager/ccm and releases
+off `main` with an `addons-v*` tag. No prep workflow, no release branch, no docs PR.
+
+Addons are always released from CE. There is no CE/EE version parity for this
+chart — a single chart with a single version, published once from CE and
+consumed as-is by EE. Never cut an addons release from the EE repo.
+
+### 1. PR to `main`
+
+Bump `KUBELB_ADDONS_CHART_VERSION` in the Makefile, then:
+
+```bash
+make bump-addons-chart helm-dependency-update generate-helm-docs
+```
+
+`bump-addons-chart` only rewrites `Chart.yaml`; the Makefile variable must be
+edited by hand. It is what GoReleaser uses to pull the chart into the airgap
+bundle on a full release — a stale value breaks the next `v*` release.
+
+Verify before pushing:
+
+```bash
+make verify-addons-patches verify-helm-lock helm-lint
+```
+
+### 2. Tag and push
+
+```bash
+git tag addons-v0.5.0
+git push origin addons-v0.5.0
+```
+
+Only the `helm-addons` job in `release.yml` runs: package, push to
+`oci://quay.io/kubermatic/helm-charts`, cosign sign. The `release` and `helm`
+jobs are skipped.
+
+To release without a tag (or to retry a failed push — the job is idempotent):
+
+```bash
+gh workflow run release.yml -f release_type=addons -f addons_version=v0.5.0
+```
+
+Dispatch replaces step 2 only — it does not replace step 1. The job re-runs
+`bump-addons-chart`, `helm-dependency-update` and `generate-helm-docs` inside the
+runner and commits nothing back, so the published chart is versioned correctly
+but the repo (Makefile pin, lock file, helm docs) is untouched. It also builds
+from whatever is already on the checked-out branch, so chart changes must be
+merged first.
+
 ## What happens when
 
 | Action | Result |
@@ -108,4 +159,6 @@ Cherry-pick fixes to `release/v1.4` before running prep.
 make release-prep VERSION=v1.4.0 BRANCH=release/v1.4  # Trigger release-prep workflow
 make release-notes-preview                              # Preview changelog using latest stable tag
 make generate-crd-docs-ee                               # Generate EE API reference docs
+make bump-addons-chart                                  # Set addons Chart.yaml version/appVersion
+make release-addons-chart                               # Package + push addons chart (CI uses this)
 ```
