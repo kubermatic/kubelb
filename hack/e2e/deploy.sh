@@ -103,6 +103,34 @@ verify_kubeconfigs() {
 }
 
 #######################################
+# Wait on background jobs and fail the deploy if any of them did.
+#
+# A bare `wait` returns 0 no matter how its jobs exited, so readiness checks
+# collected that way were reported as passing even when they timed out, and
+# the deploy went on to announce success over a cluster that had nothing
+# running on it.
+#
+# Arguments:
+#   $1 - message to print when a job failed
+#   $@ - pids to wait on
+#######################################
+wait_all_or_die() {
+  local message="$1"
+  shift
+
+  local any_failed=false
+  local pid
+  for pid in "$@"; do
+    wait "${pid}" || any_failed=true
+  done
+
+  if [[ "${any_failed}" == "true" ]]; then
+    echodate "ERROR: ${message}"
+    exit 1
+  fi
+}
+
+#######################################
 # Build images using centralized make targets
 #######################################
 build_images() {
@@ -140,9 +168,12 @@ build_images() {
     echodate "Pushing images to registry..."
     docker tag kubelb:e2e "${KUBELB_IMAGE}"
     docker tag kubelb-ccm:e2e "${CCM_IMAGE}"
+    local push_pids=()
     docker push "${KUBELB_IMAGE}" &
+    push_pids+=($!)
     docker push "${CCM_IMAGE}" &
-    wait
+    push_pids+=($!)
+    wait_all_or_die "image push to ${IMAGE_REGISTRY} failed" "${push_pids[@]}"
   fi
 
   printElapsed "image_builds" ${build_start}
@@ -169,15 +200,20 @@ load_images() {
   # kubelb cluster: needs kubelb + ccm images
   # tenant clusters: need ccm image (CCM runs there)
   # standalone cluster: needs ccm image (standalone mode)
+  local load_pids=()
   kind load docker-image --name=kubelb "${KUBELB_IMAGE}" "${CCM_IMAGE}" &
+  load_pids+=($!)
   kind load docker-image --name=tenant1 "${CCM_IMAGE}" &
+  load_pids+=($!)
   if [[ "${DEV_MODE}" != "true" ]]; then
     kind load docker-image --name=tenant2 "${CCM_IMAGE}" &
+    load_pids+=($!)
   fi
   if [[ "${ENABLE_STANDALONE}" == "true" ]]; then
     kind load docker-image --name=standalone "${CCM_IMAGE}" &
+    load_pids+=($!)
   fi
-  wait
+  wait_all_or_die "image load into the kind clusters failed" "${load_pids[@]}"
 
   printElapsed "image_loads" ${load_start}
 }
@@ -664,19 +700,22 @@ configure_standalone_metallb_pool() {
 deploy_test_apps() {
   echodate "Deploying shared test apps to all clusters..."
 
+  local apply_pids=()
   for tenant in "${!TENANT_MAP[@]}"; do
     local cluster="${TENANT_MAP[$tenant]}"
     KUBECONFIG="${KUBECONFIGS_DIR}/${cluster}.kubeconfig" \
       kubectl apply -f "${E2E_MANIFESTS_DIR}/test-apps/echo-server.yaml" &
+    apply_pids+=($!)
   done
 
   # Also deploy to standalone cluster if enabled
   if [[ "${ENABLE_STANDALONE}" == "true" ]]; then
     KUBECONFIG="${KUBECONFIGS_DIR}/standalone.kubeconfig" \
       kubectl apply -f "${E2E_MANIFESTS_DIR}/test-apps/echo-server.yaml" &
+    apply_pids+=($!)
   fi
 
-  wait
+  wait_all_or_die "Shared test apps could not be applied" "${apply_pids[@]}"
   echodate "Test apps deployed (pods starting in background)"
 }
 
@@ -754,24 +793,30 @@ if [[ "${ENABLE_STANDALONE}" == "true" ]]; then
 fi
 
 # Wait for all clusters to be ready in parallel
+cluster_ready_pids=()
 wait_for_ready &
+cluster_ready_pids+=($!)
 if [[ "${ENABLE_STANDALONE}" == "true" ]]; then
   wait_for_standalone_ready &
+  cluster_ready_pids+=($!)
 fi
-wait
+wait_all_or_die "cluster readiness checks failed" "${cluster_ready_pids[@]}"
 
 deploy_test_apps
 
 # Wait for KubeLB tenant envoy proxy deployments to be ready
 # These are created dynamically after CCM creates LoadBalancer CRDs, so poll for existence first
 echodate "Waiting for tenant envoy proxies..."
+envoy_pids=()
 KUBECONFIG="${KUBECONFIGS_DIR}/kubelb.kubeconfig" \
   wait_for_deployment_exist_and_ready tenant-primary envoy-tenant-primary 300 &
+envoy_pids+=($!)
 if [[ "${DEV_MODE}" != "true" ]]; then
   KUBECONFIG="${KUBECONFIGS_DIR}/kubelb.kubeconfig" \
     wait_for_deployment_exist_and_ready tenant-secondary envoy-tenant-secondary 300 &
+  envoy_pids+=($!)
 fi
-wait
+wait_all_or_die "tenant envoy proxies never became ready, the CCM is not propagating LoadBalancers" "${envoy_pids[@]}"
 echodate "Tenant envoy proxies ready"
 
 echodate ""
