@@ -78,6 +78,7 @@ try "Verify go.mod" make check-dependencies
 try "Verify YAML" yamllint -c .yamllint.conf .
 try "Verify boilerplate" make verify-boilerplate
 try "Verify imports" make verify-imports
+try "Verify e2e loop budgets" make verify-e2e-loop-budgets
 try "Verify shfmt" shfmt -l -sr -i 2 -d hack
 try "Verify licenses" ./hack/verify-licenses.sh
 

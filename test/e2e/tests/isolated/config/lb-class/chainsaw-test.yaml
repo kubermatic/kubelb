@@ -89,7 +89,9 @@ spec:
       cluster: kubelb
       try:
         - script:
-            timeout: 60s
+            # Covers the loop's full 20x5s budget plus kubectl overhead; a
+            # shorter timeout kills the loop mid-wait.
+            timeout: 150s
             content: |
               set -e
               NAMESPACE="tenant-primary"

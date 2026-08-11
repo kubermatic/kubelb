@@ -139,6 +139,9 @@ verify-boilerplate:  ## Run verify-boilerplate code.
 verify-imports:  ## Run verify-imports code.
 	./hack/verify-import-order.sh
 
+verify-e2e-loop-budgets:  ## Verify e2e retry-loop sleep budgets fit inside their step timeouts
+	./hack/verify-e2e-loop-budgets.sh
+
 verify-helm-lock:  ## Verify Helm chart lock files are in sync.
 	./hack/verify-helm-lock.sh
 
@@ -325,7 +328,9 @@ CHAINSAW_CLUSTERS += --cluster standalone=$(KUBECONFIGS_DIR)/standalone.kubeconf
 else
 CHAINSAW_EXCLUDE ?= --exclude-test-regex '.*/.*ing-conversion.*'
 endif
-CHAINSAW_FLAGS ?= --config $(CHAINSAW_CONFIG) --values $(CHAINSAW_VALUES) $(CHAINSAW_CLUSTERS) $(CHAINSAW_EXCLUDE)
+# --fast-namespace-deletion: don't block each test's cleanup on the ephemeral
+# namespace actually finalizing. Slow teardown was failing otherwise-green tests.
+CHAINSAW_FLAGS ?= --config $(CHAINSAW_CONFIG) --values $(CHAINSAW_VALUES) $(CHAINSAW_CLUSTERS) $(CHAINSAW_EXCLUDE) --fast-namespace-deletion
 
 .PHONY: e2e-setup-kind
 e2e-setup-kind: ## Setup Kind clusters for e2e tests (kubelb, tenant1, tenant2; standalone if ENABLE_STANDALONE=true)

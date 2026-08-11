@@ -237,7 +237,9 @@ spec:
       cluster: kubelb
       try:
         - script:
-            timeout: 30s
+            # Covers the 5x2s poll plus the fixed 10s settle and trailing
+            # kubectl calls; 30s cut the script off mid-check under load.
+            timeout: 60s
             content: |
               set -e
               NAMESPACE="tenant-primary"

@@ -277,6 +277,20 @@ spec:
 | `isolated/patch-config.yaml` | Patch Config CRD | `patch_json` |
 | `isolated/patch-tenant.yaml` | Patch Tenant CRD | `tenant_name`, `patch_json` |
 
+## Retry Loop Budgets
+
+Keep every retry loop's budget **under** its step `timeout`. A loop budgeted
+past its timeout is killed mid-loop, so its failure message and diagnostic
+dumps never run, and a slow-but-converging wait dies early. Put dumps in
+`catch:` — that survives a step timeout, whereas a trailing `kubectl get ...`
+inside the script does not. `make verify-e2e-loop-budgets` enforces this in CI
+(worst-case sleep budget vs the step timeout).
+
+Cleanup `finally` scripts must not block on slow finalization: pass
+`--wait=false` when deleting namespaces and Gateways. Namespace finalization
+and per-Gateway Envoy teardown routinely outlast a 60s script timeout on
+loaded CI nodes, and a killed `finally` fails an otherwise-green test.
+
 ## Debugging Failures
 
 Run a failing test in isolation:

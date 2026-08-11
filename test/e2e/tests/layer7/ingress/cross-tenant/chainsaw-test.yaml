@@ -136,7 +136,9 @@ spec:
       cluster: kubelb
       try:
         - script:
-            timeout: 120s
+            # Covers the loop's full 60x3s budget; a shorter timeout kills the
+            # loop mid-wait and eats its failure diagnostics.
+            timeout: 240s
             content: |
               set -e
               NS_PRIMARY="tenant-primary"

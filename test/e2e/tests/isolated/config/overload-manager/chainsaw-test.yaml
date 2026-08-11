@@ -99,7 +99,9 @@ spec:
       cluster: kubelb
       try:
         - script:
-            timeout: 90s
+            # Covers the loop's full 24x5s budget; a shorter timeout kills the
+            # loop mid-wait and eats its failure diagnostics.
+            timeout: 180s
             content: |
               set -e
               NAMESPACE="tenant-primary"

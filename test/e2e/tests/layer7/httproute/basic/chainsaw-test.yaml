@@ -203,7 +203,9 @@ spec:
       try:
         - script:
             skipCommandOutput: true
-            timeout: 90s
+            # Covers the 5s settle plus the loop's 30x(5s curl + 2s sleep)
+            # worst case; 90s could kill the loop mid-wait.
+            timeout: 240s
             content: |
               set -e
               IP=$(kubectl get gateway basic-gw -n default \
