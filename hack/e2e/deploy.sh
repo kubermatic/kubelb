@@ -36,11 +36,16 @@ GIT_COMMIT="${GIT_COMMIT:-$(git rev-parse --short HEAD)}"
 BUILD_DATE="${BUILD_DATE:-$(date -u +%Y-%m-%dT%H:%M:%SZ)}"
 
 # Cluster type detection
-USE_KIND="${USE_KIND:-auto}"                    # auto, true, false
-SKIP_BUILD="${SKIP_BUILD:-false}"               # Skip image building (use pre-built images)
-SKIP_IMAGE_LOAD="${SKIP_IMAGE_LOAD:-false}"     # Skip image loading
-METALLB_IP_RANGE="${METALLB_IP_RANGE:-}"        # Override MetalLB IP range for cloud
-CONVERSION_MODE="${CONVERSION_MODE:-false}"     # Deploy CCM in standalone conversion mode
+USE_KIND="${USE_KIND:-auto}"                # auto, true, false
+SKIP_BUILD="${SKIP_BUILD:-false}"           # Skip image building (use pre-built images)
+SKIP_IMAGE_LOAD="${SKIP_IMAGE_LOAD:-false}" # Skip image loading
+METALLB_IP_RANGE="${METALLB_IP_RANGE:-}"    # Override MetalLB IP range for cloud
+CONVERSION_MODE="${CONVERSION_MODE:-false}" # Deploy CCM in standalone conversion mode
+
+# Secret the manager generates per tenant, holding the scoped ServiceAccount
+# kubeconfig the CCM uses to reach the management cluster.
+TENANT_KUBECONFIG_SECRET="kubelb-ccm-kubeconfig"
+TENANT_KUBECONFIG_TIMEOUT="${TENANT_KUBECONFIG_TIMEOUT:-180}"
 ENABLE_STANDALONE="${ENABLE_STANDALONE:-false}" # Enable standalone cluster for conversion tests
 DEV_MODE="${DEV_MODE:-false}"                   # Minimal local-dev setup: kubelb + tenant1 only
 
@@ -375,17 +380,102 @@ setup_tenants() {
 }
 
 #######################################
+# Address of the management cluster API server as reachable from inside the
+# Docker network, i.e. from a pod running in one of the tenant kind clusters.
+#######################################
+kind_management_api_server() {
+  local internal_kubeconfig="${KUBECONFIGS_DIR}/kubelb-internal.kubeconfig"
+  local server=""
+
+  if [[ -f "${internal_kubeconfig}" ]]; then
+    server=$(awk '$1 == "server:" { print $2; exit }' "${internal_kubeconfig}")
+  fi
+
+  if [[ -z "${server}" ]]; then
+    local container_ip
+    container_ip=$(docker inspect -f '{{range.NetworkSettings.Networks}}{{.IPAddress}}{{end}}' kubelb-control-plane 2> /dev/null || echo "")
+    if [[ -n "${container_ip}" ]]; then
+      server="https://${container_ip}:6443"
+    fi
+  fi
+
+  if [[ -z "${server}" ]]; then
+    return 1
+  fi
+  echo "${server}"
+}
+
+#######################################
+# Write the manager-generated tenant kubeconfig for a tenant to a file.
+#
+# Real installs give the CCM the scoped ServiceAccount kubeconfig that the
+# manager writes into the kubelb-ccm-kubeconfig secret of the tenant-<name>
+# namespace, bound to the tenant Role. Handing e2e the cluster-admin
+# kubeconfig instead meant no test could ever fail on a tenant RBAC gap.
+#
+# Arguments:
+#   $1 - tenant name (Tenant CR name, e.g. "primary")
+#   $2 - output file
+#######################################
+fetch_tenant_kubeconfig() {
+  local tenant="$1"
+  local out_file="$2"
+  local namespace="tenant-${tenant}"
+  local manager_kubeconfig="${KUBECONFIGS_DIR}/kubelb.kubeconfig"
+  local deadline=$(($(date +%s) + TENANT_KUBECONFIG_TIMEOUT))
+  local kubeconfig=""
+
+  # The secret appears only after the manager has reconciled the Tenant CR and
+  # the token controller has populated the ServiceAccount token it is built
+  # from, so this races the helm install that just created the Tenant.
+  echodate "Waiting for ${namespace}/${TENANT_KUBECONFIG_SECRET} (scoped CCM kubeconfig)..."
+  while true; do
+    kubeconfig=$(kubectl --kubeconfig "${manager_kubeconfig}" -n "${namespace}" \
+      get secret "${TENANT_KUBECONFIG_SECRET}" \
+      -o go-template='{{ index .data "kubelb" | base64decode }}' 2> /dev/null || true)
+    if [[ -n "${kubeconfig}" ]]; then
+      break
+    fi
+    if [[ $(date +%s) -ge ${deadline} ]]; then
+      echodate "ERROR: secret ${namespace}/${TENANT_KUBECONFIG_SECRET} did not appear within ${TENANT_KUBECONFIG_TIMEOUT}s"
+      echodate "  The kubelb manager creates it while reconciling Tenant/${tenant}."
+      echodate "  Check: kubectl --kubeconfig ${manager_kubeconfig} get tenant ${tenant} -o yaml"
+      echodate "  and the manager logs in the kubelb namespace."
+      return 1
+    fi
+    sleep 2
+  done
+
+  # The manager fills in the API server address it discovers from inside the
+  # management cluster: the cluster-info ConfigMap, falling back to the
+  # kubernetes EndpointSlice. With kind, cluster-info advertises the
+  # control-plane *container hostname* (https://kubelb-control-plane:6443),
+  # which only resolves from a tenant pod as long as Docker's embedded DNS is
+  # reachable through that cluster's CoreDNS. Pin the address to the
+  # control-plane container IP instead - the same address setup-kind.sh bakes
+  # into kubelb-internal.kubeconfig for the admin credential, and the one the
+  # EndpointSlice fallback would produce. Only the endpoint changes: the
+  # tenant ServiceAccount token and CA, the part under test, are kept as the
+  # manager generated them.
+  if is_kind_cluster; then
+    local server
+    if ! server=$(kind_management_api_server); then
+      echodate "ERROR: could not determine the internal API server address of the kubelb cluster"
+      return 1
+    fi
+    kubeconfig=$(echo "${kubeconfig}" | sed -E "s|^([[:space:]]*server:[[:space:]]*).*|\1${server}|")
+  fi
+
+  echo "${kubeconfig}" > "${out_file}"
+  chmod 600 "${out_file}"
+}
+
+#######################################
 # Deploy CCM to tenant clusters
 #######################################
 deploy_ccms() {
   echodate "Deploying CCMs to tenant clusters..."
   local deploy_start=$(nowms)
-
-  # Prepare kubeconfig for CCM to connect to kubelb management cluster
-  local kubelb_kubeconfig="${KUBECONFIGS_DIR}/kubelb.kubeconfig"
-  if is_kind_cluster; then
-    kubelb_kubeconfig="${KUBECONFIGS_DIR}/kubelb-internal.kubeconfig"
-  fi
 
   # Set pull policy based on cluster type
   local pull_policy="IfNotPresent"
@@ -404,11 +494,16 @@ deploy_ccms() {
       # Create kubelb namespace in tenant cluster
       kubectl create ns kubelb 2> /dev/null || true
 
-      # Skip kubelb-cluster secret in standalone conversion mode
+      # Skip kubelb-cluster secret in standalone conversion mode: that CCM
+      # never talks to a management cluster.
       if [[ "${CONVERSION_MODE}" != "true" ]]; then
-        # Create secret with kubeconfig to kubelb management cluster
+        # Create secret with the scoped tenant kubeconfig to the kubelb
+        # management cluster, mirroring a real tenant-cluster install.
+        local tenant_kubeconfig="${KUBECONFIGS_DIR}/tenant-${tenant}-ccm.kubeconfig"
+        fetch_tenant_kubeconfig "${tenant}" "${tenant_kubeconfig}" || exit 1
+
         kubectl -n kubelb create secret generic kubelb-cluster \
-          --from-file=kubelb="${kubelb_kubeconfig}" \
+          --from-file=kubelb="${tenant_kubeconfig}" \
           --dry-run=client -o yaml | kubectl apply -f -
       fi
 
