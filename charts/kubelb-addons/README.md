@@ -89,8 +89,8 @@ These are the default values to use when Gateway API is disabled for KubeLB in f
 |------------|------|---------|
 | https://kubernetes-sigs.github.io/external-dns | external-dns | 1.21.1 |
 | https://kubernetes.github.io/ingress-nginx | ingress-nginx | 4.15.1 |
-| oci://cr.agentgateway.dev/charts | agentgateway | 1.4.0 |
-| oci://cr.agentgateway.dev/charts | agentgateway-crds | 1.4.0 |
+| oci://cr.agentgateway.dev/charts | agentgateway | 1.4.1 |
+| oci://cr.agentgateway.dev/charts | agentgateway-crds | 1.4.1 |
 | oci://docker.io/envoyproxy | envoy-gateway(gateway-helm) | 1.8.3 |
 | oci://quay.io/jetstack/charts | cert-manager | 1.21.1 |
 | oci://quay.io/metallb/chart | metallb | 0.16.1 |
