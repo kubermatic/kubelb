@@ -43,6 +43,7 @@ import (
 	kerrors "k8s.io/apimachinery/pkg/api/errors"
 	apimeta "k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	unstructuredv1 "k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/events"
@@ -128,7 +129,7 @@ func (r *RouteReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 	// Resource is marked for deletion
 	if resource.DeletionTimestamp != nil {
 		if controllerutil.ContainsFinalizer(resource, CleanupFinalizer) {
-			return r.cleanup(ctx, resource)
+			return r.cleanup(ctx, resource, false)
 		}
 		// Finalizer doesn't exist so clean up is already done
 		return reconcile.Result{}, nil
@@ -141,9 +142,12 @@ func (r *RouteReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 		return reconcile.Result{}, err
 	}
 
-	// If the resource is disabled, we need to clean up the resources
+	// The resource type was disabled at the tenant or global level. Tear down
+	// whatever was generated while it was enabled, otherwise the management
+	// cluster keeps serving a configuration that is supposed to be off.
 	if controllerutil.ContainsFinalizer(resource, CleanupFinalizer) && disabled {
-		return r.cleanup(ctx, resource)
+		managermetrics.RouteReconcileTotal.WithLabelValues(req.Namespace, routeType, metricsutil.ResultSkipped).Inc()
+		return r.cleanup(ctx, resource, true)
 	}
 
 	if !shouldReconcile {
@@ -205,9 +209,20 @@ func (r *RouteReconciler) reconcile(ctx context.Context, log logr.Logger, route 
 	return nil
 }
 
-func (r *RouteReconciler) cleanup(ctx context.Context, route *kubelbv1alpha1.Route) (ctrl.Result, error) {
-	// Route will be removed automatically because of owner reference. We need to take care of removing
-	// the services while ensuring that the services are not being used by other routes.
+// cleanup removes everything the Route generated in the management cluster and
+// drops the finalizer. resetStatus must be true whenever the Route object
+// itself survives the teardown, so the status stops advertising sub-resources
+// that no longer exist; the CCM mirrors that status back onto the tenant's
+// object.
+func (r *RouteReconciler) cleanup(ctx context.Context, route *kubelbv1alpha1.Route, resetStatus bool) (ctrl.Result, error) {
+	// The generated route resource is garbage collected via its owner reference
+	// only when the Route itself is deleted. On the teardown paths the Route
+	// survives, so it has to be deleted explicitly.
+	if err := r.deleteGeneratedRoute(ctx, route); err != nil {
+		return reconcile.Result{}, err
+	}
+
+	// Remove the services while ensuring that they are not being used by other routes.
 	for _, value := range route.Status.Resources.Services {
 		log := r.Log.WithValues("name", value.Name, "namespace", value.Namespace)
 		svc := corev1.Service{
@@ -231,12 +246,64 @@ func (r *RouteReconciler) cleanup(ctx context.Context, route *kubelbv1alpha1.Rou
 		return reconcile.Result{}, fmt.Errorf("failed to deallocate ports: %w", err)
 	}
 
+	if resetStatus {
+		if err := r.resetGeneratedResourcesStatus(ctx, route); err != nil {
+			return reconcile.Result{}, err
+		}
+	}
+
 	controllerutil.RemoveFinalizer(route, CleanupFinalizer)
 	if err := r.Update(ctx, route); err != nil {
 		return reconcile.Result{}, fmt.Errorf("failed to remove finalizer: %w", err)
 	}
 
 	return reconcile.Result{}, nil
+}
+
+// deleteGeneratedRoute deletes the resource that was generated in the
+// management cluster for this Route. The kind comes from the embedded source
+// object and the name from the status, which is the only record of what was
+// actually created.
+func (r *RouteReconciler) deleteGeneratedRoute(ctx context.Context, route *kubelbv1alpha1.Route) error {
+	generatedName := route.Status.Resources.Route.GeneratedName
+	if generatedName == "" || route.Spec.Source.Kubernetes == nil {
+		return nil
+	}
+
+	gvk := route.Spec.Source.Kubernetes.Route.GroupVersionKind()
+	if gvk.Empty() {
+		return nil
+	}
+
+	generated := &unstructuredv1.Unstructured{}
+	generated.SetGroupVersionKind(gvk)
+	generated.SetName(generatedName)
+	generated.SetNamespace(route.Namespace)
+
+	r.Log.V(1).Info("Deleting generated route resource", "name", generatedName, "namespace", route.Namespace, "kind", gvk.Kind)
+
+	// A kind that the cluster no longer serves cannot have a leftover resource.
+	if err := r.Delete(ctx, generated); err != nil && !kerrors.IsNotFound(err) && !apimeta.IsNoMatchError(err) {
+		return fmt.Errorf("failed to delete generated %s: %w", gvk.Kind, err)
+	}
+	return nil
+}
+
+// resetGeneratedResourcesStatus clears the sub-resource status of a Route whose
+// generated resources were torn down, while keeping the conditions that explain
+// why. Leaving the old entries in place would keep the CCM mirroring an address
+// for a route that is no longer served.
+func (r *RouteReconciler) resetGeneratedResourcesStatus(ctx context.Context, route *kubelbv1alpha1.Route) error {
+	routeStatus := route.Status.DeepCopy()
+	routeStatus.Resources.Services = nil
+	routeStatus.Resources.Route = kubelbv1alpha1.ResourceState{
+		Conditions: routeStatus.Resources.Route.Conditions,
+	}
+
+	if err := r.UpdateRouteStatus(ctx, route, *routeStatus); err != nil {
+		return fmt.Errorf("failed to reset route status: %w", err)
+	}
+	return nil
 }
 
 func (r *RouteReconciler) manageServices(ctx context.Context, log logr.Logger, route *kubelbv1alpha1.Route, annotations kubelbv1alpha1.AnnotationSettings) error {
@@ -412,6 +479,33 @@ func (r *RouteReconciler) UpdateRouteStatus(ctx context.Context, route *kubelbv1
 	})
 }
 
+// recordAppliedResource records the just-applied object in the Route status.
+//
+// The live object is preferred because it carries the sub-resource status, but
+// the read-after-write goes through the informer cache, which can still miss an
+// object that was created moments ago. The desired object is then the only
+// record of what was applied: recording an empty ResourceState instead would
+// strand the generated resource, because both cleanup and the CCM's status
+// projection key off GeneratedName.
+func recordAppliedResource[T any, PT interface {
+	*T
+	ctrlruntimeclient.Object
+}](ctx context.Context, client ctrlruntimeclient.Client, routeStatus *kubelbv1alpha1.RouteStatus, desired PT) error {
+	applied := ctrlruntimeclient.Object(desired)
+
+	live := PT(new(T))
+	if err := client.Get(ctx, ctrlruntimeclient.ObjectKeyFromObject(desired), live); err != nil {
+		if !kerrors.IsNotFound(err) {
+			return fmt.Errorf("failed to get %T: %w", desired, err)
+		}
+	} else {
+		applied = live
+	}
+
+	updateResourceStatus(routeStatus, applied, nil)
+	return nil
+}
+
 func (r *RouteReconciler) manageRoutes(ctx context.Context, log logr.Logger, route *kubelbv1alpha1.Route, config *kubelbv1alpha1.Config, tenant *kubelbv1alpha1.Tenant, annotations kubelbv1alpha1.AnnotationSettings) error {
 	if route.Spec.Source.Kubernetes == nil {
 		return nil
@@ -461,57 +555,33 @@ func (r *RouteReconciler) manageRoutes(ctx context.Context, log logr.Logger, rou
 	case *v1.Ingress: // v1 "k8s.io/api/networking/v1"
 		applyErr = ingressHelpers.CreateOrUpdateIngress(ctx, log, r.Client, v, referencedServices, route.Namespace, originalRouteName, config, tenant, annotations)
 		if applyErr == nil {
-			// Retrieve updated object to get the status.
-			key := ctrlruntimeclient.ObjectKey{Namespace: v.Namespace, Name: v.Name}
-			res := &v1.Ingress{}
-			if err := r.Get(ctx, key, res); err != nil {
-				if !kerrors.IsNotFound(err) {
-					return fmt.Errorf("failed to get Ingress: %w", err)
-				}
+			if err := recordAppliedResource(ctx, r.Client, routeStatus, v); err != nil {
+				return err
 			}
-			updateResourceStatus(routeStatus, res, nil)
 		}
 
 	case *gwapiv1.Gateway: // v1 "sigs.k8s.io/gateway-api/apis/v1"
 		applyErr = gatewayHelpers.CreateOrUpdateGateway(ctx, log, r.Client, v, route.Namespace, config, tenant, annotations)
 		if applyErr == nil {
-			// Retrieve updated object to get the status.
-			key := ctrlruntimeclient.ObjectKey{Namespace: v.Namespace, Name: v.Name}
-			res := &gwapiv1.Gateway{}
-			if err := r.Get(ctx, key, res); err != nil {
-				if !kerrors.IsNotFound(err) {
-					return fmt.Errorf("failed to get Gateway: %w", err)
-				}
+			if err := recordAppliedResource(ctx, r.Client, routeStatus, v); err != nil {
+				return err
 			}
-			updateResourceStatus(routeStatus, res, nil)
 		}
 
 	case *gwapiv1.HTTPRoute: // v1 "sigs.k8s.io/gateway-api/apis/v1"
 		applyErr = httprouteHelpers.CreateOrUpdateHTTPRoute(ctx, log, r.Client, v, referencedServices, route.Namespace, originalRouteName, tenant, annotations)
 		if applyErr == nil {
-			// Retrieve updated object to get the status.
-			key := ctrlruntimeclient.ObjectKey{Namespace: v.Namespace, Name: v.Name}
-			res := &gwapiv1.HTTPRoute{}
-			if err := r.Get(ctx, key, res); err != nil {
-				if !kerrors.IsNotFound(err) {
-					return fmt.Errorf("failed to get HTTPRoute: %w", err)
-				}
+			if err := recordAppliedResource(ctx, r.Client, routeStatus, v); err != nil {
+				return err
 			}
-			updateResourceStatus(routeStatus, res, nil)
 		}
 
 	case *gwapiv1.GRPCRoute: // v1 "sigs.k8s.io/gateway-api/apis/v1"
 		applyErr = grpcrouteHelpers.CreateOrUpdateGRPCRoute(ctx, log, r.Client, v, referencedServices, route.Namespace, originalRouteName, tenant, annotations)
 		if applyErr == nil {
-			// Retrieve updated object to get the status.
-			key := ctrlruntimeclient.ObjectKey{Namespace: v.Namespace, Name: v.Name}
-			res := &gwapiv1.GRPCRoute{}
-			if err := r.Get(ctx, key, res); err != nil {
-				if !kerrors.IsNotFound(err) {
-					return fmt.Errorf("failed to get GRPCRoute: %w", err)
-				}
+			if err := recordAppliedResource(ctx, r.Client, routeStatus, v); err != nil {
+				return err
 			}
-			updateResourceStatus(routeStatus, res, nil)
 		}
 
 	default:
