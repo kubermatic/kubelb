@@ -31,6 +31,7 @@ import (
 	ccmmetrics "k8c.io/kubelb/internal/metricsutil/ccm"
 	gatewayhelper "k8c.io/kubelb/internal/resources/gatewayapi/gateway"
 
+	corev1 "k8s.io/api/core/v1"
 	kerrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
@@ -51,6 +52,12 @@ import (
 
 const (
 	GatewayControllerName = "gateway-controller"
+
+	// EventReasonGatewayClassNotAccepted is the Event reason used to tell a
+	// tenant that their Gateway names a GatewayClass KubeLB does not serve.
+	// Gateway API defines no condition reason for "no controller claims this
+	// class", so the signal is an Event rather than a status write.
+	EventReasonGatewayClassNotAccepted = "GatewayClassNotAccepted"
 )
 
 // GatewayReconciler reconciles a Gateway Object
@@ -72,6 +79,7 @@ type GatewayReconciler struct {
 // +kubebuilder:rbac:groups=kubelb.k8c.io,resources=routes/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=gateway.networking.k8s.io,resources=gateways,verbs=get;list;watch;update;patch
 // +kubebuilder:rbac:groups=gateway.networking.k8s.io,resources=gateways/status,verbs=get;update;patch
+// +kubebuilder:rbac:groups=gateway.networking.k8s.io,resources=gatewayclasses,verbs=get;list;watch
 
 func (r *GatewayReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	log := r.Log.WithValues("name", req.NamespacedName)
@@ -103,6 +111,7 @@ func (r *GatewayReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 	}
 
 	if !r.shouldReconcile(resource) {
+		r.warnGatewayClassNotAccepted(ctx, log, resource)
 		ccmmetrics.GatewayReconcileTotal.WithLabelValues(req.Namespace, metricsutil.ResultSkipped).Inc()
 		return reconcile.Result{}, nil
 	}
@@ -217,15 +226,23 @@ func (r *GatewayReconciler) resourceFilter() predicate.Predicate {
 	return predicate.Funcs{
 		CreateFunc: func(e event.CreateEvent) bool {
 			if obj, ok := e.Object.(*gwapiv1.Gateway); ok {
-				return r.shouldReconcile(obj)
+				return r.shouldObserve(obj)
 			}
 			return false
 		},
 		UpdateFunc: func(e event.UpdateEvent) bool {
-			if obj, ok := e.ObjectNew.(*gwapiv1.Gateway); ok {
-				return r.shouldReconcile(obj)
+			oldObj, okOld := e.ObjectOld.(*gwapiv1.Gateway)
+			newObj, okNew := e.ObjectNew.(*gwapiv1.Gateway)
+			if !okOld || !okNew {
+				return false
 			}
-			return false
+			if r.shouldReconcile(newObj) {
+				return true
+			}
+			// Gateways of a foreign controller are only admitted when their spec
+			// moved. Those controllers rewrite Gateway status continuously and
+			// none of that can change whether KubeLB serves the class.
+			return r.shouldObserve(newObj) && oldObj.Generation != newObj.Generation
 		},
 		DeleteFunc: func(e event.DeleteEvent) bool {
 			if obj, ok := e.Object.(*gwapiv1.Gateway); ok {
@@ -246,6 +263,74 @@ func (r *GatewayReconciler) resourceFilter() predicate.Predicate {
 // In Community Edition, only a single Gateway with the name "kubelb" is reconciled.
 func (r *GatewayReconciler) shouldReconcile(gateway *gwapiv1.Gateway) bool {
 	return gatewayhelper.ShouldReconcileResource(gateway, r.UseGatewayClass)
+}
+
+// shouldObserve widens shouldReconcile to the Gateways that carry KubeLB's own
+// name but a GatewayClass it does not serve. Reconcile has to see them to warn
+// their owner, and only Reconcile can afford the GatewayClass lookup that
+// decides whether the warning is KubeLB's to emit.
+func (r *GatewayReconciler) shouldObserve(gateway *gwapiv1.Gateway) bool {
+	return r.shouldReconcile(gateway) || r.droppedOnGatewayClass(gateway)
+}
+
+// droppedOnGatewayClass reports whether the only thing keeping this Gateway out
+// of the reconcile path is its GatewayClass. A Gateway with a different name is
+// not KubeLB's to comment on, whatever class it names.
+func (r *GatewayReconciler) droppedOnGatewayClass(gateway *gwapiv1.Gateway) bool {
+	return r.UseGatewayClass &&
+		gateway.Name == gatewayhelper.ParentGatewayName &&
+		string(gateway.Spec.GatewayClassName) != gatewayhelper.GatewayClassName
+}
+
+// warnGatewayClassNotAccepted tells the tenant why their Gateway is being
+// ignored, instead of leaving it at the Gateway API default status of
+// "Accepted: Unknown, Pending" that is indistinguishable from a dead
+// controller.
+//
+// The signal is an Event and never a status write: Gateway API reserves the
+// status of a Gateway for the controller named by its GatewayClass, and KubeLB
+// registers no GatewayClass and no controllerName in the tenant cluster, so it
+// can never be that controller for a class it does not serve. An Event is
+// additive and cannot fight whichever controller does own the class.
+//
+// A Gateway KubeLB never adopted stays untouched while a GatewayClass object of
+// that name exists, because that object hands the Gateway to another controller
+// and the warning would be both wrong and confusing there.
+func (r *GatewayReconciler) warnGatewayClassNotAccepted(ctx context.Context, log logr.Logger, gateway *gwapiv1.Gateway) {
+	if r.Recorder == nil || !r.droppedOnGatewayClass(gateway) {
+		return
+	}
+
+	class := string(gateway.Spec.GatewayClassName)
+	adopted := controllerutil.ContainsFinalizer(gateway, CleanupFinalizer)
+	if !adopted && gatewayClassClaimed(ctx, r.Client, class) {
+		return
+	}
+
+	log.Info("Gateway names a GatewayClass that KubeLB does not serve", "gatewayClass", class, "adopted", adopted)
+
+	note := "GatewayClass %q is not served by KubeLB, this Gateway is ignored and no load balancer is provisioned for it. Served GatewayClass: %s"
+	if adopted {
+		note = "GatewayClass %q is no longer served by KubeLB, the load balancer configuration for this Gateway is being removed. Served GatewayClass: %s"
+	}
+	r.Recorder.Eventf(gateway, nil, corev1.EventTypeWarning, EventReasonGatewayClassNotAccepted, "Reconciling", note, class, gatewayhelper.GatewayClassName)
+}
+
+// gatewayClassClaimed reports whether a GatewayClass object of that name exists
+// in the tenant cluster. KubeLB registers no GatewayClass and no controllerName
+// there, it matches on the class name alone, so a GatewayClass that does exist
+// always designates a different controller and its Gateways are that
+// controller's to accept or reject. A failed lookup counts as claimed so that
+// KubeLB never warns on a Gateway it cannot prove is unserved.
+func gatewayClassClaimed(ctx context.Context, reader ctrlclient.Reader, name string) bool {
+	if name == "" {
+		return false
+	}
+	class := &gwapiv1.GatewayClass{}
+	if err := reader.Get(ctx, ctrlclient.ObjectKey{Name: name}, class); err != nil {
+		return !kerrors.IsNotFound(err)
+	}
+	return true
 }
 
 func (r *GatewayReconciler) SetupWithManager(mgr ctrl.Manager) error {

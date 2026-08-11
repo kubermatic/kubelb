@@ -73,6 +73,16 @@ rules:
   - get
   - update
   - patch
+# Read-only: used to tell whether an unserved GatewayClass belongs to another
+# controller before warning the tenant about it.
+- apiGroups:
+  - gateway.networking.k8s.io
+  resources:
+  - gatewayclasses
+  verbs:
+  - get
+  - list
+  - watch
 {{- end }}
 {{- if not .Values.kubelb.disableGRPCRouteController }}
 - apiGroups:
