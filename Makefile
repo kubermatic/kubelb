@@ -512,13 +512,23 @@ update-gateway-api-crds:
 .PHONY: download-gateway-api-crds
 download-gateway-api-crds: ## Download Gateway API CRDs
 	@echo "Downloading Gateway API CRDs..."
-	@curl -s -k "https://api.github.com/repos/kubernetes-sigs/gateway-api/contents/config/crd/$(GATEWAY_RELEASE_CHANNEL)?ref=$(GATEWAY_API_VERSION)" | \
-		jq -r '.[] | select(.name != "kustomization.yaml") | .name' | \
-		while read filename; do \
-			echo "Downloading $$filename..."; \
-			curl -k -sLo "internal/resources/crds/gatewayapi/$(GATEWAY_RELEASE_CHANNEL)/$$filename" \
-				"https://raw.githubusercontent.com/kubernetes-sigs/gateway-api/$(GATEWAY_API_VERSION)/config/crd/$(GATEWAY_RELEASE_CHANNEL)/$$filename"; \
-		done
+	@dir="internal/resources/crds/gatewayapi/$(GATEWAY_RELEASE_CHANNEL)"; \
+	tmp="$$(mktemp -d)"; \
+	trap 'rm -rf "$$tmp"' EXIT; \
+	files="$$(curl -sf -k "https://api.github.com/repos/kubernetes-sigs/gateway-api/contents/config/crd/$(GATEWAY_RELEASE_CHANNEL)?ref=$(GATEWAY_API_VERSION)" | \
+		jq -r '.[] | select(.name != "kustomization.yaml") | .name')"; \
+	if [ -z "$$files" ]; then \
+		echo "No CRDs listed for $(GATEWAY_API_VERSION)/$(GATEWAY_RELEASE_CHANNEL)"; \
+		exit 1; \
+	fi; \
+	for filename in $$files; do \
+		echo "Downloading $$filename..."; \
+		curl -k -sfLo "$$tmp/$$filename" \
+			"https://raw.githubusercontent.com/kubernetes-sigs/gateway-api/$(GATEWAY_API_VERSION)/config/crd/$(GATEWAY_RELEASE_CHANNEL)/$$filename" || exit 1; \
+	done; \
+	rm -rf "$$dir"; \
+	mkdir -p "$$dir"; \
+	mv "$$tmp"/* "$$dir/"
 	@echo "Gateway API CRDs downloaded successfully to internal/resources/crds/gatewayapi/$(GATEWAY_RELEASE_CHANNEL)/"
 
 .PHONY: reconciler-gen
