@@ -547,14 +547,16 @@ func (r *EnvoyCPReconciler) getEnvoyProxyPodSpec(config *kubelbv1alpha1.Config, 
 }
 
 func (r *EnvoyCPReconciler) envoyProxyAnnotations(config *kubelbv1alpha1.Config) map[string]string {
+	annotations := map[string]string{
+		kubelb.AnnotationResourceNamingVersion: kubelb.ResourceNamingVersion,
+	}
 	if config.Spec.EnvoyProxy.PodMonitor != nil && config.Spec.EnvoyProxy.PodMonitor.Enabled {
-		return nil
+		return annotations
 	}
-	return map[string]string{
-		"prometheus.io/scrape": "true",
-		"prometheus.io/port":   fmt.Sprintf("%d", envoycp.EnvoyStatsPort),
-		"prometheus.io/path":   "/stats/prometheus",
-	}
+	annotations["prometheus.io/scrape"] = "true"
+	annotations["prometheus.io/port"] = fmt.Sprintf("%d", envoycp.EnvoyStatsPort)
+	annotations["prometheus.io/path"] = "/stats/prometheus"
+	return annotations
 }
 
 // podTemplateSpecNeedsUpdate compares the relevant fields of two PodTemplateSpecs

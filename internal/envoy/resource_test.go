@@ -19,6 +19,8 @@ package envoy
 import (
 	"context"
 	"fmt"
+	"maps"
+	"slices"
 	"testing"
 	"time"
 
@@ -36,6 +38,7 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	kubelbv1alpha1 "k8c.io/kubelb/api/ce/kubelb.k8c.io/v1alpha1"
+	"k8c.io/kubelb/internal/kubelb"
 	managermetrics "k8c.io/kubelb/internal/metricsutil/manager"
 	portlookup "k8c.io/kubelb/internal/port-lookup"
 
@@ -43,6 +46,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
+	k8stypes "k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 )
 
@@ -880,5 +884,80 @@ func TestListeners_TCPKeepalive(t *testing.T) {
 func TestMakeUDPListener_NoTCPKeepalive(t *testing.T) {
 	if options := makeUDPListener("test-cluster", "test-listener", 10001, nil).GetSocketOptions(); len(options) != 0 {
 		t.Fatalf("udp listener socket options = %v, want none", options)
+	}
+}
+
+// TestMapSnapshotRouteNamesSurviveServiceUIDChange pins the generated cluster
+// and listener names to the Service's logical identity. The mirrored NodePort
+// Service is owner-referenced by the origin Service, so replacing the origin
+// (helm upgrade, delete+apply) garbage-collects the mirror and the CCM recreates
+// it under the same namespace/name with a fresh UID. If the UID leaks into the
+// generated names, Envoy sees an add of a new cluster plus a new listener on the
+// same port instead of an update: the old listener drains forever with a route
+// pointing at a deleted cluster, and pooled upstream connections bound to it
+// keep returning 503/NC.
+func TestMapSnapshotRouteNamesSurviveServiceUIDChange(t *testing.T) {
+	ctx := context.Background()
+	cl := fake.NewClientBuilder().WithScheme(testScheme(t)).Build()
+	pa := portlookup.NewPortAllocator()
+
+	namesFor := func(uid string) (clusters, listeners []string) {
+		t.Helper()
+		route := ingressSourceRoute()
+		route.Spec.Source.Kubernetes.Services[0].UID = k8stypes.UID(uid)
+
+		snapshot, err := MapSnapshot(ctx, cl, nil, []kubelbv1alpha1.Route{route}, pa, "test-snapshot", ResolveHeaderLimits(nil))
+		if err != nil {
+			t.Fatalf("MapSnapshot() error = %v", err)
+		}
+		return resourceNames(snapshot, resource.ClusterType), resourceNames(snapshot, resource.ListenerType)
+	}
+
+	oldClusters, oldListeners := namesFor("abc123")
+	newClusters, newListeners := namesFor("def456")
+
+	if !slices.Equal(oldClusters, newClusters) {
+		t.Errorf("cluster names changed with the Service UID: %v != %v", oldClusters, newClusters)
+	}
+	if !slices.Equal(oldListeners, newListeners) {
+		t.Errorf("listener names changed with the Service UID: %v != %v", oldListeners, newListeners)
+	}
+}
+
+func resourceNames(snapshot interface {
+	GetResources(resource.Type) map[string]types.Resource
+}, typ resource.Type) []string {
+	names := slices.Collect(maps.Keys(snapshot.GetResources(typ)))
+	slices.Sort(names)
+	return names
+}
+
+// Two routes with the same origin name in different origin namespaces, sharing one
+// backend Service, are mirrored into the same management namespace. Their generated
+// cluster and listener names must differ or one route silently overwrites the
+// other's config. The origin route namespace in the identifier is what keeps them
+// apart.
+func TestMapSnapshotRouteNamesDisambiguateByOriginNamespace(t *testing.T) {
+	ctx := context.Background()
+	cl := fake.NewClientBuilder().WithScheme(testScheme(t)).Build()
+	pa := portlookup.NewPortAllocator()
+
+	namesFor := func(originNamespace string) []string {
+		t.Helper()
+		route := ingressSourceRoute()
+		route.Labels = map[string]string{kubelb.LabelOriginNamespace: originNamespace}
+
+		snapshot, err := MapSnapshot(ctx, cl, nil, []kubelbv1alpha1.Route{route}, pa, "test-snapshot", ResolveHeaderLimits(nil))
+		if err != nil {
+			t.Fatalf("MapSnapshot() error = %v", err)
+		}
+		return resourceNames(snapshot, resource.ClusterType)
+	}
+
+	a := namesFor("team-a")
+	b := namesFor("team-b")
+
+	if slices.Equal(a, b) {
+		t.Errorf("routes in different origin namespaces produced identical cluster names: %v", a)
 	}
 }

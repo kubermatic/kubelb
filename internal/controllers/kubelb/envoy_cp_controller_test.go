@@ -20,6 +20,7 @@ import (
 	"testing"
 
 	kubelbv1alpha1 "k8c.io/kubelb/api/ce/kubelb.k8c.io/v1alpha1"
+	"k8c.io/kubelb/internal/kubelb"
 
 	"sigs.k8s.io/controller-runtime/pkg/event"
 )
@@ -30,5 +31,33 @@ import (
 func TestTenantSpecChangedPredicateTriggersOnDelete(t *testing.T) {
 	if !tenantSpecChangedPredicate().Delete(event.DeleteEvent{Object: &kubelbv1alpha1.Tenant{}}) {
 		t.Fatal("tenant deletion must enqueue a reconcile so the tenant's snapshot is cleared")
+	}
+}
+
+// TestEnvoyProxyAnnotationsCarryResourceNamingVersion pins the pod template
+// annotation that rolls every envoy proxy exactly once when the generated xDS
+// resource names change. Without the roll, a running proxy sees a rename as new
+// listeners added plus the old ones removed, and the removed listeners drain
+// with their routes pointing at deleted clusters.
+func TestEnvoyProxyAnnotationsCarryResourceNamingVersion(t *testing.T) {
+	podMonitorConfig := &kubelbv1alpha1.Config{}
+	podMonitorConfig.Spec.EnvoyProxy.PodMonitor = &kubelbv1alpha1.EnvoyProxyPodMonitor{Enabled: true}
+
+	tests := []struct {
+		name   string
+		config *kubelbv1alpha1.Config
+	}{
+		{name: "prometheus scrape annotations", config: &kubelbv1alpha1.Config{}},
+		{name: "pod monitor enabled", config: podMonitorConfig},
+	}
+
+	r := &EnvoyCPReconciler{}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := r.envoyProxyAnnotations(tt.config)[kubelb.AnnotationResourceNamingVersion]
+			if got != kubelb.ResourceNamingVersion {
+				t.Errorf("annotation %s = %q, want %q", kubelb.AnnotationResourceNamingVersion, got, kubelb.ResourceNamingVersion)
+			}
+		})
 	}
 }

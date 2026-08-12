@@ -271,7 +271,7 @@ func MapSnapshot(ctx context.Context, client ctrlclient.Client, loadBalancers []
 					listenerPort = uint32(value)
 				}
 
-				key := fmt.Sprintf(kubelb.EnvoyRoutePortIdentifierPattern, route.Namespace, svc.Namespace, svc.Name, originalRouteName, svc.UID, port.Port, port.Protocol)
+				key := fmt.Sprintf(kubelb.EnvoyRoutePortIdentifierPattern, route.Namespace, svc.Namespace, svc.Name, getOriginalRouteNamespace(&route), originalRouteName, port.Port, port.Protocol)
 
 				if l := makeRouteListener(key, listenerPort, port.Protocol, useHTTPListener, headerLimits); l != nil {
 					listener = append(listener, l)
@@ -646,6 +646,16 @@ func getOriginalRouteName(route *kubelbv1alpha1.Route) string {
 		}
 	}
 	return route.Name
+}
+
+func getOriginalRouteNamespace(route *kubelbv1alpha1.Route) string {
+	if route.Spec.Source.Kubernetes != nil && route.Spec.Source.Kubernetes.Route.GetNamespace() != "" {
+		return route.Spec.Source.Kubernetes.Route.GetNamespace()
+	}
+	if labels := route.GetLabels(); labels != nil {
+		return labels[kubelb.LabelOriginNamespace]
+	}
+	return ""
 }
 
 // makeHTTPListener creates an HTTP Connection Manager listener for L7 HTTP routes.

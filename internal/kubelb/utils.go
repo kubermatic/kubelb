@@ -53,11 +53,32 @@ const EnvoyEndpointPattern = "%s-%s-ep-%d"
 // EnvoyEndpointRoutePattern includes route name for per-route port allocation
 const EnvoyEndpointRoutePattern = "tenant-%s-route-%s-%s-%s"
 
-// EnvoyRoutePortIdentifierPattern includes route name for unique listener keys
-const EnvoyRoutePortIdentifierPattern = "tenant-%s-route-%s-%s-%s-svc-%s-port-%d-%s"
+// EnvoyRoutePortIdentifierPattern includes the origin route namespace and route name for unique listener keys
+// (supports same-named routes across origin namespaces sharing one backend).
+// Deliberately UID-free: the tuple already identifies one Service at any instant, while a UID makes the
+// name change every time the mirrored Service is replaced. Envoy then treats the replacement as a new
+// cluster plus a new listener on the same port instead of an update, leaving the old listener draining with
+// a route to a deleted cluster and pooled upstream connections stuck on it.
+const EnvoyRoutePortIdentifierPattern = "tenant-%s-route-%s-%s-%s-%s-port-%d-%s"
 const EnvoyListenerPattern = "%v-%s"
 const RouteServiceMapKey = "%s/%s"
 const DefaultRouteStatus = "{}"
+
+// AnnotationResourceNamingVersion stamps the envoy proxy pod template with the
+// scheme used to name generated xDS clusters and listeners. Bumping
+// ResourceNamingVersion rolls every envoy proxy pod exactly once, so a renamed
+// resource set reaches only freshly started proxies. Without the roll, running
+// proxies would see the rename as an add of new listeners plus a removal of the
+// old ones: the removed listeners sit in draining state with routes pointing at
+// deleted clusters, and pooled downstream connections still bound to them keep
+// getting NoCluster 503s.
+const AnnotationResourceNamingVersion = "kubelb.k8c.io/resource-naming-version"
+
+// ResourceNamingVersion must be incremented whenever a generated xDS resource
+// name changes. v2 dropped the Service UID from EnvoyRoutePortIdentifierPattern
+// and added the origin route namespace so same-named routes across origin
+// namespaces sharing one backend do not collide.
+const ResourceNamingVersion = "2"
 
 const ServiceKind = "Service"
 const NameSuffixLength = 4
