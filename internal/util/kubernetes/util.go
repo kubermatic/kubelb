@@ -18,6 +18,8 @@ package kubernetes
 
 import (
 	"maps"
+	"sort"
+	"strings"
 
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/equality"
@@ -44,6 +46,42 @@ func CompareAnnotations(a, b map[string]string) bool {
 	delete(aCopy, corev1.LastAppliedConfigAnnotation)
 	delete(bCopy, corev1.LastAppliedConfigAnnotation)
 	return equality.Semantic.DeepEqual(aCopy, bCopy)
+}
+
+// ManagedAnnotationsKey records, on a generated resource, the annotation keys KubeLB
+// propagated onto it during the previous reconciliation. It is what lets
+// ReconcileAnnotations tell an annotation it owns from one a third party added.
+const ManagedAnnotationsKey = "kubelb.k8c.io/managed-annotations"
+
+// ReconcileAnnotations merges desired into existing like MergeAnnotations, but also
+// drops the keys KubeLB propagated on an earlier pass and no longer wants. Without
+// this, removing an annotation upstream never reaches the generated resource and a
+// cloud-provider annotation can never be un-set. Keys KubeLB never set - annotations
+// configured by third party controllers on the generated resource - are left alone.
+func ReconcileAnnotations(existing, desired map[string]string) map[string]string {
+	merged := make(map[string]string, len(existing)+len(desired))
+	maps.Copy(merged, existing)
+
+	for _, key := range strings.Split(existing[ManagedAnnotationsKey], ",") {
+		if _, keep := desired[key]; !keep && key != "" {
+			delete(merged, key)
+		}
+	}
+	maps.Copy(merged, desired)
+
+	managed := make([]string, 0, len(desired))
+	for key := range desired {
+		if key != ManagedAnnotationsKey {
+			managed = append(managed, key)
+		}
+	}
+	if len(managed) == 0 {
+		delete(merged, ManagedAnnotationsKey)
+		return merged
+	}
+	sort.Strings(managed)
+	merged[ManagedAnnotationsKey] = strings.Join(managed, ",")
+	return merged
 }
 
 func MergeAnnotations(existing, desired map[string]string) map[string]string {

@@ -294,31 +294,33 @@ func (r *LoadBalancerReconciler) reconcileService(ctx context.Context, loadBalan
 	// Handle service ports
 	desiredService.Spec.Ports = kubelb.CreateServicePorts(loadBalancer, existingService, portAllocator)
 
+	// Merge the annotations with the existing annotations to allow annotations that are configured by third party controllers on the existing service to be preserved,
+	// while still propagating the removal of annotations that KubeLB itself set on a previous pass. On create this only records the keys KubeLB owns.
+	desiredService.Annotations = k8sutils.ReconcileAnnotations(existingService.Annotations, desiredService.Annotations)
+
 	// If service doesn't exist, create it
 	if apierrors.IsNotFound(err) {
 		log.V(2).Info("creating service", "name", svcName)
 		if err := r.Create(ctx, desiredService); err != nil {
 			return fmt.Errorf("failed to create service: %w", err)
 		}
-	} else {
-		// Merge the annotations with the existing annotations to allow annotations that are configured by third party controllers on the existing service to be preserved.
-		desiredService.Annotations = k8sutils.MergeAnnotations(existingService.Annotations, desiredService.Annotations)
+		return nil
+	}
 
-		// Service already exists, we need to check if it needs to be updated.
-		if !equality.Semantic.DeepEqual(existingService.Spec.Ports, desiredService.Spec.Ports) ||
-			!equality.Semantic.DeepEqual(existingService.Spec.Selector, desiredService.Spec.Selector) ||
-			!equality.Semantic.DeepEqual(existingService.Spec.Type, desiredService.Spec.Type) ||
-			!equality.Semantic.DeepEqual(existingService.Spec.ExternalTrafficPolicy, desiredService.Spec.ExternalTrafficPolicy) ||
-			!equality.Semantic.DeepEqual(existingService.Spec.LoadBalancerClass, desiredService.Spec.LoadBalancerClass) ||
-			!equality.Semantic.DeepEqual(existingService.Labels, desiredService.Labels) ||
-			!k8sutils.CompareAnnotations(existingService.Annotations, desiredService.Annotations) {
-			log.V(2).Info("updating service", "name", svcName)
-			existingService.Spec = desiredService.Spec
-			existingService.Labels = desiredService.Labels
-			existingService.Annotations = desiredService.Annotations
-			if err := r.Update(ctx, existingService); err != nil {
-				return fmt.Errorf("failed to update service: %w", err)
-			}
+	// Service already exists, we need to check if it needs to be updated.
+	if !equality.Semantic.DeepEqual(existingService.Spec.Ports, desiredService.Spec.Ports) ||
+		!equality.Semantic.DeepEqual(existingService.Spec.Selector, desiredService.Spec.Selector) ||
+		!equality.Semantic.DeepEqual(existingService.Spec.Type, desiredService.Spec.Type) ||
+		!equality.Semantic.DeepEqual(existingService.Spec.ExternalTrafficPolicy, desiredService.Spec.ExternalTrafficPolicy) ||
+		!equality.Semantic.DeepEqual(existingService.Spec.LoadBalancerClass, desiredService.Spec.LoadBalancerClass) ||
+		!equality.Semantic.DeepEqual(existingService.Labels, desiredService.Labels) ||
+		!k8sutils.CompareAnnotations(existingService.Annotations, desiredService.Annotations) {
+		log.V(2).Info("updating service", "name", svcName)
+		existingService.Spec = desiredService.Spec
+		existingService.Labels = desiredService.Labels
+		existingService.Annotations = desiredService.Annotations
+		if err := r.Update(ctx, existingService); err != nil {
+			return fmt.Errorf("failed to update service: %w", err)
 		}
 	}
 	return nil
