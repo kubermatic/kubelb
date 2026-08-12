@@ -33,6 +33,7 @@ kubelb:
     useDaemonset: false
     nodeSelector: {}
     tolerations: []
+    # -- Resource requests/limits for the Envoy Proxy container. If empty, defaults to requests 200m CPU / 256Mi memory and limits 2 CPU / 1Gi memory.
     resources: {}
     affinity: {}
     gracefulShutdown:

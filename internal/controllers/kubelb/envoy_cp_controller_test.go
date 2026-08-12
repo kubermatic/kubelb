@@ -20,8 +20,12 @@ import (
 	"testing"
 
 	kubelbv1alpha1 "k8c.io/kubelb/api/ce/kubelb.k8c.io/v1alpha1"
+	envoycp "k8c.io/kubelb/internal/envoy"
 	"k8c.io/kubelb/internal/kubelb"
 
+	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/resource"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/event"
 )
 
@@ -60,4 +64,75 @@ func TestEnvoyProxyAnnotationsCarryResourceNamingVersion(t *testing.T) {
 			}
 		})
 	}
+}
+
+// The envoy-proxy container carries all tenant data-plane traffic but shipped
+// with no requests or limits, so it ran BestEffort — first in line for
+// eviction and OOM kill on a node it shares with other proxies.
+func TestEnvoyProxyContainerHasResourceDefaults(t *testing.T) {
+	reconciler := &EnvoyCPReconciler{Namespace: teardownConfigNamespace, EnvoyServer: newTestEnvoyServer(t)}
+	config := &kubelbv1alpha1.Config{
+		ObjectMeta: metav1.ObjectMeta{Name: "default", Namespace: teardownConfigNamespace},
+	}
+	tenant := &kubelbv1alpha1.Tenant{ObjectMeta: metav1.ObjectMeta{Name: "tenant-a"}}
+
+	template := reconciler.getEnvoyProxyPodSpec(config, "tenant-a", "envoy-tenant-a", "snapshot", tenant)
+
+	envoy := template.Spec.Containers[0]
+	if envoy.Name != envoyProxyContainerName {
+		t.Fatalf("containers[0] = %q, want %q", envoy.Name, envoyProxyContainerName)
+	}
+	for _, tc := range []struct {
+		kind string
+		list corev1.ResourceList
+	}{
+		{"requests", envoy.Resources.Requests},
+		{"limits", envoy.Resources.Limits},
+	} {
+		if tc.list.Cpu().IsZero() {
+			t.Fatalf("envoy-proxy has no CPU %s; the container runs BestEffort", tc.kind)
+		}
+		if tc.list.Memory().IsZero() {
+			t.Fatalf("envoy-proxy has no memory %s; the container runs BestEffort", tc.kind)
+		}
+	}
+}
+
+func TestEnvoyProxyResourceDefaultsAreOverridable(t *testing.T) {
+	reconciler := &EnvoyCPReconciler{Namespace: teardownConfigNamespace, EnvoyServer: newTestEnvoyServer(t)}
+	custom := corev1.ResourceRequirements{
+		Requests: corev1.ResourceList{corev1.ResourceCPU: resource.MustParse("1")},
+		Limits:   corev1.ResourceList{corev1.ResourceCPU: resource.MustParse("4")},
+	}
+
+	config := &kubelbv1alpha1.Config{
+		ObjectMeta: metav1.ObjectMeta{Name: "default", Namespace: teardownConfigNamespace},
+		Spec: kubelbv1alpha1.ConfigSpec{
+			EnvoyProxy: kubelbv1alpha1.EnvoyProxy{Resources: &custom},
+		},
+	}
+	tenant := &kubelbv1alpha1.Tenant{ObjectMeta: metav1.ObjectMeta{Name: "tenant-a"}}
+
+	template := reconciler.getEnvoyProxyPodSpec(config, "tenant-a", "envoy-tenant-a", "snapshot", tenant)
+	if got := template.Spec.Containers[0].Resources.Limits.Cpu().String(); got != "4" {
+		t.Fatalf("Config resources must win over the default, CPU limit = %q", got)
+	}
+
+	tenantOverride := corev1.ResourceRequirements{
+		Limits: corev1.ResourceList{corev1.ResourceCPU: resource.MustParse("8")},
+	}
+	tenant.Spec.EnvoyProxy = &kubelbv1alpha1.TenantEnvoyProxy{Resources: &tenantOverride}
+	template = reconciler.getEnvoyProxyPodSpec(config, "tenant-a", "envoy-tenant-a", "snapshot", tenant)
+	if got := template.Spec.Containers[0].Resources.Limits.Cpu().String(); got != "8" {
+		t.Fatalf("Tenant resources must win over Config, CPU limit = %q", got)
+	}
+}
+
+func newTestEnvoyServer(t *testing.T) *envoycp.Server {
+	t.Helper()
+	server, err := envoycp.NewServer("0.0.0.0:8001", false)
+	if err != nil {
+		t.Fatalf("failed to create envoy server: %v", err)
+	}
+	return server
 }
