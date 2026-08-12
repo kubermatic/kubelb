@@ -89,6 +89,12 @@ func (r *SourceReconciler[T]) Reconcile(ctx context.Context, req ctrl.Request) (
 	resource := r.Adapter.NewObject()
 	if err := r.Client.Get(ctx, req.NamespacedName, resource); err != nil {
 		if kerrors.IsNotFound(err) {
+			// The origin is gone without the finalizer having run, so nothing else
+			// will ever tear its mirror down.
+			if err := r.reapStaleRoutes(ctx, log, req.Name, req.Namespace, ""); err != nil {
+				m.ReconcileTotal.WithLabelValues(req.Namespace, metricsutil.ResultError).Inc()
+				return reconcile.Result{}, err
+			}
 			return reconcile.Result{}, nil
 		}
 		m.ReconcileTotal.WithLabelValues(req.Namespace, metricsutil.ResultError).Inc()
@@ -113,6 +119,13 @@ func (r *SourceReconciler[T]) Reconcile(ctx context.Context, req ctrl.Request) (
 			m.ReconcileTotal.WithLabelValues(req.Namespace, metricsutil.ResultError).Inc()
 			return reconcile.Result{}, fmt.Errorf("failed to add finalizer: %w", err)
 		}
+	}
+
+	// The origin may have been recreated under the same name with a fresh UID while
+	// the CCM was down; the mirrors of its previous incarnations are orphans.
+	if err := r.reapStaleRoutes(ctx, log, resource.GetName(), resource.GetNamespace(), string(resource.GetUID())); err != nil {
+		m.ReconcileTotal.WithLabelValues(req.Namespace, metricsutil.ResultError).Inc()
+		return reconcile.Result{}, err
 	}
 
 	if err := r.reconcile(ctx, log, resource); err != nil {
@@ -200,6 +213,31 @@ func (r *SourceReconciler[T]) cleanup(ctx context.Context, resource T) (ctrl.Res
 		return reconcile.Result{}, fmt.Errorf("failed to remove finalizer: %w", err)
 	}
 	return reconcile.Result{}, nil
+}
+
+// reapStaleRoutes deletes the Routes in the tenant's management-cluster namespace
+// that were generated from name/namespace but not from the origin currently living
+// under liveUID. The finalizer path only covers origins that still exist and still
+// carry the finalizer; everything else (tenant cluster rebuilt, etcd restore,
+// finalizers force-removed, namespace deleted while the CCM was down) leaves the
+// Route - and the management-cluster resources it generates - behind forever.
+func (r *SourceReconciler[T]) reapStaleRoutes(ctx context.Context, log logr.Logger, name, namespace, liveUID string) error {
+	stale, err := staleMirrorNames(ctx, r.LBClient, &kubelbv1alpha1.RouteList{}, r.ClusterName, liveUID, ctrlclient.MatchingLabels{
+		kubelb.LabelOriginName:         name,
+		kubelb.LabelOriginNamespace:    namespace,
+		kubelb.LabelOriginResourceKind: r.Adapter.GVK(),
+	})
+	if err != nil || len(stale) == 0 {
+		return err
+	}
+
+	for _, routeName := range stale {
+		log.Info("deleting orphaned Route", "name", routeName, "namespace", r.ClusterName)
+		if err := cleanupRoute(ctx, r.LBClient, routeName, r.ClusterName); err != nil {
+			return fmt.Errorf("failed to cleanup orphaned route: %w", err)
+		}
+	}
+	return nil
 }
 
 func (r *SourceReconciler[T]) countManaged(ctx context.Context, namespace string) (int, error) {

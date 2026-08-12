@@ -79,18 +79,12 @@ func (r *KubeLBServiceReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 
 	err := r.Get(ctx, req.NamespacedName, &service)
 	if err != nil {
-		if ctrlclient.IgnoreNotFound(err) != nil {
-			log.Error(err, "unable to fetch service")
-			ccmmetrics.ServiceReconcileTotal.WithLabelValues(req.Namespace, metricsutil.ResultError).Inc()
-		}
-		log.V(3).Info("service not found")
-
-		return ctrl.Result{}, nil
+		return r.handleMissingService(ctx, log, req, err)
 	}
 
 	// Resource is marked for deletion
 	if service.DeletionTimestamp != nil {
-		if controllerutil.ContainsFinalizer(&service, CleanupFinalizer) || controllerutil.ContainsFinalizer(&service, LBFinalizerName) {
+		if hasCleanupFinalizer(&service) {
 			return r.cleanupService(ctx, log, &service)
 		}
 		// Finalizer doesn't exist so clean up is already done
@@ -98,24 +92,28 @@ func (r *KubeLBServiceReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 	}
 
 	if !r.shouldReconcile(service) {
+		// The Service dropped out of scope - downgraded from LoadBalancer, or its
+		// loadBalancerClass changed. It is not being deleted, so only this branch can
+		// tear the mirror down.
+		if hasCleanupFinalizer(&service) {
+			return r.cleanupService(ctx, log, &service)
+		}
 		ccmmetrics.ServiceReconcileTotal.WithLabelValues(req.Namespace, metricsutil.ResultSkipped).Inc()
 		return ctrl.Result{}, nil
 	}
 
-	// Add finalizer if it doesn't exist
-	if !controllerutil.ContainsFinalizer(&service, CleanupFinalizer) {
-		if ok := controllerutil.AddFinalizer(&service, CleanupFinalizer); !ok {
-			log.Error(nil, "Failed to add finalizer for the LB Service")
-			return ctrl.Result{Requeue: true}, nil
-		}
+	if requeue, err := r.ensureFinalizer(ctx, log, &service); err != nil {
+		ccmmetrics.ServiceReconcileTotal.WithLabelValues(req.Namespace, metricsutil.ResultError).Inc()
+		return reconcile.Result{}, err
+	} else if requeue {
+		return ctrl.Result{Requeue: true}, nil
+	}
 
-		// Remove old finalizer since it is not used anymore.
-		controllerutil.RemoveFinalizer(&service, LBFinalizerName)
-
-		if err := r.Update(ctx, &service); err != nil {
-			ccmmetrics.ServiceReconcileTotal.WithLabelValues(req.Namespace, metricsutil.ResultError).Inc()
-			return reconcile.Result{}, fmt.Errorf("failed to add finalizer: %w", err)
-		}
+	// The Service may have been recreated under the same name with a fresh UID while
+	// the CCM was down; the mirrors of its previous incarnations are orphans.
+	if err := r.reapStaleLoadBalancers(ctx, log, service.Name, service.Namespace, string(service.UID)); err != nil {
+		ccmmetrics.ServiceReconcileTotal.WithLabelValues(req.Namespace, metricsutil.ResultError).Inc()
+		return ctrl.Result{}, err
 	}
 
 	clusterEndpoints, useAddressesReference := r.getEndpoints(&service)
@@ -211,6 +209,52 @@ func (r *KubeLBServiceReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 	return ctrl.Result{}, nil
 }
 
+// handleMissingService covers the paths where the Service could not be read. When it
+// is gone its mirror has to be reaped: the origin vanished without the finalizer
+// having run, so nothing else will ever tear the mirror - and the cloud LoadBalancer
+// behind it - down.
+func (r *KubeLBServiceReconciler) handleMissingService(ctx context.Context, log logr.Logger, req ctrl.Request, err error) (ctrl.Result, error) {
+	if getErr := ctrlclient.IgnoreNotFound(err); getErr != nil {
+		// A transient read failure says nothing about the Service's existence:
+		// requeue instead of reaping, otherwise a live mirror and its cloud LB
+		// could be deleted on an API hiccup.
+		log.Error(getErr, "unable to fetch service")
+		ccmmetrics.ServiceReconcileTotal.WithLabelValues(req.Namespace, metricsutil.ResultError).Inc()
+		return ctrl.Result{}, getErr
+	}
+	log.V(3).Info("service not found")
+
+	if err := r.reapStaleLoadBalancers(ctx, log, req.Name, req.Namespace, ""); err != nil {
+		ccmmetrics.ServiceReconcileTotal.WithLabelValues(req.Namespace, metricsutil.ResultError).Inc()
+		return ctrl.Result{}, err
+	}
+	return ctrl.Result{}, nil
+}
+
+func hasCleanupFinalizer(service *corev1.Service) bool {
+	return controllerutil.ContainsFinalizer(service, CleanupFinalizer) || controllerutil.ContainsFinalizer(service, LBFinalizerName)
+}
+
+// ensureFinalizer adds the cleanup finalizer to the Service, reporting whether the
+// reconciliation has to be requeued instead.
+func (r *KubeLBServiceReconciler) ensureFinalizer(ctx context.Context, log logr.Logger, service *corev1.Service) (bool, error) {
+	if controllerutil.ContainsFinalizer(service, CleanupFinalizer) {
+		return false, nil
+	}
+	if ok := controllerutil.AddFinalizer(service, CleanupFinalizer); !ok {
+		log.Error(nil, "Failed to add finalizer for the LB Service")
+		return true, nil
+	}
+
+	// Remove old finalizer since it is not used anymore.
+	controllerutil.RemoveFinalizer(service, LBFinalizerName)
+
+	if err := r.Update(ctx, service); err != nil {
+		return false, fmt.Errorf("failed to add finalizer: %w", err)
+	}
+	return false, nil
+}
+
 func (r *KubeLBServiceReconciler) updateManagedServicesGauge(ctx context.Context, namespace string) {
 	serviceList := &corev1.ServiceList{}
 	if err := r.List(ctx, serviceList, ctrlclient.InNamespace(namespace)); err == nil {
@@ -248,6 +292,38 @@ func (r *KubeLBServiceReconciler) cleanupService(ctx context.Context, log logr.L
 	log.V(4).Info("removed finalizer")
 
 	return ctrl.Result{}, nil
+}
+
+// reapStaleLoadBalancers deletes the LoadBalancers in the tenant's
+// management-cluster namespace that were generated from name/namespace but not from
+// the Service currently living under liveUID. The finalizer path only covers
+// Services that still exist and still carry the finalizer; everything else (tenant
+// cluster rebuilt, etcd restore, finalizers force-removed, namespace deleted while
+// the CCM was down) leaves the mirror - and the billed cloud LoadBalancer it
+// fronts - behind forever.
+func (r *KubeLBServiceReconciler) reapStaleLoadBalancers(ctx context.Context, log logr.Logger, name, namespace, liveUID string) error {
+	kubelbClient := r.KubeLBManager.GetClient()
+	stale, err := staleMirrorNames(ctx, kubelbClient, &kubelbv1alpha1.LoadBalancerList{}, r.ClusterName, liveUID, ctrlclient.MatchingLabels{
+		kubelb.LabelOriginName:      name,
+		kubelb.LabelOriginNamespace: namespace,
+	})
+	if err != nil || len(stale) == 0 {
+		return err
+	}
+
+	for _, lbName := range stale {
+		log.V(1).Info("deleting orphaned LoadBalancer", "name", lbName, "namespace", r.ClusterName)
+		lb := &kubelbv1alpha1.LoadBalancer{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      lbName,
+				Namespace: r.ClusterName,
+			},
+		}
+		if err := recordKubeLBOperation("delete", func() error { return kubelbClient.Delete(ctx, lb) }); err != nil && !kerrors.IsNotFound(err) {
+			return fmt.Errorf("deleting orphaned LoadBalancer: %w", err)
+		}
+	}
+	return nil
 }
 
 func (r *KubeLBServiceReconciler) enqueueLoadBalancer() handler.TypedMapFunc[*kubelbv1alpha1.LoadBalancer, reconcile.Request] {

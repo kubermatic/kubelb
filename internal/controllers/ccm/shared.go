@@ -29,6 +29,7 @@ import (
 	"k8c.io/kubelb/internal/resources/unstructured"
 
 	"k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/types"
 	ctrlclient "sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
@@ -81,6 +82,35 @@ func cleanupRoute(ctx context.Context, client ctrlclient.Client, resourceUID str
 		}
 	}
 	return nil
+}
+
+// staleMirrorNames returns the names of the management-cluster mirrors in
+// tenantNamespace that were generated from the origin selected by selector but no
+// longer belong to it. Mirrors are named after the origin's UID, so any match whose
+// name is not liveUID is a leftover: the origin was deleted while the CCM could not
+// run its finalizer, or it was recreated with a fresh UID (tenant cluster rebuilt,
+// etcd restore). An empty liveUID means the origin is gone entirely, so every match
+// is stale.
+func staleMirrorNames(ctx context.Context, lbClient ctrlclient.Client, list ctrlclient.ObjectList, tenantNamespace, liveUID string, selector ctrlclient.MatchingLabels) ([]string, error) {
+	if err := lbClient.List(ctx, list, ctrlclient.InNamespace(tenantNamespace), selector); err != nil {
+		return nil, fmt.Errorf("failed to list mirrors in %s: %w", tenantNamespace, err)
+	}
+	items, err := meta.ExtractList(list)
+	if err != nil {
+		return nil, fmt.Errorf("failed to extract mirror list: %w", err)
+	}
+
+	var stale []string
+	for _, item := range items {
+		obj, ok := item.(ctrlclient.Object)
+		if !ok {
+			continue
+		}
+		if obj.GetName() != liveUID {
+			stale = append(stale, obj.GetName())
+		}
+	}
+	return stale, nil
 }
 
 func enqueueRoutes(gvk, clusterNamespace string) handler.TypedMapFunc[*kubelbv1alpha1.Route, reconcile.Request] {

@@ -189,6 +189,69 @@ func TestSourceReconciler_DeletionWithFinalizer_CleansUp(t *testing.T) {
 	}
 }
 
+func routeMirror(name string) *kubelbv1alpha1.Route {
+	return &kubelbv1alpha1.Route{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      name,
+			Namespace: testCluster,
+			Labels: map[string]string{
+				kubelb.LabelOriginName:         testIngName,
+				kubelb.LabelOriginNamespace:    testNS,
+				kubelb.LabelOriginResourceKind: IngressGVK,
+				kubelb.LabelManagedBy:          kubelb.LabelControllerName,
+				kubelb.LabelTenantName:         testCluster,
+			},
+		},
+	}
+}
+
+// The origin Ingress vanished without the finalizer ever running (tenant cluster
+// rebuilt, etcd restore, finalizers force-removed, namespace deleted while the CCM
+// was down). The mirror Route - and the management-cluster resources it generates -
+// survive with nothing left to reap them.
+func TestSourceReconciler_OriginGoneReapsOrphanedRoute(t *testing.T) {
+	s := newScheme(t)
+	src := fake.NewClientBuilder().WithScheme(s).Build()
+	lb := fake.NewClientBuilder().WithScheme(s).WithObjects(routeMirror(testIngUID)).Build()
+	loop := newLoop(t, src, lb)
+
+	if _, err := loop.Reconcile(context.Background(), req()); err != nil {
+		t.Fatalf("unexpected err: %v", err)
+	}
+
+	if err := lb.Get(context.Background(), types.NamespacedName{Name: testIngUID, Namespace: testCluster}, &kubelbv1alpha1.Route{}); !apierrors.IsNotFound(err) {
+		t.Fatalf("expected orphaned Route deleted, got err=%v", err)
+	}
+}
+
+// Tenant cluster rebuilt: the Ingress returns under the same name/namespace with a
+// fresh UID, so a second Route mirror is created and the old one is orphaned.
+func TestSourceReconciler_RecreatedOriginReapsStaleUIDRoute(t *testing.T) {
+	s := newScheme(t)
+	ing := newIngress(func(i *networkingv1.Ingress) {
+		i.TypeMeta = metav1.TypeMeta{APIVersion: networkingv1.SchemeGroupVersion.String(), Kind: "Ingress"}
+		i.UID = "ing-uid-2"
+		i.Finalizers = []string{CleanupFinalizer}
+	})
+	src := fake.NewClientBuilder().WithScheme(s).WithObjects(ing).
+		WithStatusSubresource(&networkingv1.Ingress{}).Build()
+	lb := fake.NewClientBuilder().WithScheme(s).WithObjects(routeMirror(testIngUID), routeMirror("ing-uid-2")).
+		WithStatusSubresource(&kubelbv1alpha1.Route{}).Build()
+	loop := newLoop(t, src, lb)
+
+	// Stale mirrors are reaped before the Route is rebuilt; rebuilding it fails
+	// against the fake client because a typed Get strips TypeMeta off the Ingress,
+	// which is not what this test is about, so the error is not asserted on.
+	_, _ = loop.Reconcile(context.Background(), req())
+
+	if err := lb.Get(context.Background(), types.NamespacedName{Name: testIngUID, Namespace: testCluster}, &kubelbv1alpha1.Route{}); !apierrors.IsNotFound(err) {
+		t.Fatalf("expected stale-UID Route deleted, got err=%v", err)
+	}
+	if err := lb.Get(context.Background(), types.NamespacedName{Name: "ing-uid-2", Namespace: testCluster}, &kubelbv1alpha1.Route{}); err != nil {
+		t.Fatalf("live Route must be kept: %v", err)
+	}
+}
+
 func TestSourceReconciler_OutOfScope_Skipped(t *testing.T) {
 	s := newScheme(t)
 	cls := "other"
