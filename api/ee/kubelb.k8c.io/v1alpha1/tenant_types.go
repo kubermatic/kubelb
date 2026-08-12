@@ -49,6 +49,7 @@ type TenantSpec struct {
 	DNS                DNSSettings          `json:"dns,omitempty"`
 	Certificates       CertificatesSettings `json:"certificates,omitempty"`
 	Tunnel             TenantTunnelSettings `json:"tunnel,omitempty"`
+	WAF                TenantWAFSettings    `json:"waf,omitempty"`
 
 	// EnvoyProxy defines tenant-level overrides for Envoy Proxy configuration.
 	// Fields set here take precedence over Config.Spec.EnvoyProxy.
@@ -59,6 +60,28 @@ type TenantSpec struct {
 	// Overrides Config-level settings.
 	// +optional
 	CircuitBreaker *CircuitBreaker `json:"circuitBreaker,omitempty"`
+
+	// Timeouts defines tenant-level Envoy timeouts. Overrides Config
+	// timeouts per-field. Route/LoadBalancer-level timeouts override
+	// these.
+	// +optional
+	Timeouts *EnvoyTimeouts `json:"timeouts,omitempty"`
+
+	// NetworkPolicy defines network policy settings for this tenant's namespace.
+	// Tenant has higher precedence than the settings specified at the Config level.
+	// +optional
+	NetworkPolicy *NetworkPolicySettings `json:"networkPolicy,omitempty"`
+
+	// LoadBalancerPolicy defines the load balancing policy for this tenant's Envoy clusters.
+	// Overrides Config-level settings.
+	// +optional
+	LoadBalancerPolicy *LoadBalancerPolicy `json:"loadBalancerPolicy,omitempty"`
+
+	// HealthCheck defines the active health check for this tenant's Envoy clusters.
+	// Whole-struct override: replaces the Config-level check entirely.
+	// LoadBalancer/Route settings override this.
+	// +optional
+	HealthCheck *HealthCheck `json:"healthCheck,omitempty"`
 
 	// +kubebuilder:default={"**"}
 
@@ -109,8 +132,25 @@ type GatewayAPISettings struct {
 	// +optional
 	Class *string `json:"class,omitempty"`
 
+	// ClassMappings defines gateway class name mappings from tenant clusters to the management cluster.
+	// Config mappings are defaults. Tenant mappings override Config mappings with the same source class.
+	// +kubebuilder:validation:MaxItems=32
+	// +listType=map
+	// +listMapKey=source
+	// +optional
+	ClassMappings []GatewayClassMapping `json:"classMappings,omitempty"`
+
 	// Disable is a flag that can be used to disable Gateway API for a tenant.
 	Disable bool `json:"disable,omitempty"`
+
+	// EnforceReferenceGrants requires a ReferenceGrant in the target namespace
+	// for any cross-namespace backendRef (route -> Service) or Gateway TLS
+	// certificateRef (Gateway -> Secret) in the tenant cluster. References
+	// without a matching grant are dropped and reported via the
+	// ResolvedRefs=False/RefNotPermitted condition. The Tenant value overrides
+	// the Config value; unset means inherit (Tenant) or disabled (Config).
+	// +optional
+	EnforceReferenceGrants *bool `json:"enforceReferenceGrants,omitempty"`
 
 	// DefaultGateway is the default gateway reference to use for the tenant. This is only used for load balancer hostname and tunneling.
 	// +optional
@@ -119,6 +159,19 @@ type GatewayAPISettings struct {
 	GatewaySettings GatewaySettings `json:"gateway,omitempty"`
 
 	GatewayAPIsSettings `json:",inline"`
+}
+
+// GatewayClassMapping defines a gateway class mapping from tenant clusters to the management cluster.
+type GatewayClassMapping struct {
+	// Source is the gateway class name in the tenant cluster.
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=253
+	Source string `json:"source"`
+
+	// Target is the gateway class name in the management cluster.
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=253
+	Target string `json:"target"`
 }
 
 type GatewayAPIsSettings struct {
@@ -203,6 +256,26 @@ type TenantTunnelSettings struct {
 
 	// Disable is a flag that can be used to disable tunneling for a tenant.
 	Disable bool `json:"disable,omitempty"`
+}
+
+// TenantWAFSettings defines the tenant-scoped settings for tenant-authored WAF policies.
+type TenantWAFSettings struct {
+	// DisableTenantPolicies disables tenant-authored WAF policies (TenantWAFPolicy)
+	// for this tenant. Admin-authored WAF (WAFPolicy) still applies.
+	// +optional
+	DisableTenantPolicies bool `json:"disableTenantPolicies,omitempty"`
+
+	// Limit is the maximum number of TenantWAFPolicies for this tenant.
+	// If a lower limit is set than the number of reources that exist, the limit will be disallow creation of new resources but will not delete existing resources. The reason behind this
+	// is that it is not possible for KubeLB to know which resources are safe to remove.
+	// Overrides Config.spec.waf.tenantPolicyLimit; Tenant has higher precedence than Config.
+	// +optional
+	Limit *int `json:"limit,omitempty"`
+
+	// EnforceFailureMode, when set, overrides the tenant-chosen failureMode on this
+	// tenant's TenantWAFPolicies. Takes precedence over the Config-level value.
+	// +optional
+	EnforceFailureMode WAFFailureMode `json:"enforceFailureMode,omitempty"`
 }
 
 // TenantStatus defines the observed state of Tenant

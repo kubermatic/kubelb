@@ -73,7 +73,7 @@ type EnvoyProxy struct {
 	// +kubebuilder:validation:XValidation:rule="self == oldSelf || (self != oldSelf && (oldSelf == 'dedicated' || oldSelf == 'global'))",message="Value is immutable and only allowed change is from dedicated(deprecated) or global(deprecated) to shared"
 
 	// Topology defines the deployment topology for Envoy Proxy. The only supported value is: shared.
-	// DEPRECATION NOTICE: The values "dedicated" and "global" are deprecated and will be removed in a future release. Both will now default to shared topology.
+	// DEPRECATION NOTICE: The values "dedicated" and "global" are deprecated and will be removed in a future release. They will now default to shared topology.
 	// +optional
 	Topology EnvoyProxyTopology `json:"topology,omitempty"`
 

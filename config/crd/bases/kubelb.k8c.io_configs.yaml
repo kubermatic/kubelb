@@ -1233,7 +1233,7 @@ spec:
                     default: shared
                     description: |-
                       Topology defines the deployment topology for Envoy Proxy. The only supported value is: shared.
-                      DEPRECATION NOTICE: The values "dedicated" and "global" are deprecated and will be removed in a future release. Both will now default to shared topology.
+                      DEPRECATION NOTICE: The values "dedicated" and "global" are deprecated and will be removed in a future release. They will now default to shared topology.
                     enum:
                     - shared
                     - dedicated

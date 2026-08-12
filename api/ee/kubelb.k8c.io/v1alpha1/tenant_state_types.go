@@ -26,6 +26,15 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
+// Condition types set on TenantState. They are part of the tenant-visible
+// contract and are consumed by the insights engine, so they live with the API
+// rather than in the controller that writes them.
+const (
+	// TenantStateConditionBackendTransportChangePending reports a
+	// backendTransport mode change waiting for operator confirmation.
+	TenantStateConditionBackendTransportChangePending = "BackendTransportChangePending"
+)
+
 // TenantStateSpec defines the desired state of TenantState.
 type TenantStateSpec struct {
 	// TenantState is used to represent the status of a tenant so it's spec is empty.
@@ -37,9 +46,17 @@ type TenantStateStatus struct {
 	LastUpdated metav1.Time        `json:"lastUpdated,omitempty"`
 	Conditions  []metav1.Condition `json:"conditions,omitempty"`
 
-	Tunnel         TunnelState       `json:"tunnel,omitempty"`
-	LoadBalancer   LoadBalancerState `json:"loadBalancer,omitempty"`
-	AllowedDomains []string          `json:"allowedDomains,omitempty"`
+	Tunnel           TunnelState       `json:"tunnel,omitempty"`
+	LoadBalancer     LoadBalancerState `json:"loadBalancer,omitempty"`
+	GatewayAPI       GatewayAPIState   `json:"gatewayAPI,omitempty"`
+	BackendTransport BackendTransport  `json:"backendTransport,omitempty"`
+	AllowedDomains   []string          `json:"allowedDomains,omitempty"`
+
+	// Timeouts is the tenant-effective Envoy timeout configuration
+	// (Tenant overrides merged over Config, per field). Consumed by the
+	// tenant-side proxy render, which cannot read Config or Tenant.
+	// +optional
+	Timeouts *EnvoyTimeouts `json:"timeouts,omitempty"`
 }
 
 type TunnelState struct {
@@ -51,6 +68,20 @@ type TunnelState struct {
 type LoadBalancerState struct {
 	Disable bool `json:"disable,omitempty"`
 	Limit   int  `json:"limit,omitempty"`
+}
+
+type GatewayAPIState struct {
+	// ClassMappings defines effective gateway class name mappings from tenant clusters to the management cluster.
+	// +kubebuilder:validation:MaxItems=32
+	// +listType=map
+	// +listMapKey=source
+	// +optional
+	ClassMappings []GatewayClassMapping `json:"classMappings,omitempty"`
+
+	// EnforceReferenceGrants is the effective (Config default, Tenant override)
+	// value of spec.gatewayAPI.enforceReferenceGrants for this tenant.
+	// +optional
+	EnforceReferenceGrants bool `json:"enforceReferenceGrants,omitempty"`
 }
 
 type Version struct {

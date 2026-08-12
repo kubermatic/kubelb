@@ -46,7 +46,23 @@ type LoadBalancerStatus struct {
 	// Hostname contains the status for hostname resources.
 	// +optional
 	Hostname *HostnameStatus `json:"hostname,omitempty" protobuf:"bytes,3,opt,name=hostname"`
+
+	// Conditions describe the LoadBalancer as observed by the KubeLB manager.
+	// +optional
+	// +listType=map
+	// +listMapKey=type
+	// +patchStrategy=merge
+	// +patchMergeKey=type
+	Conditions []metav1.Condition `json:"conditions,omitempty" patchStrategy:"merge" patchMergeKey:"type" protobuf:"bytes,4,rep,name=conditions"`
 }
+
+const (
+	// ConditionLoadBalancerAccepted indicates whether the KubeLB manager could
+	// program the whole LoadBalancer spec into the Envoy dataplane. False means
+	// part of the configuration was dropped and that traffic is affected; the
+	// reason and message name the offending field.
+	ConditionLoadBalancerAccepted ConditionType = "Accepted"
+)
 
 type HostnameStatus struct {
 	// Hostname contains the hostname of the load-balancer.
@@ -157,8 +173,31 @@ type LoadBalancerSpec struct {
 	// SourceIP persistence is based on the source IP observed by KubeLB Envoy
 	// for TCP and UDP traffic, which may be a gateway, node, or NAT address in
 	// proxied topologies.
+	// Takes precedence over LoadBalancerPolicy, which cannot be honoured at the
+	// same time: persistence is a correctness requirement the workload states,
+	// a distribution policy is a preference.
 	// +optional
 	Persistence *LoadBalancerPersistence `json:"persistence,omitempty"`
+
+	// LoadBalancerPolicy defines the load balancing policy for this LoadBalancer's Envoy cluster.
+	// Overrides Tenant and Config-level settings.
+	// +optional
+	LoadBalancerPolicy *LoadBalancerPolicy `json:"loadBalancerPolicy,omitempty"`
+
+	// Timeouts defines per-LoadBalancer Envoy timeouts. Overrides
+	// Tenant and Config timeouts per-field.
+	// +optional
+	Timeouts *EnvoyTimeouts `json:"timeouts,omitempty"`
+
+	// HealthCheck defines the active health check for this LoadBalancer's Envoy cluster.
+	// Whole-struct override: replaces Tenant and Config-level checks entirely.
+	// +optional
+	HealthCheck *HealthCheck `json:"healthCheck,omitempty"`
+
+	// UpstreamTLS configures TLS for connections from KubeLB's Envoy proxy to backend endpoints.
+	// When not set, Envoy connects using plain TCP.
+	// +optional
+	UpstreamTLS *UpstreamTLSConfig `json:"upstreamTLS,omitempty"`
 }
 
 // +kubebuilder:object:root=true

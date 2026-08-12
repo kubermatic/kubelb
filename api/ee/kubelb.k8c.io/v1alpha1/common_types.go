@@ -22,11 +22,19 @@
 
 package v1alpha1
 
-import corev1 "k8s.io/api/core/v1"
+import (
+	corev1 "k8s.io/api/core/v1"
+	networkingv1 "k8s.io/api/networking/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+)
 
 const (
 	// DefaultAddressName is the default name for the Addresses object.
 	DefaultAddressName = "default"
+	// TenantProxyAddressName is the name of the Addresses object the CCM
+	// publishes with the reachable endpoints of the mTLS tenant proxy
+	// (load balancer ingress addresses or proxy-bearing node addresses).
+	TenantProxyAddressName = "tenant-proxy"
 	// CLIResourceAnnotation is the annotation key for the resource name in the CLI.
 	CLIResourceAnnotation = "kubelb.k8c.io/cli-generated"
 
@@ -145,6 +153,76 @@ type AnnotationSettings struct {
 	DefaultAnnotations map[AnnotatedResource]Annotations `json:"defaultAnnotations,omitempty"`
 }
 
+// NetworkPolicySettings defines the network policy configuration for tenants.
+// Default policies:
+//   - kubelb-deny-all-ingress: Default deny all ingress traffic to tenant namespace
+//   - kubelb-allow-same-namespace: Allow pod-to-pod traffic within tenant namespace
+//   - kubelb-allow-manager-ingress: Allow ingress from KubeLB manager namespace
+//   - kubelb-allow-dns-egress: Allow DNS resolution via kube-system (port 53 UDP/TCP)
+//   - kubelb-allow-xds-egress: Allow xDS control plane communication to manager (port 8001/TCP)
+//   - kubelb-allow-metrics-ingress: Allow Prometheus metrics scraping (port 19001/TCP)
+//   - kubelb-allow-envoy-ingress: Allow all ingress to envoy proxy pods for LoadBalancer traffic
+//   - kubelb-allow-envoy-egress: Allow all egress from envoy proxy pods to reach tenant NodePorts
+type NetworkPolicySettings struct {
+	// Enable to install network policies by default for all tenants.
+	// By default(null/false), network policy automation is disabled. This will be enabled by default in a future release.
+	// +optional
+	Enable *bool `json:"enable,omitempty"`
+
+	// DisabledPolicies is a list of default policy names to skip (e.g. ["kubelb-deny-all-ingress"]).
+	// +optional
+	DisabledPolicies []string `json:"disabledPolicies,omitempty"`
+
+	// AdditionalPolicies are extra named network policies created alongside remaining defaults.
+	// +optional
+	AdditionalPolicies []NamedNetworkPolicy `json:"additionalPolicies,omitempty"`
+}
+
+// NamedNetworkPolicy is a NetworkPolicySpec with an explicit name.
+type NamedNetworkPolicy struct {
+	// Name of the network policy.
+	// +kubebuilder:validation:MinLength=1
+	Name string `json:"name"`
+
+	// Spec is the NetworkPolicySpec for this policy.
+	Spec networkingv1.NetworkPolicySpec `json:"spec"`
+}
+
+// +kubebuilder:validation:Enum=RoundRobin;LeastRequest;Random
+type LoadBalancerPolicy string
+
+const (
+	LoadBalancerPolicyRoundRobin   LoadBalancerPolicy = "RoundRobin"
+	LoadBalancerPolicyLeastRequest LoadBalancerPolicy = "LeastRequest"
+	LoadBalancerPolicyRandom       LoadBalancerPolicy = "Random"
+)
+
+// UpstreamTLSPolicy defines how KubeLB's Envoy proxy handles TLS to backends.
+// +kubebuilder:validation:Enum=Insecure;Verify
+type UpstreamTLSPolicy string
+
+const (
+	// UpstreamTLSPolicyInsecure enables TLS but skips certificate verification (ACCEPT_UNTRUSTED).
+	// Use for self-signed certs, certs without SANs, or expired certs.
+	UpstreamTLSPolicyInsecure UpstreamTLSPolicy = "Insecure"
+
+	// UpstreamTLSPolicyVerify enables TLS and verifies the backend certificate against a provided CA.
+	UpstreamTLSPolicyVerify UpstreamTLSPolicy = "Verify"
+)
+
+// UpstreamTLSConfig configures TLS for connections from KubeLB's Envoy proxy to backend endpoints.
+// When not set, Envoy connects using plain TCP (no TLS).
+type UpstreamTLSConfig struct {
+	// Policy defines the upstream TLS verification mode.
+	// +required
+	Policy UpstreamTLSPolicy `json:"policy"`
+
+	// CASecretRef references a Secret containing the CA certificate for backend verification.
+	// The Secret must contain a "ca.crt" key. Required when policy is "Verify".
+	// +optional
+	CASecretRef *corev1.LocalObjectReference `json:"caSecretRef,omitempty"`
+}
+
 // CircuitBreaker defines the Circuit Breaker configuration for Envoy clusters.
 // Circuit breakers prevent cascading failures by limiting connections/requests to upstream clusters. For more info: https://www.envoyproxy.io/docs/envoy/latest/intro/arch_overview/upstream/circuit_breaking
 type CircuitBreaker struct {
@@ -197,4 +275,140 @@ type PerEndpointCircuitBreaker struct {
 	// +kubebuilder:validation:Maximum=4294967295
 	// +optional
 	MaxConnections *int64 `json:"maxConnections,omitempty"`
+}
+
+// +kubebuilder:validation:Enum=TCP;HTTP;GRPC
+type HealthCheckType string
+
+const (
+	HealthCheckTypeTCP  HealthCheckType = "TCP"
+	HealthCheckTypeHTTP HealthCheckType = "HTTP"
+	HealthCheckTypeGRPC HealthCheckType = "GRPC"
+)
+
+// HealthCheck configures Envoy active health checking for the upstream clusters
+// backing this resource. When unset, KubeLB applies a default TCP connect-only
+// check. This is a whole-struct override: the effective check is taken from the
+// first tier that sets it (Route/LoadBalancer > Tenant > Config > built-in
+// default), never merged field-by-field across tiers. Fields left unset within
+// the chosen tier fall back to the built-in defaults documented below.
+// For more info: https://www.envoyproxy.io/docs/envoy/latest/intro/arch_overview/upstream/health_checking
+// +kubebuilder:validation:XValidation:rule="!has(self.http) || self.type == 'HTTP'",message="http may only be set when type is HTTP"
+// +kubebuilder:validation:XValidation:rule="!has(self.grpc) || self.type == 'GRPC'",message="grpc may only be set when type is GRPC"
+type HealthCheck struct {
+	// Type of health check to perform. Defaults to TCP (connect-only) when unset.
+	// +optional
+	Type *HealthCheckType `json:"type,omitempty"`
+
+	// Interval between health checks. Defaults to 5s.
+	// +optional
+	Interval *metav1.Duration `json:"interval,omitempty"`
+
+	// Timeout for each health check attempt. Defaults to 5s.
+	// +optional
+	Timeout *metav1.Duration `json:"timeout,omitempty"`
+
+	// HealthyThreshold is the number of consecutive successful checks before an
+	// unhealthy endpoint is marked healthy. Defaults to 2.
+	// +kubebuilder:validation:Minimum=1
+	// +optional
+	HealthyThreshold *int32 `json:"healthyThreshold,omitempty"`
+
+	// UnhealthyThreshold is the number of consecutive failed checks before a
+	// healthy endpoint is marked unhealthy. Defaults to 3.
+	// +kubebuilder:validation:Minimum=1
+	// +optional
+	UnhealthyThreshold *int32 `json:"unhealthyThreshold,omitempty"`
+
+	// HTTP configures an HTTP health check. Used only when Type is HTTP.
+	// +optional
+	HTTP *HTTPHealthCheck `json:"http,omitempty"`
+
+	// GRPC configures a gRPC health check. Used only when Type is GRPC.
+	// +optional
+	GRPC *GRPCHealthCheck `json:"grpc,omitempty"`
+}
+
+// HTTPHealthCheck configures an HTTP/1.1 active health check.
+type HTTPHealthCheck struct {
+	// Path is the HTTP request path used for the health check. Defaults to "/".
+	// +optional
+	Path *string `json:"path,omitempty"`
+
+	// Host is the value of the Host/authority header on the health check request.
+	// Defaults to the cluster name (Envoy default) when unset.
+	// +optional
+	Host *string `json:"host,omitempty"`
+
+	// ExpectedStatuses is the list of HTTP status codes considered healthy.
+	// Defaults to [200] when unset. Each value must be in the range 100-599.
+	// +kubebuilder:validation:items:Minimum=100
+	// +kubebuilder:validation:items:Maximum=599
+	// +optional
+	ExpectedStatuses []int32 `json:"expectedStatuses,omitempty"`
+}
+
+// GRPCHealthCheck configures a gRPC active health check (grpc.health.v1.Health).
+type GRPCHealthCheck struct {
+	// ServiceName is the value passed as the service name in the gRPC health check
+	// request. Empty checks overall server health. Optional.
+	// +optional
+	ServiceName *string `json:"serviceName,omitempty"`
+
+	// Authority is the value of the :authority header on the gRPC health check
+	// request. Defaults to the cluster name (Envoy default) when unset. Optional.
+	// +optional
+	Authority *string `json:"authority,omitempty"`
+}
+
+// EnvoyTimeouts configures upstream and connection timeouts on the
+// KubeLB-managed Envoy proxy. Nil duration fields inherit from the
+// next tier (Route/LB → Tenant → Config → built-in default). A value
+// of 0s explicitly disables that timeout (Envoy semantics).
+type EnvoyTimeouts struct {
+	// Request is the total upstream request timeout for HTTP routes
+	// (Envoy route.timeout). Built-in default: 0 (disabled).
+	// Applies to: Ingress, HTTPRoute, GRPCRoute.
+	// +optional
+	Request *metav1.Duration `json:"request,omitempty"`
+
+	// StreamIdle is the maximum time an HTTP stream can be idle without
+	// any bytes flowing in either direction (Envoy stream_idle_timeout).
+	// Built-in default: 1h.
+	// Applies to: Ingress, HTTPRoute, GRPCRoute.
+	// +optional
+	StreamIdle *metav1.Duration `json:"streamIdle,omitempty"`
+
+	// RequestHeaders is the maximum time to receive complete request
+	// headers (Envoy request_headers_timeout). Built-in default: 0
+	// (disabled). Applies to: Ingress, HTTPRoute, GRPCRoute.
+	// +optional
+	RequestHeaders *metav1.Duration `json:"requestHeaders,omitempty"`
+
+	// IdleConnection is the maximum HTTP connection idle time
+	// (Envoy common_http_protocol_options.idle_timeout). Built-in
+	// default: 1h. Applies to: Ingress, HTTPRoute, GRPCRoute.
+	// +optional
+	IdleConnection *metav1.Duration `json:"idleConnection,omitempty"`
+
+	// TCPIdle is the TCP proxy idle timeout (Envoy
+	// tcp_proxy.idle_timeout). Built-in default: 1h.
+	// Applies to: TCPRoute, TLSRoute, L4 LoadBalancer.
+	// +optional
+	TCPIdle *metav1.Duration `json:"tcpIdle,omitempty"`
+
+	// Connect is the upstream cluster TCP connect timeout
+	// (Envoy cluster.connect_timeout). Built-in default: 5s.
+	// Applies to: all routes and L4 LoadBalancer.
+	// +optional
+	Connect *metav1.Duration `json:"connect,omitempty"`
+
+	// UDPIdle is the UDP session idle timeout. When set, it applies to the
+	// management Envoy UDP proxy sessions (Envoy udp_proxy idle_timeout)
+	// and, in the MTLS topology, to the CONNECT-UDP tunnel streams on both
+	// hops. When unset, the per-hop Envoy defaults apply (60s udp_proxy
+	// session idle, 5m tunnel stream idle).
+	// Applies to: UDPRoute and L4 LoadBalancer UDP ports.
+	// +optional
+	UDPIdle *metav1.Duration `json:"udpIdle,omitempty"`
 }

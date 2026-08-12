@@ -40,6 +40,21 @@ type RouteSpec struct {
 	// Source contains the information about the source of the route. This is used when the route is created from external sources.
 	// +optional
 	Source RouteSource `json:"source,omitempty"`
+
+	// LoadBalancerPolicy defines the load balancing policy for this Route's Envoy clusters.
+	// Overrides Tenant and Config-level settings.
+	// +optional
+	LoadBalancerPolicy *LoadBalancerPolicy `json:"loadBalancerPolicy,omitempty"`
+
+	// Timeouts defines per-Route Envoy timeouts. Overrides Tenant and
+	// Config timeouts per-field.
+	// +optional
+	Timeouts *EnvoyTimeouts `json:"timeouts,omitempty"`
+
+	// HealthCheck defines the active health check for this Route's Envoy clusters.
+	// Whole-struct override: replaces Tenant and Config-level checks entirely.
+	// +optional
+	HealthCheck *HealthCheck `json:"healthCheck,omitempty"`
 }
 
 type RouteSource struct {
@@ -141,6 +156,38 @@ type ConditionType string
 
 const (
 	ConditionResourceAppliedSuccessfully ConditionType = "ResourceAppliedSuccessfully"
+
+	// ConditionRouteAccepted indicates whether the Route was accepted by the
+	// KubeLB manager. Set to False when the source resource is rejected (e.g.
+	// host not in tenant allowedDomains), in which case no sub-resources exist
+	// for it: a rejection tears down anything a previously accepted revision
+	// had generated.
+	ConditionRouteAccepted ConditionType = "Accepted"
+)
+
+const (
+	// ConditionReasonDomainNotAllowed is set when one or more hostnames on the
+	// source resource are not present in tenant.spec.allowedDomains.
+	ConditionReasonDomainNotAllowed = "DomainNotAllowed"
+
+	// ConditionReasonAccepted is set when the Route passes admission checks.
+	ConditionReasonAccepted = "Accepted"
+
+	// ConditionReasonApplyFailed is set when a sub-resource could not be created or
+	// updated in the management cluster.
+	ConditionReasonApplyFailed = "ApplyFailed"
+
+	// ConditionReasonTenantWAFDisabled is set on a TenantWAFPolicy carrier Route
+	// when tenant WAF policies are not enabled for the tenant.
+	ConditionReasonTenantWAFDisabled = "TenantWAFDisabled"
+
+	// ConditionReasonTenantWAFInvalid is set on a TenantWAFPolicy carrier Route
+	// when its directives fail sanitization.
+	ConditionReasonTenantWAFInvalid = "TenantWAFInvalid"
+
+	// ConditionReasonTenantWAFLimitExceeded is set on a TenantWAFPolicy carrier
+	// Route when the tenant exceeds its allowed policy count.
+	ConditionReasonTenantWAFLimitExceeded = "TenantWAFLimitExceeded"
 )
 
 func (t ConditionType) String() string {
