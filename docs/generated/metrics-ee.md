@@ -26,12 +26,21 @@ Metrics exposed by the KubeLB Manager component (kubelb-manager).
 | `kubelb_manager_envoycp_reconcile_duration_seconds` | Histogram | Duration of Envoy control plane reconciliations in seconds | - |
 | `kubelb_manager_envoycp_reconcile_total` | Counter | Total number of Envoy control plane reconciliation attempts | `result` |
 | `kubelb_manager_envoycp_snapshot_updates_total` | Counter | Total number of Envoy snapshot updates | `snapshot_name` |
+| `kubelb_manager_insight_info` | Gauge | One series per open or acknowledged insight, identifying the affected object | `check_id`, `severity`, `tenant`, `namespace`, `resource_kind`, `resource_name` |
+| `kubelb_manager_insights` | Gauge | Current number of open or acknowledged insights | `tenant`, `severity`, `category`, `check_id` |
+| `kubelb_manager_insights_checks_failed_total` | Counter | Total number of insight checks that failed to evaluate | `check_id` |
+| `kubelb_manager_insights_checks_skipped_total` | Counter | Total number of insight checks skipped, by reason | `check_id`, `reason` |
+| `kubelb_manager_insights_sweep_duration_seconds` | Histogram | Duration of a full insights sweep in seconds | - |
 | `kubelb_manager_loadbalancer_reconcile_duration_seconds` | Histogram | Duration of LoadBalancer reconciliations in seconds | `namespace` |
 | `kubelb_manager_loadbalancer_reconcile_total` | Counter | Total number of LoadBalancer reconciliation attempts | `namespace`, `result` |
 | `kubelb_manager_loadbalancers` | Gauge | Current number of LoadBalancer resources | `namespace`, `tenant`, `topology` |
+| `kubelb_manager_mtls_certificate_reissue_total` | Counter | Total number of mTLS certificate reissues by kind (root, intermediate, management-client, tenant-server) | `tenant`, `kind` |
+| `kubelb_manager_mtls_certificate_rotation_failures_total` | Counter | Total number of mTLS certificate rotation reconcile failures by kind | `tenant`, `kind` |
+| `kubelb_manager_mtls_tenants` | Gauge | Current number of tenants with mTLS PKI provisioned | - |
 | `kubelb_manager_port_allocator_allocated_ports` | Gauge | Current number of allocated ports in the port allocator | - |
 | `kubelb_manager_port_allocator_collisions_healed_total` | Counter | Total number of duplicate port assignments detected and cleared by the port allocator on load | - |
 | `kubelb_manager_port_allocator_endpoints` | Gauge | Current number of endpoints tracked by the port allocator | - |
+| `kubelb_manager_posture_score` | Gauge | Insights posture score between 0 and 1, by tenant and category | `tenant`, `category` |
 | `kubelb_manager_route_reconcile_duration_seconds` | Histogram | Duration of Route reconciliations in seconds | `namespace` |
 | `kubelb_manager_route_reconcile_total` | Counter | Total number of Route reconciliation attempts | `namespace`, `route_type`, `result` |
 | `kubelb_manager_routes` | Gauge | Current number of Route resources | `namespace`, `tenant`, `route_type` |
@@ -40,10 +49,10 @@ Metrics exposed by the KubeLB Manager component (kubelb-manager).
 | `kubelb_manager_tenant_reconcile_duration_seconds` | Histogram | Duration of Tenant reconciliations in seconds | - |
 | `kubelb_manager_tenant_reconcile_total` | Counter | Total number of Tenant reconciliation attempts | `result` |
 | `kubelb_manager_tenants` | Gauge | Current number of Tenant resources | - |
-| `kubelb_manager_waf_filter_failures_total` | Counter | Total number of WAF filter creation failures | `namespace`, `failure_mode` |
-| `kubelb_manager_waf_policies` | Gauge | Current number of WAFPolicy resources by validity status | `namespace`, `status` |
-| `kubelb_manager_waf_policy_reconcile_duration_seconds` | Histogram | Duration of WAFPolicy reconciliations in seconds | `name` |
-| `kubelb_manager_waf_policy_reconcile_total` | Counter | Total number of WAFPolicy reconciliation attempts | `name`, `result` |
+| `kubelb_manager_waf_filter_failures` | Gauge | Current number of routes where the WAF filter could not be applied, by failure mode | `namespace`, `failure_mode` |
+| `kubelb_manager_waf_policies` | Gauge | Current number of WAFPolicy resources by validity status | `status` |
+| `kubelb_manager_waf_policy_reconcile_duration_seconds` | Histogram | Duration of WAFPolicy reconciliations in seconds | - |
+| `kubelb_manager_waf_policy_reconcile_total` | Counter | Total number of WAFPolicy reconciliation attempts | `result` |
 | `kubelb_manager_waf_routes_blocked` | Gauge | Number of routes blocked due to WAF fail-closed mode | `namespace` |
 | `kubelb_manager_waf_routes_protected` | Gauge | Number of routes with WAF protection successfully applied | `namespace` |
 
@@ -78,6 +87,7 @@ Metrics exposed by the KubeLB Cloud Controller Manager component (kubelb-ccm).
 | `kubelb_ccm_managed_ingresses` | Gauge | Current number of Ingresses managed by CCM | `namespace` |
 | `kubelb_ccm_managed_services` | Gauge | Current number of LoadBalancer services managed by CCM | `namespace` |
 | `kubelb_ccm_managed_tcproutes` | Gauge | Current number of TCPRoutes managed by CCM | `namespace` |
+| `kubelb_ccm_managed_tenantwafpolicies` | Gauge | Current number of TenantWAFPolicies managed by CCM | `namespace` |
 | `kubelb_ccm_managed_tlsroutes` | Gauge | Current number of TLSRoutes managed by CCM | `namespace` |
 | `kubelb_ccm_managed_udproutes` | Gauge | Current number of UDPRoutes managed by CCM | `namespace` |
 | `kubelb_ccm_node_reconcile_duration_seconds` | Histogram | Duration of Node reconciliations in seconds | - |
@@ -89,6 +99,15 @@ Metrics exposed by the KubeLB Cloud Controller Manager component (kubelb-ccm).
 | `kubelb_ccm_sync_secret_reconcile_total` | Counter | Total number of SyncSecret reconciliation attempts | `namespace`, `result` |
 | `kubelb_ccm_tcproute_reconcile_duration_seconds` | Histogram | Duration of TCPRoute reconciliations in seconds | `namespace` |
 | `kubelb_ccm_tcproute_reconcile_total` | Counter | Total number of TCPRoute reconciliation attempts | `namespace`, `result` |
+| `kubelb_ccm_tenant_proxy_config_reloads_total` | Counter | Total number of tenant proxy ConfigMap reconcile updates | - |
+| `kubelb_ccm_tenant_proxy_daemonset_ready` | Gauge | Whether the tenant proxy DaemonSet has all desired pods ready (1=ready, 0=not ready) | - |
+| `kubelb_ccm_tenant_proxy_server_cert_verification_failures_total` | Counter | Total number of tenant proxy server certificate verification failures during SyncSecret installation | - |
+| `kubelb_ccm_tenant_proxy_xds_backend_count` | Gauge | Number of tenant proxy backends rendered by the last successful xDS writer run | - |
+| `kubelb_ccm_tenant_proxy_xds_config_size_bytes` | Gauge | Size in bytes of tenant proxy dynamic xDS files written by the xDS writer | `file` |
+| `kubelb_ccm_tenant_proxy_xds_last_write_timestamp_seconds` | Gauge | Unix timestamp of the last successful tenant proxy xDS writer run | - |
+| `kubelb_ccm_tenant_proxy_xds_writes_total` | Counter | Total number of tenant proxy xDS writer attempts | `result` |
+| `kubelb_ccm_tenantwafpolicy_reconcile_duration_seconds` | Histogram | Duration of TenantWAFPolicy reconciliations in seconds | `namespace` |
+| `kubelb_ccm_tenantwafpolicy_reconcile_total` | Counter | Total number of TenantWAFPolicy reconciliation attempts | `namespace`, `result` |
 | `kubelb_ccm_tlsroute_reconcile_duration_seconds` | Histogram | Duration of TLSRoute reconciliations in seconds | `namespace` |
 | `kubelb_ccm_tlsroute_reconcile_total` | Counter | Total number of TLSRoute reconciliation attempts | `namespace`, `result` |
 | `kubelb_ccm_udproute_reconcile_duration_seconds` | Histogram | Duration of UDPRoute reconciliations in seconds | `namespace` |
@@ -119,6 +138,7 @@ Metrics exposed by the KubeLB Envoy Control Plane component.
 | `kubelb_envoy_control_plane_snapshot_generation_duration_seconds` | Histogram | Duration of Envoy snapshot generation in seconds | `snapshot_name` |
 | `kubelb_envoy_control_plane_snapshot_updates_total` | Counter | Total number of Envoy snapshot updates | `snapshot_name` |
 | `kubelb_envoy_control_plane_snapshots` | Gauge | Current number of active Envoy snapshots | - |
+| `kubelb_envoy_control_plane_xds_nacks_total` | Counter | Total number of xDS config rejections (NACKs) received from Envoy | `type_url` |
 
 ---
 

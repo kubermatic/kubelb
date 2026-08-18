@@ -16,7 +16,7 @@
 | grafana.dashboards.enabled | bool | `false` | Requires grafana to be deployed with `sidecar.dashboards.enabled=true`. For more info: https://github.com/grafana/helm-charts/tree/grafana-10.5.13/charts/grafana#:~:text=%5B%5D-,sidecar.dashboards.enabled,-Enables%20the%20cluster |
 | image.pullPolicy | string | `"IfNotPresent"` |  |
 | image.repository | string | `"quay.io/kubermatic/kubelb-ccm-ee"` |  |
-| image.tag | string | `"v1.3.5"` |  |
+| image.tag | string | `"v1.5.0"` |  |
 | imagePullSecrets[0].name | string | `"kubermatic-quay.io"` |  |
 | kubeRbacProxy.image.pullPolicy | string | `"IfNotPresent"` |  |
 | kubeRbacProxy.image.repository | string | `"quay.io/brancz/kube-rbac-proxy"` |  |
@@ -35,6 +35,7 @@
 | kubelb.enableLeaderElection | bool | `true` | Enable the leader election. |
 | kubelb.enableSecretSynchronizer | bool | `false` | Enable to automatically convert Secrets labelled with `kubelb.k8c.io/managed-by: kubelb` to Sync Secrets. This is used to sync secrets from tenants to the LB cluster in a controlled and secure way. |
 | kubelb.gatewayAPICRDsChannel | string | `"experimental"` | gatewayAPICRDsChannel specifies the channel for the Gateway API CRDs. Options are `standard` and `experimental`. |
+| kubelb.gatewayClasses | list | `["kubelb"]` | gatewayClasses specifies tenant GatewayClass names watched when useGatewayClass is true. |
 | kubelb.ingressConversion.copyTLSSecrets | bool | `true` | copyTLSSecrets copies TLS secrets from Ingress namespace to Gateway namespace for cross-namespace certificate references |
 | kubelb.ingressConversion.disableEnvoyGatewayFeatures | bool | `false` | disableEnvoyGatewayFeatures disables creation of Envoy Gateway policies (SecurityPolicy, BackendTrafficPolicy) |
 | kubelb.ingressConversion.domainReplace | string | `""` | domainReplace is the domain suffix to replace in hostnames |
@@ -53,6 +54,16 @@
 | kubelb.nodeAddressLabelSelector | string | `""` | Only use nodes matching this label selector as endpoint addresses (e.g. kubelb.k8c.io/endpoint=true). |
 | kubelb.nodeAddressType | string | `"ExternalIP"` | Address type to use for routing traffic to node ports. Values are ExternalIP, InternalIP. |
 | kubelb.tenantName | string | `nil` | Name of the tenant, must be unique against a load balancer cluster. |
+| kubelb.tenantProxy.envoy.image.repository | string | `"docker.io/envoyproxy/envoy"` | Envoy image repository for the mTLS tenant proxy DaemonSet. |
+| kubelb.tenantProxy.envoy.image.tag | string | `"distroless-v1.36.4"` | Envoy image tag for the mTLS tenant proxy DaemonSet. |
+| kubelb.tenantProxy.serviceAccount.annotations | object | `{}` | Annotations to add to the mTLS tenant proxy ServiceAccount. |
+| kubelb.tenantProxy.serviceAccount.create | bool | `true` | Create a dedicated ServiceAccount for the mTLS tenant proxy xDS writer sidecar. |
+| kubelb.tenantProxy.serviceAccount.name | string | `""` | Name of the mTLS tenant proxy ServiceAccount. If not set and create is true, a name is generated. |
+| kubelb.tenantProxy.serviceType | string | `""` | Override the mTLS tenant proxy Service type (NodePort or LoadBalancer). Empty follows the management cluster configuration. |
+| kubelb.tenantProxy.shutdownManager.image.repository | string | `"docker.io/envoyproxy/gateway"` | Shutdown-manager image repository for the mTLS tenant proxy DaemonSet. |
+| kubelb.tenantProxy.shutdownManager.image.tag | string | `"v1.8.3"` | Shutdown-manager image tag for the mTLS tenant proxy DaemonSet. Must match images.DefaultShutdownManagerImage — this value is what actually reaches the DaemonSet, and only tags present in docs/images/images.txt exist in an air-gap mirror. |
+| kubelb.tenantProxy.staticAddresses | list | `[]` | Static IPs or hostnames published as the mTLS tenant proxy dial target instead of node or load balancer addresses. For proxies fronted by an appliance, NAT, or a user-managed DNS record. |
+| kubelb.tenantProxy.staticPort | int | `15443` | Port dialed together with staticAddresses. |
 | kubelb.useGatewayClass | bool | `true` | useGatewayClass specifies whether to target resources with `kubelb` gateway class or all resources. |
 | kubelb.useIngressClass | bool | `true` | useIngressClass specifies whether to target resources with `kubelb` ingress class or all resources. |
 | kubelb.useLoadBalancerClass | bool | `false` | useLoadBalancerClass specifies whether to target services of type LoadBalancer with `kubelb` load balancer class or all services of type LoadBalancer. |
@@ -85,4 +96,3 @@
 | testImage.repository | string | `"busybox"` |  |
 | testImage.tag | string | `"1.35.0"` |  |
 | tolerations | list | `[]` |  |
-

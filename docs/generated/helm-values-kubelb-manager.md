@@ -12,7 +12,7 @@
 | grafana.dashboards.enabled | bool | `false` | Requires grafana to be deployed with `sidecar.dashboards.enabled=true`. For more info: https://github.com/grafana/helm-charts/tree/grafana-10.5.13/charts/grafana#:~:text=%5B%5D-,sidecar.dashboards.enabled,-Enables%20the%20cluster |
 | image.pullPolicy | string | `"IfNotPresent"` |  |
 | image.repository | string | `"quay.io/kubermatic/kubelb-manager"` |  |
-| image.tag | string | `"v1.3.5"` |  |
+| image.tag | string | `"v1.5.0"` |  |
 | imagePullSecrets | list | `[]` |  |
 | kkpintegration.rbac | bool | `false` | Create RBAC for KKP integration. |
 | kubeRbacProxy.image.pullPolicy | string | `"IfNotPresent"` |  |
@@ -27,7 +27,7 @@
 | kubelb.envoyProxy.nodeSelector | object | `{}` |  |
 | kubelb.envoyProxy.podMonitor.enabled | bool | `false` | Create PodMonitor resources for Envoy Proxy pods to enable Prometheus Operator scraping. |
 | kubelb.envoyProxy.replicas | int | `2` | The number of replicas for the Envoy Proxy deployment. |
-| kubelb.envoyProxy.resources | object | `{}` |  |
+| kubelb.envoyProxy.resources | object | `{}` | Resource requests/limits for the Envoy Proxy container. If empty, defaults to requests 200m CPU / 256Mi memory and limits 2 CPU / 1Gi memory. |
 | kubelb.envoyProxy.singlePodPerNode | bool | `true` | Deploy single pod per node. |
 | kubelb.envoyProxy.tolerations | list | `[]` |  |
 | kubelb.envoyProxy.topology | string | `"shared"` | Topology defines the deployment topology for Envoy Proxy. Only "shared" is supported. "dedicated" and "global" are deprecated and will default to shared. |
@@ -63,4 +63,3 @@
 | serviceAccount.name | string | `""` |  |
 | serviceMonitor.enabled | bool | `false` |  |
 | tolerations | list | `[]` |  |
-

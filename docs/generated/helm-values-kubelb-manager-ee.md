@@ -16,15 +16,22 @@
 | grafana.dashboards.enabled | bool | `false` | Requires grafana to be deployed with `sidecar.dashboards.enabled=true`. For more info: https://github.com/grafana/helm-charts/tree/grafana-10.5.13/charts/grafana#:~:text=%5B%5D-,sidecar.dashboards.enabled,-Enables%20the%20cluster |
 | image.pullPolicy | string | `"IfNotPresent"` |  |
 | image.repository | string | `"quay.io/kubermatic/kubelb-manager-ee"` |  |
-| image.tag | string | `"v1.3.5"` |  |
+| image.tag | string | `"v1.5.0"` |  |
 | imagePullSecrets[0].name | string | `"kubermatic-quay.io"` |  |
 | kkpintegration.rbac | bool | `false` | Create RBAC for KKP integration. |
 | kubeRbacProxy.image.pullPolicy | string | `"IfNotPresent"` |  |
 | kubeRbacProxy.image.repository | string | `"quay.io/brancz/kube-rbac-proxy"` |  |
 | kubeRbacProxy.image.tag | string | `"v0.20.1"` |  |
+| kubelb.backendTransport.mode | string | `"Direct"` | Backend transport mode for management-to-tenant backend traffic. Direct preserves current behavior. MTLS enables KubeLB-managed tenant Envoy mTLS topology for L7 and L4 TCP. [Beta / Technical Preview Feature] |
+| kubelb.backendTransport.tenantProxy.replicas | int | `2` | Number of tenant proxy pods when workload is Deployment. Ignored for DaemonSet. |
+| kubelb.backendTransport.tenantProxy.serviceType | string | `"NodePort"` | Service type used to expose the tenant proxy in MTLS mode. NodePort (default) publishes node addresses plus the allocated NodePort; LoadBalancer publishes the Service's LB ingress addresses on the fixed proxy port 15443. |
+| kubelb.backendTransport.tenantProxy.workload | string | `"DaemonSet"` | Workload kind for the tenant proxy in MTLS mode. DaemonSet (default) runs one proxy per node; Deployment runs a fixed replica count and only proxy-bearing node addresses are published. |
+| kubelb.backendTransport.udp.mode | string | `"Tunnel"` | UDP transport in MTLS mode. Tunnel (default) wraps UDP sessions in CONNECT-UDP over the encrypted tenant proxy port; Direct keeps UDP on plain per-service NodePorts (unencrypted escape hatch). |
 | kubelb.debug | bool | `true` |  |
+| kubelb.deniedAnnotations | list | `[]` | Annotation key patterns to exclude from propagation. Patterns support shell-style globbing. Deny rules always take precedence over PropagatedAnnotations and PropagateAllAnnotations. |
 | kubelb.disableEnvoyGatewayFeatures | bool | `false` | disableEnvoyGatewayFeatures disables Envoy Gateway support for BackendTrafficPolicy and ClientTrafficPolicy. Use this if you're using a Gateway API implementation other than Envoy Gateway. |
 | kubelb.enableGatewayAPI | bool | `false` | enableGatewayAPI specifies whether to enable the Gateway API and Gateway Controllers. By default Gateway API is disabled since without Gateway APIs installed the controller cannot start. |
+| kubelb.enableInsights | bool | `true` | enableInsights enables the KubeLB insights engine, which periodically evaluates the management cluster against the check registry and records findings as Insight resources. Checks whose feature is disabled are skipped, so a default installation evaluates only what applies to it. |
 | kubelb.enableLeaderElection | bool | `true` |  |
 | kubelb.enableWAF | bool | `false` | [Beta Feature] enableWAF enables the WAF controller for Web Application Firewall policy validation. WAF is a beta feature and is disabled by default. |
 | kubelb.envoyProxy.affinity | object | `{}` |  |
@@ -35,15 +42,19 @@
 | kubelb.envoyProxy.nodeSelector | object | `{}` |  |
 | kubelb.envoyProxy.podMonitor.enabled | bool | `false` | Create PodMonitor resources for Envoy Proxy pods to enable Prometheus Operator scraping. |
 | kubelb.envoyProxy.replicas | int | `2` | The number of replicas for the Envoy Proxy deployment. |
-| kubelb.envoyProxy.resources | object | `{}` |  |
+| kubelb.envoyProxy.resources | object | `{}` | Resource requests/limits for the Envoy Proxy container. If empty, defaults to requests 200m CPU / 256Mi memory and limits 2 CPU / 1Gi memory. |
 | kubelb.envoyProxy.singlePodPerNode | bool | `true` | Deploy single pod per node. |
 | kubelb.envoyProxy.tolerations | list | `[]` |  |
 | kubelb.envoyProxy.topology | string | `"shared"` | Topology defines the deployment topology for Envoy Proxy. Only "shared" is supported. "dedicated" and "global" are deprecated and will default to shared. |
 | kubelb.envoyProxy.useDaemonset | bool | `false` | Use DaemonSet for Envoy Proxy deployment instead of Deployment. |
+| kubelb.insights.disabledChecks | list | `[]` | disabledChecks lists insight check IDs that must not run, for example ["KLB010"]. Rendered into the generated Config CR. |
+| kubelb.insights.perFindingMetrics | bool | `false` | perFindingMetrics emits one kubelb_manager_insight_info time series per finding. Off by default: the affected object's name is an unbounded metric label. |
 | kubelb.logLevel | string | `"info"` | To configure the verbosity of logging. Can be one of 'debug', 'info', 'error', 'panic' or any integer value > 0 which corresponds to custom debug levels of increasing verbosity. |
-| kubelb.propagateAllAnnotations | bool | `false` | Propagate all annotations from the LB resource to the LB service. |
-| kubelb.propagatedAnnotations | object | `{}` | Allowed annotations that will be propagated from the LB resource to the LB service. |
+| kubelb.prometheus | object | `{}` | prometheus holds the Config spec.prometheus connection settings (url, bearerTokenSecretRef, caCertSecretRef, insecureSkipVerify) the manager reads metrics from. Rendered verbatim into the generated Config CR. |
+| kubelb.propagateAllAnnotations | bool | `false` | Propagate all annotations from the source resource to load balancing resources. DeniedAnnotations still applies. |
+| kubelb.propagatedAnnotations | object | `{}` | Allowed annotation key patterns to propagate from the source resource to load balancing resources. Keys support shell-style globbing (e.g. "nginx.ingress.kubernetes.io/*"). Empty value means any value. |
 | kubelb.skipConfigGeneration | bool | `true` | Set to false to enable the generation of the Config CR. Set to true to skip the generation of the Config CR. Useful when the config CR needs to be managed manually. |
+| kubelb.timeouts | object | `{}` | Default Envoy timeouts. Optional fields: request, streamIdle, requestHeaders, idleConnection, tcpIdle, connect. Tenant and Route/LoadBalancer overrides take precedence per-field. Built-in defaults apply when unset (request 0s/disabled, streamIdle 1h, requestHeaders 0s/disabled, idleConnection 1h, tcpIdle 1h, connect 5s). |
 | kubelb.tunnel.connectionManager.affinity | object | `{}` |  |
 | kubelb.tunnel.connectionManager.healthCheck.enabled | bool | `true` |  |
 | kubelb.tunnel.connectionManager.healthCheck.livenessInitialDelay | int | `30` |  |
@@ -78,6 +89,8 @@
 | podSecurityContext.runAsNonRoot | bool | `true` |  |
 | podSecurityContext.seccompProfile.type | string | `"RuntimeDefault"` |  |
 | priorityClassName | string | `""` | PriorityClassName for the manager pod (e.g., "system-cluster-critical") |
+| prometheusRule.enabled | bool | `false` | Render a monitoring.coreos.com/v1 PrometheusRule with the bundled WAF alerts. |
+| prometheusRule.labels | object | `{}` | Extra labels for the PrometheusRule, e.g. a `release` label matching the operator's ruleSelector. |
 | rbac.allowLeaderElectionRole | bool | `true` |  |
 | rbac.allowMetricsReaderRole | bool | `true` |  |
 | rbac.allowProxyRole | bool | `true` |  |
@@ -100,4 +113,3 @@
 | testImage.repository | string | `"busybox"` |  |
 | testImage.tag | string | `"1.35.0"` |  |
 | tolerations | list | `[]` |  |
-
