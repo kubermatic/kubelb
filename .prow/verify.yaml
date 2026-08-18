@@ -22,7 +22,7 @@ presubmits:
       preset-goproxy: "true"
     spec:
       containers:
-        - image: golang:1.26.5
+        - image: golang:1.26.6
           command:
             - ./hack/ci/verify.sh
           resources:
@@ -59,7 +59,7 @@ presubmits:
       preset-goproxy: "true"
     spec:
       containers:
-        - image: golang:1.26.5
+        - image: golang:1.26.6
           command:
             - bash
           args:
@@ -104,7 +104,7 @@ presubmits:
       preset-goproxy: "true"
     spec:
       containers:
-        - image: golang:1.26.5
+        - image: golang:1.26.6
           command:
             - bash
           args:
@@ -125,7 +125,7 @@ presubmits:
       preset-goproxy: "true"
     spec:
       containers:
-        - image: golang:1.26.5
+        - image: golang:1.26.6
           command:
             - bash
           args:
@@ -148,7 +148,7 @@ presubmits:
       preset-goproxy: "true"
     spec:
       containers:
-        - image: golang:1.26.5
+        - image: golang:1.26.6
           securityContext:
             privileged: true
           env:
