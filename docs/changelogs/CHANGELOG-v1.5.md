@@ -10,15 +10,19 @@
 
 ### Highlights
 
+Two things stand out in v1.5. The management cluster stops being a passive place where tenant config accumulates and starts telling you what is wrong with it, and traffic from the management cluster to tenant workloads can finally be encrypted end to end.
+
+The rest is the unglamorous half of a release: Envoy timeouts that no longer cut streaming workloads off mid-flight, an xDS control plane that stops republishing config nobody changed, and the CLI moving into this repository so it ships on the same tag as everything else.
+
 #### KubeLB Insights (EE)
 
-KubeLB v1.5 ships **[KubeLB Insights](https://docs.kubermatic.com/kubelb/v1.5/insights/)** — a deterministic advisor for the platform operator. The management cluster already knows every tenant's effective configuration, every route and every WAF policy; the insights engine periodically evaluates that state against a registry of 15 checks and records what it finds as `Insight` resources.
+The management cluster already knows every tenant's effective configuration, every route and every WAF policy. [KubeLB Insights](https://docs.kubermatic.com/kubelb/v1.5/insights/) puts that to work: a registry of 15 checks runs against live state on a timer, and whatever it finds becomes an `Insight` resource.
 
 - No sampling, no scoring model, no LLM. Every check is a pure function of cluster state, so a finding is reproducible and its absence means the same thing every time.
-- Findings land in the namespace of what they are about, and can be triaged in place — acknowledge, snooze, dismiss. Individual checks can be suppressed via `Config.spec.insights.disabledChecks`.
+- Findings land in the namespace of what they are about, and are triaged in place: acknowledge, snooze, dismiss. Individual checks can be suppressed via `Config.spec.insights.disabledChecks`.
 - Fleet-wide checks cover hostname collisions across tenants, silently stripped certificate annotations, unprotected HTTP routes, quota headroom, WAF failure-mode and network policy asymmetry, and mTLS certificates that missed their rotation window.
 - A `kubelb_manager_posture_score` metric is scored per tenant and category, with a bundled Grafana dashboard and Prometheus alert rules (findings, degraded posture, checks failing to evaluate, stalled sweep loop).
-- The engine is on by default and quiet by design — checks declare the features they need and skip themselves when those features are absent. Turn it off with `kubelb.enableInsights: false`.
+- The engine is on by default and stays quiet: checks declare the features they need and skip themselves when those features are absent. Turn it off with `kubelb.enableInsights: false`.
 
 #### mTLS Backend Transport (EE, Beta / Technical Preview)
 
@@ -34,11 +38,11 @@ Management-to-tenant backend traffic can now be encrypted end to end. Enabled fr
 
 Tenants can now define namespaced `TenantWAFPolicy` resources against their own routes, instead of every rule going through the platform operator. The feature is opt-in per installation (`Config.spec.waf.enableTenantPolicies`) and per tenant (`Tenant.spec.waf`); tenant directives are validated against a strict allowlist and each policy is isolated to the tenant's own namespace.
 
-WAF also gained dataplane observability this release — Grafana dashboards and Prometheus alerts for blocked requests, filter failures, Coraza VM reloads and xDS NACKs (alerts off by default via `prometheusRule.enabled`).
+WAF also got dataplane observability this release: Grafana dashboards and Prometheus alerts for blocked requests, filter failures, Coraza VM reloads and xDS NACKs (alerts off by default via `prometheusRule.enabled`).
 
 #### KubeLB CLI
 
-The **[KubeLB CLI](https://docs.kubermatic.com/kubelb/v1.5/cli/)** — until now released from `kubermatic/kubelb-cli` on its own version line — has been merged into this repository under `cli/`. It is developed, tested and released on the same tag and the same cycle as the manager and CCM, with full supply-chain parity: keyless cosign signatures and provenance attestations on every artifact.
+The [KubeLB CLI](https://docs.kubermatic.com/kubelb/v1.5/cli/) has moved into this repository under `cli/`. It used to live in `kubermatic/kubelb-cli` on its own version line; now it is built, tested and released on the same tag and cycle as the manager and CCM, with keyless cosign signatures and provenance attestations on every artifact.
 
 - Version jumps `v0.2.0` → `v1.5.0` and tracks the KubeLB release from here on.
 - Download `kubelb-cli_<version>_<os>_<arch>` from the [GitHub release](https://github.com/kubermatic/kubelb/releases/tag/v1.5.0); the binary inside the archive is named `kubelb`.
@@ -58,11 +62,11 @@ Verify the download with keyless cosign:
 gh attestation verify kubelb-cli_${VERSION}_linux_amd64.tar.gz --repo kubermatic/kubelb
 ```
 
-Existing `kubelb-cli` users have two behaviour changes to pick up — see [Urgent Upgrade Notes](#urgent-upgrade-notes).
+Existing `kubelb-cli` users have two behaviour changes to pick up, see [Urgent Upgrade Notes](#urgent-upgrade-notes).
 
 #### Configurable Envoy Timeouts and Streaming-Friendly Defaults
 
-Stock Envoy timeouts were cutting off streaming and large-file workloads — object-storage downloads, model artifacts, websockets, SSE, long-running gRPC streams — because the KubeLB Envoy layer was double-bounding requests that the edge proxy already bounds.
+Stock Envoy timeouts were cutting off streaming and large-file workloads: object-storage downloads, model artifacts, websockets, SSE, long-running gRPC streams. The KubeLB Envoy layer was double-bounding requests that the edge proxy already bounds.
 
 | Timeout | Was | Now |
 | --- | --- | --- |
@@ -83,13 +87,13 @@ Enterprise Edition additionally makes six timeouts configurable at Config, Tenan
 
 #### xDS Control Plane Hardening (CE)
 
-A focused pass on the Envoy control plane, driven by what showed up at scale:
+A pass over the Envoy control plane, driven by what showed up at scale:
 
 - Snapshot versions are now stable for unchanged config, so an unchanged reconcile no longer republishes to every connected proxy. Snapshot consistency is validated on the first push as well as subsequent ones.
 - The xDS gRPC server sets keepalive and bounded connection age, and drains streams on shutdown instead of resetting them.
 - `kubelb_envoy_control_plane_xds_nacks_total` exports configs rejected by Envoy.
 - Deleting a Tenant clears its snapshot from the cache instead of leaking it until the next manager restart.
-- Generated cluster and listener names no longer include the Service UID, so replacing an origin Service is seen by Envoy as an update rather than a new cluster plus listener — the cause of NC 503s on pooled connections after a Service replace.
+- Generated cluster and listener names no longer include the Service UID, so replacing an origin Service is seen by Envoy as an update rather than a new cluster plus listener. That was the cause of NC 503s on pooled connections after a Service replace.
 - TCP keepalive is enabled on proxied connections so idle connections are not silently dropped by kube-proxy in IPVS mode.
 
 #### KubeLB Dashboard v1.1
@@ -100,29 +104,29 @@ A focused pass on the Envoy control plane, driven by what showed up at scale:
 
 **Community Edition (CE)**
 
-- **Annotation deny list and glob patterns** — `deniedAnnotations` on Config and Tenant, and shell-style globs (`nginx.ingress.kubernetes.io/*`) in both `propagatedAnnotations` and `deniedAnnotations`.
-- **Configurable client header limits** — `Config.spec.envoyProxy.headerLimits` defaults to Envoy's maximum, so large client headers no longer produce `431 Request Header Fields Too Large`.
-- **Source IP persistence for Layer 4** — `LoadBalancer.spec.persistence.type: SourceIP`; tenant Services using `sessionAffinity: ClientIP` are propagated with observed-source persistence.
-- **Hostname (FQDN) endpoints** — translated into Envoy `STRICT_DNS` clusters instead of EDS, fixing "malformed IP address" rejections. `EndpointAddress.ip` is now optional.
+- **Annotation deny list and glob patterns**: `deniedAnnotations` on Config and Tenant, and shell-style globs (`nginx.ingress.kubernetes.io/*`) in both `propagatedAnnotations` and `deniedAnnotations`.
+- **Configurable client header limits**: `Config.spec.envoyProxy.headerLimits` defaults to Envoy's maximum, so large client headers no longer produce `431 Request Header Fields Too Large`.
+- **Source IP persistence for Layer 4**: `LoadBalancer.spec.persistence.type: SourceIP`; tenant Services using `sessionAffinity: ClientIP` are propagated with observed-source persistence.
+- **Hostname (FQDN) endpoints**: translated into Envoy `STRICT_DNS` clusters instead of EDS, fixing "malformed IP address" rejections. `EndpointAddress.ip` is now optional.
 - **Default resource requests and limits on the managed Envoy proxy**, so it no longer runs BestEffort.
 - Addons chart v0.5.0: envoy-gateway 1.8.3, cert-manager 1.21.1, external-dns 1.21.1, metallb 0.16.1, agentgateway/agentgateway-crds 1.4.1, ingress-nginx 4.15.1.
 - Built with Go 1.26.6.
 
 **Enterprise Edition (EE)**
 
-- **Configurable active health checks** — TCP, HTTP and gRPC, on Config, Tenant, LoadBalancer and Route, and via `kubelb.k8c.io/health-check-*` annotations on tenant Services, Ingresses and Routes.
-- **Rejections are visible where tenants look** — `LoadBalancerStatus` carries an `Accepted` condition surfaced by the CCM as a Warning event on the tenant Service, route rejections appear on the tenant cluster object's status, and a Route rejected for a hostname outside `allowedDomains` gets a warning event on the tenant's Ingress/Gateway/Route.
+- **Configurable active health checks**: TCP, HTTP and gRPC, on Config, Tenant, LoadBalancer and Route, and via `kubelb.k8c.io/health-check-*` annotations on tenant Services, Ingresses and Routes.
+- **Rejections are visible where tenants look**: `LoadBalancerStatus` carries an `Accepted` condition surfaced by the CCM as a Warning event on the tenant Service, route rejections appear on the tenant cluster object's status, and a Route rejected for a hostname outside `allowedDomains` gets a warning event on the tenant's Ingress/Gateway/Route.
 - **Source IP persistence for Layer 4** via `spec.persistence.type: SourceIP`, taking precedence over `loadBalancerPolicy` when both are set.
 
 #### Stability & Reliability
 
-Beyond the control plane work above, v1.5 lands a broad batch of correctness fixes:
+The rest of the correctness fixes:
 
 - Orphaned management-cluster mirrors are reaped when the origin Service/Ingress/Route is deleted, recreated, downgraded, or the tenant cluster is rebuilt.
 - Removing an annotation from a tenant Service now removes it from the generated LoadBalancer Service, tracked via `kubelb.k8c.io/managed-annotations` so third-party annotations are not clobbered.
 - Generated resources are torn down when Ingress or Gateway API is disabled for a tenant or globally, and when an accepted Route is edited to a disallowed hostname.
 - Routes that hit a transient backing-Service apply failure requeue and recover instead of staying broken.
-- The manager and CCM ClusterRoles can create events again — the missing permission was silently dropping every event the controllers emitted.
+- The manager and CCM ClusterRoles can create events again. The missing permission was silently dropping every event the controllers emitted.
 - A potential manager crash from unsynchronized `PortAllocator` reads is fixed.
 - Generated Route service names comply with DNS-1035.
 - The tenant reconciler tolerates clusters without the Prometheus Operator CRDs installed.
@@ -133,6 +137,13 @@ Beyond the control plane work above, v1.5 lands a broad batch of correctness fix
 
 **(No, really, you MUST read this before you upgrade)**
 
+- **[action required] Apply the Gateway API CRDs before `helm upgrade`.** v1.5.0 moves the bundled Envoy Gateway from 1.7.2 to 1.8.3, which needs the `ListenerSet` CRD (`listenersets.gateway.networking.k8s.io`) from Gateway API v1.5. The chart ships the CRD, but Helm only applies a chart's `crds/` directory on `helm install` and skips it on `helm upgrade`, so an existing installation ends up running Envoy Gateway 1.8.3 without the CRD it needs. Apply the bundle first:
+
+  ```bash
+  kubectl apply --server-side --force-conflicts -f https://github.com/kubernetes-sigs/gateway-api/releases/download/v1.5.1/experimental-install.yaml
+  ```
+
+  Skipping this does not fail the upgrade, which is the trap. Helm reports success and traffic keeps flowing because the old `envoy-gateway` pod stays up. The new pod never becomes ready, and the Gateway API control plane only goes down the next time that pod restarts, which can be days later on a node reboot, an eviction or a scale event. It then crashloops with `no matches for kind "ListenerSet" in version "gateway.networking.k8s.io/v1"`. Recovery is the same `kubectl apply`. Fresh installations are unaffected, because `helm install` applies the CRDs itself.
 - **[action required] The KubeLB CLI now ships from `kubermatic/kubelb` and shares the KubeLB version number** (`kubelb-cli` v0.2.0 → v1.5.0). Download `kubelb-cli_<version>_<os>_<arch>` archives from the `kubermatic/kubelb` release assets; the binary inside is named `kubelb`.
   - CLI artifacts are now signed with keyless cosign and carry provenance attestations. Verification against the old `kubelb-cli` static cosign key no longer applies to new releases.
   - `kubelb serve` now listens on `127.0.0.1:8080` by default instead of on all interfaces. ([#497](https://github.com/kubermatic/kubelb/pull/497))
