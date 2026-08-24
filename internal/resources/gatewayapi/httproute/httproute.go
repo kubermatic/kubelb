@@ -42,17 +42,20 @@ func CreateOrUpdateHTTPRoute(ctx context.Context, log logr.Logger, client ctrlcl
 	// Name of the services referenced by the Object have to be updated to match the services created against the Route in the LB cluster.
 	for i, rule := range object.Spec.Rules {
 		for j, filter := range rule.Filters {
-			if filter.RequestMirror != nil {
-				gatewayapihelpers.RewriteServiceBackendRef(&object.Spec.Rules[i].Filters[j].RequestMirror.BackendRef, referencedServices, routeName)
+			if filter.RequestMirror != nil && (filter.RequestMirror.BackendRef.Kind == nil || *filter.RequestMirror.BackendRef.Kind == kubelb.ServiceKind) {
+				gatewayapihelpers.RetargetBackendRefToGeneratedService(&object.Spec.Rules[i].Filters[j].RequestMirror.BackendRef, referencedServices, routeName)
 			}
 		}
 
 		for j, ref := range rule.BackendRefs {
-			gatewayapihelpers.RewriteServiceBackendRef(&object.Spec.Rules[i].BackendRefs[j].BackendObjectReference, referencedServices, routeName)
-
-			for k, filter := range ref.Filters {
-				if filter.RequestMirror != nil {
-					gatewayapihelpers.RewriteServiceBackendRef(&object.Spec.Rules[i].BackendRefs[j].Filters[k].RequestMirror.BackendRef, referencedServices, routeName)
+			if ref.Kind == nil || *ref.Kind == kubelb.ServiceKind {
+				gatewayapihelpers.RetargetBackendRefToGeneratedService(&object.Spec.Rules[i].BackendRefs[j].BackendObjectReference, referencedServices, routeName)
+			}
+			if ref.Filters != nil {
+				for k, filter := range ref.Filters {
+					if filter.RequestMirror != nil && (filter.RequestMirror.BackendRef.Kind == nil || *filter.RequestMirror.BackendRef.Kind == kubelb.ServiceKind) {
+						gatewayapihelpers.RetargetBackendRefToGeneratedService(&object.Spec.Rules[i].BackendRefs[j].Filters[k].RequestMirror.BackendRef, referencedServices, routeName)
+					}
 				}
 			}
 		}
