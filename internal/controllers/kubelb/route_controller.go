@@ -159,7 +159,7 @@ func (r *RouteReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 	if !controllerutil.ContainsFinalizer(resource, CleanupFinalizer) {
 		if ok := controllerutil.AddFinalizer(resource, CleanupFinalizer); !ok {
 			log.Error(nil, "Failed to add finalizer for the Route")
-			return ctrl.Result{Requeue: true}, nil
+			return ctrl.Result{Requeue: true}, nil //nolint:staticcheck // SA1019
 		}
 		if err := r.Update(ctx, resource); err != nil {
 			managermetrics.RouteReconcileTotal.WithLabelValues(req.Namespace, routeType, metricsutil.ResultError).Inc()

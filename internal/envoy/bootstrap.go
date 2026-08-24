@@ -290,7 +290,7 @@ func getReadinessProbeListener() *envoyListener.Listener {
 							Headers: []*envoyRoute.HeaderMatcher{{
 								Name: ":method",
 								HeaderMatchSpecifier: &envoyRoute.HeaderMatcher_ExactMatch{
-									ExactMatch: "GET",
+									ExactMatch: "GET", //nolint:staticcheck // SA1019
 								},
 							}},
 						},
@@ -336,7 +336,7 @@ func getHealthCheckListener() *envoyListener.Listener {
 		Headers: []*envoyRoute.HeaderMatcher{{
 			Name: ":path",
 			HeaderMatchSpecifier: &envoyRoute.HeaderMatcher_ExactMatch{
-				ExactMatch: EnvoyHealthCheckPath,
+				ExactMatch: EnvoyHealthCheckPath, //nolint:staticcheck // SA1019
 			},
 		}},
 	})
@@ -423,7 +423,7 @@ func getStatsListener() *envoyListener.Listener {
 							Headers: []*envoyRoute.HeaderMatcher{{
 								Name: ":method",
 								HeaderMatchSpecifier: &envoyRoute.HeaderMatcher_ExactMatch{
-									ExactMatch: "GET",
+									ExactMatch: "GET", //nolint:staticcheck // SA1019
 								},
 							}},
 						},

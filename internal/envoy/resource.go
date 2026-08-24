@@ -523,7 +523,7 @@ func makeFileAccessLog() *envoyFileAccessLog.FileAccessLog {
 		AccessLogFormat: &envoyFileAccessLog.FileAccessLog_LogFormat{
 			LogFormat: &envoyCore.SubstitutionFormatString{
 				Format: &envoyCore.SubstitutionFormatString_TextFormat{
-					TextFormat: accessLogFormat,
+					TextFormat: accessLogFormat, //nolint:staticcheck // SA1019
 				},
 			},
 		},
@@ -587,7 +587,7 @@ func makeUDPListener(clusterName string, listenerName string, listenerPort uint3
 	udpProxy := &envoyUdpProxy.UdpProxyConfig{
 		StatPrefix: listenerName,
 		RouteSpecifier: &envoyUdpProxy.UdpProxyConfig_Cluster{
-			Cluster: clusterName,
+			Cluster: clusterName, //nolint:staticcheck // SA1019
 		},
 		AccessLog: []*envoyAccessLog.AccessLog{
 			{
@@ -631,7 +631,7 @@ func makeUDPListener(clusterName string, listenerName string, listenerPort uint3
 				},
 			},
 		},
-		ReusePort: true,
+		ReusePort: true, //nolint:staticcheck // SA1019
 	}
 }
 

@@ -178,7 +178,7 @@ func (r *LoadBalancerReconciler) Reconcile(ctx context.Context, req ctrl.Request
 	if !controllerutil.ContainsFinalizer(&loadBalancer, CleanupFinalizer) {
 		if ok := controllerutil.AddFinalizer(&loadBalancer, CleanupFinalizer); !ok {
 			log.Error(nil, "Failed to add finalizer for the LoadBalancer")
-			return ctrl.Result{Requeue: true}, nil
+			return ctrl.Result{Requeue: true}, nil //nolint:staticcheck // SA1019
 		}
 
 		// Remove old finalizer since it is not used anymore.

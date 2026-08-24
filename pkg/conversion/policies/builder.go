@@ -225,7 +225,7 @@ func (b *SecurityPolicyBuilder) Build() *egv1alpha1.SecurityPolicy {
 		},
 		Spec: egv1alpha1.SecurityPolicySpec{
 			PolicyTargetReferences: egv1alpha1.PolicyTargetReferences{
-				TargetRef: ptrTo(b.policyTargetRef()),
+				TargetRef: ptrTo(b.policyTargetRef()), //nolint:staticcheck // SA1019
 			},
 			CORS:          b.cors,
 			Authorization: b.authorization,
@@ -362,7 +362,7 @@ func (b *BackendTrafficPolicyBuilder) Build() *egv1alpha1.BackendTrafficPolicy {
 		},
 		Spec: egv1alpha1.BackendTrafficPolicySpec{
 			PolicyTargetReferences: egv1alpha1.PolicyTargetReferences{
-				TargetRef: ptrTo(b.policyTargetRef()),
+				TargetRef: ptrTo(b.policyTargetRef()), //nolint:staticcheck // SA1019
 			},
 			ClusterSettings: egv1alpha1.ClusterSettings{
 				Timeout:        b.timeout,

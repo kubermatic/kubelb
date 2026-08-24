@@ -165,7 +165,7 @@ func TestHandleAnnotations(t *testing.T) {
 		opts: &conversion.Options{},
 	}
 
-	req := httptest.NewRequest(http.MethodGet, "/api/annotations", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/api/annotations", nil)
 	w := httptest.NewRecorder()
 
 	server.handleAnnotations(w, req)

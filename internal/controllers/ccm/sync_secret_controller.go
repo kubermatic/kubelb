@@ -84,7 +84,7 @@ func (r *SyncSecretReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 	if !controllerutil.ContainsFinalizer(resource, CleanupFinalizer) {
 		if ok := controllerutil.AddFinalizer(resource, CleanupFinalizer); !ok {
 			log.Error(nil, "Failed to add finalizer for the SyncSecret")
-			return ctrl.Result{Requeue: true}, nil
+			return ctrl.Result{Requeue: true}, nil //nolint:staticcheck // SA1019
 		}
 
 		if err := r.Update(ctx, resource); err != nil {
