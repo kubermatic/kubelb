@@ -142,7 +142,7 @@ func (b *SecurityPolicyBuilder) SetIPAllowlist(cidrs []string) *SecurityPolicyBu
 	b.authorization.Rules = append(b.authorization.Rules, egv1alpha1.AuthorizationRule{
 		Name:   &ruleName,
 		Action: egv1alpha1.AuthorizationActionAllow,
-		Principal: egv1alpha1.Principal{
+		Principal: &egv1alpha1.Principal{
 			ClientCIDRs: cidrList,
 		},
 	})
@@ -174,7 +174,7 @@ func (b *SecurityPolicyBuilder) SetIPDenylist(cidrs []string) *SecurityPolicyBui
 	b.authorization.Rules = append(b.authorization.Rules, egv1alpha1.AuthorizationRule{
 		Name:   &ruleName,
 		Action: egv1alpha1.AuthorizationActionDeny,
-		Principal: egv1alpha1.Principal{
+		Principal: &egv1alpha1.Principal{
 			ClientCIDRs: cidrList,
 		},
 	})
