@@ -38,12 +38,13 @@ presubmits:
       preset-goproxy: "true"
     spec:
       containers:
-        - image: golangci/golangci-lint:v2.10.1
+        - image: golang:1.27.0
           command:
             - bash
           args:
             - -c
             - |
+              GOBIN=/usr/local/bin go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.10.1
               make download-gocache
               make lint
           resources:
@@ -83,12 +84,13 @@ presubmits:
       preset-goproxy: "true"
     spec:
       containers:
-        - image: golangci/golangci-lint:v2.10.1
+        - image: golang:1.27.0
           command:
             - bash
           args:
             - -c
             - |
+              GOBIN=/usr/local/bin go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.10.1
               make download-gocache
               make lint-cli
           resources:
