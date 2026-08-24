@@ -75,6 +75,34 @@ func nodeWithInternalIP(name, ip string) *corev1.Node {
 	}
 }
 
+func TestNodeReconcileRequeuesWithoutErrorWhenNodeHasNoAddress(t *testing.T) {
+	scheme := runtime.NewScheme()
+	if err := corev1.AddToScheme(scheme); err != nil {
+		t.Fatalf("AddToScheme() error = %v", err)
+	}
+
+	client := fake.NewClientBuilder().WithScheme(scheme).WithObjects(&corev1.Node{
+		ObjectMeta: metav1.ObjectMeta{Name: "node-without-address"},
+		Status: corev1.NodeStatus{
+			Conditions: []corev1.NodeCondition{{Type: corev1.NodeReady, Status: corev1.ConditionTrue}},
+		},
+	}).Build()
+	r := &KubeLBNodeReconciler{
+		Client:              client,
+		Log:                 logr.Discard(),
+		EndpointAddressType: corev1.NodeInternalIP,
+	}
+
+	got, err := r.Reconcile(context.Background(), ctrl.Request{})
+	if err != nil {
+		t.Fatalf("Reconcile() error = %v, want nil for transient missing address", err)
+	}
+	want := ctrl.Result{RequeueAfter: requeueAfter}
+	if got != want {
+		t.Fatalf("Reconcile() result = %v, want %v", got, want)
+	}
+}
+
 // Every CCM in a tenant writes the same Addresses object, so a conflict on
 // update is routine. Losing the reconcile to it leaves the tenant's endpoints
 // stale until the next node event.

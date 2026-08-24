@@ -84,11 +84,11 @@ func (r *KubeLBNodeReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 	// Compute current state
 	currentAddresses, err := r.GenerateAddresses(nodeList)
 	if err != nil {
-		log.Error(err, "unable to find a node with an IP address")
 		// This is a transient error and happens when the nodes are coming up.
 		// We will requeue after a short period of time to give the nodes a chance to be ready and have an IP address.
-		ccmmetrics.NodeReconcileTotal.WithLabelValues(metricsutil.ResultError).Inc()
-		return ctrl.Result{RequeueAfter: requeueAfter}, err
+		log.V(2).Info("no valid node addresses available yet; requeueing")
+		ccmmetrics.NodeReconcileTotal.WithLabelValues(metricsutil.ResultSkipped).Inc()
+		return ctrl.Result{RequeueAfter: requeueAfter}, nil
 	}
 
 	// Retrieve current state from the LB cluster
