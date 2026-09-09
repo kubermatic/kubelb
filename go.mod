@@ -15,7 +15,7 @@ require (
 	github.com/prometheus/client_golang v1.24.1
 	github.com/prometheus/client_model v0.6.2
 	go.uber.org/zap v1.28.0
-	google.golang.org/grpc v1.83.1
+	google.golang.org/grpc v1.83.2
 	google.golang.org/protobuf v1.36.12
 	k8c.io/reconciler v0.5.0
 	k8s.io/api v0.36.4
