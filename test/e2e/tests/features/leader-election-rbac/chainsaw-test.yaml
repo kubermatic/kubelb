@@ -37,7 +37,11 @@ spec:
   steps:
     # Precondition: the manager is up and leading. Leader election works
     # regardless of the events grant, so this only rules out a manager that
-    # never started (which would make the checks below vacuous).
+    # never started (which would make the checks below vacuous). Assert on
+    # the Lease holder instead of the manager logs: the acquisition line is
+    # only logged at container startup and kubelet log rotation (10Mi per
+    # container) has already dropped it by the time this late-suite test
+    # runs, so grepping kubectl logs can never match.
     - name: manager-acquires-lease
       cluster: kubelb
       try:
@@ -45,18 +49,23 @@ spec:
             timeout: 130s
             content: |
               set -euo pipefail
-              for i in $(seq 1 30); do
+              for i in $(seq 1 25); do
                 D=$(kubectl -n kubelb get deploy -o jsonpath='{range .items[*]}{.metadata.name}{" "}{.spec.template.spec.containers[*].name}{"\n"}{end}' 2>/dev/null | awk '{for(j=2;j<=NF;j++) if($j=="manager"){print $1; exit}}' || true)
                 if [ -n "$D" ]; then
-                  if kubectl -n kubelb logs "deployment/$D" -c manager 2>/dev/null | grep -q 'Successfully acquired lease'; then
-                    echo "manager $D acquired the leader lease"
-                    exit 0
+                  POD=$(kubectl -n kubelb get pods -o jsonpath='{range .items[*]}{.metadata.name}{" "}{.spec.containers[*].name}{" "}{.status.phase}{"\n"}{end}' 2>/dev/null | awk -v d="$D" 'index($1,d)==1 && $NF=="Running" {for(j=2;j<NF;j++) if($j=="manager"){print $1; exit}}' || true)
+                  if [ -n "${POD:-}" ]; then
+                    H=$(kubectl -n kubelb get lease -o jsonpath='{range .items[*]}{.spec.holderIdentity}{"\n"}{end}' 2>/dev/null || true)
+                    if echo "$H" | grep -F "$POD" >/dev/null; then
+                      echo "manager pod $POD of deployment $D holds the leader lease"
+                      exit 0
+                    fi
                   fi
                 fi
                 sleep 4
               done
-              echo "manager never acquired the leader lease"
-              kubectl -n kubelb logs "deployment/$D" -c manager --tail 50 || true
+              echo "no running manager pod holds the leader lease"
+              kubectl -n kubelb get lease -o jsonpath='{range .items[*]}{.metadata.name}{" holder="}{.spec.holderIdentity}{"\n"}{end}' || true
+              kubectl -n kubelb get pods || true
               exit 1
     # The actual regression check: while the core/v1 events rule is missing,
     # client-go's legacy recorder logs "Server rejected event (will not
