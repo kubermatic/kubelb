@@ -18,7 +18,7 @@
 # acquires the lease either way (configmaps and leases are granted), so the
 # only visible symptom is a "Server rejected event (will not retry!)" log
 # line for the became-leader event. This test fails while the rule is
-# missing and passes once the chart Role (and the kustomize Role) grant it.
+# missing and passes once the chart Role grants it.
 apiVersion: chainsaw.kyverno.io/v1alpha1
 kind: Test
 metadata:
@@ -46,9 +46,9 @@ spec:
             content: |
               set -euo pipefail
               for i in $(seq 1 30); do
-                D=$(kubectl get deploy -A -l app.kubernetes.io/name=kubelb-manager -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || true)
+                D=$(kubectl -n kubelb get deploy -o jsonpath='{range .items[*]}{.metadata.name}{" "}{.spec.template.spec.containers[*].name}{"\n"}{end}' 2>/dev/null | awk '{for(j=2;j<=NF;j++) if($j=="manager"){print $1; exit}}' || true)
                 if [ -n "$D" ]; then
-                  if kubectl logs -n kubelb "deployment/$D" -c manager 2>/dev/null | grep -q 'Successfully acquired lease'; then
+                  if kubectl -n kubelb logs "deployment/$D" -c manager 2>/dev/null | grep -q 'Successfully acquired lease'; then
                     echo "manager $D acquired the leader lease"
                     exit 0
                   fi
@@ -68,7 +68,8 @@ spec:
             timeout: 30s
             content: |
               set -euo pipefail
-              D=$(kubectl get deploy -A -l app.kubernetes.io/name=kubelb-manager -o jsonpath='{.items[0].metadata.name}')
+              D=$(kubectl -n kubelb get deploy -o jsonpath='{range .items[*]}{.metadata.name}{" "}{.spec.template.spec.containers[*].name}{"\n"}{end}' 2>/dev/null | awk '{for(j=2;j<=NF;j++) if($j=="manager"){print $1; exit}}')
+              [ -n "$D" ] || { echo "no deployment with a manager container found in ns kubelb"; kubectl -n kubelb get deploy; exit 1; }
               if kubectl -n kubelb logs "deployment/$D" -c manager | grep 'Server rejected event'; then
                 echo "FAIL: leader-election event rejected - the leader-election Role is missing the core/v1 events rule (issue #593)"
                 exit 1
@@ -84,7 +85,8 @@ spec:
             timeout: 30s
             content: |
               set -euo pipefail
-              D=$(kubectl get deploy -A -l app.kubernetes.io/name=kubelb-manager -o jsonpath='{.items[0].metadata.name}')
+              D=$(kubectl -n kubelb get deploy -o jsonpath='{range .items[*]}{.metadata.name}{" "}{.spec.template.spec.containers[*].name}{"\n"}{end}' 2>/dev/null | awk '{for(j=2;j<=NF;j++) if($j=="manager"){print $1; exit}}')
+              [ -n "$D" ] || { echo "no deployment with a manager container found in ns kubelb"; kubectl -n kubelb get deploy; exit 1; }
               SA=$(kubectl -n kubelb get deploy "$D" -o jsonpath='{.spec.template.spec.serviceAccountName}')
               OUT=$(kubectl -n kubelb auth can-i create events --as="system:serviceaccount:kubelb:${SA}")
               echo "auth can-i create events as kubelb/${SA}: ${OUT}"
