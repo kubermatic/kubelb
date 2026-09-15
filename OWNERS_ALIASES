@@ -2,5 +2,12 @@
 # To change team associations, update the GitHub teams via https://github.com/kubermatic/access.
 
 aliases:
-  team-kubelb:
-    - waseem826
+  dev-kkp:
+    - adoi
+    - ahmadhamzh
+    - buraksekili
+    - khizerrehan
+    - kron4eg
+    - moadqassem
+    - mohamed-rafraf
+    - rajasahil
