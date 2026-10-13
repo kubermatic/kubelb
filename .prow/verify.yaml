@@ -22,7 +22,7 @@ presubmits:
       preset-goproxy: "true"
     spec:
       containers:
-        - image: golang:1.27.0
+        - image: golang:1.27.2
           command:
             - ./hack/ci/verify.sh
           resources:
@@ -39,6 +39,12 @@ presubmits:
     spec:
       containers:
         - image: golangci/golangci-lint:v2.13.1
+          # Type-check with the image's Go instead of switching to the go.mod
+          # toolchain: golangci-lint can only read export data written by the
+          # Go release it was built with (go1.27.2 bumped the format).
+          env:
+            - name: GOTOOLCHAIN
+              value: local
           command:
             - bash
           args:
@@ -59,7 +65,7 @@ presubmits:
       preset-goproxy: "true"
     spec:
       containers:
-        - image: golang:1.27.0
+        - image: golang:1.27.2
           command:
             - bash
           args:
@@ -84,6 +90,12 @@ presubmits:
     spec:
       containers:
         - image: golangci/golangci-lint:v2.13.1
+          # Type-check with the image's Go instead of switching to the go.mod
+          # toolchain: golangci-lint can only read export data written by the
+          # Go release it was built with (go1.27.2 bumped the format).
+          env:
+            - name: GOTOOLCHAIN
+              value: local
           command:
             - bash
           args:
@@ -104,7 +116,7 @@ presubmits:
       preset-goproxy: "true"
     spec:
       containers:
-        - image: golang:1.27.0
+        - image: golang:1.27.2
           command:
             - bash
           args:
@@ -125,7 +137,7 @@ presubmits:
       preset-goproxy: "true"
     spec:
       containers:
-        - image: golang:1.27.0
+        - image: golang:1.27.2
           command:
             - bash
           args:
@@ -148,7 +160,7 @@ presubmits:
       preset-goproxy: "true"
     spec:
       containers:
-        - image: golang:1.27.0
+        - image: golang:1.27.2
           securityContext:
             privileged: true
           env:
