@@ -17,7 +17,7 @@ Vulnerabilities decide what to bump and in what order. Run the scanners **before
 Discover what this repo already runs rather than assuming; see [REFERENCE.md](REFERENCE.md#discovering-a-repos-security-posture) for the discovery commands. Reuse its pinned scanner versions and thresholds so local results match CI. For kubelb today that is:
 
 ```bash
-go install golang.org/x/vuln/cmd/govulncheck@v1.1.4
+go install golang.org/x/vuln/cmd/govulncheck@v1.7.0
 govulncheck ./... && (cd cli && govulncheck ./...)
 
 make build build-cli
