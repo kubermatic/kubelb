@@ -282,7 +282,7 @@ func NewClient(auth *Auth, connectionManagerURL, tunnelName, hostname, tenantNam
 		MinVersion:         tls.VersionTLS12,
 		InsecureSkipVerify: insecureSkipVerify,
 	}
-	transport := &http2.Transport{
+	transport := &http2.Transport{ //nolint:staticcheck // SA1019
 		TLSClientConfig: tlsConfig,
 		// Allow multiple connections
 		AllowHTTP: false,
