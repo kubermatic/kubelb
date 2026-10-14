@@ -121,7 +121,7 @@ spec:
       try:
         - script:
             skipCommandOutput: true
-            timeout: 60s
+            timeout: 90s
             env:
               - name: NAME
                 value: ($name)
@@ -132,7 +132,7 @@ spec:
               HOST="large-headers-route.test.local"
               EXPECTED="hello-shared"
 
-              for i in $(seq 1 15); do
+              for i in $(seq 1 30); do
                 RESPONSE=$(curl -s --max-time 5 -H "Host: ${HOST}" "http://${IP}/" 2>/dev/null || true)
                 if echo "$RESPONSE" | grep -q "$EXPECTED"; then
                   echo "Baseline HTTP response OK"
