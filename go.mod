@@ -7,9 +7,9 @@ toolchain go1.27.2
 require (
 	github.com/envoyproxy/gateway v1.9.2
 	github.com/envoyproxy/go-control-plane v0.14.1-0.20260729145720-a2d8c7492908
-	github.com/envoyproxy/go-control-plane/envoy v1.39.0
+	github.com/envoyproxy/go-control-plane/envoy v1.40.0
 	github.com/go-logr/logr v1.4.4
-	github.com/go-test/deep v1.1.1
+	github.com/go-test/deep v1.1.2
 	github.com/google/go-cmp v0.7.0
 	github.com/onsi/ginkgo v1.16.5
 	github.com/onsi/gomega v1.44.0
