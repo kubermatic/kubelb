@@ -37,7 +37,7 @@
 | kubelb.envoyProxy.affinity | object | `{}` |  |
 | kubelb.envoyProxy.gracefulShutdown.disabled | bool | `false` | Disable graceful shutdown (default: false) |
 | kubelb.envoyProxy.gracefulShutdown.shutdownManagerImage | string | `""` | Shutdown manager sidecar image. If empty, defaults to docker.io/envoyproxy/gateway:v1.3.0 |
-| kubelb.envoyProxy.image | string | `""` | Envoy Proxy container image. If empty, defaults to envoyproxy/envoy:distroless-v1.36.4 |
+| kubelb.envoyProxy.image | string | `""` | Envoy Proxy container image. If empty, defaults to envoyproxy/envoy:distroless-v1.37.8 |
 | kubelb.envoyProxy.imagePullSecrets | list | `[]` | imagePullSecrets for Envoy Proxy pods. If not set, auto-detected from manager pod. |
 | kubelb.envoyProxy.nodeSelector | object | `{}` |  |
 | kubelb.envoyProxy.podMonitor.enabled | bool | `false` | Create PodMonitor resources for Envoy Proxy pods to enable Prometheus Operator scraping. |
