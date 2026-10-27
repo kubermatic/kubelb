@@ -22,7 +22,7 @@ presubmits:
       preset-goproxy: "true"
     spec:
       containers:
-        - image: golang:1.27.2
+        - image: golang:1.27.3
           command:
             - ./hack/ci/verify.sh
           resources:
@@ -38,13 +38,7 @@ presubmits:
       preset-goproxy: "true"
     spec:
       containers:
-        - image: golangci/golangci-lint:v2.13.1
-          # Type-check with the image's Go instead of switching to the go.mod
-          # toolchain: golangci-lint can only read export data written by the
-          # Go release it was built with (go1.27.2 bumped the format).
-          env:
-            - name: GOTOOLCHAIN
-              value: local
+        - image: golangci/golangci-lint:v2.14.0
           command:
             - bash
           args:
@@ -65,7 +59,7 @@ presubmits:
       preset-goproxy: "true"
     spec:
       containers:
-        - image: golang:1.27.2
+        - image: golang:1.27.3
           command:
             - bash
           args:
@@ -89,13 +83,7 @@ presubmits:
       preset-goproxy: "true"
     spec:
       containers:
-        - image: golangci/golangci-lint:v2.13.1
-          # Type-check with the image's Go instead of switching to the go.mod
-          # toolchain: golangci-lint can only read export data written by the
-          # Go release it was built with (go1.27.2 bumped the format).
-          env:
-            - name: GOTOOLCHAIN
-              value: local
+        - image: golangci/golangci-lint:v2.14.0
           command:
             - bash
           args:
@@ -116,7 +104,7 @@ presubmits:
       preset-goproxy: "true"
     spec:
       containers:
-        - image: golang:1.27.2
+        - image: golang:1.27.3
           command:
             - bash
           args:
@@ -137,7 +125,7 @@ presubmits:
       preset-goproxy: "true"
     spec:
       containers:
-        - image: golang:1.27.2
+        - image: golang:1.27.3
           command:
             - bash
           args:
@@ -160,7 +148,7 @@ presubmits:
       preset-goproxy: "true"
     spec:
       containers:
-        - image: golang:1.27.2
+        - image: golang:1.27.3
           securityContext:
             privileged: true
           env:
