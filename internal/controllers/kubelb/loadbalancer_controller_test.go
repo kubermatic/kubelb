@@ -106,16 +106,9 @@ var _ = Describe("Lb deployment and service creation", func() {
 
 				By("creating an envoy snapshot")
 
-				snapshot, err := envoyServer.Cache.GetSnapshot(snapshotName)
-				Expect(err).ToNot(HaveOccurred())
-
-				testSnapshot, err := envoycp.MapSnapshot(ctx, k8sClient, getLoadBalancerList(*lb), nil, ecpr.PortAllocator, "test-snapshot", envoycp.ResolveHeaderLimits(nil))
-				Expect(err).ToNot(HaveOccurred())
-				diff := deep.Equal(snapshot, testSnapshot)
-				if len(diff) > 0 {
-					fmt.Printf("expected snapshot didn't match generated snapshot, diff: %+v", diff)
-				}
-				Expect(len(diff)).To(Equal(0))
+				Eventually(func() []string {
+					return envoySnapshotDiff(ctx, *lb, snapshotName)
+				}, timeout, interval).Should(BeEmpty())
 			})
 		})
 
@@ -172,18 +165,12 @@ var _ = Describe("Lb deployment and service creation", func() {
 
 				By("updating the envoy listener")
 
+				Eventually(func() []string {
+					return envoySnapshotDiff(ctx, *existingLb, snapshotName)
+				}, timeout, interval).Should(BeEmpty())
+
 				snapshot, err := envoyServer.Cache.GetSnapshot(snapshotName)
 				Expect(err).ToNot(HaveOccurred())
-
-				testSnapshot, err := envoycp.MapSnapshot(ctx, k8sClient, getLoadBalancerList(*existingLb), nil, ecpr.PortAllocator, "test-snapshot", envoycp.ResolveHeaderLimits(nil))
-				Expect(err).ToNot(HaveOccurred())
-				diff := deep.Equal(snapshot, testSnapshot)
-				if len(diff) > 0 {
-					fmt.Printf("expected snapshot didn't match generated snapshot, diff: %+v", diff)
-				}
-
-				Expect(len(diff)).To(Equal(0))
-
 				listener := snapshot.GetResources(resource.ListenerType)
 				Expect(len(listener)).To(BeEquivalentTo(2))
 			})
@@ -212,4 +199,20 @@ var _ = Describe("Lb deployment and service creation", func() {
 
 func getLoadBalancerList(lb kubelbv1alpha1.LoadBalancer) []kubelbv1alpha1.LoadBalancer {
 	return []kubelbv1alpha1.LoadBalancer{lb}
+}
+
+// the envoy-cp controller writes the snapshot asynchronously, after the service
+// update the earlier Eventually waits on, so poll until the diff is empty.
+func envoySnapshotDiff(ctx context.Context, lb kubelbv1alpha1.LoadBalancer, snapshotName string) []string {
+	snapshot, err := envoyServer.Cache.GetSnapshot(snapshotName)
+	if err != nil {
+		return []string{err.Error()}
+	}
+
+	testSnapshot, err := envoycp.MapSnapshot(ctx, k8sClient, getLoadBalancerList(lb), nil, ecpr.PortAllocator, "test-snapshot", envoycp.ResolveHeaderLimits(nil))
+	if err != nil {
+		return []string{err.Error()}
+	}
+
+	return deep.Equal(snapshot, testSnapshot)
 }
