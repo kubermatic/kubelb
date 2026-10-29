@@ -15,7 +15,7 @@
 # Container images pre-pulled into conversion Kind cluster
 images:
   - docker.io/envoyproxy/gateway:v1.8.3
-  - docker.io/envoyproxy/envoy:distroless-v1.37.8
+  - docker.io/envoyproxy/envoy:distroless-v1.37.11
   - quay.io/metallb/speaker:v0.16.1
   - quay.io/frrouting/frr:10.4.3
   - registry.k8s.io/ingress-nginx/controller:v1.13.0
