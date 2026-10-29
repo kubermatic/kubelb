@@ -6,7 +6,7 @@ require (
 	github.com/MakeNowJust/heredoc v1.0.0
 	github.com/envoyproxy/gateway v1.9.2
 	github.com/spf13/cobra v1.10.2
-	golang.org/x/net v0.61.0
+	golang.org/x/net v0.62.0
 	k8c.io/kubelb v1.5.0
 	k8s.io/api v0.37.1
 	k8s.io/apimachinery v0.37.1
