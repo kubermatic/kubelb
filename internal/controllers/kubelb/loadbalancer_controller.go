@@ -58,7 +58,7 @@ import (
 )
 
 const (
-	envoyImage                   = "envoyproxy/envoy:distroless-v1.36.4"
+	envoyImage                   = "envoyproxy/envoy:distroless-v1.37.11"
 	envoyProxyContainerName      = "envoy-proxy"
 	shutdownManagerContainerName = "shutdown-manager"
 	envoyResourcePattern         = "envoy-%s"
