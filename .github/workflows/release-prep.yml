@@ -128,10 +128,18 @@ jobs:
       - name: Setup Helm
         uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
 
+      # this workflow always runs from main, so lint with the version Prow
+      # uses on the release branch instead of main's version.
+      - name: Detect golangci-lint version
+        id: lint-version
+        run: |
+          VERSION=$(grep -oE -m1 'golangci/golangci-lint:v[0-9.]+' .prow/verify.yaml | cut -d: -f2)
+          echo "version=${VERSION:-v2.14.0}" >> "$GITHUB_OUTPUT"
+
       - name: Setup golangci-lint
         uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
         with:
-          version: v2.14.0
+          version: ${{ steps.lint-version.outputs.version }}
           install-only: true
 
       - name: Install release-notes tool
@@ -170,7 +178,9 @@ jobs:
         env:
           KUBELB_EE_PATH: /tmp/kubelb-ee
         run: |
-          make helm-lint helm-dependency-update update-codegen update-cli-docs
+          make helm-lint helm-dependency-update update-codegen
+          # the CLI lives in this repo since v1.5; older release branches have no CLI targets.
+          if grep -q '^update-cli-docs:' Makefile; then make update-cli-docs; fi
           ./hack/release/generate-docs.sh --ee-only
 
       - name: Generate release notes
@@ -221,7 +231,9 @@ jobs:
           fi
 
       - name: Validate
-        run: make lint build test-cli
+        run: |
+          make lint build
+          if grep -q '^test-cli:' Makefile; then make test-cli; fi
 
       - name: Create prep branch and PR
         env:
