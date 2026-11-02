@@ -9,7 +9,7 @@ kubeRbacProxy:
   image:
     repository: quay.io/brancz/kube-rbac-proxy
     pullPolicy: IfNotPresent
-    tag: v0.20.1
+    tag: v0.23.1
 
 imagePullSecrets: []
 
