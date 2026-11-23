@@ -71,7 +71,20 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/resources/{kind}/{namespace}/{name}", s.handleResourcePreview)
 	mux.HandleFunc("DELETE /api/resources/{kind}/{namespace}/{name}", s.handleResourceDelete)
 
-	return mux
+	// Reject cross-origin writes; these endpoints use the developer's cluster credentials.
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet && r.Method != http.MethodHead {
+			scheme := "http"
+			if r.TLS != nil {
+				scheme = "https"
+			}
+			if origin := r.Header.Get("Origin"); origin != "" && origin != scheme+"://"+r.Host {
+				http.Error(w, "cross-origin requests are not allowed", http.StatusForbidden)
+				return
+			}
+		}
+		mux.ServeHTTP(w, r)
+	})
 }
 
 func (s *Server) handleIndex(w http.ResponseWriter, _ *http.Request) {
