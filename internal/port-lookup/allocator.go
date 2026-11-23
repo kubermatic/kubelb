@@ -94,7 +94,11 @@ func (pa *PortAllocator) AllocatePorts(endpointKey string, portkeys []string) bo
 	updated := false
 	for _, k := range portkeys {
 		if _, exists := pa.portLookup[endpointKey][k]; !exists {
-			pa.portLookup[endpointKey][k] = pa.allocatePort()
+			port := pa.allocatePort()
+			if port < 0 {
+				break
+			}
+			pa.portLookup[endpointKey][k] = port
 			updated = true
 		}
 	}
@@ -143,8 +147,10 @@ func (pa *PortAllocator) DeallocateEndpoints(endpointKeys []string) {
 }
 
 func (pa *PortAllocator) allocatePort() int {
-	for {
-		port := rand.Intn(endPort-startPort) + startPort
+	// A finite range must stop even when full, or the caller's write lock is held forever.
+	offset := rand.Intn(endPort - startPort)
+	for i := 0; i < endPort-startPort; i++ {
+		port := startPort + (offset+i)%(endPort-startPort)
 		if _, exists := pa.portLookupReverse[port]; !exists {
 			// Mark the port as used immediately so subsequent allocations within
 			// the same AllocatePorts batch can't pick it too. recomputeAvailablePorts
@@ -154,6 +160,7 @@ func (pa *PortAllocator) allocatePort() int {
 			return port
 		}
 	}
+	return -1
 }
 
 // recomputeAvailablePorts recomputes the reverse lookup table for available ports.
