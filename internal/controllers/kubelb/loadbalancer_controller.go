@@ -746,6 +746,10 @@ func (r *LoadBalancerReconciler) checkTLSHealth(url string) bool {
 	// We're checking if TLS handshake works, not certificate validity
 	client := &http.Client{
 		Timeout: 10 * time.Second,
+		// Never follow redirects: the URL is tenant-controlled and could point at internal services.
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			return fmt.Errorf("redirects are not allowed")
+		},
 		Transport: &http.Transport{
 			TLSClientConfig: &tls.Config{
 				InsecureSkipVerify: true, // Skip cert verification to handle self-signed certificates
