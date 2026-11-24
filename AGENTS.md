@@ -165,8 +165,9 @@ The labels are in each test's `chainsaw-test.yaml`. Run the tests through `make`
 the cluster, config and values flags that the Makefile passes.
 
 The Ingress conversion tests (names starting with `ing-conversion`) run only with `ENABLE_STANDALONE=true`,
-which also creates a `standalone` cluster. CI enables it when the conversion code or its tests change, so after
-changing `internal/ingress-to-gateway/` or `pkg/conversion/`, run `make e2e-kind ENABLE_STANDALONE=true`.
+which also creates a `standalone` cluster. CI enables it when the conversion code or its tests change, but a
+change only under `pkg/` does not start the e2e job. So after changing `internal/ingress-to-gateway/` or
+`pkg/conversion/`, run `make e2e-kind ENABLE_STANDALONE=true`.
 
 ## Pull Requests
 
