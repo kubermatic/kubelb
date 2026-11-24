@@ -159,10 +159,31 @@ const (
 
 	// ConditionRouteAccepted indicates whether the Route was accepted by the
 	// KubeLB manager. Set to False when the source resource is rejected (e.g.
-	// host not in tenant allowedDomains), in which case no sub-resources exist
-	// for it: a rejection tears down anything a previously accepted revision
-	// had generated.
+	// host not in tenant allowedDomains, resource type disabled for the
+	// tenant), in which case no sub-resources exist for it: a rejection tears
+	// down anything a previously accepted revision had generated.
 	ConditionRouteAccepted ConditionType = "Accepted"
+
+	// ConditionRouteDNSAutomationApplied reports whether the DNS automation the
+	// tenant requested (external-dns annotations) was propagated to the
+	// management cluster. Absent when the source resource does not request DNS
+	// automation; False when the annotations were stripped (DNS automation
+	// disabled for the tenant, or a hostname outside dns.allowedDomains).
+	ConditionRouteDNSAutomationApplied ConditionType = "DNSAutomationApplied"
+
+	// ConditionRouteCertificateAutomationApplied reports whether the
+	// certificate automation the tenant requested (cert-manager annotations)
+	// was propagated to the management cluster. Absent when the source resource
+	// does not request certificate automation; False when the annotations were
+	// stripped (certificate automation disabled for the tenant, or a hostname
+	// outside certificates.allowedDomains).
+	ConditionRouteCertificateAutomationApplied ConditionType = "CertificateAutomationApplied"
+
+	// ConditionRouteAnnotationsPropagated is False when user-set annotations on
+	// the source resource were not propagated to the generated resource because
+	// they are not in the tenant's allowed annotations; the message names the
+	// dropped keys. Absent when nothing meaningful was dropped.
+	ConditionRouteAnnotationsPropagated ConditionType = "AnnotationsPropagated"
 )
 
 const (
@@ -176,6 +197,22 @@ const (
 	// ConditionReasonApplyFailed is set when a sub-resource could not be created or
 	// updated in the management cluster.
 	ConditionReasonApplyFailed = "ApplyFailed"
+
+	// ConditionReasonFeatureDisabled is set when the resource type is disabled
+	// globally or for the tenant (e.g. Ingress, Gateway API, L4 load balancing).
+	ConditionReasonFeatureDisabled = "FeatureDisabled"
+
+	// ConditionReasonLimitExceeded is set when admitting the resource would
+	// exceed a global or tenant limit (e.g. LoadBalancer or Gateway count).
+	ConditionReasonLimitExceeded = "LimitExceeded"
+
+	// ConditionReasonApplied is set on automation conditions when the requested
+	// automation was propagated in full.
+	ConditionReasonApplied = "Applied"
+
+	// ConditionReasonAnnotationsFiltered is set when user annotations were
+	// dropped because they are not in the tenant's allowed annotations.
+	ConditionReasonAnnotationsFiltered = "AnnotationsFiltered"
 
 	// ConditionReasonTenantWAFDisabled is set on a TenantWAFPolicy carrier Route
 	// when tenant WAF policies are not enabled for the tenant.

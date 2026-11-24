@@ -57,11 +57,17 @@ type LoadBalancerStatus struct {
 }
 
 const (
-	// ConditionLoadBalancerAccepted indicates whether the KubeLB manager could
-	// program the whole LoadBalancer spec into the Envoy dataplane. False means
-	// part of the configuration was dropped and that traffic is affected; the
-	// reason and message name the offending field.
+	// ConditionLoadBalancerAccepted indicates whether the KubeLB manager
+	// admitted the LoadBalancer. False means the LoadBalancer is not served at
+	// all (L4 load balancing disabled for the tenant, limit exceeded); the
+	// reason and message explain why.
 	ConditionLoadBalancerAccepted ConditionType = "Accepted"
+
+	// ConditionLoadBalancerProgrammed indicates whether the KubeLB manager
+	// could program the whole LoadBalancer spec into the Envoy dataplane.
+	// False means part of the configuration was dropped and that traffic is
+	// affected; the reason and message name the offending field.
+	ConditionLoadBalancerProgrammed ConditionType = "Programmed"
 )
 
 type HostnameStatus struct {

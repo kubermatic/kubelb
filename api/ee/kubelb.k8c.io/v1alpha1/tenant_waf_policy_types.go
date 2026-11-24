@@ -86,7 +86,7 @@ type TenantWAFPolicyStatus struct {
 // +kubebuilder:subresource:status
 // +kubebuilder:resource:scope=Namespaced
 // +kubebuilder:printcolumn:JSONPath=".spec.targetRef.name",name="Target",type="string"
-// +kubebuilder:printcolumn:JSONPath=".status.conditions[?(@.type==\"Valid\")].status",name="Valid",type="string"
+// +kubebuilder:printcolumn:JSONPath=".status.conditions[?(@.type==\"Accepted\")].status",name="Accepted",type="string"
 
 // TenantWAFPolicy defines a tenant-authored Web Application Firewall policy for
 // L7 routes. Unlike the cluster-scoped WAFPolicy, it is namespaced and created
