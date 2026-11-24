@@ -24,7 +24,7 @@ Note that we're requiring all commits in a PR to be signed-off. If you already c
 existing commits by rebasing with the `--signoff` flag.
 
 ```
-git rebase --signoff origin/master
+git rebase --signoff origin/main
 ```
 
 By doing this you state that you can certify the following (from https://developercertificate.org/):
@@ -84,6 +84,19 @@ Due to their public nature, GitHub and mailing lists are not appropriate places 
 suspect you have found a security vulnerability, please do not file a GitHub issue, but instead email
 security@kubermatic.com with the full details, including steps to reproduce the issue.
 
+## Issues Before Pull Requests
+
+This applies to everyone outside the maintainer team (the approvers in [OWNERS](OWNERS)) and is not optional:
+a non-trivial change needs an issue that a maintainer has accepted before you start working on it.
+
+- Open an issue that describes the problem and how you want to solve it.
+- Wait until a maintainer replies that the change is wanted.
+- Link that issue in your pull request.
+
+Pull requests without an accepted issue are closed without review. Typos, broken links and other small
+documentation fixes are exempt. Changes written with AI tools follow the same rule, and you are responsible
+for every line you submit.
+
 ## Getting Started
 
 - Fork the repository on GitHub
@@ -94,7 +107,8 @@ security@kubermatic.com with the full details, including steps to reproduce the 
 
 This is a rough outline of what a contributor's workflow looks like:
 
-- Create a topic branch from where you want to base your work (usually master).
+- For a non-trivial change, get a maintainer to accept the issue first (see above).
+- Create a topic branch from where you want to base your work (usually main).
 - Make commits of logical units.
 - Make sure your commit messages are in the proper format (see below).
 - Push your changes to a topic branch in your fork of the repository.
