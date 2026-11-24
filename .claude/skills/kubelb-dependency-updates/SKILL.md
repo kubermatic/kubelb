@@ -70,7 +70,7 @@ make lint-cli test-cli                                  # any go.mod change
 
 Chart changes: commit `Chart.lock` before running `verify-helm-lock` — it compares via `git diff` against HEAD, so an uncommitted lock always reports out-of-sync.
 
-Before bumping the prow `golangci-lint` image, run `make lint` **and** `make lint-cli` with that exact version locally. A newer linter surfaces new findings and turns the `pull-kubelb-lint-cli` job red.
+Before bumping the prow `golangci-lint` image, run `make lint` **and** `make lint-cli` with that exact version locally. A newer linter surfaces new findings and turns the `pull-kubelb-cli-lint` job red.
 
 ## Pitfalls
 

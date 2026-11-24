@@ -86,8 +86,9 @@ security@kubermatic.com with the full details, including steps to reproduce the 
 
 ## Issues Before Pull Requests
 
-This applies to everyone outside the maintainer team (the approvers in [OWNERS](OWNERS)) and is not optional:
-a non-trivial change needs an issue that a maintainer has accepted before you start working on it.
+This applies to everyone outside the maintainer team (the approvers in [OWNERS](OWNERS), an alias whose members are
+listed in [OWNERS_ALIASES](OWNERS_ALIASES)) and is not optional: a non-trivial change needs an issue that a maintainer
+has accepted before you start working on it.
 
 - Open an issue that describes the problem and how you want to solve it.
 - Wait until a maintainer replies that the change is wanted.
