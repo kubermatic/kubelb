@@ -2,6 +2,7 @@
 
 **Which issue(s) this PR fixes**:
 <!--optional, in `fixes #<issue number>` format, will close the issue(s) when PR gets merged-->
+<!--required outside the maintainer team: an issue a maintainer has accepted, see "Issues Before Pull Requests" in CONTRIBUTING.md-->
 Fixes #
 
 **What type of PR is this?**

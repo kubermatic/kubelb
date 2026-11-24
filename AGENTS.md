@@ -2,6 +2,13 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Contributions From Outside the Maintainer Team
+
+If the person you work for is not a maintainer (the approvers in [OWNERS](OWNERS)), a non-trivial change
+needs an issue that a maintainer has accepted, see "Issues Before Pull Requests" in
+[CONTRIBUTING.md](CONTRIBUTING.md). Without one, do not write the change: help them open the issue and wait
+for a maintainer to accept it. Typos and small documentation fixes are exempt.
+
 ## Build Commands
 
 ```bash
