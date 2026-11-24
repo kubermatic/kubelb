@@ -68,10 +68,24 @@ jobs:
         id: version
         run: |
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            echo "version=${{ inputs.tag }}" >> $GITHUB_OUTPUT
+            VERSION="${{ inputs.tag }}"
           else
-            echo "version=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+            VERSION="${GITHUB_REF#refs/tags/}"
           fi
+          echo "version=${VERSION}" >> $GITHUB_OUTPUT
+
+          # The `latest` image tag and GitHub's "Latest" release follow the highest
+          # stable version. Every tag used to move both, so a release candidate
+          # would have become the default image, and a patch release of an older
+          # minor published after a newer one took `latest` back (v1.4.4 after
+          # v1.5.1).
+          HIGHEST_STABLE="$(git tag --list 'v[0-9]*' | { grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' || true; } | sort -V | tail -n 1)"
+          if [ "${VERSION}" = "${HIGHEST_STABLE}" ]; then
+            echo "is_latest=true" >> $GITHUB_OUTPUT
+          else
+            echo "is_latest=false" >> $GITHUB_OUTPUT
+          fi
+          echo "version ${VERSION}, highest stable version ${HIGHEST_STABLE}"
 
           # Extract addons chart version from Makefile
           ADDONS_VERSION=$(grep -E '^KUBELB_ADDONS_CHART_VERSION \?=' Makefile | cut -d'=' -f2 | tr -d ' ')
@@ -132,6 +146,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           KUBELB_ADDONS_VERSION: ${{ steps.version.outputs.addons_version }}
+          KUBELB_RELEASE_IS_LATEST: ${{ steps.version.outputs.is_latest }}
 
       - name: Install Trivy
         if: ${{ !inputs.skip_vulnerability_scans }}
