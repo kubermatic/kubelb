@@ -3,13 +3,16 @@
 ## Quick Reference
 
 ```bash
-make e2e                                    # Run all tests
-make e2e-select select=resource=httproute   # By resource
-make e2e-select select=layer=layer7         # By layer
-make e2e-select select=suite=conversion     # Conversion only
-make e2e-select select=test=basic           # Single test name
-chainsaw test --test-file test/e2e/tests/layer7/httproute/basic/chainsaw-test.yaml
+make e2e                                                       # Run the tests (conversion: see below)
+make e2e-select select=resource=httproute                      # By resource
+make e2e-select select=layer=layer7                            # By layer
+make e2e-select select=suite=conversion ENABLE_STANDALONE=true # Conversion only
+make e2e-select select=resource=httproute,test=basic           # One test (test names repeat across resources)
 ```
+
+Run the tests through `make`: a bare `chainsaw test` misses the cluster, config and values flags that the
+Makefile passes. The conversion tests run only with `ENABLE_STANDALONE=true` and need the `standalone` cluster,
+so set it when you create and deploy the clusters too, for example `make e2e-kind ENABLE_STANDALONE=true`.
 
 ## Clusters
 
@@ -293,10 +296,10 @@ loaded CI nodes, and a killed `finally` fails an otherwise-green test.
 
 ## Debugging Failures
 
-Run a failing test in isolation:
+Run a failing test in isolation. Select it by resource and test name, because names like `basic` repeat:
 
 ```bash
-make e2e-select select=test=basic
+make e2e-select select=resource=httproute,test=basic
 ```
 
 Kubeconfigs in `.e2e-kubeconfigs/`:
