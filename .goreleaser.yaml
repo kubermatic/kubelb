@@ -287,6 +287,10 @@ dockers:
       - "--label=org.opencontainers.image.licenses=Apache-2.0"
 
 # Docker manifests for multi-arch images
+#
+# `latest` only follows the highest stable version. The release workflow works
+# that out and passes KUBELB_RELEASE_IS_LATEST; without it `latest` is not pushed.
+# A release candidate, or a patch release of an older minor, must not move it.
 docker_manifests:
   # kubelb-manager multi-arch manifest
   - name_template: "quay.io/kubermatic/kubelb-manager:{{ .Tag }}"
@@ -295,6 +299,7 @@ docker_manifests:
       - "quay.io/kubermatic/kubelb-manager:{{ .Tag }}-arm64"
 
   - name_template: "quay.io/kubermatic/kubelb-manager:latest"
+    skip_push: '{{ if eq (envOrDefault "KUBELB_RELEASE_IS_LATEST" "false") "true" }}false{{ else }}true{{ end }}'
     image_templates:
       - "quay.io/kubermatic/kubelb-manager:{{ .Tag }}-amd64"
       - "quay.io/kubermatic/kubelb-manager:{{ .Tag }}-arm64"
@@ -306,6 +311,7 @@ docker_manifests:
       - "quay.io/kubermatic/kubelb-ccm:{{ .Tag }}-arm64"
 
   - name_template: "quay.io/kubermatic/kubelb-ccm:latest"
+    skip_push: '{{ if eq (envOrDefault "KUBELB_RELEASE_IS_LATEST" "false") "true" }}false{{ else }}true{{ end }}'
     image_templates:
       - "quay.io/kubermatic/kubelb-ccm:{{ .Tag }}-amd64"
       - "quay.io/kubermatic/kubelb-ccm:{{ .Tag }}-arm64"
@@ -324,6 +330,9 @@ docker_signs:
 release:
   draft: false
   prerelease: auto
+  # Same rule as for the `latest` image tag: only the highest stable version is
+  # GitHub's "Latest" release.
+  make_latest: '{{ envOrDefault "KUBELB_RELEASE_IS_LATEST" "false" }}'
   mode: replace
   header: |
     ## KubeLB Community Edition {{ .Version }}
