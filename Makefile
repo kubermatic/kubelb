@@ -204,8 +204,11 @@ docker-image:
 docker-image-publish: docker-image
 	if [[ -n "$(GIT_TAG)" ]]; then \
 		docker tag $(KUBELB_IMAGE_NAME) $(KUBELB_IMG):$(GIT_TAG) && \
+		docker tag $(CCM_IMAGE_NAME) $(KUBELB_CCM_IMG):$(GIT_TAG) ;\
+	fi
+	# A pre-release tag (v1.6.0-rc.0) must not move `latest`.
+	if [[ "$(GIT_TAG)" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$$ ]]; then \
 		docker tag $(KUBELB_IMAGE_NAME) $(KUBELB_IMG):latest && \
-		docker tag $(CCM_IMAGE_NAME) $(KUBELB_CCM_IMG):$(GIT_TAG) && \
 		docker tag $(CCM_IMAGE_NAME) $(KUBELB_CCM_IMG):latest ;\
 	fi
 
