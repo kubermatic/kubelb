@@ -48,7 +48,10 @@ type TenantStateStatus struct {
 
 	Tunnel           TunnelState       `json:"tunnel,omitempty"`
 	LoadBalancer     LoadBalancerState `json:"loadBalancer,omitempty"`
+	Ingress          IngressState      `json:"ingress,omitempty"`
 	GatewayAPI       GatewayAPIState   `json:"gatewayAPI,omitempty"`
+	DNS              DNSState          `json:"dns,omitempty"`
+	Certificates     CertificatesState `json:"certificates,omitempty"`
 	BackendTransport BackendTransport  `json:"backendTransport,omitempty"`
 	AllowedDomains   []string          `json:"allowedDomains,omitempty"`
 
@@ -70,6 +73,30 @@ type LoadBalancerState struct {
 	Limit   int  `json:"limit,omitempty"`
 }
 
+// IngressState is the effective (Config default, Tenant override) Ingress
+// configuration for this tenant. Consumed by the CCM's validating webhook.
+type IngressState struct {
+	Disable bool `json:"disable,omitempty"`
+}
+
+// DNSState is the effective DNS automation configuration for this tenant.
+// Consumed by the CCM's validating webhook to warn when external-dns
+// annotations would be stripped.
+type DNSState struct {
+	Disable bool `json:"disable,omitempty"`
+	// +optional
+	AllowedDomains []string `json:"allowedDomains,omitempty"`
+}
+
+// CertificatesState is the effective certificate automation configuration for
+// this tenant. Consumed by the CCM's validating webhook to warn when
+// cert-manager annotations would be stripped.
+type CertificatesState struct {
+	Disable bool `json:"disable,omitempty"`
+	// +optional
+	AllowedDomains []string `json:"allowedDomains,omitempty"`
+}
+
 type GatewayAPIState struct {
 	// ClassMappings defines effective gateway class name mappings from tenant clusters to the management cluster.
 	// +kubebuilder:validation:MaxItems=32
@@ -82,6 +109,20 @@ type GatewayAPIState struct {
 	// value of spec.gatewayAPI.enforceReferenceGrants for this tenant.
 	// +optional
 	EnforceReferenceGrants bool `json:"enforceReferenceGrants,omitempty"`
+
+	// Effective (Config OR Tenant) disable flags for Gateway API support and
+	// the individual route kinds. Consumed by the CCM's validating webhook.
+	Disable          bool `json:"disable,omitempty"`
+	DisableHTTPRoute bool `json:"disableHTTPRoute,omitempty"`
+	DisableGRPCRoute bool `json:"disableGRPCRoute,omitempty"`
+	DisableTLSRoute  bool `json:"disableTLSRoute,omitempty"`
+	DisableTCPRoute  bool `json:"disableTCPRoute,omitempty"`
+	DisableUDPRoute  bool `json:"disableUDPRoute,omitempty"`
+
+	// GatewayLimit is the tenant-level Gateway limit. Nil means unlimited; an
+	// explicit 0 means no Gateways are allowed.
+	// +optional
+	GatewayLimit *int `json:"gatewayLimit,omitempty"`
 }
 
 type Version struct {
