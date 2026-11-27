@@ -517,13 +517,15 @@ update-gateway-api-crds:
 	GATEWAY_RELEASE_CHANNEL=standard make download-gateway-api-crds
 	GATEWAY_RELEASE_CHANNEL=experimental make download-gateway-api-crds
 
+# Certificate verification stays on: these CRDs are compiled into the binaries and installed cluster-wide.
 .PHONY: download-gateway-api-crds
 download-gateway-api-crds: ## Download Gateway API CRDs
 	@echo "Downloading Gateway API CRDs..."
 	@dir="internal/resources/crds/gatewayapi/$(GATEWAY_RELEASE_CHANNEL)"; \
 	tmp="$$(mktemp -d)"; \
 	trap 'rm -rf "$$tmp"' EXIT; \
-	files="$$(curl -sf -k "https://api.github.com/repos/kubernetes-sigs/gateway-api/contents/config/crd/$(GATEWAY_RELEASE_CHANNEL)?ref=$(GATEWAY_API_VERSION)" | \
+	contents="$$(curl -sf "https://api.github.com/repos/kubernetes-sigs/gateway-api/contents/config/crd/$(GATEWAY_RELEASE_CHANNEL)?ref=$(GATEWAY_API_VERSION)")"; \
+	files="$$(printf '%s' "$$contents" | \
 		jq -r '.[] | select(.name != "kustomization.yaml") | .name')"; \
 	if [ -z "$$files" ]; then \
 		echo "No CRDs listed for $(GATEWAY_API_VERSION)/$(GATEWAY_RELEASE_CHANNEL)"; \
@@ -531,8 +533,12 @@ download-gateway-api-crds: ## Download Gateway API CRDs
 	fi; \
 	for filename in $$files; do \
 		echo "Downloading $$filename..."; \
-		curl -k -sfLo "$$tmp/$$filename" \
+		curl -sfLo "$$tmp/$$filename" \
 			"https://raw.githubusercontent.com/kubernetes-sigs/gateway-api/$(GATEWAY_API_VERSION)/config/crd/$(GATEWAY_RELEASE_CHANNEL)/$$filename" || exit 1; \
+		object="$$(printf '%s' "$$contents" | jq -r --arg name "$$filename" '.[] | select(.name == $$name) | .sha')"; \
+		expected="$$(curl -sf "https://api.github.com/repos/kubernetes-sigs/gateway-api/git/blobs/$$object" | jq -r '.content' | base64 -d | openssl dgst -sha256 | awk '{print $$NF}')"; \
+		actual="$$(openssl dgst -sha256 "$$tmp/$$filename" | awk '{print $$NF}')"; \
+		[ "$$expected" = "$$actual" ] || { echo "sha256 mismatch for $$filename"; exit 1; }; \
 	done; \
 	rm -rf "$$dir"; \
 	mkdir -p "$$dir"; \
