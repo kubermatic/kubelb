@@ -22,10 +22,10 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
-	"html/template"
 	"net"
 	"strconv"
 	"strings"
+	"text/template"
 	"time"
 
 	"github.com/go-logr/logr"
@@ -107,8 +107,8 @@ type TenantReconciler struct {
 // +kubebuilder:rbac:groups="",resources=serviceaccounts,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups="",resources=secrets,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups="",resources=configmaps,verbs=get;list;watch
-// +kubebuilder:rbac:groups="rbac.authorization.k8s.io",resources=roles,verbs=get;list;watch;create;update;patch;delete;bind;escalate
-// +kubebuilder:rbac:groups="rbac.authorization.k8s.io",resources=rolebindings,verbs=get;list;watch;create;update;patch;delete;bind;escalate
+// +kubebuilder:rbac:groups="rbac.authorization.k8s.io",resources=roles,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups="rbac.authorization.k8s.io",resources=rolebindings,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=monitoring.coreos.com,resources=podmonitors,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=kubelb.k8c.io,resources=tenants,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=kubelb.k8c.io,resources=tenants/status,verbs=get;update;patch
@@ -346,6 +346,7 @@ func (r *TenantReconciler) generateKubeconfig(ctx context.Context, client ctrlru
 		ServerURL:     serverURL,
 	}
 
+	// Plain YAML, not HTML: text/template keeps '+' intact in base64 data.
 	tmpl, err := template.New("kubeconfig").Parse(kubeconfigTemplate)
 	if err != nil {
 		return "", fmt.Errorf("failed to parse kubeconfig template: %w", err)
