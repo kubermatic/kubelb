@@ -198,22 +198,15 @@ func (r *LoadBalancerReconciler) Reconcile(ctx context.Context, req ctrl.Request
 	appName := req.Namespace
 	svcName := fmt.Sprintf(envoyResourcePattern, loadBalancer.Name)
 
-	err = r.reconcileService(ctx, &loadBalancer, svcName, appName, resourceNamespace, r.PortAllocator, className, annotations)
+	// At this point, we have a service that is ready to be used. The status is
+	// written from the Service as reconcileService left it. Reading it back through
+	// the cached client can return the object from before the update, and Service
+	// spec changes do not trigger another reconcile. The status would then keep a
+	// target port that the Service no longer uses, and LoadState would load that
+	// port on the next manager start.
+	existingService, err := r.reconcileService(ctx, &loadBalancer, svcName, appName, resourceNamespace, r.PortAllocator, className, annotations)
 	if err != nil {
 		log.Error(err, "Unable to reconcile service")
-		managermetrics.LoadBalancerReconcileTotal.WithLabelValues(req.Namespace, metricsutil.ResultError).Inc()
-		return ctrl.Result{}, err
-	}
-
-	// At this point, we have a service that is ready to be used.
-	// Get the service to get its current status
-	existingService := &corev1.Service{}
-	err = r.Get(ctx, types.NamespacedName{
-		Name:      svcName,
-		Namespace: resourceNamespace,
-	}, existingService)
-	if err != nil {
-		log.Error(err, "Unable to get service for status update")
 		managermetrics.LoadBalancerReconcileTotal.WithLabelValues(req.Namespace, metricsutil.ResultError).Inc()
 		return ctrl.Result{}, err
 	}
@@ -244,8 +237,10 @@ func (r *LoadBalancerReconciler) Reconcile(ctx context.Context, req ctrl.Request
 	return ctrl.Result{}, nil
 }
 
+// reconcileService creates or updates the Service of the LoadBalancer and returns
+// it in the state the API server holds after the call.
 func (r *LoadBalancerReconciler) reconcileService(ctx context.Context, loadBalancer *kubelbv1alpha1.LoadBalancer, svcName, appName, namespace string, portAllocator *portlookup.PortAllocator, className *string,
-	annotations kubelbv1alpha1.AnnotationSettings) error {
+	annotations kubelbv1alpha1.AnnotationSettings) (*corev1.Service, error) {
 	log := ctrl.LoggerFrom(ctx).WithValues("reconcile", "service")
 
 	log.V(2).Info("verify service")
@@ -288,7 +283,7 @@ func (r *LoadBalancerReconciler) reconcileService(ctx context.Context, loadBalan
 	}, existingService)
 
 	if err != nil && !apierrors.IsNotFound(err) {
-		return err
+		return nil, err
 	}
 
 	// Handle service ports
@@ -302,9 +297,9 @@ func (r *LoadBalancerReconciler) reconcileService(ctx context.Context, loadBalan
 	if apierrors.IsNotFound(err) {
 		log.V(2).Info("creating service", "name", svcName)
 		if err := r.Create(ctx, desiredService); err != nil {
-			return fmt.Errorf("failed to create service: %w", err)
+			return nil, fmt.Errorf("failed to create service: %w", err)
 		}
-		return nil
+		return desiredService, nil
 	}
 
 	// Service already exists, we need to check if it needs to be updated.
@@ -320,10 +315,10 @@ func (r *LoadBalancerReconciler) reconcileService(ctx context.Context, loadBalan
 		existingService.Labels = desiredService.Labels
 		existingService.Annotations = desiredService.Annotations
 		if err := r.Update(ctx, existingService); err != nil {
-			return fmt.Errorf("failed to update service: %w", err)
+			return nil, fmt.Errorf("failed to update service: %w", err)
 		}
 	}
-	return nil
+	return existingService, nil
 }
 
 func (r *LoadBalancerReconciler) configureHostname(ctx context.Context, loadBalancer *kubelbv1alpha1.LoadBalancer, svcName string, tenant *kubelbv1alpha1.Tenant, config *kubelbv1alpha1.Config, annotations kubelbv1alpha1.AnnotationSettings) (string, error) {
