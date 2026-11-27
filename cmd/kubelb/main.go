@@ -157,7 +157,7 @@ func main() {
 	}
 
 	// We need to ensure that the port lookup table exists. If it doesn't, we create it since it's managed by this controller.
-	portAllocator := portlookup.NewPortAllocator()
+	portAllocator := portlookup.NewPortAllocator(envoy.StaticTCPPorts()...)
 	if err := portAllocator.LoadState(ctx, mgr.GetAPIReader()); err != nil {
 		setupLog.Error(err, ("unable to load port lookup state"))
 		os.Exit(1)

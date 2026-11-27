@@ -99,7 +99,7 @@ func TestReconcileService_AnnotationRemovalPropagates(t *testing.T) {
 	ctx := context.Background()
 
 	lb := annotatedLoadBalancer(map[string]string{providerAnnotation: "nbg1"})
-	if err := r.reconcileService(ctx, lb, annotationTestService, annotationTestApp, annotationTestNamespace, allocator, nil, settings); err != nil {
+	if _, err := r.reconcileService(ctx, lb, annotationTestService, annotationTestApp, annotationTestNamespace, allocator, nil, settings); err != nil {
 		t.Fatalf("initial reconcile: %v", err)
 	}
 
@@ -112,7 +112,7 @@ func TestReconcileService_AnnotationRemovalPropagates(t *testing.T) {
 
 	// The tenant removes the provider annotation from its Service, which drops it
 	// from the LoadBalancer CR.
-	if err := r.reconcileService(ctx, annotatedLoadBalancer(nil), annotationTestService, annotationTestApp, annotationTestNamespace, allocator, nil, settings); err != nil {
+	if _, err := r.reconcileService(ctx, annotatedLoadBalancer(nil), annotationTestService, annotationTestApp, annotationTestNamespace, allocator, nil, settings); err != nil {
 		t.Fatalf("reconcile after removal: %v", err)
 	}
 
@@ -135,10 +135,10 @@ func TestReconcileService_AnnotationUpdateIsStable(t *testing.T) {
 	allocator := portlookup.NewPortAllocator()
 	ctx := context.Background()
 
-	if err := r.reconcileService(ctx, annotatedLoadBalancer(map[string]string{providerAnnotation: "nbg1"}), annotationTestService, annotationTestApp, annotationTestNamespace, allocator, nil, settings); err != nil {
+	if _, err := r.reconcileService(ctx, annotatedLoadBalancer(map[string]string{providerAnnotation: "nbg1"}), annotationTestService, annotationTestApp, annotationTestNamespace, allocator, nil, settings); err != nil {
 		t.Fatalf("initial reconcile: %v", err)
 	}
-	if err := r.reconcileService(ctx, annotatedLoadBalancer(map[string]string{providerAnnotation: "fsn1"}), annotationTestService, annotationTestApp, annotationTestNamespace, allocator, nil, settings); err != nil {
+	if _, err := r.reconcileService(ctx, annotatedLoadBalancer(map[string]string{providerAnnotation: "fsn1"}), annotationTestService, annotationTestApp, annotationTestNamespace, allocator, nil, settings); err != nil {
 		t.Fatalf("reconcile after value change: %v", err)
 	}
 
@@ -148,7 +148,7 @@ func TestReconcileService_AnnotationUpdateIsStable(t *testing.T) {
 	}
 	resourceVersion := got.ResourceVersion
 
-	if err := r.reconcileService(ctx, annotatedLoadBalancer(map[string]string{providerAnnotation: "fsn1"}), annotationTestService, annotationTestApp, annotationTestNamespace, allocator, nil, settings); err != nil {
+	if _, err := r.reconcileService(ctx, annotatedLoadBalancer(map[string]string{providerAnnotation: "fsn1"}), annotationTestService, annotationTestApp, annotationTestNamespace, allocator, nil, settings); err != nil {
 		t.Fatalf("no-op reconcile: %v", err)
 	}
 	if got = getGeneratedService(t, client); got.ResourceVersion != resourceVersion {
