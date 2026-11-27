@@ -28,6 +28,7 @@ import (
 	"k8c.io/kubelb/internal/kubelb"
 	managermetrics "k8c.io/kubelb/internal/metricsutil/manager"
 
+	corev1 "k8s.io/api/core/v1"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
@@ -35,7 +36,24 @@ import (
 const (
 	startPort int = 10000
 	endPort   int = 65535
+
+	// Ports from reservedStartPort to reservedEndPort (inclusive) are never handed
+	// out. The Envoy proxy pod binds its static listeners and the shutdown-manager
+	// sidecar in this block (see internal/envoy/bootstrap.go), and Envoy rejects a
+	// dynamic listener on an address that is already bound. The block is wider than
+	// the ports in use today so that a future static port does not collide with
+	// ports handed out by this version.
+	reservedStartPort int = 19000
+	reservedEndPort   int = 19099
 )
+
+// IsAllocatable reports whether a port is in the dynamic range and outside the reserved block.
+func IsAllocatable(port int) bool {
+	if port < startPort || port >= endPort {
+		return false
+	}
+	return port < reservedStartPort || port > reservedEndPort
+}
 
 // LookupTable is a lookup table for ports. It maps endpoint keys to port keys to the actual allocated ports.
 type LookupTable map[string]map[string]int
@@ -46,12 +64,19 @@ type PortAllocator struct {
 	portLookup LookupTable
 	// portLookupReverse is a reverse lookup table for available ports. It is used to quickly determine if a port is available.
 	portLookupReverse map[int]bool
+	// staticTCPPorts are TCP ports bound by the Envoy proxy pod or its sidecar.
+	staticTCPPorts map[int]struct{}
 }
 
-func NewPortAllocator() *PortAllocator {
+// NewPortAllocator reserves the static TCP port numbers for all new listeners.
+func NewPortAllocator(staticTCPPorts ...int) *PortAllocator {
 	pa := &PortAllocator{
 		portLookup:        make(LookupTable),
 		portLookupReverse: make(map[int]bool),
+		staticTCPPorts:    make(map[int]struct{}, len(staticTCPPorts)),
+	}
+	for _, port := range staticTCPPorts {
+		pa.staticTCPPorts[port] = struct{}{}
 	}
 	return pa
 }
@@ -145,7 +170,7 @@ func (pa *PortAllocator) DeallocateEndpoints(endpointKeys []string) {
 func (pa *PortAllocator) allocatePort() int {
 	for {
 		port := rand.Intn(endPort-startPort) + startPort
-		if _, exists := pa.portLookupReverse[port]; !exists {
+		if pa.isFree(port) {
 			// Mark the port as used immediately so subsequent allocations within
 			// the same AllocatePorts batch can't pick it too. recomputeAvailablePorts
 			// runs only at the end of AllocatePorts; without this write, two keys
@@ -154,6 +179,18 @@ func (pa *PortAllocator) allocatePort() int {
 			return port
 		}
 	}
+}
+
+// isFree reports whether the port can be handed out now. The caller must hold the lock.
+func (pa *PortAllocator) isFree(port int) bool {
+	if !IsAllocatable(port) {
+		return false
+	}
+	if _, static := pa.staticTCPPorts[port]; static {
+		return false
+	}
+	_, used := pa.portLookupReverse[port]
+	return !used
 }
 
 // recomputeAvailablePorts recomputes the reverse lookup table for available ports.
@@ -176,11 +213,9 @@ func (pa *PortAllocator) LoadState(ctx context.Context, apiReader client.Reader)
 
 	// We use the API reader here because the cache may not be fully synced yet.
 	loadBalancers := &kubelbv1alpha1.LoadBalancerList{}
-	err := apiReader.List(ctx, loadBalancers)
-	if err != nil {
+	if err := apiReader.List(ctx, loadBalancers); err != nil {
 		return err
 	}
-
 	for _, lb := range loadBalancers.Items {
 		for i, lbEndpoint := range lb.Spec.Endpoints {
 			endpointKey := fmt.Sprintf(kubelb.EnvoyEndpointPattern, lb.Namespace, lb.Name, i)
@@ -189,7 +224,6 @@ func (pa *PortAllocator) LoadState(ctx context.Context, apiReader client.Reader)
 			}
 
 			for _, lbEndpointPort := range lbEndpoint.Ports {
-				portKey := fmt.Sprintf(kubelb.EnvoyListenerPattern, lbEndpointPort.Port, lbEndpointPort.Protocol)
 				// Match by Name+Protocol when Name is set on either side; otherwise by
 				// UpstreamTargetPort+Protocol. The previous predicate required all three of
 				// (Name, Protocol, UpstreamTargetPort) to match, which silently failed for
@@ -208,7 +242,7 @@ func (pa *PortAllocator) LoadState(ctx context.Context, apiReader client.Reader)
 						match = port.UpstreamTargetPort == lbEndpointPort.Port
 					}
 					if match {
-						lookupTable[endpointKey][portKey] = port.TargetPort.IntValue()
+						pa.loadServicePort(lookupTable, endpointKey, lbEndpointPort.Port, port.ServicePort)
 						break
 					}
 				}
@@ -217,8 +251,7 @@ func (pa *PortAllocator) LoadState(ctx context.Context, apiReader client.Reader)
 	}
 
 	routes := &kubelbv1alpha1.RouteList{}
-	err = apiReader.List(ctx, routes)
-	if err != nil {
+	if err := apiReader.List(ctx, routes); err != nil {
 		return err
 	}
 
@@ -244,13 +277,13 @@ func (pa *PortAllocator) LoadState(ctx context.Context, apiReader client.Reader)
 				key := fmt.Sprintf(kubelb.RouteServiceMapKey, svc.Namespace, kubelb.GetName(&svc))
 				if svcPort, exists := route.Status.Resources.Services[key]; exists {
 					for _, port := range svcPort.Ports {
-						portKey := fmt.Sprintf(kubelb.EnvoyListenerPattern, port.Port, port.Protocol)
-						lookupTable[endpointKey][portKey] = port.TargetPort.IntValue()
+						pa.loadServicePort(lookupTable, endpointKey, port.Port, port)
 					}
 				}
 			}
 		}
 	}
+
 	// Heal duplicate port assignments across endpointKeys. Two different
 	// endpointKeys owning the same port value cause duplicate Envoy listeners
 	// (and NACK spam). This happens on upgrade where Routes that shared a
@@ -264,6 +297,30 @@ func (pa *PortAllocator) LoadState(ctx context.Context, apiReader client.Reader)
 	pa.portLookup = lookupTable
 	pa.recomputeAvailablePorts()
 	return nil
+}
+
+// loadServicePort restores a saved assignment if the listener can still use it.
+// The reserved block applies to new allocations. An existing UDP listener can
+// share a static TCP port, and either protocol can keep an unbound port.
+func (pa *PortAllocator) loadServicePort(table LookupTable, endpointKey string, keyPort int32, port corev1.ServicePort) {
+	target := port.TargetPort.IntValue()
+	portKey := fmt.Sprintf(kubelb.EnvoyListenerPattern, keyPort, port.Protocol)
+	_, staticTCP := pa.staticTCPPorts[target]
+	var reason string
+	switch {
+	case target < startPort || target >= endPort:
+		// A removed targetPort reads as zero. Status may also contain the
+		// Service port if Kubernetes already defaulted the missing target.
+		reason = "outside the listener port range"
+	case staticTCP && (port.Protocol == corev1.ProtocolTCP || port.Protocol == ""):
+		reason = "TCP port bound statically inside the Envoy proxy pod"
+	default:
+		table[endpointKey][portKey] = target
+		return
+	}
+	ctrl.Log.WithName("port-allocator").Info("skipping unusable listener port during restore",
+		"port", target, "reason", reason, "endpointKey", endpointKey, "portKey", portKey)
+	managermetrics.PortAllocatorCollisionsHealed.Inc()
 }
 
 func healLoadStateCollisions(lookupTable LookupTable) {

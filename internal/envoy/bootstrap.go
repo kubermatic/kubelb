@@ -66,6 +66,18 @@ const ShutdownManagerPort = 19002
 const ShutdownManagerHealthCheckPath = "/healthz"
 const ShutdownManagerReadyPath = "/shutdown/ready"
 
+// StaticTCPPorts lists the TCP listeners bound in every Envoy proxy pod
+// independently of xDS, including the shutdown-manager sidecar.
+func StaticTCPPorts() []int {
+	return []int{
+		EnvoyAdminPort,
+		EnvoyStatsPort,
+		ShutdownManagerPort,
+		EnvoyReadinessPort,
+		EnvoyHealthCheckPort,
+	}
+}
+
 // Graceful shutdown configuration defaults
 const DefaultEnvoyDrainTimeout = 60
 const DefaultEnvoyMinDrainDuration = 5
