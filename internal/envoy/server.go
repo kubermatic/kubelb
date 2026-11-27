@@ -35,13 +35,16 @@ import (
 	serverv3 "github.com/envoyproxy/go-control-plane/pkg/server/v3"
 	"github.com/pkg/errors"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/keepalive"
+	"google.golang.org/grpc/status"
 
 	envoycpmetrics "k8c.io/kubelb/internal/metricsutil/envoycp"
 )
 
 const (
-	grpcMaxConcurrentStreams = 1000000
+	// Bounded so a single client cannot exhaust manager goroutines with streams.
+	grpcMaxConcurrentStreams = 100
 
 	// xDS streams are long-lived and mostly idle, so a proxy that dies without
 	// closing its TCP connection is otherwise only reaped by kernel timeouts and
@@ -109,6 +112,11 @@ func (s *Server) Start(ctx context.Context) error {
 		},
 		StreamRequestFunc: func(_ int64, req *discoveryv3.DiscoveryRequest) error {
 			envoycpmetrics.GRPCRequestsTotal.WithLabelValues(req.GetTypeUrl()).Inc()
+			// Only nodes with a configured snapshot may subscribe; otherwise any
+			// client could read config from the shared cache.
+			if _, err := s.Cache.GetSnapshot(req.GetNode().GetId()); err != nil {
+				return status.Error(codes.Unauthenticated, "unknown xDS node")
+			}
 			// A DiscoveryRequest carrying an ErrorDetail is a NACK: Envoy rejected
 			// the config we pushed. Surface it so a rejected snapshot is not
 			// silently invisible on the control plane.
