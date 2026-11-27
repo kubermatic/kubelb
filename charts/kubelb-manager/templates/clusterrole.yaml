@@ -238,14 +238,13 @@ rules:
   - get
   - patch
   - update
+# Only namespaced RBAC management is needed; broader grant verbs would let the manager exceed its own permissions.
 - apiGroups:
   - rbac.authorization.k8s.io
   resources:
   - rolebindings
   - roles
   verbs:
-  - bind
-  - escalate
   - create
   - delete
   - get
