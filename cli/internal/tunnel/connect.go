@@ -50,6 +50,9 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
+// Cap concurrent local requests from SSE events so a remote peer cannot exhaust local resources.
+var requestSemaphore = make(chan struct{}, 32)
+
 // handleTunnelDisconnectionMenu presents an interactive menu when Ctrl+C is pressed
 func handleTunnelDisconnectionMenu(_ context.Context, k8s client.Client, cfg *config.Config, tunnel *kubelbce.Tunnel, cancel context.CancelFunc) error {
 	ui.Warning("Tunnel disconnection requested")
@@ -604,7 +607,11 @@ func (tc *Client) handleSSEEvents(ctx context.Context, body io.Reader) error {
 			switch eventType {
 			case "request":
 				eventLog.Debug("handling request event")
-				go tc.handleRequestEventWithTracking(data)
+				requestSemaphore <- struct{}{}
+				go func() {
+					defer func() { <-requestSemaphore }()
+					tc.handleRequestEventWithTracking(data)
+				}()
 			case "ping":
 				// Update last ping timestamp - proves server connection is alive
 				atomic.StoreInt64(&tc.lastPing, time.Now().Unix())
@@ -874,6 +881,9 @@ func (tc *Client) forwardToLocalService(req *HTTPRequest) {
 
 // sendResponse sends an HTTP response back to the server
 func (tc *Client) sendResponse(resp *HTTPResponse) error {
+	if tc.auth == nil {
+		return fmt.Errorf("tunnel credentials not configured")
+	}
 	respURL := tc.baseURL + "/tunnel/response"
 	respData, err := json.Marshal(resp)
 	if err != nil {
