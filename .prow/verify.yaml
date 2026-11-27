@@ -149,8 +149,7 @@ presubmits:
     spec:
       containers:
         - image: golang:1.27.4
-          securityContext:
-            privileged: true
+          # PR-authored code runs here; keep this container unprivileged.
           env:
             - name: DOCKER_IN_DOCKER_ENABLED
               value: "true"
