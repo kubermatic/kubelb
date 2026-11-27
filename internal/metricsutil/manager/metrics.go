@@ -151,13 +151,16 @@ var (
 		"Current number of endpoints tracked by the port allocator",
 	)
 
-	// PortAllocatorCollisionsHealed counts duplicate port assignments detected
-	// and cleared by LoadState. Non-zero on manager start typically indicates
-	// an upgrade path that seeded colliding ports into the allocator;
-	// subsequent reconciles allocate fresh ports for the cleared endpointKeys.
+	// PortAllocatorCollisionsHealed counts port assignments cleared by LoadState:
+	// duplicates across endpointKeys, ports that collide with a static port of the
+	// Envoy proxy pod, and values outside the listener port range. Non-zero on
+	// manager start typically indicates an upgrade path that seeded colliding
+	// ports into the allocator, or an allocation made before the static ports
+	// were excluded; subsequent reconciles allocate fresh ports for the cleared
+	// endpointKeys.
 	PortAllocatorCollisionsHealed = factory.NewCounter(
 		"port_allocator_collisions_healed_total",
-		"Total number of duplicate port assignments detected and cleared by the port allocator on load",
+		"Total number of port assignments cleared by the port allocator on load because they were duplicated, collided with a static Envoy proxy port or were outside the listener port range",
 	)
 )
 

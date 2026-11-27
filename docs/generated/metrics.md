@@ -30,7 +30,7 @@ Metrics exposed by the KubeLB Manager component (kubelb-manager).
 | `kubelb_manager_loadbalancer_reconcile_total` | Counter | Total number of LoadBalancer reconciliation attempts | `namespace`, `result` |
 | `kubelb_manager_loadbalancers` | Gauge | Current number of LoadBalancer resources | `namespace`, `tenant`, `topology` |
 | `kubelb_manager_port_allocator_allocated_ports` | Gauge | Current number of allocated ports in the port allocator | - |
-| `kubelb_manager_port_allocator_collisions_healed_total` | Counter | Total number of duplicate port assignments detected and cleared by the port allocator on load | - |
+| `kubelb_manager_port_allocator_collisions_healed_total` | Counter | Total number of port assignments cleared by the port allocator on load because they were duplicated, collided with a static Envoy proxy port or were outside the listener port range | - |
 | `kubelb_manager_port_allocator_endpoints` | Gauge | Current number of endpoints tracked by the port allocator | - |
 | `kubelb_manager_route_reconcile_duration_seconds` | Histogram | Duration of Route reconciliations in seconds | `namespace` |
 | `kubelb_manager_route_reconcile_total` | Counter | Total number of Route reconciliation attempts | `namespace`, `route_type`, `result` |
